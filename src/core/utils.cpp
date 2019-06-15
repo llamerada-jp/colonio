@@ -1,0 +1,187 @@
+/*
+ * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#include <libgen.h>
+#if defined(__APPLE__) && defined(__MACH__)
+#  include <mach-o/dyld.h>
+#endif
+#ifdef __linux__
+#  include <unistd.h>
+#endif
+#include <sys/param.h>
+
+#include <cassert>
+#include <cstring>
+#include <iomanip>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <thread>
+
+#include "convert.hpp"
+#include "definition.hpp"
+#include "utils.hpp"
+
+namespace colonio {
+template<>
+bool Utils::check_json_optional<unsigned int>(const picojson::object& obj, const std::string& key,
+                                              unsigned int* dst) {
+  auto it = obj.find(key);
+  if (it == obj.end()) {
+    return false;
+
+  } else if (it->second.is<double>()) {
+    *dst = it->second.get<double>();
+    return true;
+
+  } else {
+    // @todo error
+    assert(false);
+    throw;
+  }
+}
+
+template<>
+unsigned int Utils::get_json<unsigned int>(const picojson::object& obj, const std::string& key,
+                                           const unsigned int& default_value) {
+  auto it = obj.find(key);
+  if (it != obj.end() && it->second.is<double>()) {
+    return it->second.get<double>();
+
+  } else {
+    return default_value;
+  }
+}
+
+std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
+  std::string is;
+  std::stringstream out;
+
+  for (int i = 0; i < indent; i++) {
+    is += " ";
+  }
+
+  out << is << "dst_nid : "     << packet.dst_nid.to_str()  << std::endl;
+  out << is << "src_nid : "     << packet.src_nid.to_str()  << std::endl;
+  out << is << "id : "          << Convert::int2str(packet.id)      << std::endl;
+  out << is << "mode : "        << Convert::int2str(packet.mode)    << std::endl;
+  out << is << "channel : "     << Convert::int2str(packet.channel) << std::endl;
+  out << is << "command_id : "  << Convert::int2str(packet.command_id)  << std::endl;
+  out << is << "content : "     << picojson::value(packet.content).serialize();
+
+  return out.str();
+}
+
+static std::chrono::system_clock::time_point msec_start = std::chrono::system_clock::now();
+int64_t Utils::get_current_msec() {
+  auto now = std::chrono::system_clock::now();
+  return std::chrono::duration_cast<std::chrono::milliseconds>(now - msec_start).count();
+}
+
+std::string Utils::get_current_thread_id() {
+  std::stringstream ss;
+  ss << std::this_thread::get_id();
+  return ss.str();
+}
+
+/**
+ * Get the last component of a pathname.
+ * If suffix is matched to last of the pathname, remove it from return value.
+ * @param path Pathname.
+ * @param cutoff_ext Cut off the extension from basename if the basename have a externsion and option is true.
+ * @return The last component of a pathname.
+ */
+std::string Utils::file_basename(const std::string& path, bool cutoff_ext) {
+  std::string basename;
+  std::string::size_type pos = path.find_last_of('/');
+
+  if (pos == std::string::npos) {
+    basename = path;
+  } else {
+    basename = path.substr(pos + 1);
+  }
+
+  if (cutoff_ext) {
+    pos = basename.find_last_of('.');
+    if (pos == std::string::npos) {
+      return basename;
+    } else {
+      return basename.substr(0, pos);
+    }
+
+  } else {
+    return basename;
+  }
+}
+
+/**
+ * Split path to dirname and basename, and get dirname.
+ * @param path A target path to split.
+ * @return A string of dirname.
+ */
+std::string Utils::file_dirname(const std::string& path) {
+  std::unique_ptr<char[]> buffer = std::make_unique<char[]>(path.size() + 1);
+
+  memcpy(buffer.get(), path.c_str(), path.size());
+  buffer[path.size()] = '\0';
+
+  return std::string(dirname(buffer.get()));
+}
+
+picojson::object& Utils::insert_get_json_object(picojson::object& parent, const std::string& key) {
+  auto it = parent.find(key);
+  if (it == parent.end()) {
+    return parent.insert(std::make_pair(key, picojson::value(picojson::object()))).first->second.get<picojson::object>();
+
+  } else {
+    return it->second.get<picojson::object>();
+  }
+}
+
+bool Utils::is_safevalue(double v) {
+  if (
+#ifdef _MSC_VER
+          ! _finite(v)
+#elif __cplusplus>=201103L || !(defined(isnan) && defined(isinf))
+          std::isnan(v) || std::isinf(v)
+#else
+          isnan(v) || isinf(v)
+#endif
+      ) {
+    return false;
+  } else {
+    return true;
+  }
+}
+
+double Utils::pmod(double a, double b) {
+  assert(b > 0);
+  return a - std::floor(a / b) * b;
+}
+
+/**
+ * Replace all the string in a string.
+ * @param str Target string.
+ * @param from String befor replace.
+ * @param to String after replace.
+ */
+void Utils::replace_string(std::string* str, const std::string& from, const std::string& to) {
+  std::string::size_type pos = str->find(from);
+  while (pos != std::string::npos) {
+    str->replace(pos, from.size(), to);
+    pos = str->find(from, pos + to.size());
+  }
+}
+}  // namespace colonio
