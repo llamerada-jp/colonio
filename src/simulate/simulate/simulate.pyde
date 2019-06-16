@@ -20,9 +20,9 @@ NODES_NUM = 30
 MAP_CIRCLE_R  = 350
 NODE_RECT_W = 10
 VALUE_CIRCLE_R = 350
-COMMAND = '/Users/llamerada/processwarp/vein/build/macos_x86_64/src/simulate'
+COMMAND = os.path.join(os.path.dirname(os.path.abspath('__file__')), '..', '..', '..', 'bin', 'simulate')
 RANDOM_KILL_RATE = 0
-# COMMAND = ['valgrind', '--leak-check=full', '/home/mint1864/processwarp/vein/build/linuxmint_x86_64/src/simulate']
+# COMMAND = ['valgrind', '--leak-check=full', COMMAND]
 
 COLOR_BLACK     = (  0,   0,   0)
 COLOR_BLUE      = (  0,   0, 255)

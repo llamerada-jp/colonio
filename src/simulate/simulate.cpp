@@ -29,7 +29,7 @@
 #include "colonio/colonio.hpp"
 #include "colonio/colonio_libuv.hpp"
 
-static const std::string SERVER_URL = "http://localdev:8080/vein/ws/simulate";
+static const std::string SERVER_URL = "http://localdev:8080/ws/simulate";
 static const std::string REDIS_HOST = "localdev";
 static const int         REDIS_PORT = 6379;
 
