@@ -43,7 +43,6 @@ type Seed struct {
 func newSeed(config *SeedConfig) *Seed {
 	s := &Seed{}
 	s.seed = seed.NewSeed(s)
-	s.group = s.seed.CreateGroup("", config.CastConfig())
 	s.config = config
 	return s
 }
@@ -57,10 +56,17 @@ func (s *Seed) start() {
 
 func (s *Seed) Bind(uri string) (*seed.Group, error) {
 	if uri == s.config.Path {
-		return s.group, nil
+		if group, ok := s.seed.GetGroup("default"); ok {
+			// return a group instance if the group is exist.
+			return group, nil
+
+		} else {
+			s.group = s.seed.CreateGroup("default", s.config.CastConfig())
+			return s.group, nil
+		}
 
 	} else {
-		return nil, errors.New("invalid uri")
+		return nil, errors.New("invalid uri " + uri)
 	}
 }
 
