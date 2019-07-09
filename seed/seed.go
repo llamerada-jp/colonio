@@ -46,6 +46,7 @@ func (c *Config) CastConfig() *Config {
 type Link struct {
 	group        *Group
 	nid          string
+	mutex        sync.Mutex
 	timeCreate   int64
 	timeLastRecv int64
 	timeLastSend int64
@@ -114,6 +115,10 @@ type ContentPing struct {
 type ContentRequireRandom struct {
 }
 
+type context struct {
+	routineLocal map[int]interface{}
+}
+
 const (
 	// プロトコルバージョン
 	ProtocolVersion = "A1"
@@ -152,6 +157,10 @@ const (
 	// Hint
 	HintOnlyone  = 0x0001
 	HintAssigned = 0x0002
+
+	// Key of routineLocal
+	GroupMutex = 1
+	LinkMutex  = 2
 )
 
 /**
@@ -160,6 +169,12 @@ const (
  */
 func getNowMs() int64 {
 	return time.Now().UTC().UnixNano() / 1000000
+}
+
+func newContext() *context {
+	return &context{
+		routineLocal: make(map[int]interface{}),
+	}
 }
 
 func NewSeed(binder GroupBinder) *Seed {
@@ -194,7 +209,10 @@ func (seed *Seed) CreateGroup(groupName string, config *Config) *Group {
 		for {
 			select {
 			case <-ticker.C:
-				group.execEachTick()
+				go func() {
+					context := newContext()
+					group.execEachTick(context)
+				}()
 
 			case <-tickerPeriod:
 				goto Out
@@ -234,7 +252,8 @@ func (seed *Seed) Start(host string, port int) error {
 		}
 
 		seed.poolUpgrade.Schedule(func() {
-			err := seed.upgradeSocket(conn)
+			context := newContext()
+			err := seed.upgradeSocket(context, conn)
 			if err != nil {
 				log.Println(err)
 			}
@@ -242,7 +261,7 @@ func (seed *Seed) Start(host string, port int) error {
 	}
 }
 
-func (seed *Seed) upgradeSocket(conn net.Conn) error {
+func (seed *Seed) upgradeSocket(context *context, conn net.Conn) error {
 	var group *Group
 
 	upgrader := ws.Upgrader{
@@ -252,13 +271,14 @@ func (seed *Seed) upgradeSocket(conn net.Conn) error {
 			return err
 		},
 	}
+
 	_, err := upgrader.Upgrade(conn)
 	if err != nil {
 		conn.Close()
 		return err
 	}
 
-	link := group.createLink(conn)
+	link := group.createLink(context, conn)
 	seed.linkPoller <- link
 
 	return nil
@@ -277,19 +297,21 @@ func (seed *Seed) pollLink() {
 		desc := netpoll.Must(netpoll.HandleRead(link.conn))
 		poller.Start(desc, func(ev netpoll.Event) {
 			if ev&netpoll.EventReadHup != 0 {
+				context := newContext()
 				poller.Stop(desc)
-				link.close()
+				link.close(context)
 				return
 			}
 
 			seed.poolReceive.Schedule(func() {
+				context := newContext()
 				// 受信データが無くなったら切断
-				if next, err := link.receive(); !next || err != nil {
+				if next, err := link.receive(context); !next || err != nil {
 					if err != nil {
 						log.Fatal(err)
 					}
 					poller.Stop(desc)
-					link.close()
+					link.close(context)
 					desc.Close()
 				}
 			})
@@ -297,23 +319,28 @@ func (seed *Seed) pollLink() {
 	}
 }
 
-func (group *Group) createLink(conn net.Conn) *Link {
+func (group *Group) createLink(context *context, conn net.Conn) *Link {
 	link := &Link{
 		group:      group,
 		timeCreate: getNowMs(),
 		conn:       conn,
 	}
 
-	group.mutex.Lock()
-	defer group.mutex.Unlock()
+	if group.lockMutex(context) {
+		defer group.unlockMutex(context)
+	}
 	group.links[link] = struct{}{}
 
 	return link
 }
 
-func (group *Group) removeLink(link *Link) {
-	group.mutex.Lock()
-	defer group.mutex.Unlock()
+func (group *Group) removeLink(context *context, link *Link) {
+	if link.lockMutex(context) {
+		defer link.unlockMutex(context)
+	}
+	if group.lockMutex(context) {
+		defer group.unlockMutex(context)
+	}
 
 	link.group = nil
 	if link.nid != "" {
@@ -327,9 +354,10 @@ func (group *Group) removeLink(link *Link) {
 	delete(group.links, link)
 }
 
-func (group *Group) execEachTick() {
-	group.mutex.Lock()
-	defer group.mutex.Unlock()
+func (group *Group) execEachTick(context *context) {
+	if group.lockMutex(context) {
+		defer group.unlockMutex(context)
+	}
 
 	timeNow := getNowMs()
 
@@ -337,12 +365,12 @@ func (group *Group) execEachTick() {
 		// タイムアウトのチェック
 		if link.timeLastRecv+group.config.Timeout < timeNow {
 			fmt.Println("timeout")
-			link.close()
+			link.close(context)
 		}
 
 		if link.timeLastSend+group.config.PingInterval < timeNow &&
 			link.timeLastRecv+group.config.PingInterval < timeNow {
-			link.sendPing()
+			link.sendPing(context)
 		}
 	}
 
@@ -351,7 +379,7 @@ func (group *Group) execEachTick() {
 		i := rand.Intn(len(group.nidMap))
 		for _, link := range group.nidMap {
 			if i == 0 {
-				link.sendRequireRandom()
+				link.sendRequireRandom(context)
 				break
 			}
 			i--
@@ -364,12 +392,37 @@ func (group *Group) execEachTick() {
 	}
 }
 
-func (group *Group) isOnlyOne(link *Link) bool {
+func (group *Group) isOnlyOne(context *context, link *Link) bool {
+	if group.lockMutex(context) {
+		defer group.unlockMutex(context)
+	}
+
 	_, ok := group.assigned[link.nid]
 	return len(group.assigned) == 0 || (len(group.assigned) == 1 && ok)
 }
 
-func (link *Link) receive() (bool, error) {
+func (group *Group) lockMutex(context *context) bool {
+	if _, ok := context.routineLocal[GroupMutex]; ok {
+		return false
+	} else {
+		context.routineLocal[GroupMutex] = true
+		group.mutex.Lock()
+		return true
+	}
+}
+
+func (group *Group) unlockMutex(context *context) {
+	group.mutex.Unlock()
+	delete(context.routineLocal, GroupMutex)
+}
+
+func (link *Link) receive(context *context) (bool, error) {
+	if link.lockMutex(context) {
+		defer link.unlockMutex(context)
+	}
+	if link.conn == nil {
+		return false, nil
+	}
 	// Reset the Masked flag, server frames must not be masked as
 	// RFC6455 says.
 	header, err := ws.ReadHeader(link.conn)
@@ -400,12 +453,12 @@ func (link *Link) receive() (bool, error) {
 		}
 
 		if packet.DstNid == NidSeed {
-			if err := link.receivePacket(&packet); err != nil {
+			if err := link.receivePacket(context, &packet); err != nil {
 				return false, err
 			}
 
 		} else if (packet.Mode & ModeRelaySeed) != 0x0 {
-			if err := link.relayPacket(&packet); err != nil {
+			if err := link.relayPacket(context, &packet); err != nil {
 				return false, err
 			}
 
@@ -414,49 +467,50 @@ func (link *Link) receive() (bool, error) {
 		}
 
 	case ws.OpClose:
-		link.close()
+		link.close(context)
 		return false, nil
 	}
 
 	return true, nil
 }
 
-func (link *Link) receivePacket(packet *Packet) error {
+func (link *Link) receivePacket(context *context, packet *Packet) error {
 	if packet.Channel == ChannelSeed {
 		switch packet.CommandID {
 		case MethodSeedAuth:
-			return link.recvPacketAuth(packet)
+			return link.recvPacketAuth(context, packet)
 
 		case MethodSeedPing:
 			return nil
 
 		default:
-			link.close()
+			link.close(context)
 			return errors.New("wrong packet")
 		}
 
 	} else {
-		link.close()
+		link.close(context)
 		return errors.New("wrong packet")
 	}
 }
 
-func (link *Link) recvPacketAuth(packet *Packet) error {
+func (link *Link) recvPacketAuth(context *context, packet *Packet) error {
 	var content ContentSeedAuth
 	if err := json.Unmarshal([]byte(packet.Content), &content); err != nil {
 		return err
 	}
 
-	link.group.mutex.Lock()
-	defer link.group.mutex.Unlock()
+	if link.group.lockMutex(context) {
+		defer link.group.unlockMutex(context)
+	}
 
 	if l2, ok := link.group.nidMap[packet.SrcNid]; ok && l2 != link {
 		// IDが重複している
-		return link.sendFailure(packet, struct{}{})
+		return link.sendFailure(context, packet, struct{}{})
 
 	} else if content.Version != ProtocolVersion {
 		// バージョンがサポート外
-		return link.sendFailure(packet, struct{}{})
+		return link.sendFailure(context, packet, struct{}{})
 
 	} else if link.nid == NidNone {
 		link.nid = packet.SrcNid
@@ -465,11 +519,11 @@ func (link *Link) recvPacketAuth(packet *Packet) error {
 			Config: link.group.config.Node,
 		}
 		contentReply.Config["revision"] = link.group.config.Revision
-		if err := link.sendSuccess(packet, contentReply); err != nil {
+		if err := link.sendSuccess(context, packet, contentReply); err != nil {
 			return err
 		}
 	} else {
-		return link.sendFailure(packet, struct{}{})
+		return link.sendFailure(context, packet, struct{}{})
 	}
 
 	// if hint of assigned is ON, regist node-id as assigned it yet
@@ -477,15 +531,18 @@ func (link *Link) recvPacketAuth(packet *Packet) error {
 	if err != nil {
 		return err
 	}
-	if (hint&HintAssigned) != 0 || link.group.isOnlyOne(link) {
+	if (hint&HintAssigned) != 0 || link.group.isOnlyOne(context, link) {
 		link.assigned = true
 		link.group.assigned[packet.SrcNid] = struct{}{}
 	}
 
-	return link.sendHint()
+	return link.sendHint(context)
 }
 
-func (link *Link) relayPacket(packet *Packet) error {
+func (link *Link) relayPacket(context *context, packet *Packet) error {
+	if link.lockMutex(context) {
+		defer link.unlockMutex(context)
+	}
 	// IDの確認用にWEBRTC_CONNECT::OFFERパケットとその返事を利用する
 	if packet.Channel == ChannelwebrtcConnect {
 		switch packet.CommandID {
@@ -504,13 +561,14 @@ func (link *Link) relayPacket(packet *Packet) error {
 		}
 	}
 
-	link.group.mutex.Lock()
-	defer link.group.mutex.Unlock()
+	if link.group.lockMutex(context) {
+		defer link.group.unlockMutex(context)
+	}
 
 	if (packet.Mode & ModeReply) != 0x0 {
 		if _, ok := link.group.nidMap[packet.DstNid]; ok {
 			fmt.Println("Relay a packet.")
-			link.group.nidMap[packet.DstNid].sendPacket(packet)
+			link.group.nidMap[packet.DstNid].sendPacket(context, packet)
 		} else {
 			fmt.Println("A packet dropped.")
 		}
@@ -526,26 +584,26 @@ func (link *Link) relayPacket(packet *Packet) error {
 			i := rand.Intn(siz)
 			for dstNid := range link.group.assigned {
 				if i == 0 {
-					return link.group.nidMap[dstNid].sendPacket(packet)
+					return link.group.nidMap[dstNid].sendPacket(context, packet)
 				} else if dstNid != srcNid {
 					i--
 				}
 			}
 
 		} else {
-			return link.sendHint()
+			return link.sendHint(context)
 		}
 	}
 
 	return nil
 }
 
-func (link *Link) sendHint() error {
+func (link *Link) sendHint(context *context) error {
 	var hint int64
 	if link.assigned {
 		hint = hint | HintAssigned
 	}
-	if link.group.isOnlyOne(link) {
+	if link.group.isOnlyOne(context, link) {
 		hint = hint | HintOnlyone
 	}
 	content := &ContentHint{
@@ -567,10 +625,10 @@ func (link *Link) sendHint() error {
 	}
 
 	fmt.Println("Send hint.")
-	return link.sendPacket(packet)
+	return link.sendPacket(context, packet)
 }
 
-func (link *Link) sendPing() error {
+func (link *Link) sendPing(context *context) error {
 	content := &ContentPing{}
 	contentStr, err := json.Marshal(content)
 	if err != nil {
@@ -588,10 +646,10 @@ func (link *Link) sendPing() error {
 	}
 
 	fmt.Println("Send ping.")
-	return link.sendPacket(packet)
+	return link.sendPacket(context, packet)
 }
 
-func (link *Link) sendRequireRandom() error {
+func (link *Link) sendRequireRandom(context *context) error {
 	content := &ContentRequireRandom{}
 	contentStr, err := json.Marshal(content)
 	if err != nil {
@@ -609,10 +667,10 @@ func (link *Link) sendRequireRandom() error {
 	}
 
 	fmt.Println("Send require random.")
-	return link.sendPacket(packet)
+	return link.sendPacket(context, packet)
 }
 
-func (link *Link) sendSuccess(replyFor *Packet, content interface{}) error {
+func (link *Link) sendSuccess(context *context, replyFor *Packet, content interface{}) error {
 	contentStr, err := json.Marshal(content)
 	if err != nil {
 		log.Fatal(err)
@@ -629,10 +687,10 @@ func (link *Link) sendSuccess(replyFor *Packet, content interface{}) error {
 	}
 
 	fmt.Println("Send success.")
-	return link.sendPacket(packet)
+	return link.sendPacket(context, packet)
 }
 
-func (link *Link) sendFailure(replyFor *Packet, content interface{}) error {
+func (link *Link) sendFailure(context *context, replyFor *Packet, content interface{}) error {
 	contentStr, err := json.Marshal(content)
 	if err != nil {
 		log.Fatal(err)
@@ -649,10 +707,16 @@ func (link *Link) sendFailure(replyFor *Packet, content interface{}) error {
 	}
 
 	fmt.Println("Send failure.")
-	return link.sendPacket(packet)
+	return link.sendPacket(context, packet)
 }
 
-func (link *Link) sendPacket(packet *Packet) error {
+func (link *Link) sendPacket(context *context, packet *Packet) error {
+	if link.lockMutex(context) {
+		defer link.unlockMutex(context)
+	}
+	if link.conn == nil {
+		return nil
+	}
 	link.timeLastSend = getNowMs()
 	packetStr, err := json.Marshal(packet)
 	if err != nil {
@@ -662,10 +726,14 @@ func (link *Link) sendPacket(packet *Packet) error {
 	return ws.WriteFrame(link.conn, frame)
 }
 
-func (link *Link) close() error {
+func (link *Link) close(context *context) error {
+	if link.lockMutex(context) {
+		defer link.unlockMutex(context)
+	}
 	if link.group != nil {
-		link.group.mutex.Lock()
-		defer link.group.mutex.Unlock()
+		if link.group.lockMutex(context) {
+			defer link.group.unlockMutex(context)
+		}
 
 		if link.nid != "" {
 			delete(link.group.nidMap, link.nid)
@@ -681,4 +749,19 @@ func (link *Link) close() error {
 		link.conn = nil
 	}
 	return nil
+}
+
+func (link *Link) lockMutex(context *context) bool {
+	if _, ok := context.routineLocal[LinkMutex]; ok {
+		return false
+	} else {
+		context.routineLocal[LinkMutex] = true
+		link.mutex.Lock()
+		return true
+	}
+}
+
+func (link *Link) unlockMutex(context *context) {
+	link.mutex.Unlock()
+	delete(context.routineLocal, LinkMutex)
 }
