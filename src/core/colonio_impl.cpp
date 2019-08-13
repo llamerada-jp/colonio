@@ -398,11 +398,12 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
     logd("Recv.(packet=%s)", dump.c_str());
     // Pass a packet to the target module.
     const Packet& p = *packet; // @todo use std::move
+    packet.release();
     context.scheduler.add_timeout_task(this, [this, p]() {
         auto it = modules.find(p.channel);
         if (it != modules.end()) {
           it->second->on_recv_packet(std::make_unique<const Packet>(p));
-            
+
         } else {
           // @todo error
           assert(false);
