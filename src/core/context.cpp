@@ -18,6 +18,7 @@
 #include <random>
 
 #include "context.hpp"
+#include "coord_system.hpp"
 
 namespace colonio {
 

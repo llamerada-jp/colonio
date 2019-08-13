@@ -18,7 +18,6 @@
 #include <cstdint>
 #include <ctime>
 
-#include "node_id.hpp"
 #include "colonio/constant.hpp"
 
 namespace colonio {
@@ -115,16 +114,6 @@ static const Type ONE_WAY   = 0x0004;
 static const Type RELAY_SEED    = 0x0008;
 static const Type NO_RETRY  = 0x0010;
 }  // namespace CommandMode
-
-struct Packet {
-  const NodeID dst_nid;
-  const NodeID src_nid;
-  const uint32_t id;
-  const PacketMode::Type mode;
-  const ModuleChannel::Type channel;
-  const CommandID::Type command_id;
-  const picojson::object content;  ///< Content format is depend on each module and command.
-};
 
 // default values.
 static const unsigned int MAP_PAXOS_RETRY_MAX = 5;

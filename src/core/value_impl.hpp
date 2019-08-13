@@ -19,6 +19,8 @@
 #include <cstdint>
 #include <string>
 
+#include "protocol.pb.h"
+
 #include "node_id.hpp"
 #include "colonio/value.hpp"
 
@@ -44,8 +46,9 @@ class ValueImpl {
   ValueImpl(const ValueImpl& src);
   virtual ~ValueImpl();
 
-  static Value from_json(const picojson::value& json);
-  static picojson::value to_json(const Value& value);
+  static void to_pb(Protocol::Value* pb, const Value& value);
+  static Value from_pb(const Protocol::Value& pb);
+
   static NodeID to_hash(const Value& value, const std::string& solt);
   static std::string to_str(const Value& value);
 

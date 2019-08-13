@@ -16,6 +16,8 @@
 
 #include <cassert>
 
+#include "module_protocol.pb.h"
+
 #include "context.hpp"
 #include "convert.hpp"
 #include "module.hpp"
@@ -101,8 +103,9 @@ void Module::on_recv_packet(std::unique_ptr<const Packet> packet) {
       }
     }
     if (command) {
-      const std::string& message = packet->content.at("message").get<std::string>();
-      command->on_error(message);
+      ModuleProtocol::Error content;
+      packet->parse_content(&content);
+      command->on_error(content.message());
     }
 
   } else {
@@ -138,7 +141,7 @@ void Module::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Packet> p
  * @param content Packet content.
  */
 void Module::send_packet(std::unique_ptr<Command> command, const NodeID& dst_nid,
-                         const picojson::object& content) {
+                         std::shared_ptr<const std::string> content) {
   uint32_t packet_id = Context::get_rnd_32();
   std::unique_ptr<const Packet> packet;
   {
@@ -154,13 +157,23 @@ void Module::send_packet(std::unique_ptr<Command> command, const NodeID& dst_nid
     assert(mode & PacketMode::ONE_WAY || dst_nid != NodeID::NEXT);
 
     packet = std::make_unique<const Packet>(Packet {
-        dst_nid, context.my_nid, packet_id, mode, channel, command_id, content
+        dst_nid,
+        context.my_nid,
+        packet_id,
+        static_cast<uint32_t>(content->size()), 0, content,
+        mode, channel, command_id
     });
 
     containers.insert(
         std::make_pair(packet_id, Container({
-              dst_nid, context.my_nid, packet_id, mode, channel, command_id, content,
-                0, Utils::get_current_msec(), std::move(command) })));
+              dst_nid,
+              context.my_nid,
+              packet_id,
+              mode,
+              channel,
+              command_id,
+              content,
+              0, Utils::get_current_msec(), std::move(command) })));
   }
   delegate.module_do_send_packet(*this, std::move(packet));
 }
@@ -174,7 +187,7 @@ void Module::send_packet(std::unique_ptr<Command> command, const NodeID& dst_nid
  * @param content Packet content.
  */
 void Module::send_packet(const NodeID& dst_nid, PacketMode::Type mode,
-                         CommandID::Type command_id, const picojson::object& content) {
+                         CommandID::Type command_id, std::shared_ptr<const std::string> content) {
   uint32_t packet_id = Context::get_rnd_32();
   {
     std::lock_guard<std::mutex> guard(mutex_containers);
@@ -187,10 +200,10 @@ void Module::send_packet(const NodeID& dst_nid, PacketMode::Type mode,
     dst_nid,
     context.my_nid,
     packet_id,
+    static_cast<uint32_t>(content->size()), 0, content,
     static_cast<PacketMode::Type>(PacketMode::ONE_WAY | mode),
     channel,
-    command_id,
-    content
+    command_id
   });
 
   delegate.module_do_send_packet(*this, std::move(packet));
@@ -202,8 +215,9 @@ void Module::send_packet(const NodeID& dst_nid, PacketMode::Type mode,
  * @param error_for Received packet.
  */
 void Module::send_error(const Packet& reply_for, const std::string& message) {
-  picojson::object content;
-  content.insert(std::make_pair("message", picojson::value(message)));
+  ModuleProtocol::Error content;
+  content.set_message(message);
+  std::shared_ptr<const std::string> content_bin = serialize_pb(content);
 
   PacketMode::Type packet_mode = PacketMode::REPLY | PacketMode::EXPLICIT | PacketMode::ONE_WAY;
   if (reply_for.mode & PacketMode::RELAY_SEED) {
@@ -214,10 +228,10 @@ void Module::send_error(const Packet& reply_for, const std::string& message) {
     reply_for.src_nid,
     context.my_nid,
     reply_for.id,
+    static_cast<uint32_t>(content_bin->size()), 0, content_bin,
     packet_mode,
     reply_for.channel,
-    CommandID::ERROR,
-    content
+    CommandID::ERROR
   });
 
   delegate.module_do_send_packet(*this, std::move(packet));
@@ -228,7 +242,7 @@ void Module::send_error(const Packet& reply_for, const std::string& message) {
  * @param reply_for Received packet.
  * @param content Packet content.
  */
-void Module::send_failure(const Packet& reply_for, const picojson::object& content) {
+void Module::send_failure(const Packet& reply_for, std::shared_ptr<const std::string> content) {
   PacketMode::Type packet_mode = PacketMode::REPLY | PacketMode::EXPLICIT | PacketMode::ONE_WAY;
   if (reply_for.mode & PacketMode::RELAY_SEED) {
     packet_mode |= PacketMode::RELAY_SEED;
@@ -238,10 +252,10 @@ void Module::send_failure(const Packet& reply_for, const picojson::object& conte
     reply_for.src_nid,
     context.my_nid,
     reply_for.id,
+    static_cast<uint32_t>(content->size()), 0, content,
     packet_mode,
     reply_for.channel,
-    CommandID::FAILURE,
-    content
+    CommandID::FAILURE
   });
 
   delegate.module_do_send_packet(*this, std::move(packet));
@@ -252,7 +266,7 @@ void Module::send_failure(const Packet& reply_for, const picojson::object& conte
  * @param reply_for Received packet.
  * @param content Packet content.
  */
-void Module::send_success(const Packet& reply_for, const picojson::object& content) {
+void Module::send_success(const Packet& reply_for, std::shared_ptr<const std::string> content) {
   PacketMode::Type packet_mode = PacketMode::REPLY | PacketMode::EXPLICIT | PacketMode::ONE_WAY;
   if (reply_for.mode & PacketMode::RELAY_SEED) {
     packet_mode |= PacketMode::RELAY_SEED;
@@ -262,10 +276,11 @@ void Module::send_success(const Packet& reply_for, const picojson::object& conte
     reply_for.src_nid,
     context.my_nid,
     reply_for.id,
+    content ? static_cast<uint32_t>(content->size()) : 0,
+    0, content,
     packet_mode,
     reply_for.channel,
-    CommandID::SUCCESS,
-    content
+    CommandID::SUCCESS
   });
 
   delegate.module_do_send_packet(*this, std::move(packet));
@@ -296,10 +311,10 @@ void Module::on_persec() {
                   container.dst_nid,
                   container.src_nid,
                   container.packet_id,
+                  static_cast<uint32_t>(container.content->size()), 0, container.content,
                   container.mode,
                   container.channel,
-                  container.command_id,
-                  container.content
+                  container.command_id
             }));
           }
           

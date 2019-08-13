@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+option optimize_for = LITE_RUNTIME;
+
+import "core/protocol.proto";
+
+package colonio.RoutingProtocol;
+
+message RoutingInfoOne {
+  int64 r1d_score = 1;
+  Protocol.Coordinate r2d_position = 2;
+}
+
+message RoutingInfo {
+  uint32 seed_distance = 1;
+  Protocol.NodeID seed_nid = 2;
+  Protocol.Coordinate r2d_position = 3;
+  // Key type of map is string from node-id.
+  map<string, RoutingInfoOne> nodes = 4;
+}

@@ -54,15 +54,21 @@ class Module {
 
   virtual void module_process_command(std::unique_ptr<const Packet> packet) = 0;
 
+  template <typename T> static std::shared_ptr<const std::string> serialize_pb(const T& pb) {
+    std::shared_ptr<std::string> content(new std::string());
+    pb.SerializeToString(content.get());
+    return content;
+  }
+
   bool cancel_packet(uint32_t id);
   void relay_packet(const NodeID& dst_nid, std::unique_ptr<const Packet> packet);
   void send_packet(std::unique_ptr<Command> command, const NodeID& dst_nid,
-                   const picojson::object& content);
+                   std::shared_ptr<const std::string> content);
   void send_packet(const NodeID& dst_nid, PacketMode::Type mode,
-                   CommandID::Type command_id, const picojson::object& content);
+                   CommandID::Type command_id, std::shared_ptr<const std::string> content);
   void send_error(const Packet& reply_for, const std::string& message);
-  void send_failure(const Packet& reply_for, const picojson::object& content);
-  void send_success(const Packet& reply_for, const picojson::object& content);
+  void send_failure(const Packet& reply_for, std::shared_ptr<const std::string> content);
+  void send_success(const Packet& reply_for, std::shared_ptr<const std::string> content);
 
  private:
   struct Container {
@@ -72,7 +78,7 @@ class Module {
     PacketMode::Type mode;
     ModuleChannel::Type channel;
     CommandID::Type command_id;
-    picojson::object content;
+    std::shared_ptr<const std::string> content;
 
     uint32_t retry_count;
     int64_t send_time;

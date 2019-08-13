@@ -19,7 +19,7 @@
 #include <picojson.h>
 
 namespace colonio {
-struct Packet;
+class Packet;
 
 namespace Utils {
 template<typename T>
@@ -85,7 +85,6 @@ const T* get_json_value(const picojson::object& parent, const std::string& key) 
 
 std::string file_basename(const std::string& path, bool cutoff_ext = false);
 std::string file_dirname(const std::string& path);
-picojson::object& insert_get_json_object(picojson::object& parent, const std::string& key);
 bool is_safevalue(double v);
 double pmod(double a, double b);
 void replace_string(std::string* str, const std::string& from, const std::string& to);

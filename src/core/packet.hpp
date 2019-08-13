@@ -15,30 +15,30 @@
  */
 #pragma once
 
-#include <cassert>
-#include <memory>
-#include <string>
-#include <tuple>
-
 #include "definition.hpp"
-#include "packet.hpp"
+#include "node_id.hpp"
 
 namespace colonio {
-
-class Command {
+class Packet {
  public:
-  virtual ~Command();
-
-  std::tuple<CommandID::Type, PacketMode::Type> get_define();
-
-  virtual void on_error(const std::string& message);
-  virtual void on_failure(std::unique_ptr<const Packet> packet);
-  virtual void on_success(std::unique_ptr<const Packet> packet);
-
- protected:
-  const CommandID::Type id;
+  static const unsigned int PACKET_HEAD_SIZE;
+  
+  const NodeID dst_nid;
+  const NodeID src_nid;
+  const uint32_t id;
+  const uint32_t content_size;
+  const uint32_t content_offset;
+  std::shared_ptr<const std::string> content_bin;
   const PacketMode::Type mode;
+  const ModuleChannel::Type channel;
+  const CommandID::Type command_id;
 
-  Command(CommandID::Type id_, PacketMode::Type mode_);
+  template<typename T> void parse_content(T* dst) const {
+    assert(content_bin.get() != nullptr);
+    if (!dst->ParseFromString(std::string(*content_bin, content_offset, content_size))) {
+      /// @todo error
+      assert(false);
+    }
+  }
 };
 }  // namespace colonio

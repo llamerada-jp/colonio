@@ -21,9 +21,12 @@
 #include <string>
 #include <vector>
 
+#include "seed_accessor_protocol.pb.h"
+
 #include "context.hpp"
 #include "convert.hpp"
 #include "logger.hpp"
+#include "packet.hpp"
 #include "seed_accessor.hpp"
 #include "utils.hpp"
 
@@ -123,16 +126,20 @@ void SeedAccessor::relay_packet(std::unique_ptr<const Packet> packet) {
   if (link) {
     logd("Relay to seed. %s", Utils::dump_packet(*packet).c_str());
 
-    picojson::object json;
-    json.insert(std::make_pair("dst_nid", packet->dst_nid.to_json()));
-    json.insert(std::make_pair("src_nid", packet->src_nid.to_json()));
-    json.insert(std::make_pair("id", Convert::int2json(packet->id)));
-    json.insert(std::make_pair("mode", picojson::value(static_cast<double>(packet->mode))));
-    json.insert(std::make_pair("channel", picojson::value(static_cast<double>(packet->channel))));
-    json.insert(std::make_pair("command_id", picojson::value(static_cast<double>(packet->command_id))));
-    json.insert(std::make_pair("content", picojson::value(picojson::value(packet->content).serialize())));
+    SeedAccessorProtocol::SeedAccessor packet_sa;
+    packet->dst_nid.to_pb(packet_sa.mutable_dst_nid());
+    packet->src_nid.to_pb(packet_sa.mutable_src_nid());
+    packet_sa.set_id(packet->id);
+    packet_sa.set_mode(packet->mode);
+    packet_sa.set_channel(packet->channel);
+    packet_sa.set_command_id(packet->command_id);
+    if (packet->content_bin != nullptr) {
+      packet_sa.set_content(std::string(*packet->content_bin, packet->content_offset, packet->content_size));
+    }
 
-    link->send(picojson::value(json).serialize());
+    std::string packet_bin;
+    packet_sa.SerializeToString(&packet_bin);
+    link->send(packet_bin);
 
   } else {
     logd("Reject relaying packet to seed. %s", Utils::dump_packet(*packet).c_str());
@@ -160,6 +167,7 @@ void SeedAccessor::seed_link_on_error(SeedLinkBase& l) {
 }
 
 void SeedAccessor::seed_link_on_recv(SeedLinkBase& link, const std::string& data) {
+  /*
   std::istringstream is(data);
   picojson::value v;
   std::string err = picojson::parse(v, is);
@@ -180,15 +188,24 @@ void SeedAccessor::seed_link_on_recv(SeedLinkBase& link, const std::string& data
       assert(false);
     }
   }
+  */
+  SeedAccessorProtocol::SeedAccessor packet_pb;
+  if (!packet_pb.ParseFromString(data)) {
+    /// @todo error
+    assert(false);
+  }
 
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet {
-    NodeID::from_json(json.at("dst_nid")),
-    NodeID::from_json(json.at("src_nid")),
-    Convert::json2int<uint32_t>(json.at("id")),
-    static_cast<PacketMode::Type>(json.at("mode").get<double>()),
-    static_cast<ModuleChannel::Type>(json.at("channel").get<double>()),
-    static_cast<CommandID::Type>(json.at("command_id").get<double>()),
-    content_str == "" ? picojson::object() : content.get<picojson::object>()
+  std::shared_ptr<const std::string> content_bin(new std::string(packet_pb.content()));
+  logd("packet size ? :%d", packet_pb.content().size());
+  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
+      Packet {
+        NodeID::from_pb(packet_pb.dst_nid()),
+        NodeID::from_pb(packet_pb.src_nid()),
+        packet_pb.id(),
+        static_cast<uint32_t>(content_bin->size()), 0, content_bin,
+        static_cast<PacketMode::Type>(packet_pb.mode()),
+        static_cast<ModuleChannel::Type>(packet_pb.channel()),
+        static_cast<CommandID::Type>(packet_pb.command_id())
       });
 
   if (packet->src_nid == NodeID::SEED && packet->channel == ModuleChannel::SEED &&
@@ -231,8 +248,19 @@ void SeedAccessor::seed_link_on_recv(SeedLinkBase& link, const std::string& data
 
 void SeedAccessor::recv_auth_success(const Packet& packet) {
   assert(auth_status == AuthStatus::NONE);
+  SeedAccessorProtocol::AuthSuccess content;
+  packet.parse_content(&content);
+
+  std::istringstream is(content.config());
+  picojson::value v;
+  std::string err = picojson::parse(v, is);
+  if (!err.empty()) {
+    /// @todo error
+    assert(false);
+  }
+  
   auth_status = AuthStatus::SUCCESS;
-  delegate.seed_accessor_on_recv_config(*this, packet.content.at("config").get<picojson::object>());
+  delegate.seed_accessor_on_recv_config(*this, v.get<picojson::object>());
   delegate.seed_accessor_on_change_status(*this, get_status());
 }
 
@@ -248,7 +276,9 @@ void SeedAccessor::recv_auth_error(const Packet& packet) {
 
 void SeedAccessor::recv_hint(const Packet& packet) {
   SeedHint::Type hint_old = hint;
-  hint = Convert::json2int<SeedHint::Type>(packet.content.at("hint"));
+  SeedAccessorProtocol::Hint content;
+  packet.parse_content(&content);
+  hint = content.hint();
 
   if (hint != hint_old) {
     delegate.seed_accessor_on_change_status(*this, get_status());
@@ -264,19 +294,21 @@ void SeedAccessor::recv_require_random(const Packet& packet) {
 }
 
 void SeedAccessor::send_auth(const std::string& token) {
-  picojson::object params;
-  params.insert(std::make_pair("version", picojson::value(PROTOCOL_VERSION)));
-  params.insert(std::make_pair("token", picojson::value(token)));
-  params.insert(std::make_pair("hint", Convert::int2json(hint)));
-
+  SeedAccessorProtocol::Auth param;
+  param.set_version(PROTOCOL_VERSION);
+  param.set_token(token);
+  param.set_hint(hint);
+  std::shared_ptr<std::string> content_bin(new std::string());
+  param.SerializeToString(content_bin.get());
+  
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet {
     NodeID::SEED,
     context.my_nid,
     0,
+    static_cast<uint32_t>(content_bin->size()), 0, content_bin,
     PacketMode::NONE,
     ModuleChannel::SEED,
-    CommandID::Seed::AUTH,
-    params
+    CommandID::Seed::AUTH
   });
 
   relay_packet(std::move(packet));
@@ -287,10 +319,10 @@ void SeedAccessor::send_ping() {
     NodeID::SEED,
     context.my_nid,
     0,
+    0, 0, nullptr,
     PacketMode::NONE,
     ModuleChannel::SEED,
-    CommandID::Seed::PING,
-    picojson::object()
+    CommandID::Seed::PING
   });
 
   relay_packet(std::move(packet));

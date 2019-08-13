@@ -16,6 +16,7 @@
 #pragma once
 
 #include "core/system_2d.hpp"
+#include "core/value_impl.hpp"
 #include "colonio/pubsub_2d.hpp"
 
 namespace colonio {
@@ -50,7 +51,7 @@ class PubSub2DImpl : public System2D<PubSub2D> {
     double r;
     uint64_t uid;
     int64_t create_time;
-    picojson::value data;
+    Value data;
   };
   // Pair of uid and cache data.
   std::map<uint64_t, Cache> cache;

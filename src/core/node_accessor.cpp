@@ -19,6 +19,8 @@
 #include <memory>
 #include <string>
 
+#include "node_accessor_protocol.pb.h"
+
 #include "context.hpp"
 #include "convert.hpp"
 #include "node_accessor.hpp"
@@ -28,7 +30,8 @@ namespace colonio {
 NodeAccessorDelegate::~NodeAccessorDelegate() {
 }
 
-NodeAccessor::NodeAccessor(Context& context, ModuleDelegate& module_delegate, NodeAccessorDelegate& na_delegate) :
+NodeAccessor::NodeAccessor(Context& context, ModuleDelegate& module_delegate,
+                           NodeAccessorDelegate& na_delegate) :
     Module(context, module_delegate, ModuleChannel::WEBRTC_CONNECT),
     delegate(na_delegate),
     count_seed_transrate(0) {
@@ -169,14 +172,16 @@ bool NodeAccessor::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Pac
     return false;
   }
 
-  picojson::object js;
-  js.insert(std::make_pair("dst_nid", packet->dst_nid.to_json()));
-  js.insert(std::make_pair("src_nid", packet->src_nid.to_json()));
-  js.insert(std::make_pair("id", Convert::int2json(packet->id)));
-  js.insert(std::make_pair("mode", Convert::int2json(packet->mode)));
-  js.insert(std::make_pair("channel", Convert::int2json(packet->channel)));
-  js.insert(std::make_pair("command_id", Convert::int2json(packet->command_id)));
-  js.insert(std::make_pair("content", picojson::value(packet->content)));
+  NodeAccessorProtocol::NodeAccessor packet_na;
+  packet->dst_nid.to_pb(packet_na.mutable_dst_nid());
+  packet->src_nid.to_pb(packet_na.mutable_src_nid());
+  packet_na.set_id(packet->id);
+  packet_na.set_mode(packet->mode);
+  packet_na.set_channel(packet->channel);
+  packet_na.set_command_id(packet->command_id);
+  if (packet->content_bin) {
+    packet_na.set_content(std::string(*packet->content_bin, packet->content_offset, packet->content_size));
+  }
 
   if (dst_nid == NodeID::NEXT) {
     assert((packet->mode & PacketMode::ONE_WAY) != PacketMode::NONE);
@@ -185,9 +190,9 @@ bool NodeAccessor::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Pac
       WebrtcLink& link = *it_link.second.get();
 
       if (link.get_status() == LinkStatus::ONLINE) {
-        js.at("dst_nid") = nid.to_json();
+        nid.to_pb(packet_na.mutable_dst_nid());
         
-        link.send(picojson::value(js).serialize());
+        link.send(*serialize_pb(packet_na));
       }
     }
     return true;
@@ -198,7 +203,7 @@ bool NodeAccessor::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Pac
       return false;
 
     } else {
-      return links.at(dst_nid)->send(picojson::value(js).serialize());
+      return links.at(dst_nid)->send(*serialize_pb(packet_na));
     }
   }
 }
@@ -213,8 +218,10 @@ NodeAccessor::CommandOffer::CommandOffer(NodeAccessor& accessor_, const NodeID& 
 }
 
 void NodeAccessor::CommandOffer::on_success(std::unique_ptr<const Packet> packet) {
-  uint8_t status = Convert::json2int<uint8_t>(packet->content.at("status"));
-  switch (status) {
+  NodeAccessorProtocol::OfferSuccess content;
+  packet->parse_content(&content);
+
+  switch (content.status()) {
     case OFFER_STATUS_SUCCESS_FIRST: {
       assert(accessor.first_link);
       assert(accessor.links.size() == 0);
@@ -223,8 +230,8 @@ void NodeAccessor::CommandOffer::on_success(std::unique_ptr<const Packet> packet
     } break;
 
     case OFFER_STATUS_SUCCESS_ACCEPT: {
-      NodeID second_nid = NodeID::from_json(packet->content.at("second_nid"));
-      std::string sdp = packet->content.at("sdp").get<std::string>();
+      NodeID second_nid = NodeID::from_pb(content.second_nid());
+      std::string sdp = content.sdp();
       WebrtcLink* link;
 
       switch (type) {
@@ -374,24 +381,22 @@ void NodeAccessor::webrtc_link_on_update_ice(WebrtcLink& link, const picojson::o
  * @param data Received data.
  */
 void NodeAccessor::webrtc_link_on_recv_data(WebrtcLink& link, const std::string& data) {
-  std::istringstream is(data);
-  picojson::value v;
-  std::string err = picojson::parse(v, is);
-  if (!err.empty()) {
+  NodeAccessorProtocol::NodeAccessor packet_pb;
+  if (!packet_pb.ParseFromString(data)) {
     /// @todo error
     assert(false);
   }
 
-  picojson::object& js = v.get<picojson::object>();
+  std::shared_ptr<const std::string> content_bin(new std::string(packet_pb.content()));
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
       Packet {
-        NodeID::from_json(js.at("dst_nid")),
-        NodeID::from_json(js.at("src_nid")),
-        Convert::json2int<uint32_t>(js.at("id")),
-        Convert::json2int<PacketMode::Type>(js.at("mode")),
-        Convert::json2int<ModuleChannel::Type>(js.at("channel")),
-        Convert::json2int<CommandID::Type>(js.at("command_id")),
-        js.at("content").get<picojson::object>()
+        NodeID::from_pb(packet_pb.dst_nid()),
+        NodeID::from_pb(packet_pb.src_nid()),
+        packet_pb.id(),
+        static_cast<uint32_t>(content_bin->size()), 0, content_bin,
+        static_cast<PacketMode::Type>(packet_pb.mode()),
+        static_cast<ModuleChannel::Type>(packet_pb.channel()),
+        static_cast<CommandID::Type>(packet_pb.command_id())
       });
 
   delegate.node_accessor_on_recv_packet(*this, link.nid, std::move(packet));
@@ -536,9 +541,11 @@ void NodeAccessor::disconnect_random_link() {
 }
 
 void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
-  NodeID prime_nid = NodeID::from_json(packet->content.at("prime_nid"));
-  std::string sdp = packet->content.at("sdp").get<std::string>();
-  OFFER_TYPE type = static_cast<OFFER_TYPE>(Convert::json2int<uint8_t>(packet->content.at("type")));
+  NodeAccessorProtocol::Offer content;
+  packet->parse_content(&content);
+  NodeID prime_nid = NodeID::from_pb(content.prime_nid());
+  const std::string& sdp = content.sdp();
+  OFFER_TYPE type = static_cast<OFFER_TYPE>(content.type());
   bool is_by_seed;
   if (type == OFFER_TYPE_FIRST ||
       type == OFFER_TYPE_RANDOM) {
@@ -553,11 +560,11 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
       WebrtcLink* link = it->second.get();
       if (link->get_status() == LinkStatus::ONLINE) {
         // Already having a online connection with prime node yet.
-        picojson::object content;
-        content.insert(std::make_pair("status", Convert::int2json<uint8_t>(OFFER_STATUS_SUCCESS_ALREADY)));
-        content.insert(std::make_pair("second_nid", context.my_nid.to_json()));
-      
-        send_success(*packet, content);
+        NodeAccessorProtocol::OfferSuccess param;
+        param.set_status(OFFER_STATUS_SUCCESS_ALREADY);
+        context.my_nid.to_pb(param.mutable_second_nid());
+
+        send_success(*packet, serialize_pb(param));
 
       } else if (prime_nid < context.my_nid) {
         // Already having not a online connection that will be reconnect.
@@ -576,12 +583,12 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
 
         const Packet& p = *packet; // @todo use std::move
         link->get_local_sdp([this, p](const std::string& sdp) -> void {
-            picojson::object content;
-            content.insert(std::make_pair("status", Convert::int2json<uint8_t>(OFFER_STATUS_SUCCESS_ACCEPT)));
-            content.insert(std::make_pair("second_nid", context.my_nid.to_json()));
-            content.insert(std::make_pair("sdp", picojson::value(sdp)));
+            NodeAccessorProtocol::OfferSuccess param;
+            param.set_status(OFFER_STATUS_SUCCESS_ACCEPT);
+            context.my_nid.to_pb(param.mutable_second_nid());
+            param.set_sdp(sdp);
 
-            send_success(p, content);
+            send_success(p, serialize_pb(param));
           });
 
       } else {
@@ -602,12 +609,12 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
 
       const Packet& p = *packet; // @todo use std::move
       link->get_local_sdp([this, p](const std::string& sdp) -> void {
-          picojson::object content;
-          content.insert(std::make_pair("status", Convert::int2json<uint8_t>(OFFER_STATUS_SUCCESS_ACCEPT)));
-          content.insert(std::make_pair("second_nid", context.my_nid.to_json()));
-          content.insert(std::make_pair("sdp", picojson::value(sdp)));
+          NodeAccessorProtocol::OfferSuccess param;
+          param.set_status(OFFER_STATUS_SUCCESS_ACCEPT);
+          context.my_nid.to_pb(param.mutable_second_nid());
+          param.set_sdp(sdp);
 
-          send_success(p, content);
+          send_success(p, serialize_pb(param));
         });
     }
 
@@ -625,26 +632,34 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
       }
 
     } else {
-      picojson::object content;
-      content.insert(std::make_pair("status", Convert::int2json<uint8_t>(OFFER_STATUS_FAILURE_CONFRICT)));
-      content.insert(std::make_pair("prime_nid", prime_nid.to_json()));
+      NodeAccessorProtocol::OfferFailure param;
+      param.set_status(OFFER_STATUS_FAILURE_CONFRICT);
+      prime_nid.to_pb(param.mutable_prime_nid());
 
-      send_failure(*packet, content);
+      send_failure(*packet, serialize_pb(param));
     }
     
   } else {
-    picojson::object content;
-    content.insert(std::make_pair("status", Convert::int2json<uint8_t>(OFFER_STATUS_FAILURE_CONFRICT)));
-    content.insert(std::make_pair("prime_nid", prime_nid.to_json()));
+    NodeAccessorProtocol::OfferFailure param;
+    param.set_status(OFFER_STATUS_FAILURE_CONFRICT);
+    prime_nid.to_pb(param.mutable_prime_nid());
 
-    send_failure(*packet, content);
+    send_failure(*packet, serialize_pb(param));
   }
 }
 
 void NodeAccessor::recv_ice(std::unique_ptr<const Packet> packet) {
-  NodeID local_nid = NodeID::from_json(packet->content.at("local_nid"));
-  NodeID remote_nid = NodeID::from_json(packet->content.at("remote_nid"));
-  picojson::array ice_array = packet->content.at("ice").get<picojson::array>();
+  NodeAccessorProtocol::ICE content;
+  packet->parse_content(&content);
+  NodeID local_nid = NodeID::from_pb(content.local_nid());
+  NodeID remote_nid = NodeID::from_pb(content.remote_nid());
+  picojson::value v;
+  const std::string err = picojson::parse(v, content.ice());
+  if (err.empty() == false) {
+    std::cerr << err << std::endl;
+    assert(false);
+  }
+  picojson::array ice_array = v.get<picojson::array>();
 
   assert(remote_nid == context.my_nid);
 
@@ -672,22 +687,23 @@ void NodeAccessor::send_offer(WebrtcLink* link, const NodeID& prime_nid,
   link->get_local_sdp([this, prime_nid, second_nid, type](const std::string& sdp) -> void {
       std::unique_ptr<Command> command = std::make_unique<CommandOffer>(*this, second_nid, type);
 
-      picojson::object content;
-      content.insert(std::make_pair("prime_nid", prime_nid.to_json()));
-      content.insert(std::make_pair("second_nid", second_nid.to_json()));
-      content.insert(std::make_pair("sdp", picojson::value(sdp)));
-      content.insert(std::make_pair("type", Convert::int2json(static_cast<uint8_t>(type))));
-      send_packet(std::move(command), second_nid, content);
+      NodeAccessorProtocol::Offer content;
+      prime_nid.to_pb(content.mutable_prime_nid());
+      second_nid.to_pb(content.mutable_second_nid());
+      content.set_sdp(sdp);
+      content.set_type(type);
+      send_packet(std::move(command), second_nid, serialize_pb(content));
     });
 }
 
 void NodeAccessor::send_ice(WebrtcLink* link, const picojson::array& ice) {
   assert(link->nid != NodeID::NONE);
   assert(link->init_data);
-  picojson::object content;
-  content.insert(std::make_pair("local_nid", context.my_nid.to_json()));
-  content.insert(std::make_pair("remote_nid", link->nid.to_json()));
-  content.insert(std::make_pair("ice", picojson::value(ice)));
+  NodeAccessorProtocol::ICE content;
+  context.my_nid.to_pb(content.mutable_local_nid());
+  link->nid.to_pb(content.mutable_remote_nid());
+  content.set_ice(picojson::value(ice).serialize());
+
   PacketMode::Type mode;
   if (link->init_data->is_by_seed) {
     mode = PacketMode::EXPLICIT | PacketMode::RELAY_SEED;
@@ -697,7 +713,8 @@ void NodeAccessor::send_ice(WebrtcLink* link, const picojson::array& ice) {
   } else {
     mode = PacketMode::EXPLICIT;
   }
-  send_packet(link->nid, mode, CommandID::WebrtcConnect::ICE, content);
+
+  send_packet(link->nid, mode, CommandID::WebrtcConnect::ICE, serialize_pb(content));
 }
 
 /**

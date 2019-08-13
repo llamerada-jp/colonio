@@ -74,59 +74,57 @@ ValueImpl::~ValueImpl() {
   }
 }
 
-Value ValueImpl::from_json(const picojson::value& json) {
-  const picojson::object& o = json.get<picojson::object>();
-  Value::Type type = static_cast<Value::Type>(o.at("type").get<double>());
-  switch (type) {
+void ValueImpl::to_pb(Protocol::Value* pb, const Value& value) {
+  switch (value.impl->type) {
     case Value::NULL_T:
-      return Value();
+      //pb->clear_value();
+      pb->Clear();
+      break;
 
     case Value::BOOL_T:
-      return Value(o.at("storage").get<bool>());
+      pb->set_bool_v(value.impl->storage.bool_v);
+      break;
 
     case Value::INT_T:
-      return Value(Convert::json2int<int64_t>(o.at("storage")));
+      pb->set_int_v(value.impl->storage.int64_v);
+      break;
 
     case Value::DOUBLE_T:
-      return Value(o.at("storage").get<double>());
+      pb->set_double_v(value.impl->storage.double_v);
+      break;
 
     case Value::STRING_T:
-      return Value(o.at("storage").get<std::string>());
+      pb->set_string_v(*(value.impl->storage.string_v));
+      break;
 
     default:
       assert(false);
-      return Value();
+      //pb->clear_value();
+      pb->Clear();
   }
 }
 
-picojson::value ValueImpl::to_json(const Value& value) {
-  picojson::object v;
-  v.insert(std::make_pair("type", picojson::value(static_cast<double>(value.impl->type))));
-  switch (value.impl->type) {
-    case Value::NULL_T:
-      break;
+Value ValueImpl::from_pb(const Protocol::Value& pb) {
+  switch (pb.value_case()) {
+    case Protocol::Value::VALUE_NOT_SET:
+      return Value();
 
-    case Value::BOOL_T:
-      v.insert(std::make_pair("storage", picojson::value(value.impl->storage.bool_v)));
-      break;
+    case Protocol::Value::kBoolV:
+      return Value(pb.bool_v());
 
-    case Value::INT_T:
-      v.insert(std::make_pair("storage", Convert::int2json(value.impl->storage.int64_v)));
-      break;
+    case Protocol::Value::kIntV:
+      return Value(pb.int_v());
 
-    case Value::DOUBLE_T:
-      v.insert(std::make_pair("storage", picojson::value(value.impl->storage.double_v)));
-      break;
+    case Protocol::Value::kDoubleV:
+      return Value(pb.double_v());
 
-    case Value::STRING_T:
-      v.insert(std::make_pair("storage", picojson::value(*(value.impl->storage.string_v))));
-      break;
+    case Protocol::Value::kStringV:
+      return Value(pb.string_v());
 
     default:
       assert(false);
+      return Value();
   }
-
-  return picojson::value(v);
 }
 
 NodeID ValueImpl::to_hash(const Value& value, const std::string& solt) {

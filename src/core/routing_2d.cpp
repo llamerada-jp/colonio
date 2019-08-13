@@ -18,6 +18,7 @@
 
 #include "context.hpp"
 #include "convert.hpp"
+#include "coord_system.hpp"
 #include "routing_2d.hpp"
 #include "utils.hpp"
 
@@ -67,7 +68,7 @@ void Routing2D::on_recv_packet(const NodeID& nid, const Packet& packet) {
   // Ignore
 }
 
-bool Routing2D::on_recv_routing_info(const Packet& packet) {
+bool Routing2D::on_recv_routing_info(const Packet& packet, const RoutingProtocol::RoutingInfo& routing_info) {
   bool is_changed = false;
   // Ignore routing packet when source node has disconnected.
   // assert(connected_nodes.find(packet.src_nid) != connected_nodes.end());
@@ -76,26 +77,22 @@ bool Routing2D::on_recv_routing_info(const Packet& packet) {
     return false;
   }
 
-  const picojson::object& info = packet.content;
   ConnectedNode& cn = connected_nodes.at(packet.src_nid);
-  Coordinate position = Convert::json2coordinate(info.at("2d_position"));
-  if (!cn.position.is_enable() || cn.position != position) {
-    cn.position = position;
-    is_changed = true;
+  if (routing_info.has_r2d_position()) {
+    Coordinate position = Coordinate::from_pb(routing_info.r2d_position());
+    if (!cn.position.is_enable() || cn.position != position) {
+      cn.position = position;
+      is_changed = true;
+    }
   }
   cn.nexts.clear();
 
-  const picojson::object* nodes = Utils::get_json_value<picojson::object>(info, "nodes");
-  assert(nodes != nullptr);
-
   const NodeID& my_nid = context.my_nid;
 
-  for (auto& it : *nodes) {
+  for (auto& it : routing_info.nodes()) {
     NodeID nid = NodeID::from_str(it.first);
-    const picojson::object& info_obj = it.second.get<picojson::object>();
-    if (my_nid != nid &&
-        info_obj.find("2d_position") != info_obj.end()) {
-      Coordinate position = Convert::json2coordinate(info_obj.at("2d_position"));
+    if (my_nid != nid && it.second.has_r2d_position()) {
+      Coordinate position = Coordinate::from_pb(it.second.r2d_position());
       cn.nexts.insert(std::make_pair(nid, position));
     }
   }
@@ -103,29 +100,28 @@ bool Routing2D::on_recv_routing_info(const Packet& packet) {
   return is_changed;
 }
 
-void Routing2D::send_routing_info(picojson::object& info) {
+void Routing2D::send_routing_info(RoutingProtocol::RoutingInfo* param) {
   if (context.has_my_position()) {
-    info.insert(std::make_pair("2d_position", Convert::coordinate2json(context.get_my_position())));
-    picojson::object& nodes = Utils::insert_get_json_object(info, "nodes");
+    context.get_my_position().to_pb(param->mutable_r2d_position());
 
     for (auto& it_cn : connected_nodes) {
       if (it_cn.second.position.is_enable()) {
         std::string nid_str = it_cn.first.to_str();
-        picojson::object& node_info = Utils::insert_get_json_object(nodes, nid_str);
-        node_info.insert(std::make_pair("2d_position", Convert::coordinate2json(it_cn.second.position)));
+        it_cn.second.position.to_pb((*param->mutable_nodes())[nid_str].mutable_r2d_position());
       }
     }
   }
 }
 
 bool Routing2D::update_routing_info(const std::set<NodeID>& online_links, bool has_update_ol,
-                                    const std::map<NodeID, std::unique_ptr<const Packet>>& routing_infos) {
+                                    const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>,
+                                    RoutingProtocol::RoutingInfo>>& routing_infos) {
   bool is_changed = false;
   if (has_update_ol) {
     is_changed = is_changed || on_change_online_links(online_links);
   }
   for (auto& it : routing_infos) {
-    is_changed = is_changed || on_recv_routing_info(*it.second);
+    is_changed = is_changed || on_recv_routing_info(*std::get<0>(it.second), std::get<1>(it.second));
   }
 
   if (is_changed) {

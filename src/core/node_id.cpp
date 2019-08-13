@@ -23,6 +23,8 @@ extern "C" {
 #include <string>
 #include <tuple>
 
+#include "protocol.pb.h"
+
 #include "context.hpp"
 #include "convert.hpp"
 #include "definition.hpp"
@@ -43,8 +45,8 @@ const NodeID NodeID::SEED(Type::SEED);
 const NodeID NodeID::THIS(Type::THIS);
 const NodeID NodeID::NEXT(Type::NEXT);
 
-const NodeID NodeID::MAX(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
-const NodeID NodeID::MIN(0x0000000000000000, 0x0000000000000000);
+const NodeID NodeID::NID_MAX(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+const NodeID NodeID::NID_MIN(0x0000000000000000, 0x0000000000000000);
 
 const NodeID NodeID::QUARTER(0x4000000000000000, 0x0000000000000000);
 
@@ -92,19 +94,6 @@ NodeID::NodeID(int type_) :
 NodeID::NodeID(uint64_t id0, uint64_t id1) :
     type(Type::NORMAL),
     id {id0, id1} {
-}
-
-/**
- * Make a set of node-id from a JSON.
- * @param json A source JSON value.
- * @return A set of node-id.
- */
-std::set<NodeID> NodeID::from_json_array(const picojson::value& json) {
-  std::set<NodeID> r;
-  for (auto& json_it : json.get<picojson::array>()) {
-    r.insert(from_json(json_it));
-  }
-  return r;
 }
 
 /**
@@ -179,13 +168,23 @@ NodeID NodeID::from_str(const std::string& str) {
   }
 }
 
-/**
- * Make a node-id from JSON
- * @param json A source JSON value.
- * @return A node-id.
- */
-NodeID NodeID::from_json(const picojson::value& json) {
-  return from_str(json.get<std::string>());
+NodeID NodeID::from_pb(const Protocol::NodeID& pb) {
+  switch (pb.type()) {
+    case Type::NORMAL:
+      return NodeID(pb.id0(), pb.id1());
+
+    case Type::THIS:
+      return NodeID(Type::THIS);
+
+    case Type::SEED:
+      return NodeID(Type::SEED);
+
+    case Type::NEXT:
+      return NodeID(Type::NEXT);
+
+    default:
+      return NodeID(Type::NONE);
+  }
 }
 
 NodeID NodeID::make_hash_from_str(const std::string& str) {
@@ -216,19 +215,6 @@ NodeID NodeID::make_hash_from_str(const std::string& str) {
  */
 NodeID NodeID::make_random() {
   return NodeID(Context::get_rnd_64(), Context::get_rnd_64());
-}
-
-/**
- * Make a JSON from a set of node-id.
- * @param nids A set of node-id.
- * @return JSON.
- */
-picojson::value NodeID::to_json_array(const std::set<NodeID>& nids) {
-  picojson::array r;
-  for (auto& nid : nids) {
-    r.push_back(nid.to_json());
-  }
-  return picojson::value(r);
 }
 
 NodeID& NodeID::operator=(const NodeID& src) {
@@ -418,8 +404,8 @@ bool NodeID::is_between(const NodeID& a, const NodeID& b) const {
     } break;
 
     case 1: {
-      if ((compare(a, *this) != 1 && compare(*this, MAX) != 1) ||
-          (compare(MIN, *this) != 1 && compare(*this, b) == -1)) {
+      if ((compare(a, *this) != 1 && compare(*this, NID_MAX) != 1) ||
+          (compare(NID_MIN, *this) != 1 && compare(*this, b) == -1)) {
         return true;
       } else {
         return false;
@@ -488,6 +474,19 @@ std::string NodeID::to_str() const {
       assert(false);
       return NID::NONE;
     } break;
+  }
+}
+
+void NodeID::to_pb(Protocol::NodeID* pb) const {
+  if (type == Type::NORMAL) {
+    pb->set_type(Type::NORMAL);
+    pb->set_id0(id[0]);
+    pb->set_id1(id[1]);
+
+  } else {
+    pb->set_type(type);
+    pb->clear_id0();
+    pb->clear_id1();
   }
 }
 

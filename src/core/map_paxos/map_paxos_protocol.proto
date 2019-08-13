@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+option optimize_for = LITE_RUNTIME;
+
+import "core/protocol.proto";
+
+package colonio.MapPaxosProtocol;
+
+message Accept {
+  uint32 n = 1;
+  uint32 i = 2;
+  Protocol.Value key = 3;
+  Protocol.Value value = 4;
+}
+
+message AcceptSuccess {
+  uint32 n = 1;
+  uint32 i = 2;
+}
+
+message AcceptFailure {
+  uint32 n = 1;
+  uint32 i = 2;
+}
+
+//
+message BalanceAcceptor {
+  uint32 na = 1;
+  uint32 np = 2;
+  uint32 ia = 3;
+  Protocol.Value key = 4;
+  Protocol.Value value = 5;
+}
+
+//
+message BalanceProposer {
+  uint32 np = 1;
+  uint32 ip = 2;
+  Protocol.Value key = 3;
+  Protocol.Value value = 4;
+}
+
+//
+message Get {
+  Protocol.Value key = 1;
+}
+
+message GetSuccess {
+  uint32 n = 1;
+  uint32 i = 2;
+  Protocol.Value value = 3;
+}
+
+//
+message Hint {
+  uint32 n = 1;
+  uint32 i = 2;
+  Protocol.Value key = 3;
+  Protocol.Value value = 4;
+}
+
+//
+message Prepare {
+  uint32 opt = 1;
+  uint32 n = 2;
+  Protocol.Value key = 3;
+
+}
+
+message PrepareSuccess {
+  uint32 n = 1;
+  uint32 i = 2;
+}
+
+message PrepareFailure {
+  uint32 n = 1;
+}
+
+//
+message Set {
+  uint32 opt = 1;
+  Protocol.Value key = 2;
+  Protocol.Value value = 3;
+}
+
+message SetFailure {
+  uint32 reason = 1;
+}

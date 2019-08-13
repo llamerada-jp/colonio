@@ -79,13 +79,26 @@ else()
   # WebSocket++
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DASIO_STANDALONE")
   include_directories(${PROJECT_SOURCE_DIR}/local/include/third_party/boringssl/src/include)
+
+  # ProtocolBuffers
+  # Option copy from WebRTC
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGOOGLE_PROTOBUF_NO_RTTI")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER")
+  include_directories(${PROJECT_SOURCE_DIR}/local/include/third_party/protobuf/src)
 endif()
 
 # Compile option for each files.
-set_source_files_properties(core/webrtc_context_native.cpp PROPERTIES
-  COMPILE_FLAGS " -fno-rtti "
-  )
-set_source_files_properties(core/webrtc_link_native.cpp PROPERTIES
+set_source_files_properties(
+  core/map_paxos/map_paxos_protocol.pb.cc
+  core/module_protocol.pb.cc
+  core/node_accessor_protocol.pb.cc
+  core/protocol.pb.cc
+  core/pubsub_2d/pubsub_2d_protocol.pb.cc
+  core/routing_protocol.pb.cc
+  core/seed_accessor_protocol.pb.cc
+  core/webrtc_context_native.cpp
+  core/webrtc_link_native.cpp
+  PROPERTIES
   COMPILE_FLAGS " -fno-rtti "
   )
 
@@ -102,15 +115,22 @@ set(COLONIO_FILES
   core/logger.cpp
   core/map.cpp
   core/map_paxos/map_paxos.cpp
+  core/map_paxos/map_paxos_protocol.pb.cc
   core/module.cpp
+  core/module_protocol.pb.cc
   core/node_accessor.cpp
+  core/node_accessor_protocol.pb.cc
   core/node_id.cpp
+  core/protocol.pb.cc
   core/pubsub_2d.cpp
   core/pubsub_2d/pubsub_2d_impl.cpp
+  core/pubsub_2d/pubsub_2d_protocol.pb.cc
   core/routing.cpp
+  core/routing_protocol.pb.cc
   core/routing_1d.cpp
   core/routing_2d.cpp
   core/seed_accessor.cpp
+  core/seed_accessor_protocol.pb.cc
   core/seed_link.cpp
   core/scheduler.cpp
   core/system_1d.cpp

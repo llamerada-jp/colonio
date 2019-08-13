@@ -1,2 +1,6 @@
+bin/simulate
 build/
 local/
+*.pb.cc
+*.pb.h
+.vscode

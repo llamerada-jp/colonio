@@ -32,6 +32,7 @@
 
 #include "convert.hpp"
 #include "definition.hpp"
+#include "packet.hpp"
 #include "utils.hpp"
 
 namespace colonio {
@@ -79,7 +80,7 @@ std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
   out << is << "mode : "        << Convert::int2str(packet.mode)    << std::endl;
   out << is << "channel : "     << Convert::int2str(packet.channel) << std::endl;
   out << is << "command_id : "  << Convert::int2str(packet.command_id)  << std::endl;
-  out << is << "content : "     << picojson::value(packet.content).serialize();
+  // out << is << "content : "     << picojson::value(packet.content).serialize();
 
   return out.str();
 }
@@ -138,16 +139,6 @@ std::string Utils::file_dirname(const std::string& path) {
   buffer[path.size()] = '\0';
 
   return std::string(dirname(buffer.get()));
-}
-
-picojson::object& Utils::insert_get_json_object(picojson::object& parent, const std::string& key) {
-  auto it = parent.find(key);
-  if (it == parent.end()) {
-    return parent.insert(std::make_pair(key, picojson::value(picojson::object()))).first->second.get<picojson::object>();
-
-  } else {
-    return it->second.get<picojson::object>();
-  }
 }
 
 bool Utils::is_safevalue(double v) {

@@ -89,7 +89,7 @@ void SeedLinkWebsocketNative::disconnect() {
 void SeedLinkWebsocketNative::send(const std::string& data) {
   websocketpp::lib::error_code ec;
         
-  client.send(con->get_handle(), data, websocketpp::frame::opcode::text, ec);
+  client.send(con->get_handle(), data, websocketpp::frame::opcode::binary, ec);
   if (ec) {
     // @todo error
     std::cout << "> Error sending message: " << ec.message() << std::endl;

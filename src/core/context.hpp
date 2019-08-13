@@ -18,12 +18,13 @@
 #include <functional>
 #include <list>
 
-#include "coord_system.hpp"
+#include "coordinate.hpp"
 #include "logger.hpp"
 #include "node_id.hpp"
 #include "scheduler.hpp"
 
 namespace colonio {
+class CoordSystem;
 class Context {
  public:
   LinkStatus::Type link_status;

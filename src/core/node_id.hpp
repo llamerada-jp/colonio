@@ -22,6 +22,10 @@
 #include <tuple>
 
 namespace colonio {
+namespace Protocol {
+class NodeID;
+}  // namespace Protocol
+
 /**
  * Node-id is assigned for each node process run in any devices.
  */
@@ -32,8 +36,8 @@ class NodeID {
   static const NodeID THIS;
   static const NodeID NEXT;
 
-  static const NodeID MAX;
-  static const NodeID MIN;
+  static const NodeID NID_MAX;
+  static const NodeID NID_MIN;
 
   static const NodeID QUARTER;
 
@@ -46,12 +50,10 @@ class NodeID {
   static const NodeID RANGE_6;
   static const NodeID RANGE_7;
 
-  static std::set<NodeID> from_json_array(const picojson::value& json);
   static NodeID from_str(const std::string& str);
-  static NodeID from_json(const picojson::value& json);
+  static NodeID from_pb(const Protocol::NodeID& pb);
   static NodeID make_hash_from_str(const std::string& str);
   static NodeID make_random();
-  static picojson::value to_json_array(const std::set<NodeID>& nids);
 
   NodeID();
   NodeID(const NodeID& src);
@@ -73,6 +75,7 @@ class NodeID {
   bool is_special() const;
   int log2() const;
   std::string to_str() const;
+  void to_pb(Protocol::NodeID* pb) const;
   picojson::value to_json() const;
 
  private:

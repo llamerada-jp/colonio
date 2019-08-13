@@ -118,7 +118,7 @@ class NodeAccessor : public Module,
   void create_first_link();
   WebrtcLink* create_link(bool is_create_dc);
   void disconnect_first_link();
-  void disconnect_random_link();
+  void disconnect_random_link();  
   void recv_offer(std::unique_ptr<const Packet> packet);
   void recv_ice(std::unique_ptr<const Packet> packet);
   void send_offer(WebrtcLink* link, const NodeID& prime_nid, const NodeID& second_nid, OFFER_TYPE type);

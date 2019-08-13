@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+option optimize_for = LITE_RUNTIME;
+option go_package = "proto";
+
+import "core/protocol.proto";
+
+package colonio.NodeAccessorProtocol;
+
+message NodeAccessor {
+  Protocol.NodeID dst_nid = 1;
+  Protocol.NodeID src_nid = 2;
+  uint32 id = 3;
+  uint32 mode = 4;
+  uint32 channel = 5;
+  uint32 command_id = 6;
+  bytes content = 7;
+}
+
+message ICE {
+  Protocol.NodeID local_nid = 1;
+  Protocol.NodeID remote_nid = 2;
+  string ice = 3;
+}
+
+message Offer {
+  Protocol.NodeID prime_nid = 1;
+  Protocol.NodeID second_nid = 2;
+  string sdp = 3;
+  uint32 type = 4;
+}
+
+message OfferSuccess {
+  uint32 status = 1;
+  Protocol.NodeID second_nid = 2;
+  string sdp = 3;
+}
+
+message OfferFailure {
+  uint32 status = 1;
+  Protocol.NodeID prime_nid = 2;
+}

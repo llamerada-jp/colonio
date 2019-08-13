@@ -40,6 +40,7 @@ set_env_info() {
     mkdir -p ${LOCAL_ENV_PATH}/include
     mkdir -p ${LOCAL_ENV_PATH}/opt
     mkdir -p ${LOCAL_ENV_PATH}/src
+    mkdir -p ${LOCAL_ENV_PATH}/wa
     export PKG_CONFIG_PATH=${LOCAL_ENV_PATH}/lib/pkgconfig/
 }
 
@@ -94,12 +95,14 @@ setup_native() {
     setup_libuv
     setup_picojson
     setup_websocketpp
+    # setup_pb
     setup_webrtc
 }
 
 setup_web() {
     setup_picojson
     setup_emscripten
+    # setup_pb
 }
 
 # Setup Emscripten
@@ -156,7 +159,7 @@ setup_picojson() {
 	git clone https://github.com/kazuho/picojson.git
     fi
     cd ${LOCAL_ENV_PATH}/src/picojson
-    git checkout 25fc213
+    git checkout refs/tags/v1.3.0
     cp ${LOCAL_ENV_PATH}/src/picojson/picojson.h ${LOCAL_ENV_PATH}/include/
 }
 
@@ -164,10 +167,14 @@ setup_picojson() {
 setup_webrtc() {
     cd ${LOCAL_ENV_PATH}/src
     if [ "${ID}" = 'macos' ]; then
-        readonly WEBRTC_VER="m72"
+        # readonly WEBRTC_VER="m75"
+	# readonly WEBRTC_FILE="libwebrtc-75.0.3770.142-macosx-10.14.5.zip"
+	readonly WEBRTC_VER="m72"
 	readonly WEBRTC_FILE="libwebrtc-72.0.3626.119-macosx-10.14.3.zip"
     else
-        readonly WEBRTC_VER="m72"
+        # readonly WEBRTC_VER="m75"
+	# readonly WEBRTC_FILE="libwebrtc-75.0.3770.142-ubuntu-18.1-x64.tar.gz"
+	readonly WEBRTC_VER="m72"
 	readonly WEBRTC_FILE="libwebrtc-72.0.3626.119-ubuntu-16.04-x64.tar.gz"
     fi
 
@@ -195,7 +202,7 @@ setup_asio() {
 	git clone https://github.com/chriskohlhoff/asio.git
     fi
     cd ${LOCAL_ENV_PATH}/src/asio
-    git checkout 22afb86
+    git checkout refs/tags/asio-1-12-2
     cd asio
     ./autogen.sh
     ./configure --prefix=${LOCAL_ENV_PATH} --without-boost
@@ -213,10 +220,45 @@ setup_websocketpp() {
 	git clone https://github.com/zaphoyd/websocketpp.git
     fi
     cd ${LOCAL_ENV_PATH}/src/websocketpp
-    git checkout c6d7e29
+    git checkout refs/tags/0.8.1
     mkdir -p /tmp
     cmake -DCMAKE_INSTALL_PREFIX=${LOCAL_ENV_PATH} ${LOCAL_ENV_PATH}/src/websocketpp
     make install
+}
+
+# Build Protocol Buffers for WebAssembly
+setup_pb() {
+    if [ "${TARGET}" = 'native' ]; then
+	if [ -e ${LOCAL_ENV_PATH}/src/protobuf_native ]; then
+	    cd ${LOCAL_ENV_PATH}/src/protobuf_native
+	    git fetch
+	else
+	    cd ${LOCAL_ENV_PATH}/src
+	    git clone https://github.com/protocolbuffers/protobuf.git protobuf_native
+	fi
+	cd ${LOCAL_ENV_PATH}/src/protobuf_native
+	git checkout refs/tags/v3.5.1
+	git submodule update --init --recursive
+	./autogen.sh
+	./configure --prefix=${LOCAL_ENV_PATH}
+	# make install
+	
+    else
+	if [ -e ${LOCAL_ENV_PATH}/src/protobuf_wa ]; then
+	    cd ${LOCAL_ENV_PATH}/src/protobuf_wa
+	    git fetch
+	else
+	    cd ${LOCAL_ENV_PATH}/src
+	    git clone https://github.com/protocolbuffers/protobuf.git protobuf_wa
+	fi
+	cd ${LOCAL_ENV_PATH}/src/protobuf_wa
+	git checkout refs/tags/v3.5.1
+	git submodule update --init --recursive
+	./autogen.sh
+	emconfigure ./configure --prefix=${LOCAL_ENV_PATH}/wa --disable-shared
+	emmake make
+	emmake make install
+    fi
 }
 
 # Compile native programs.

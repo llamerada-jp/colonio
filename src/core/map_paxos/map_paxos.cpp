@@ -15,6 +15,8 @@
  */
 #include <cassert>
 
+#include "map_paxos_protocol.pb.h"
+
 #include "core/convert.hpp"
 #include "core/definition.hpp"
 #include "core/utils.hpp"
@@ -84,10 +86,11 @@ void MapPaxos::CommandGet::on_failure(std::unique_ptr<const Packet> packet) {
 }
 
 void MapPaxos::CommandGet::on_success(std::unique_ptr<const Packet> packet) {
-  std::tuple<PAXOS_N, PAXOS_N> key = std::make_tuple(Convert::json2int<PAXOS_N>(packet->content.at("n")),
-                                                     Convert::json2int<PAXOS_N>(packet->content.at("i")));
+  MapPaxosProtocol::GetSuccess content;
+  packet->parse_content(&content);
+  std::tuple<PAXOS_N, PAXOS_N> key = std::make_tuple(content.n(), content.i());
   if (info->ok_values.find(key) == info->ok_values.end()) {
-    info->ok_values.insert(std::make_pair(key, ValueImpl::from_json(packet->content.at("value"))));
+    info->ok_values.insert(std::make_pair(key, ValueImpl::from_pb(content.value())));
     info->ok_counts.insert(std::make_pair(key, 1));
   } else {
     info->ok_counts.at(key) ++;
@@ -170,7 +173,10 @@ void MapPaxos::CommandSet::on_error(const std::string& message) {
 }
 
 void MapPaxos::CommandSet::on_failure(std::unique_ptr<const Packet> packet) {
-  MapFailureReason reason = Convert::json2enum<MapFailureReason>(packet->content.at("reason"));
+  MapPaxosProtocol::SetFailure content;
+  packet->parse_content(&content);
+  const MapFailureReason reason = static_cast<MapFailureReason>(content.reason());
+
   if (reason == MapFailureReason::CHANGED_PROPOSER) {
     info->parent.send_packet_set(std::move(info));
     
@@ -229,18 +235,19 @@ void MapPaxos::CommandPrepare::on_error(const std::string& message) {
 }
 
 void MapPaxos::CommandPrepare::on_failure(std::unique_ptr<const Packet> packet) {
-  PAXOS_N n = Convert::json2int<PAXOS_N>(packet->content.at("n"));
+  MapPaxosProtocol::PrepareFailure content;
+  packet->parse_content(&content);
 
-  info->replys.push_back(Reply(packet->src_nid, n, 0, false));
+  info->replys.push_back(Reply(packet->src_nid, content.n(), 0, false));
 
   postprocess();
 }
 
 void MapPaxos::CommandPrepare::on_success(std::unique_ptr<const Packet> packet) {
-  PAXOS_N n = Convert::json2int<PAXOS_N>(packet->content.at("n"));
-  PAXOS_N i = Convert::json2int<PAXOS_N>(packet->content.at("i"));
+  MapPaxosProtocol::PrepareSuccess content;
+  packet->parse_content(&content);
 
-  info->replys.push_back(Reply(packet->src_nid, n, i, true));
+  info->replys.push_back(Reply(packet->src_nid, content.n(), content.i(), true));
 
   postprocess();
 }
@@ -252,9 +259,20 @@ void MapPaxos::CommandPrepare::postprocess() {
 
   auto proposer_it = info->parent.proposer_infos.find(*info->key);
   if (proposer_it == info->parent.proposer_infos.end()) {
-    picojson::object param;
-    param.insert(std::make_pair("reason", Convert::enum2json(MapFailureReason::CHANGED_PROPOSER)));
-    info->parent.send_failure(*info->packet_reply, param);
+    switch (info->packet_reply->command_id) {
+      case CommandID::MapPaxos::SET: {
+        MapPaxosProtocol::SetFailure param;
+        param.set_reason(static_cast<uint32_t>(MapFailureReason::CHANGED_PROPOSER));
+        info->parent.send_failure(*info->packet_reply, Module::serialize_pb(param));
+      } break;
+
+      case CommandID::MapPaxos::HINT: {
+        // Do nothing.
+      } break;
+
+      default:
+        assert(false);
+    }
     return;
   }
   ProposerInfo& proposer = proposer_it->second;
@@ -349,19 +367,19 @@ void MapPaxos::CommandAccept::on_error(const std::string& message) {
 }
 
 void MapPaxos::CommandAccept::on_failure(std::unique_ptr<const Packet> packet) {
-  PAXOS_N n = Convert::json2int<PAXOS_N>(packet->content.at("n"));
-  PAXOS_N i = Convert::json2int<PAXOS_N>(packet->content.at("i"));
+  MapPaxosProtocol::AcceptFailure content;
+  packet->parse_content(&content);
 
-  info->replys.push_back(Reply(packet->src_nid, n, i, false));
+  info->replys.push_back(Reply(packet->src_nid, content.n(), content.i(), false));
 
   postprocess();
 }
 
 void MapPaxos::CommandAccept::on_success(std::unique_ptr<const Packet> packet) {
-  PAXOS_N n = Convert::json2int<PAXOS_N>(packet->content.at("n"));
-  PAXOS_N i = Convert::json2int<PAXOS_N>(packet->content.at("i"));
+  MapPaxosProtocol::AcceptSuccess content;
+  packet->parse_content(&content);
 
-  info->replys.push_back(Reply(packet->src_nid, n, i, true));
+  info->replys.push_back(Reply(packet->src_nid, content.n(), content.i(), true));
 
   postprocess();
 }
@@ -373,9 +391,20 @@ void MapPaxos::CommandAccept::postprocess() {
 
   auto proposer_it = info->parent.proposer_infos.find(*info->key);
   if (proposer_it == info->parent.proposer_infos.end()) {
-    picojson::object param;
-    param.insert(std::make_pair("reason", Convert::enum2json(MapFailureReason::CHANGED_PROPOSER)));
-    info->parent.send_failure(*info->packet_reply, param);
+    switch (info->packet_reply->command_id) {
+      case CommandID::MapPaxos::SET: {
+        MapPaxosProtocol::SetFailure param;
+        param.set_reason(static_cast<uint32_t>(MapFailureReason::CHANGED_PROPOSER));
+        info->parent.send_failure(*info->packet_reply, Module::serialize_pb(param));
+      } break;
+
+      case CommandID::MapPaxos::HINT: {
+        // Do nothing.
+      } break;
+
+      default:
+        assert(false);
+    }
     return;
   }
   ProposerInfo& proposer = proposer_it->second;
@@ -416,7 +445,18 @@ void MapPaxos::CommandAccept::postprocess() {
     proposer.reset = false;
     proposer.processing_packet_id = PACKET_ID_NONE;
 
-    info->parent.send_success(*info->packet_reply, picojson::object());
+    switch (info->packet_reply->command_id) {
+      case CommandID::MapPaxos::SET: {
+        info->parent.send_success(*info->packet_reply, nullptr);
+      } break;
+
+      case CommandID::MapPaxos::HINT: {
+        // Do nothing.
+      } break;
+
+      default:
+        assert(false);
+    }
 
   } else if (count_ng >= NUM_MAJORITY) {
     info->is_finished = true;
@@ -551,10 +591,12 @@ void MapPaxos::debug_on_change_set() {
 #endif
 
 void MapPaxos::recv_packet_accept(std::unique_ptr<const Packet> packet) {
-  Value key(ValueImpl::from_json(packet->content.at("key")));
-  Value value(ValueImpl::from_json(packet->content.at("value")));
-  PAXOS_N n = Convert::json2int<PAXOS_N>(packet->content.at("n"));
-  PAXOS_N i = Convert::json2int<PAXOS_N>(packet->content.at("i"));
+  MapPaxosProtocol::Accept content;
+  packet->parse_content(&content);
+  Value key = ValueImpl::from_pb(content.key());
+  Value value = ValueImpl::from_pb(content.value());
+  const PAXOS_N n = content.n();
+  const PAXOS_N i = content.i();
 
   auto acceptor_it = acceptor_infos.find(key);
   if (acceptor_it == acceptor_infos.end()) {
@@ -583,25 +625,27 @@ void MapPaxos::recv_packet_accept(std::unique_ptr<const Packet> packet) {
       acceptor.value = value;
       acceptor.last_nid = packet->src_nid;
 
-      picojson::object param;
-      param.insert(std::make_pair("n", Convert::int2json(acceptor.np)));
-      param.insert(std::make_pair("i", Convert::int2json(acceptor.ia)));
-      send_success(*packet, param);
+      MapPaxosProtocol::AcceptSuccess param;
+      param.set_n(acceptor.np);
+      param.set_i(acceptor.ia);
+      send_success(*packet, serialize_pb(param));
       return;
     }
   }
 
-  picojson::object param;
-  param.insert(std::make_pair("n", Convert::int2json(acceptor.np)));
-  param.insert(std::make_pair("i", Convert::int2json(acceptor.ia)));
-  send_failure(*packet, param);
+  MapPaxosProtocol::AcceptFailure param;
+  param.set_n(acceptor.np);
+  param.set_i(acceptor.ia);
+  send_failure(*packet, serialize_pb(param));
 }
 
 void MapPaxos::recv_packet_hint(std::unique_ptr<const Packet> packet) {
-  Value key = ValueImpl::from_json(packet->content.at("key"));
-  Value value = ValueImpl::from_json(packet->content.at("value"));
-  PAXOS_N n = Convert::json2int<PAXOS_N>(packet->content.at("n"));
-  PAXOS_N i = Convert::json2int<PAXOS_N>(packet->content.at("i"));
+  MapPaxosProtocol::Hint content;
+  packet->parse_content(&content);
+  Value key = ValueImpl::from_pb(content.key());
+  Value value = ValueImpl::from_pb(content.value());
+  const PAXOS_N n = content.n();
+  const PAXOS_N i = content.i();
 
   if (check_key_proposer(key)) {
     auto proposer_it = proposer_infos.find(key);
@@ -638,11 +682,13 @@ void MapPaxos::recv_packet_hint(std::unique_ptr<const Packet> packet) {
 }
 
 void MapPaxos::recv_packet_balance_acceptor(std::unique_ptr<const Packet> packet) {
-  Value key = ValueImpl::from_json(packet->content.at("key"));
-  Value value = ValueImpl::from_json(packet->content.at("value"));
-  PAXOS_N na = Convert::json2int<PAXOS_N>(packet->content.at("na"));
-  PAXOS_N np = Convert::json2int<PAXOS_N>(packet->content.at("np"));
-  PAXOS_N ia = Convert::json2int<PAXOS_N>(packet->content.at("ia"));
+  MapPaxosProtocol::BalanceAcceptor content;
+  packet->parse_content(&content);
+  Value key = ValueImpl::from_pb(content.key());
+  Value value = ValueImpl::from_pb(content.value());
+  const PAXOS_N na = content.na();
+  const PAXOS_N np = content.np();
+  const PAXOS_N ia = content.ia();
 
   if (check_key_acceptor(key)) {
     auto acceptor_it = acceptor_infos.find(key);
@@ -663,10 +709,12 @@ void MapPaxos::recv_packet_balance_acceptor(std::unique_ptr<const Packet> packet
 }
 
 void MapPaxos::recv_packet_balance_proposer(std::unique_ptr<const Packet> packet) {
-  Value key = ValueImpl::from_json(packet->content.at("key"));
-  Value value = ValueImpl::from_json(packet->content.at("value"));
-  PAXOS_N np = Convert::json2int<PAXOS_N>(packet->content.at("np"));
-  PAXOS_N ip = Convert::json2int<PAXOS_N>(packet->content.at("ip"));
+  MapPaxosProtocol::BalanceProposer content;
+  packet->parse_content(&content);
+  Value key = ValueImpl::from_pb(content.key());
+  Value value = ValueImpl::from_pb(content.value());
+  const PAXOS_N np = content.np();
+  const PAXOS_N ip = content.ip();
 
   if (check_key_proposer(key)) {
     auto proposer_it = proposer_infos.find(key);
@@ -689,28 +737,32 @@ void MapPaxos::recv_packet_balance_proposer(std::unique_ptr<const Packet> packet
 }
 
 void MapPaxos::recv_packet_get(std::unique_ptr<const Packet> packet) {
-  Value key(ValueImpl::from_json(packet->content.at("key")));
+  MapPaxosProtocol::Get content;
+  packet->parse_content(&content);
+  Value key = ValueImpl::from_pb(content.key());
 
   auto acceptor_it = acceptor_infos.find(key);
   if (acceptor_it == acceptor_infos.end() ||
       acceptor_it->second.na == 0) {
     // TODO(llamerada.jp@gmail.com) Search data from another accetpors.
-    send_failure(*packet, picojson::object());
+    send_failure(*packet, std::shared_ptr<std::string>());
 
   } else {
     AcceptorInfo& acceptor_info = acceptor_it->second;
-    picojson::object param;
-    param.insert(std::make_pair("n", Convert::int2json(acceptor_info.na)));
-    param.insert(std::make_pair("i", Convert::int2json(acceptor_info.ia)));
-    param.insert(std::make_pair("value", ValueImpl::to_json(acceptor_info.value)));
-    send_success(*packet, param);
+    MapPaxosProtocol::GetSuccess param;
+    param.set_n(acceptor_info.na);
+    param.set_i(acceptor_info.ia);
+    ValueImpl::to_pb(param.mutable_value(), acceptor_info.value);
+    send_success(*packet, serialize_pb(param));
   }
 }
 
 void MapPaxos::recv_packet_prepare(std::unique_ptr<const Packet> packet) {
-  Value key(ValueImpl::from_json(packet->content.at("key")));
-  PAXOS_N n = Convert::json2int<PAXOS_N>(packet->content.at("n"));
-  MapOption::Type opt  = Convert::json2int<MapOption::Type>(packet->content.at("opt"));
+  MapPaxosProtocol::Prepare content;
+  packet->parse_content(&content);
+  Value key = ValueImpl::from_pb(content.key());
+  const PAXOS_N n = content.n();
+  const MapOption::Type opt  = content.opt();
 
   auto acceptor_it = acceptor_infos.find(key);
   if (acceptor_it == acceptor_infos.end()) {
@@ -738,22 +790,24 @@ void MapPaxos::recv_packet_prepare(std::unique_ptr<const Packet> packet) {
       i = acceptor.ia;
     }
 
-    picojson::object param;
-    param.insert(std::make_pair("n", Convert::int2json(n)));
-    param.insert(std::make_pair("i", Convert::int2json(i)));
-    send_success(*packet, param);
+    MapPaxosProtocol::PrepareSuccess param;
+    param.set_n(n);
+    param.set_i(i);
+    send_success(*packet, serialize_pb(param));
       
   } else {
-    picojson::object param;
-    param.insert(std::make_pair("n", Convert::int2json(acceptor.np)));
-    send_failure(*packet, param);
+    MapPaxosProtocol::PrepareFailure param;
+    param.set_n(acceptor.np);
+    send_failure(*packet, serialize_pb(param));
   }
 }
 
 void MapPaxos::recv_packet_set(std::unique_ptr<const Packet> packet) {
-  Value key(ValueImpl::from_json(packet->content.at("key")));
-  Value value(ValueImpl::from_json(packet->content.at("value")));
-  MapOption::Type opt  = Convert::json2int<MapOption::Type>(packet->content.at("opt"));
+  MapPaxosProtocol::Set content;
+  packet->parse_content(&content);
+  Value key = ValueImpl::from_pb(content.key());
+  Value value = ValueImpl::from_pb(content.value());
+  const MapOption::Type opt  = content.opt();
 
   auto proposer_it = proposer_infos.find(key);
   if (proposer_it == proposer_infos.end()) {
@@ -778,9 +832,9 @@ void MapPaxos::recv_packet_set(std::unique_ptr<const Packet> packet) {
 
   if (proposer.processing_packet_id != PACKET_ID_NONE) {
     // @todo switch by flag
-    picojson::object param;
-    param.insert(std::make_pair("reason", Convert::enum2json(MapFailureReason::COLLISION_LATE)));
-    send_failure(*packet, param);
+    MapPaxosProtocol::SetFailure param;
+    param.set_reason(static_cast<uint32_t>(MapFailureReason::COLLISION_LATE));
+    send_failure(*packet, serialize_pb(param));
 
   } else {
     proposer.processing_packet_id = packet->id;
@@ -805,44 +859,46 @@ void MapPaxos::send_packet_accept(ProposerInfo& proposer, std::unique_ptr<const 
     accept_info = std::make_shared<CommandAccept::Info>(*this, std::move(packet_reply),
                                                         std::move(key), opt);
 
-  picojson::object param;
-  param.insert(std::make_pair("key", ValueImpl::to_json(*accept_info->key)));
-  param.insert(std::make_pair("value", ValueImpl::to_json(proposer.value)));
-  param.insert(std::make_pair("n", Convert::int2json(proposer.np)));
-  param.insert(std::make_pair("i", Convert::int2json(proposer.ip)));
+  MapPaxosProtocol::Accept param;
+  ValueImpl::to_pb(param.mutable_key(), *accept_info->key);
+  ValueImpl::to_pb(param.mutable_value(), proposer.value);
+  param.set_n(proposer.np);
+  param.set_i(proposer.ip);
+  std::shared_ptr<const std::string> param_bin = serialize_pb(param);
 
   NodeID acceptor_nid = ValueImpl::to_hash(*accept_info->key, solt);
   for (int i = 0; i < NUM_ACCEPTOR; i++) {
     acceptor_nid += NodeID::QUARTER;
     std::unique_ptr<Command> command = std::make_unique<CommandAccept>(accept_info);
-    send_packet(std::move(command), acceptor_nid, param);
+    send_packet(std::move(command), acceptor_nid, param_bin);
   }
 }
 
 void MapPaxos::send_packet_balance_acceptor(const Value& key, const AcceptorInfo& acceptor) {
-  picojson::object param;
-  param.insert(std::make_pair("key", ValueImpl::to_json(key)));
-  param.insert(std::make_pair("value", ValueImpl::to_json(acceptor.value)));
-  param.insert(std::make_pair("na", Convert::int2json(acceptor.na)));
-  param.insert(std::make_pair("np", Convert::int2json(acceptor.np)));
-  param.insert(std::make_pair("ia", Convert::int2json(acceptor.ia)));
+  MapPaxosProtocol::BalanceAcceptor param;
+  ValueImpl::to_pb(param.mutable_key(), key);
+  ValueImpl::to_pb(param.mutable_value(), acceptor.value);
+  param.set_na(acceptor.na);
+  param.set_np(acceptor.np);
+  param.set_ia(acceptor.ia);
+  std::shared_ptr<const std::string> param_bin = serialize_pb(param);
 
   NodeID acceptor_nid = ValueImpl::to_hash(key, solt);
   for (int i = 0; i < NUM_ACCEPTOR; i++) {
     acceptor_nid += NodeID::QUARTER;
-    send_packet(acceptor_nid, PacketMode::ONE_WAY, CommandID::MapPaxos::BALANCE_ACCEPTOR, param);
+    send_packet(acceptor_nid, PacketMode::ONE_WAY, CommandID::MapPaxos::BALANCE_ACCEPTOR, param_bin);
   }
 }
 
 void MapPaxos::send_packet_balance_proposer(const Value& key, const ProposerInfo& proposer) {
-  picojson::object param;
-  param.insert(std::make_pair("key", ValueImpl::to_json(key)));
-  param.insert(std::make_pair("value", ValueImpl::to_json(proposer.value)));
-  param.insert(std::make_pair("np", Convert::int2json(proposer.np)));
-  param.insert(std::make_pair("ip", Convert::int2json(proposer.ip)));
+  MapPaxosProtocol::BalanceProposer param;
+  ValueImpl::to_pb(param.mutable_key(), key);
+  ValueImpl::to_pb(param.mutable_value(), proposer.value);
+  param.set_np(proposer.np);
+  param.set_ip(proposer.ip);
 
   NodeID proposer_nid = ValueImpl::to_hash(key, solt);
-  send_packet(proposer_nid, PacketMode::ONE_WAY, CommandID::MapPaxos::BALANCE_PROPOSER, param);
+  send_packet(proposer_nid, PacketMode::ONE_WAY, CommandID::MapPaxos::BALANCE_PROPOSER, serialize_pb(param));
 }
 
 void MapPaxos::send_packet_get(std::unique_ptr<Value> key, int count_retry,
@@ -852,27 +908,29 @@ void MapPaxos::send_packet_get(std::unique_ptr<Value> key, int count_retry,
   info->cb_on_success = on_success;
   info->cb_on_failure = on_failure;
 
-  picojson::object param;
-  param.insert(std::make_pair("key", ValueImpl::to_json(*info->key)));
+  MapPaxosProtocol::Get param;
+  ValueImpl::to_pb(param.mutable_key(), *info->key);
+  std::shared_ptr<const std::string> param_bin = serialize_pb(param);
 
   NodeID acceptor_nid = ValueImpl::to_hash(*info->key, solt);
+
   for (int i = 0; i < NUM_ACCEPTOR; i++) {
     acceptor_nid += NodeID::QUARTER;
     std::unique_ptr<Command> command = std::make_unique<CommandGet>(info);
 
-    send_packet(std::move(command), acceptor_nid, param);
+    send_packet(std::move(command), acceptor_nid, param_bin);
   }
 }
 
 void MapPaxos::send_packet_hint(const Value& key, const Value& value, PAXOS_N n, PAXOS_N i) {
-  picojson::object param;
-  param.insert(std::make_pair("key", ValueImpl::to_json(key)));
-  param.insert(std::make_pair("value", ValueImpl::to_json(value)));
-  param.insert(std::make_pair("n", Convert::int2json(n)));
-  param.insert(std::make_pair("i", Convert::int2json(i)));
+  MapPaxosProtocol::Hint param;
+  ValueImpl::to_pb(param.mutable_key(), key);
+  ValueImpl::to_pb(param.mutable_value(), value);
+  param.set_n(n);
+  param.set_i(i);
 
   NodeID proposer_nid = ValueImpl::to_hash(key, solt);
-  send_packet(proposer_nid, PacketMode::ONE_WAY, CommandID::MapPaxos::HINT, param);
+  send_packet(proposer_nid, PacketMode::ONE_WAY, CommandID::MapPaxos::HINT, serialize_pb(param));
 }
 
 void MapPaxos::send_packet_prepare(ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply,
@@ -880,27 +938,28 @@ void MapPaxos::send_packet_prepare(ProposerInfo& proposer, std::unique_ptr<const
   std::shared_ptr<CommandPrepare::Info> prepare_info =
     std::make_unique<CommandPrepare::Info>(*this, std::move(packet_reply), std::move(key), opt);
 
-  picojson::object param;
-  param.insert(std::make_pair("key", ValueImpl::to_json(*prepare_info->key)));
-  param.insert(std::make_pair("n", Convert::int2json(proposer.np)));
-  param.insert(std::make_pair("opt", Convert::int2json(opt)));
+  MapPaxosProtocol::Prepare param;
+  ValueImpl::to_pb(param.mutable_key(), *prepare_info->key);
+  param.set_n(proposer.np);
+  param.set_opt(opt);
+  std::shared_ptr<const std::string> param_bin = serialize_pb(param);
 
   NodeID acceptor_nid = ValueImpl::to_hash(*prepare_info->key, solt);
   for (int i = 0; i < NUM_ACCEPTOR; i++) {
     acceptor_nid += NodeID::QUARTER;
     std::unique_ptr<Command> command = std::make_unique<CommandPrepare>(prepare_info);
-    send_packet(std::move(command), acceptor_nid, param);
+    send_packet(std::move(command), acceptor_nid, param_bin);
   }
 }
 
 void MapPaxos::send_packet_set(std::unique_ptr<CommandSet::Info> info) {
-  picojson::object param;
-  param.insert(std::make_pair("key", ValueImpl::to_json(info->key)));
-  param.insert(std::make_pair("value", ValueImpl::to_json(info->value)));
-  param.insert(std::make_pair("opt", Convert::int2json(info->opt)));
+  MapPaxosProtocol::Set param;
+  ValueImpl::to_pb(param.mutable_key(), info->key);
+  ValueImpl::to_pb(param.mutable_value(), info->value);
+  param.set_opt(info->opt);
 
   NodeID proposer_nid = ValueImpl::to_hash(info->key, solt);
   std::unique_ptr<Command> command = std::make_unique<CommandSet>(std::move(info));
-  send_packet(std::move(command), proposer_nid, param);
+  send_packet(std::move(command), proposer_nid, serialize_pb(param));
 }
 }  // namespace colonio

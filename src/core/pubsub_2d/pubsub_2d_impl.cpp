@@ -16,7 +16,10 @@
 
 #include <cassert>
 
+#include "pubsub_2d_protocol.pb.h"
+
 #include "core/convert.hpp"
+#include "core/coord_system.hpp"
 #include "core/definition.hpp"
 #include "core/utils.hpp"
 #include "core/value_impl.hpp"
@@ -46,10 +49,10 @@ void PubSub2DImpl::publish(const std::string& name, double x, double y, double r
   c.r = r;
   c.uid = uid;
   c.create_time = Utils::get_current_msec();
-  c.data = ValueImpl::to_json(value);
+  c.data = value;
 
   if (context.coord_system->get_distance(c.center, context.get_my_position()) < r) {
-    if (c.data.is<std::string>()) {
+    if (c.data.get_type() == Value::STRING_T) {
       send_packet_knock(NodeID::NONE, c);
 
     } else {
@@ -148,8 +151,9 @@ void PubSub2DImpl::CommandPass::on_error(const std::string& message) {
 }
 
 void PubSub2DImpl::CommandPass::on_failure(std::unique_ptr<const Packet> packet) {
-  PubSub2DFailureReason reason = static_cast<PubSub2DFailureReason>
-    (Convert::json2int<uint32_t>(packet->content.at("reason")));
+  Pubsub2DProtocol::PassFailure content;
+  packet->parse_content(&content);
+  PubSub2DFailureReason reason = static_cast<PubSub2DFailureReason>(content.reason());
   cb_on_failure(reason);
 }
 
@@ -178,28 +182,32 @@ void PubSub2DImpl::clear_cache() {
 }
 
 void PubSub2DImpl::recv_packet_knock(std::unique_ptr<const Packet> packet) {
-  Coordinate center = Convert::json2coordinate(packet->content.at("center"));
-  double r = packet->content.at("r").get<double>();
-  uint64_t uid = Convert::json2int<uint64_t>(packet->content.at("uid"));
+  Pubsub2DProtocol::Knock content;
+  packet->parse_content(&content);
+  Coordinate center = Coordinate::from_pb(content.center());
+  double r = content.r();
+  uint64_t uid = content.uid();
 
   if (cache.find(uid) == cache.end() &&
       context.coord_system->get_distance(context.get_my_position(), center) < r) {
-    send_success(*packet, picojson::object());
+    send_success(*packet, nullptr);
   } else {
 
-    send_failure(*packet, picojson::object());
+    send_failure(*packet, nullptr);
   }
 }
 
 void PubSub2DImpl::recv_packet_deffuse(std::unique_ptr<const Packet> packet) {
-  Coordinate center = Convert::json2coordinate(packet->content.at("center"));
-  double r = packet->content.at("r").get<double>();
-  uint64_t uid = Convert::json2int<uint64_t>(packet->content.at("uid"));
-  const std::string& name = packet->content.at("name").get<std::string>();
-  const picojson::value& data = packet->content.at("data");
+  Pubsub2DProtocol::Deffuse content;
+  packet->parse_content(&content);
+  Coordinate center = Coordinate::from_pb(content.center());
+  double r = content.r();
+  uint64_t uid = content.uid();
 
   if (cache.find(uid) == cache.end() &&
       context.coord_system->get_distance(context.get_my_position(), center) < r) {
+    const std::string& name = content.name();
+    const Value data = ValueImpl::from_pb(content.data());
     Cache& c = cache[uid];
     c.name = name;
     c.center = center;
@@ -208,7 +216,7 @@ void PubSub2DImpl::recv_packet_deffuse(std::unique_ptr<const Packet> packet) {
     c.create_time = std::time(nullptr);
     c.data = data;
 
-    if (c.data.is<std::string>()) {
+    if (c.data.get_type() == Value::STRING_T) {
       send_packet_knock(packet->src_nid, c);
 
     } else {
@@ -222,26 +230,28 @@ void PubSub2DImpl::recv_packet_deffuse(std::unique_ptr<const Packet> packet) {
 
     auto subscriber = funcs_subscriber.find(name);
     if (subscriber != funcs_subscriber.end()) {
-      subscriber->second(ValueImpl::from_json(data));
+      subscriber->second(data);
     }
   }
 }
 
 void PubSub2DImpl::recv_packet_pass(std::unique_ptr<const Packet> packet) {
-  Coordinate center = Convert::json2coordinate(packet->content.at("center"));
-  double r = packet->content.at("r").get<double>();
+  Pubsub2DProtocol::Pass content;
+  packet->parse_content(&content);
+  Coordinate center = Coordinate::from_pb(content.center());
+  double r = content.r();
   
   if (context.coord_system->get_distance(center, context.get_my_position()) < r) {
-    uint64_t uid = Convert::json2int<uint64_t>(packet->content.at("uid"));
+    uint64_t uid = content.uid();
     Cache& c = cache[uid];
-    c.name = packet->content.at("name").get<std::string>();
+    c.name = content.name();
     c.center = center;
     c.r = r;
     c.uid = uid;
     c.create_time = Utils::get_current_msec();
-    c.data = packet->content.at("data");
+    c.data = ValueImpl::from_pb(content.data());
 
-    if (c.data.is<std::string>()) {
+    if (c.data.get_type() == Value::STRING_T) {
       // @todo send_success after check the result.
       send_packet_knock(NodeID::NONE, c);
 
@@ -252,14 +262,14 @@ void PubSub2DImpl::recv_packet_pass(std::unique_ptr<const Packet> packet) {
         }
       }
     }
-    send_success(*packet, picojson::object());
+    send_success(*packet, nullptr);
 
   } else {
     const NodeID& dest = get_relay_nid(center);
     if (dest == NodeID::THIS) {
-      picojson::object param;
-      param.insert(std::make_pair("reason", Convert::int2json(static_cast<uint32_t>(PubSub2DFailureReason::NOONE_RECV))));
-      send_failure(*packet, param);
+      Pubsub2DProtocol::PassFailure param;
+      param.set_reason(static_cast<uint32_t>(PubSub2DFailureReason::NOONE_RECV));
+      send_failure(*packet, serialize_pb(param));
     } else {
       relay_packet(dest, std::move(packet));
     }
@@ -267,10 +277,11 @@ void PubSub2DImpl::recv_packet_pass(std::unique_ptr<const Packet> packet) {
 }
 
 void PubSub2DImpl::send_packet_knock(const NodeID& exclude, const Cache& cache) {
-  picojson::object param;
-  param.insert(std::make_pair("center", Convert::coordinate2json(cache.center)));
-  param.insert(std::make_pair("r", picojson::value(cache.r)));
-  param.insert(std::make_pair("uid", Convert::int2json(cache.uid)));
+  Pubsub2DProtocol::Knock param;
+  cache.center.to_pb(param.mutable_center());
+  param.set_r(cache.r);
+  param.set_uid(cache.uid);
+  std::shared_ptr<const std::string> param_bin = serialize_pb(param);
 
   for (auto& it_np : next_positions) {
     const NodeID& nid = it_np.first;
@@ -279,34 +290,34 @@ void PubSub2DImpl::send_packet_knock(const NodeID& exclude, const Cache& cache) 
     if (nid != exclude &&
         context.coord_system->get_distance(cache.center, position) < cache.r) {
       std::unique_ptr<Command> command = std::make_unique<CommandKnock>(*this, cache.uid);
-      send_packet(std::move(command), nid, param);
+      send_packet(std::move(command), nid, param_bin);
     }
   }
 }
 
 void PubSub2DImpl::send_packet_deffuse(const NodeID& dst_nid, const Cache& cache) {
-  picojson::object param;
-  param.insert(std::make_pair("center", Convert::coordinate2json(cache.center)));
-  param.insert(std::make_pair("r", picojson::value(cache.r)));
-  param.insert(std::make_pair("uid", Convert::int2json(cache.uid)));
-  param.insert(std::make_pair("name", picojson::value(cache.name)));
-  param.insert(std::make_pair("data", cache.data));
+  Pubsub2DProtocol::Deffuse param;
+  cache.center.to_pb(param.mutable_center());
+  param.set_r(cache.r);
+  param.set_uid(cache.uid);
+  param.set_name(cache.name);
+  ValueImpl::to_pb(param.mutable_data(), cache.data);
 
-  send_packet(dst_nid, PacketMode::ONE_WAY, CommandID::PubSub2D::DEFFUSE, param);
+  send_packet(dst_nid, PacketMode::ONE_WAY, CommandID::PubSub2D::DEFFUSE, serialize_pb(param));
 }
 
 void PubSub2DImpl::send_packet_pass(const Cache& cache,
                                     const std::function<void()>& on_success,
                                     const std::function<void(PubSub2DFailureReason)>& on_failure) {
-  picojson::object param;
-  param.insert(std::make_pair("center", Convert::coordinate2json(cache.center)));
-  param.insert(std::make_pair("r", picojson::value(cache.r)));
-  param.insert(std::make_pair("uid", Convert::int2json(cache.uid)));
-  param.insert(std::make_pair("name", picojson::value(cache.name)));
-  param.insert(std::make_pair("data", cache.data));
+  Pubsub2DProtocol::Pass param;
+  cache.center.to_pb(param.mutable_center());
+  param.set_r(cache.r);
+  param.set_uid(cache.uid);
+  param.set_name(cache.name);
+  ValueImpl::to_pb(param.mutable_data(), cache.data);
 
   std::unique_ptr<Command> command = std::make_unique<CommandPass>(*this, cache.uid, on_success, on_failure);
   const NodeID& nid = get_relay_nid(cache.center);
-  send_packet(std::move(command), nid, param);
+  send_packet(std::move(command), nid, serialize_pb(param));
 }
 }  // namespace colonio

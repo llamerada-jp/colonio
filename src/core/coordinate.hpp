@@ -16,10 +16,16 @@
 #pragma once
 
 namespace colonio {
+namespace Protocol {
+class Coordinate;
+} // Protocol
+
 class Coordinate {
  public:
   double x;
   double y;
+
+  static Coordinate from_pb(const Protocol::Coordinate& pb);
 
   Coordinate();
   Coordinate(double x_, double y_);
@@ -27,5 +33,6 @@ class Coordinate {
   bool operator!=(const Coordinate& r) const;
 
   bool is_enable();
+  void to_pb(Protocol::Coordinate* pb) const;
 };
 }  // namespace colonio

@@ -93,7 +93,7 @@ void Routing1D::on_recv_packet(const NodeID& nid, const Packet& packet) {
   }
 }
 
-bool Routing1D::on_recv_routing_info(const Packet& packet) {
+bool Routing1D::on_recv_routing_info(const Packet& packet, const RoutingProtocol::RoutingInfo& routing_info) {
   // Ignore routing packet when source node has disconnected.
   // assert(connected_nodes.find(packet.src_nid) != connected_nodes.end());
   if (connected_nodes.find(packet.src_nid) == connected_nodes.end()) {
@@ -101,20 +101,16 @@ bool Routing1D::on_recv_routing_info(const Packet& packet) {
     return false;
   }
 
-  const picojson::object& info = packet.content;
   ConnectedNode& cn = connected_nodes.at(packet.src_nid);
   
-  const picojson::object* nodes = Utils::get_json_value<picojson::object>(info, "nodes");
-  assert(nodes != nullptr);
-
   std::set<NodeID> nexts;
   int odd_score = 0;
-  for (auto& it : *nodes) {
+
+  for (auto& it : routing_info.nodes()) {
     NodeID nid = NodeID::from_str(it.first);
-    const picojson::object& node_info = it.second.get<picojson::object>();
     nexts.insert(nid);
     if (nid == context.my_nid) {
-      odd_score = Convert::json2int<int>(node_info.at("1d_score"));
+      odd_score = it.second.r1d_score();
     }
   }
 
@@ -129,26 +125,25 @@ bool Routing1D::on_recv_routing_info(const Packet& packet) {
   }
 }
 
-void Routing1D::send_routing_info(picojson::object& info) {
+void Routing1D::send_routing_info(RoutingProtocol::RoutingInfo* param) {
   normalize_score();
 
-  picojson::object& nodes = Utils::insert_get_json_object(info, "nodes");
   for (auto& it : connected_nodes) {
     std::string nid_str = it.first.to_str();
-    picojson::object& node_info = Utils::insert_get_json_object(nodes, nid_str);
-    node_info.insert(std::make_pair("1d_score", Convert::int2json(it.second.raw_score)));
+    (*param->mutable_nodes())[nid_str].set_r1d_score(it.second.raw_score);
   }
 }
 
 bool Routing1D::update_routing_info(const std::set<NodeID>& online_links, bool has_update_ol,
-                                    const std::map<NodeID, std::unique_ptr<const Packet>>& routing_infos) {
+                                    const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>,
+                                    RoutingProtocol::RoutingInfo>>& routing_infos) {
   bool is_changed = false;
 
   if (has_update_ol) {
     is_changed = is_changed || on_change_online_links(online_links);
   }
   for (auto& it : routing_infos) {
-    is_changed = is_changed || on_recv_routing_info(*it.second);
+    is_changed = is_changed || on_recv_routing_info(*std::get<0>(it.second), std::get<1>(it.second));
   }
 
   if (is_changed) {
@@ -493,8 +488,8 @@ void Routing1D::update_route_infos() {
   if (known_nids.size() == 1) {
     prev_nid = NodeID::NONE;
     next_nid = NodeID::NONE;
-    range_min_nid = NodeID::MIN;
-    range_max_nid = NodeID::MAX;
+    range_min_nid = NodeID::NID_MIN;
+    range_max_nid = NodeID::NID_MAX;
 
   } else {
     std::set<NodeID> nids;

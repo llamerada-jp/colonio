@@ -14,14 +14,25 @@ endif()
 #
 set(CMAKE_CXX_STANDARD 14)
 
-# Add local include path.
-include_directories(/usr/local/include)
-include_directories(${LOCAL_ENV_PATH}/include)
-include_directories(${LOCAL_ENV_PATH}/include/webrtc)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
+  # Add local include path.
+  # include_directories(/usr/local/include)
+  include_directories(${LOCAL_ENV_PATH}/include)
+  include_directories(${LOCAL_ENV_PATH}/wa/include)
 
-# Add local library path.
-link_directories(${LOCAL_ENV_PATH}/lib)
-link_directories(/usr/local/lib)
+  # Add local library path.
+  link_directories(${LOCAL_ENV_PATH}/wa/lib)
+
+else()
+  # Add local include path.
+  include_directories(/usr/local/include)
+  include_directories(${LOCAL_ENV_PATH}/include)
+  include_directories(${LOCAL_ENV_PATH}/include/webrtc)
+
+  # Add local library path.
+  link_directories(${LOCAL_ENV_PATH}/lib)
+  link_directories(/usr/local/lib)
+endif()
 
 # Check for Google Coding Style.
 add_custom_target(cpplint

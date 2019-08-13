@@ -163,7 +163,7 @@ void Routing::module_on_change_accessor_status(LinkStatus::Type seed_status, Lin
 void Routing::module_process_command(std::unique_ptr<const Packet> packet) {
   switch(packet->command_id) {
     case CommandID::Routing::ROUTING:
-      recv_routing(std::move(packet));
+      recv_routing_info(std::move(packet));
       break;
 
     default:
@@ -172,15 +172,17 @@ void Routing::module_process_command(std::unique_ptr<const Packet> packet) {
   }
 }
 
-void Routing::recv_routing(std::unique_ptr<const Packet> packet) {
-  NodeID seed_nid = NodeID::from_json(packet->content.at("seed_nid"));
+void Routing::recv_routing_info(std::unique_ptr<const Packet> packet) {
+  RoutingProtocol::RoutingInfo content;
+  packet->parse_content(&content);
+  NodeID seed_nid = NodeID::from_pb(content.seed_nid());
   if (seed_nid == context.my_nid) {
     if (seed_status == LinkStatus::OFFLINE &&
         dists_from_seed.find(packet->src_nid) != dists_from_seed.end()) {
       dists_from_seed.erase(packet->src_nid);
     }
   } else {
-    uint32_t distance = Convert::json2int<uint32_t>(packet->content.at("seed_distance"));
+    uint32_t distance = content.seed_distance();
     if (dists_from_seed.find(packet->src_nid) != dists_from_seed.end() &&
         dists_from_seed.at(packet->src_nid).second != distance) {
       routing_countdown = 0;
@@ -188,7 +190,15 @@ void Routing::recv_routing(std::unique_ptr<const Packet> packet) {
     dists_from_seed[packet->src_nid] = std::make_pair(seed_nid, distance);
   }
 
-  routing_infos[packet->src_nid] = std::move(packet);
+  {
+    auto it = routing_infos.find(packet->src_nid);
+    if (it == routing_infos.end()) {
+      routing_infos.insert(std::make_pair(packet->src_nid, std::make_tuple(std::move(packet), content)));
+    } else {
+      std::get<0>(it->second).swap(packet);
+      std::get<1>(it->second) = content;
+    }
+  }
 
   update_route_to_seed();
 }
@@ -197,32 +207,36 @@ void Routing::recv_routing(std::unique_ptr<const Packet> packet) {
  * Send routing packet.
  */
 void Routing::send_routing_info() {
-  picojson::object content;
+  RoutingProtocol::RoutingInfo param;
 
   for (auto& algorithm : algorithms) {
-    algorithm->send_routing_info(content);
+    algorithm->send_routing_info(&param);
   }
 
   if (seed_status == LinkStatus::ONLINE) {
-    content.insert(std::make_pair("seed_distance", Convert::int2json<uint32_t>(1)));
-    content.insert(std::make_pair("seed_nid", context.my_nid.to_json()));
+    param.set_seed_distance(1);
+    context.my_nid.to_pb(param.mutable_seed_nid());
 
   } else {
     NodeID seed_nid;
     uint32_t distance;
     std::tie(seed_nid, distance) = dists_from_seed.at(next_to_seed);
     
-    content.insert(std::make_pair("seed_distance", Convert::int2json(distance + 1)));
-    content.insert(std::make_pair("seed_nid", seed_nid.to_json()));
+    param.set_seed_distance(distance + 1);
+    seed_nid.to_pb(param.mutable_seed_nid());
   }
 
-  send_packet(NodeID::NEXT, PacketMode::EXPLICIT, CommandID::Routing::ROUTING, content);
+  send_packet(NodeID::NEXT, PacketMode::EXPLICIT, CommandID::Routing::ROUTING, serialize_pb(param));
 }
 
 void Routing::update() {
   update_seed_connection();
 
   if (node_status == LinkStatus::ONLINE) {
+    for (auto& row : routing_infos) {
+      std::get<0>(row.second)->parse_content(&std::get<1>(row.second));
+    }
+
     for (auto& algorithm : algorithms) {
       if (algorithm->update_routing_info(online_links, has_update_online_links, routing_infos)) {
         routing_countdown = 0;

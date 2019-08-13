@@ -18,12 +18,14 @@
 #include <list>
 #include <set>
 
+#include "routing_protocol.pb.h"
+
 #include "module.hpp"
 #include "node_id.hpp"
 
 namespace colonio {
-struct Packet;
 class Context;
+class Packet;
 class Routing;
 class Routing1D;
 class Routing2D;
@@ -49,9 +51,10 @@ class RoutingAlgorithm {
   virtual const std::set<NodeID>& get_required_nodes() = 0;
   virtual void on_change_my_position(const Coordinate& position) = 0;
   virtual void on_recv_packet(const NodeID& nid, const Packet& packet) = 0;
-  virtual void send_routing_info(picojson::object& info) = 0;
+  virtual void send_routing_info(RoutingProtocol::RoutingInfo* param) = 0;
   virtual bool update_routing_info(const std::set<NodeID>& online_links, bool has_update_ol,
-                                   const std::map<NodeID, std::unique_ptr<const Packet>>& routing_infos) = 0;
+                                   const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>,
+                                   RoutingProtocol::RoutingInfo>>& routing_infos) = 0;
 };
 
 class RoutingAlgorithm1DDelegate {
@@ -105,7 +108,7 @@ class Routing : public Module,
   std::set<NodeID> online_links;
   bool has_update_online_links;
 
-  std::map<NodeID, std::unique_ptr<const Packet>> routing_infos;
+  std::map<NodeID, std::tuple<std::unique_ptr<const Packet>, RoutingProtocol::RoutingInfo>> routing_infos;
 
   // next, seed, distance
   std::map<NodeID, std::pair<NodeID, uint32_t>> dists_from_seed;
@@ -123,7 +126,7 @@ class Routing : public Module,
   void module_on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status) override;
   void module_process_command(std::unique_ptr<const Packet> packet) override;
 
-  void recv_routing(std::unique_ptr<const Packet> packet);
+  void recv_routing_info(std::unique_ptr<const Packet> packet);
   void send_routing_info();
   void update();
   void update_node_connection();

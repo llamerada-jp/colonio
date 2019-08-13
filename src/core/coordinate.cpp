@@ -18,6 +18,8 @@
 #include <cmath>
 #include <limits>
 
+#include "protocol.pb.h"
+
 #include "coordinate.hpp"
 
 namespace colonio {
@@ -29,6 +31,10 @@ Coordinate::Coordinate() :
 Coordinate::Coordinate(double x_, double y_) :
     x(x_),
     y(y_) {
+}
+
+Coordinate Coordinate::from_pb(const Protocol::Coordinate& pb) {
+  return Coordinate(pb.x(), pb.y());
 }
 
 bool Coordinate::operator<(const Coordinate& r) const {
@@ -58,5 +64,10 @@ bool Coordinate::is_enable() {
   } else {
     return false;
   }
+}
+
+void Coordinate::to_pb(Protocol::Coordinate* pb) const {
+  pb->set_x(x);
+  pb->set_y(y);
 }
 }  // namespace colonio

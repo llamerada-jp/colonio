@@ -27,8 +27,8 @@
 #include "seed_link.hpp"
 
 namespace colonio {
-struct Packet;
 class Context;
+class Packet;
 class SeedAccessor;
 
 class SeedAccessorDelegate {
