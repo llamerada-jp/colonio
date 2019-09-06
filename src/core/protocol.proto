@@ -1,6 +1,5 @@
 syntax = "proto3";
 
-option optimize_for = LITE_RUNTIME;
 option go_package = "proto";
 
 package colonio.Protocol;

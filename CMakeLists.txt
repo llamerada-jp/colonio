@@ -27,7 +27,6 @@ else()
   # Add local include path.
   include_directories(/usr/local/include)
   include_directories(${LOCAL_ENV_PATH}/include)
-  include_directories(${LOCAL_ENV_PATH}/include/webrtc)
 
   # Add local library path.
   link_directories(${LOCAL_ENV_PATH}/lib)

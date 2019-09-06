@@ -19,6 +19,7 @@
 #include <deque>
 #include <functional>
 #include <list>
+#include <memory>
 #include <mutex>
 
 namespace colonio {

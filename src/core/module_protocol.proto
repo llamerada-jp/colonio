@@ -1,7 +1,5 @@
 syntax = "proto3";
 
-option optimize_for = LITE_RUNTIME;
-
 package colonio.ModuleProtocol;
 
 message Error {

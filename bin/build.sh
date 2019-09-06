@@ -5,19 +5,19 @@ set -eu
 # Get OS environment parameters.
 set_platform_info() {
     if [ "$(uname -s)" = 'Darwin' ]; then
-	# Mac OSX
-	readonly ID='macos'
-	readonly ARCH='x86_64'
-	readonly IS_LINUX='false'
+        # Mac OSX
+        readonly ID='macos'
+        readonly ARCH='x86_64'
+        readonly IS_LINUX='false'
 
     elif [ -e /etc/os-release ]; then
-	. /etc/os-release
-	readonly ARCH=`uname -p`
-	readonly IS_LINUX='true'
+        . /etc/os-release
+        readonly ARCH=`uname -p`
+        readonly IS_LINUX='true'
 
     else
-	echo "Thank you for useing. But sorry, this platform is not supported yet."
-	exit 1
+        echo "Thank you for useing. But sorry, this platform is not supported yet."
+        exit 1
     fi
 }
 
@@ -25,17 +25,17 @@ set_platform_info() {
 set_env_info() {
     readonly ROOT_PATH=$(cd $(dirname $0)/.. && pwd)
     if [ "${TARGET}" = 'web' ]; then
-	readonly BUILD_PATH=${ROOT_PATH}/build/webassembly
+        readonly BUILD_PATH=${ROOT_PATH}/build/webassembly
     else
-	readonly BUILD_PATH=${ROOT_PATH}/build/${ID}_${ARCH}
-	if [ "${IS_LINUX}" = 'true' ]; then
-	    export CC=/usr/bin/clang
-	    export CXX=/usr/bin/clang++
-	fi
+        readonly BUILD_PATH=${ROOT_PATH}/build/${ID}_${ARCH}
+        if [ "${IS_LINUX}" = 'true' ]; then
+            export CC=cc
+            export CXX=c++
+        fi
     fi
 
     if [ -z "${LOCAL_ENV_PATH+x}" ] ; then
-	export LOCAL_ENV_PATH=${ROOT_PATH}/local
+        export LOCAL_ENV_PATH=${ROOT_PATH}/local
     fi
     mkdir -p ${LOCAL_ENV_PATH}/include
     mkdir -p ${LOCAL_ENV_PATH}/opt
@@ -47,33 +47,33 @@ set_env_info() {
 # Install requirement packages for building native program.
 setup_native() {
     if [ "${ID}" = 'macos' ]; then
-	# cmake
-	if brew list | grep cmake; then
-	    :
-	else
-	    brew install cmake
-	fi
+        # cmake
+        if brew list | grep cmake; then
+            :
+        else
+            brew install cmake
+        fi
 
-	# libuv
-	if brew list | grep libuv; then
-	    :
-	else
-	    brew install libuv
-	fi
+        # libuv
+        if brew list | grep libuv; then
+            :
+        else
+            brew install libuv
+        fi
 
-	# pybind11
-	if brew list | grep pybind11; then
-	    :
-	else
-	    brew install pybind11
-	fi
+        # pybind11
+        if brew list | grep pybind11; then
+            :
+        else
+            brew install pybind11
+        fi
 
-	# glog
-	if brew list | grep glog; then
-	    :
-	else
-	    brew install glog
-	fi
+        # glog
+        if brew list | grep glog; then
+            :
+        else
+            brew install glog
+        fi
 
         # asio
         if brew list | grep asio; then
@@ -83,37 +83,37 @@ setup_native() {
         fi
 
     elif type apt-get > /dev/null 2>&1; then
-	sudo apt-get install -y pkg-config automake cmake build-essential clang libc++-dev curl libcurl4-nss-dev libtool libx11-dev libgoogle-glog-dev
+        sudo apt-get install -y pkg-config automake cmake build-essential curl libcurl4-nss-dev libtool libx11-dev libgoogle-glog-dev
 
-	setup_asio
+        setup_asio
 
     else
-	echo "Thank you for useing. But sorry, this platform is not supported yet."
-	exit 1
+        echo "Thank you for useing. But sorry, this platform is not supported yet."
+        exit 1
     fi
 
     setup_libuv
     setup_picojson
     setup_websocketpp
-    # setup_pb
+    setup_protoc_native
     setup_webrtc
 }
 
 setup_web() {
     setup_picojson
     setup_emscripten
-    # setup_pb
+    setup_protoc_web
 }
 
 # Setup Emscripten
 setup_emscripten() {
     cd ${LOCAL_ENV_PATH}/src
     if ! [ -e emsdk-portable.tar.gz ]; then
-	curl -OL https://s3.amazonaws.com/mozilla-games/emscripten/releases/emsdk-portable.tar.gz
+        curl -OL https://s3.amazonaws.com/mozilla-games/emscripten/releases/emsdk-portable.tar.gz
     fi
     cd ${LOCAL_ENV_PATH}/opt
     if ! [ -e emsdk-portable ]; then
-	tar vzxf ${LOCAL_ENV_PATH}/src/emsdk-portable.tar.gz
+        tar vzxf ${LOCAL_ENV_PATH}/src/emsdk-portable.tar.gz
     fi
     cd ${LOCAL_ENV_PATH}/opt/emsdk-portable
     ./emsdk update
@@ -129,34 +129,34 @@ setup_emscripten() {
 # Compile libuv.
 setup_libuv() {
     if [ "${ID}" != 'macos' ]; then
-	if pkg-config --modversion libuv | grep -o 1.12.0 >/dev/null
-	then
-	    echo libuv 1.12.0 installed
-	else
-	    cd ${LOCAL_ENV_PATH}/src
-	    if ! [ -e libuv-v1.12.0.tar.gz ]; then
-		wget http://dist.libuv.org/dist/v1.12.0/libuv-v1.12.0.tar.gz
-	    fi
-	    if ! [ -e libuv-v1.12.0 ]; then
-		tar zxf libuv-v1.12.0.tar.gz
-	    fi
-	    cd libuv-v1.12.0
-	    sh autogen.sh
-	    ./configure --prefix=${LOCAL_ENV_PATH}
-	    make
-	    make install
-	fi
+        if pkg-config --modversion libuv | grep -o 1.12.0 >/dev/null
+        then
+            echo libuv 1.12.0 installed
+        else
+            cd ${LOCAL_ENV_PATH}/src
+            if ! [ -e libuv-v1.12.0.tar.gz ]; then
+                wget http://dist.libuv.org/dist/v1.12.0/libuv-v1.12.0.tar.gz
+            fi
+            if ! [ -e libuv-v1.12.0 ]; then
+                tar zxf libuv-v1.12.0.tar.gz
+            fi
+            cd libuv-v1.12.0
+            sh autogen.sh
+            ./configure --prefix=${LOCAL_ENV_PATH}
+            make
+            make install
+        fi
     fi
 }
 
 # Download picojson.
 setup_picojson() {
     if [ -e ${LOCAL_ENV_PATH}/src/picojson ]; then
-	cd ${LOCAL_ENV_PATH}/src/picojson
-	git fetch
+        cd ${LOCAL_ENV_PATH}/src/picojson
+        git fetch
     else
-	cd ${LOCAL_ENV_PATH}/src
-	git clone https://github.com/kazuho/picojson.git
+        cd ${LOCAL_ENV_PATH}/src
+        git clone https://github.com/kazuho/picojson.git
     fi
     cd ${LOCAL_ENV_PATH}/src/picojson
     git checkout refs/tags/v1.3.0
@@ -167,39 +167,36 @@ setup_picojson() {
 setup_webrtc() {
     cd ${LOCAL_ENV_PATH}/src
     if [ "${ID}" = 'macos' ]; then
-        # readonly WEBRTC_VER="m75"
-	# readonly WEBRTC_FILE="libwebrtc-75.0.3770.142-macosx-10.14.5.zip"
-	readonly WEBRTC_VER="m72"
-	readonly WEBRTC_FILE="libwebrtc-72.0.3626.119-macosx-10.14.3.zip"
+        readonly WEBRTC_VER="m76"
+        readonly WEBRTC_FILE="libwebrtc-76.0.3809.100-macosx-10.14.6.zip"
+        
     else
-        # readonly WEBRTC_VER="m75"
-	# readonly WEBRTC_FILE="libwebrtc-75.0.3770.142-ubuntu-18.1-x64.tar.gz"
-	readonly WEBRTC_VER="m72"
-	readonly WEBRTC_FILE="libwebrtc-72.0.3626.119-ubuntu-16.04-x64.tar.gz"
+        readonly WEBRTC_VER="m76"
+        readonly WEBRTC_FILE="libwebrtc-76.0.3809.132-ubuntu-18.04-x64.tar.gz"
     fi
 
     if ! [ -e "${WEBRTC_FILE}" ]; then
-	if [ "${ID}" = 'macos' ]; then
-	    curl -OL https://github.com/llamerada-jp/libwebrtc/releases/download/${WEBRTC_VER}/${WEBRTC_FILE}
-	    cd ${LOCAL_ENV_PATH}
-	    rm -rf include/webrtc
-	    unzip -o src/${WEBRTC_FILE}
-	else
-	    wget https://github.com/llamerada-jp/libwebrtc/releases/download/${WEBRTC_VER}/${WEBRTC_FILE}
-	    cd ${LOCAL_ENV_PATH}
-	    rm -rf include/webrtc
-	    tar zxf src/${WEBRTC_FILE}
-	fi
+        if [ "${ID}" = 'macos' ]; then
+            curl -OL https://github.com/llamerada-jp/libwebrtc/releases/download/${WEBRTC_VER}/${WEBRTC_FILE}
+            cd ${LOCAL_ENV_PATH}
+            rm -rf include/webrtc
+            unzip -o src/${WEBRTC_FILE}
+        else
+            wget https://github.com/llamerada-jp/libwebrtc/releases/download/${WEBRTC_VER}/${WEBRTC_FILE}
+            cd ${LOCAL_ENV_PATH}
+            rm -rf include/webrtc
+            tar zxf src/${WEBRTC_FILE}
+        fi
     fi
 }
 
 setup_asio() {
     if [ -e ${LOCAL_ENV_PATH}/src/asio ]; then
-	cd ${LOCAL_ENV_PATH}/src/asio
-	git fetch
+        cd ${LOCAL_ENV_PATH}/src/asio
+        git fetch
     else
-	cd ${LOCAL_ENV_PATH}/src/
-	git clone https://github.com/chriskohlhoff/asio.git
+        cd ${LOCAL_ENV_PATH}/src/
+        git clone https://github.com/chriskohlhoff/asio.git
     fi
     cd ${LOCAL_ENV_PATH}/src/asio
     git checkout refs/tags/asio-1-12-2
@@ -213,11 +210,11 @@ setup_asio() {
 # Download WebSocket++
 setup_websocketpp() {
     if [ -e ${LOCAL_ENV_PATH}/src/websocketpp ]; then
-	cd ${LOCAL_ENV_PATH}/src/websocketpp
-	git fetch
+        cd ${LOCAL_ENV_PATH}/src/websocketpp
+        git fetch
     else
-	cd ${LOCAL_ENV_PATH}/src
-	git clone https://github.com/zaphoyd/websocketpp.git
+        cd ${LOCAL_ENV_PATH}/src
+        git clone https://github.com/zaphoyd/websocketpp.git
     fi
     cd ${LOCAL_ENV_PATH}/src/websocketpp
     git checkout refs/tags/0.8.1
@@ -226,39 +223,49 @@ setup_websocketpp() {
     make install
 }
 
-# Build Protocol Buffers for WebAssembly
-setup_pb() {
-    if [ "${TARGET}" = 'native' ]; then
-	if [ -e ${LOCAL_ENV_PATH}/src/protobuf_native ]; then
-	    cd ${LOCAL_ENV_PATH}/src/protobuf_native
-	    git fetch
-	else
-	    cd ${LOCAL_ENV_PATH}/src
-	    git clone https://github.com/protocolbuffers/protobuf.git protobuf_native
-	fi
-	cd ${LOCAL_ENV_PATH}/src/protobuf_native
-	git checkout refs/tags/v3.5.1
-	git submodule update --init --recursive
-	./autogen.sh
-	./configure --prefix=${LOCAL_ENV_PATH}
-	# make install
-	
-    else
-	if [ -e ${LOCAL_ENV_PATH}/src/protobuf_wa ]; then
-	    cd ${LOCAL_ENV_PATH}/src/protobuf_wa
-	    git fetch
-	else
-	    cd ${LOCAL_ENV_PATH}/src
-	    git clone https://github.com/protocolbuffers/protobuf.git protobuf_wa
-	fi
-	cd ${LOCAL_ENV_PATH}/src/protobuf_wa
-	git checkout refs/tags/v3.5.1
-	git submodule update --init --recursive
-	./autogen.sh
-	emconfigure ./configure --prefix=${LOCAL_ENV_PATH}/wa --disable-shared
-	emmake make
-	emmake make install
+# Build Protocol Buffers on native
+setup_protoc_native() {
+    if ! [ -e ${LOCAL_ENV_PATH}/bin/protoc ]; then
+        if [ -e ${LOCAL_ENV_PATH}/src/protobuf_native ]; then
+            cd ${LOCAL_ENV_PATH}/src/protobuf_native
+            git fetch
+        else
+            cd ${LOCAL_ENV_PATH}/src
+            git clone https://github.com/protocolbuffers/protobuf.git protobuf_native
+        fi
+            cd ${LOCAL_ENV_PATH}/src/protobuf_native
+        git checkout refs/tags/v3.9.1
+        git submodule update --init --recursive
+        ./autogen.sh
+        ./configure --prefix=${LOCAL_ENV_PATH}
+        make
+        make install
     fi
+
+    cd ${ROOT_PATH}
+    ${LOCAL_ENV_PATH}/bin/protoc -I=src --cpp_out=src src/core/*.proto
+    ${LOCAL_ENV_PATH}/bin/protoc -I=src --cpp_out=src src/core/map_paxos/*.proto
+    ${LOCAL_ENV_PATH}/bin/protoc -I=src --cpp_out=src src/core/pubsub_2d/*.proto
+}
+
+# Build Protocol Buffers for WebAssembly
+setup_protoc_web() {
+    setup_protoc_native()
+
+    if [ -e ${LOCAL_ENV_PATH}/src/protobuf_wa ]; then
+        cd ${LOCAL_ENV_PATH}/src/protobuf_wa
+        git fetch
+    else
+        cd ${LOCAL_ENV_PATH}/src
+        git clone https://github.com/protocolbuffers/protobuf.git protobuf_wa
+    fi
+    cd ${LOCAL_ENV_PATH}/src/protobuf_wa
+    git checkout refs/tags/v3.9.1
+    git submodule update --init --recursive
+    ./autogen.sh
+    emconfigure ./configure --prefix=${LOCAL_ENV_PATH}/wa --disable-shared
+    emmake make
+    emmake make install
 }
 
 # Compile native programs.
@@ -292,16 +299,16 @@ while getopts dhw OPT
 do
 
     case $OPT in
-	d)  ENABLE_DEBUG='true'
-	    ;;
-	h)  show_usage $0
-	    exit 0
-	    ;;
-	w)  TARGET='web'
-	    ;;
-	\?) show_usage $0
-	    exit 1
-	    ;;
+        d)  ENABLE_DEBUG='true'
+            ;;
+        h)  show_usage $0
+            exit 0
+            ;;
+        w)  TARGET='web'
+            ;;
+        \?) show_usage $0
+            exit 1
+            ;;
     esac
 done
 shift $((OPTIND - 1))

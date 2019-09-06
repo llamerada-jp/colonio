@@ -40,7 +40,6 @@ else()
 
   elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     # Linux
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
     list(APPEND webrtc_libs "-Wl,--start-group")
 
     file(READ ${LOCAL_ENV_PATH}/exports_libwebrtc.txt webrtc_read_tmp)
@@ -49,7 +48,7 @@ else()
 
     list(APPEND webrtc_libs "-Wl,--end-group")
 
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWEBRTC_LINUX=1 -DWEBRTC_POSIX=1 -D_GLIBCXX_USE_CXX11_ABI=0")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWEBRTC_LINUX=1 -DWEBRTC_POSIX=1")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden -fvisibility-inlines-hidden")
     pkg_search_module(X11 REQUIRED x11)
     list(APPEND webrtc_libs ${X11_LIBRARIES})
@@ -81,21 +80,11 @@ else()
   include_directories(${PROJECT_SOURCE_DIR}/local/include/third_party/boringssl/src/include)
 
   # ProtocolBuffers
-  # Option copy from WebRTC
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGOOGLE_PROTOBUF_NO_RTTI")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER")
-  include_directories(${PROJECT_SOURCE_DIR}/local/include/third_party/protobuf/src)
+  list(APPEND extra_libs "protobuf")
 endif()
 
 # Compile option for each files.
 set_source_files_properties(
-  core/map_paxos/map_paxos_protocol.pb.cc
-  core/module_protocol.pb.cc
-  core/node_accessor_protocol.pb.cc
-  core/protocol.pb.cc
-  core/pubsub_2d/pubsub_2d_protocol.pb.cc
-  core/routing_protocol.pb.cc
-  core/seed_accessor_protocol.pb.cc
   core/webrtc_context_native.cpp
   core/webrtc_link_native.cpp
   PROPERTIES
@@ -242,14 +231,14 @@ else()
 
       # simulate
       add_executable(simulate
-	simulate/simulate.cpp
-	)
+        simulate/simulate.cpp
+        )
       target_link_libraries(simulate
-	colonio
-	${webrtc_libs}
-	${extra_libs}
-	${HIREDIS_LIBRARIES}
-	)
+        colonio
+        ${webrtc_libs}
+        ${extra_libs}
+        ${HIREDIS_LIBRARIES}
+        )
     endif()
 
     install(TARGETS colonio

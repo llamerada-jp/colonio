@@ -20,8 +20,8 @@
 #endif
 
 #include <api/create_peerconnection_factory.h>
-#include <api/peerconnectioninterface.h>
-#include <rtc_base/physicalsocketserver.h>
+#include <api/peer_connection_interface.h>
+#include <rtc_base/physical_socket_server.h>
 #include <rtc_base/thread.h>
 
 namespace colonio {

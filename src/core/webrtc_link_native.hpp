@@ -21,7 +21,7 @@
 
 #include <picojson.h>
 
-#include <api/peerconnectioninterface.h>
+#include <api/peer_connection_interface.h>
 
 #include <atomic>
 #include <condition_variable>
