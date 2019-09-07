@@ -3,11 +3,15 @@ find_package(PkgConfig)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   # for WebAssembly(emscripten)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s WASM=1")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s ALLOW_MEMORY_GROWTH=1")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s NO_EXIT_RUNTIME=1")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s NO_FILESYSTEM=1")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s RESERVED_FUNCTION_POINTERS=32")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s EXTRA_EXPORTED_RUNTIME_METHODS=['addFunction','ccall','cwrap']")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s DISABLE_EXCEPTION_CATCHING=0")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s ERROR_ON_UNDEFINED_SYMBOLS=0")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --js-library ${CMAKE_CURRENT_SOURCE_DIR}/js/api.js")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Oz --llvm-ltoo 1")
 
   # Use -s ASSERTIONS=2 to get some useful information about the function pointer being called, and its type.
   # But, Its causes very slow to load wasm.
@@ -16,6 +20,9 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -s ASSERTIONS=1")
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -s DEMANGLE_SUPPORT=1")
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2")
+
+  # ProtocolBuffers on WebAssembly
+  list(APPEND webassembly_libs "protobuf")
 
 else()
   # for native (macOS or Linux)
@@ -156,7 +163,9 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
     ${HEADER_FILES}
     ${COLONIO_FILES}
     )
-  target_link_libraries(colonio)
+  target_link_libraries(colonio
+    ${webassembly_libs}
+    )
 
   if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
     add_custom_target(libcolonio ALL

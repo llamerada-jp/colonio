@@ -250,7 +250,7 @@ setup_protoc_native() {
 
 # Build Protocol Buffers for WebAssembly
 setup_protoc_web() {
-    setup_protoc_native()
+    setup_protoc_native
 
     if [ -e ${LOCAL_ENV_PATH}/src/protobuf_wa ]; then
         cd ${LOCAL_ENV_PATH}/src/protobuf_wa

@@ -11,10 +11,11 @@ if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   option(WITH_SIMULATE "Generate simulate program." OFF)
 endif()
 
-#
-set(CMAKE_CXX_STANDARD 14)
-
 if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
+  # Enable C++14
+  # I cannot use CMAKE_CXX_STANDARD when emscripten?
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+
   # Add local include path.
   # include_directories(/usr/local/include)
   include_directories(${LOCAL_ENV_PATH}/include)
@@ -24,6 +25,9 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   link_directories(${LOCAL_ENV_PATH}/wa/lib)
 
 else()
+  # Enable C++14
+  set(CMAKE_CXX_STANDARD 14)
+
   # Add local include path.
   include_directories(/usr/local/include)
   include_directories(${LOCAL_ENV_PATH}/include)
