@@ -13,3 +13,6 @@
 
 # Project file of Visual Studio Code.
 .vscode
+
+# Runtime path
+/etc

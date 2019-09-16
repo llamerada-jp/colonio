@@ -134,6 +134,21 @@ const (
 	LinkMutex  = 2
 )
 
+/* Logger is interface of used to output log for seed module.
+ */
+type Logger struct {
+	E *log.Logger
+	W *log.Logger
+	I *log.Logger
+	D *log.Logger
+}
+
+var logger *Logger
+
+func SetLogger(l *Logger) {
+	logger = l
+}
+
 /**
  * 現在時刻(Unix time)をミリ秒単位で取得する。
  * @return ms
@@ -148,10 +163,9 @@ func newContext() *context {
 	}
 }
 
-func NewSeed(binder GroupBinder, logger Logger) *Seed {
+func NewSeed(binder GroupBinder) *Seed {
 	return &Seed{
 		binder:      binder,
-		logger:      logger,
 		groups:      make(map[string]*Group),
 		poolUpgrade: NewPool(32),
 		poolReceive: NewPool(32),
@@ -182,7 +196,7 @@ func nidToString(nid *proto.NodeID) string {
 
 func (seed *Seed) CreateGroup(groupName string, config *Config) *Group {
 	if _, ok := seed.groups[groupName]; ok {
-		log.Fatal("Duplicate group : " + groupName)
+		logger.E.Fatalln("Duplicate group : " + groupName)
 	}
 	tickerPeriod := make(chan bool)
 
@@ -231,6 +245,7 @@ func (seed *Seed) DestroyGroup(group *Group) {
 }
 
 func (seed *Seed) Start(host string, port int) error {
+	logger.I.Printf("Start colonio host = %s , port = %d\n", host, port)
 	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
 		return err
@@ -241,14 +256,14 @@ func (seed *Seed) Start(host string, port int) error {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Fatal(err)
+			logger.E.Fatalln(err)
 		}
 
 		seed.poolUpgrade.Schedule(func() {
 			context := newContext()
 			err := seed.upgradeSocket(context, conn)
 			if err != nil {
-				log.Println(err)
+				logger.W.Println(err)
 			}
 		})
 	}
@@ -267,13 +282,12 @@ func (seed *Seed) upgradeSocket(context *context, conn net.Conn) error {
 
 	_, err := upgrader.Upgrade(conn)
 	if err != nil {
-		log.Println("upgrade error")
-		log.Println(err)
+		logger.W.Println("upgrade error", err)
 		conn.Close()
 		return err
 
 	} else {
-		log.Println("upgrade success and create a link")
+		logger.D.Println("upgrade success and create a link")
 		link := group.createLink(context, conn)
 		seed.linkPoller <- link
 
@@ -284,7 +298,7 @@ func (seed *Seed) upgradeSocket(context *context, conn net.Conn) error {
 func (seed *Seed) pollLink() {
 	poller, err := netpoll.New(nil)
 	if err != nil {
-		log.Fatal(err)
+		logger.E.Fatalln(err)
 		// handle error
 		return
 	}
@@ -305,7 +319,7 @@ func (seed *Seed) pollLink() {
 				// 受信データが無くなったら切断
 				if next, err := link.receive(context); !next || err != nil {
 					if err != nil {
-						log.Fatal(err)
+						logger.W.Println(err)
 					}
 					poller.Stop(desc)
 					link.close(context)
@@ -362,7 +376,6 @@ func (group *Group) execEachTick(context *context) {
 	for link := range group.links {
 		// タイムアウトのチェック
 		if link.timeLastRecv+group.config.Timeout < timeNow {
-			fmt.Println("timeout")
 			link.close(context)
 		}
 
@@ -439,14 +452,14 @@ func (link *Link) receive(context *context) (bool, error) {
 
 	switch header.OpCode {
 	case ws.OpPing:
-		fmt.Println("receive OpPing")
+		logger.D.Println("receive OpPing")
 		frame := ws.NewPongFrame(payload)
 		if err := ws.WriteFrame(link.conn, frame); err != nil {
 			return false, err
 		}
 
 	case ws.OpBinary:
-		fmt.Println("receive OpBinary")
+		logger.D.Println("receive OpBinary")
 		var packet proto.NodeAccessor
 		if err := proto3.Unmarshal(payload, &packet); err != nil {
 			return false, err
@@ -463,11 +476,11 @@ func (link *Link) receive(context *context) (bool, error) {
 			}
 
 		} else {
-			fmt.Println("packet dropped.")
+			logger.W.Println("packet dropped.")
 		}
 
 	case ws.OpClose:
-		fmt.Println("receive OpClose")
+		logger.D.Println("receive OpClose")
 		link.close(context)
 		return false, nil
 	}
@@ -479,7 +492,7 @@ func (link *Link) receivePacket(context *context, packet *proto.NodeAccessor) er
 	if packet.Channel == ChannelSeed {
 		switch packet.CommandId {
 		case MethodSeedAuth:
-			fmt.Println("receive packet auth")
+			logger.D.Println("receive packet auth")
 			return link.recvPacketAuth(context, packet)
 
 		case MethodSeedPing:
@@ -520,7 +533,7 @@ func (link *Link) recvPacketAuth(context *context, packet *proto.NodeAccessor) e
 		link.group.config.Node["revision"] = link.group.config.Revision
 		configByte, err := json.Marshal(link.group.config.Node)
 		if err != nil {
-			log.Fatal(err)
+			logger.E.Fatalln(err)
 		}
 		contentReply := &proto.AuthSuccess{
 			Config: (string)(configByte),
@@ -529,7 +542,6 @@ func (link *Link) recvPacketAuth(context *context, packet *proto.NodeAccessor) e
 			return err
 		}
 	} else {
-		fmt.Println("nid?")
 		return link.sendFailure(context, packet, nil)
 	}
 
@@ -566,10 +578,10 @@ func (link *Link) relayPacket(context *context, packet *proto.NodeAccessor) erro
 
 	if (packet.Mode & ModeReply) != 0x0 {
 		if _, ok := link.group.nidMap[nidToString(packet.DstNid)]; ok {
-			fmt.Println("Relay a packet.")
+			logger.D.Println("Relay a packet.")
 			link.group.nidMap[nidToString(packet.DstNid)].sendPacket(context, packet)
 		} else {
-			fmt.Println("A packet dropped.")
+			logger.W.Println("A packet dropped.")
 		}
 
 	} else {
@@ -610,7 +622,7 @@ func (link *Link) sendHint(context *context) error {
 	}
 	contentByte, err := proto3.Marshal(content)
 	if err != nil {
-		log.Fatal(err)
+		logger.E.Fatalln(err)
 	}
 
 	packet := &proto.NodeAccessor{
@@ -623,7 +635,7 @@ func (link *Link) sendHint(context *context) error {
 		Content:   contentByte,
 	}
 
-	fmt.Printf("Send hint.(%d)\n", len(contentByte))
+	logger.D.Printf("Send hint.(%d)\n", len(contentByte))
 	return link.sendPacket(context, packet)
 }
 
@@ -637,7 +649,7 @@ func (link *Link) sendPing(context *context) error {
 		CommandId: MethodSeedPing,
 	}
 
-	fmt.Println("Send ping.")
+	logger.D.Println("Send ping.")
 	return link.sendPacket(context, packet)
 }
 
@@ -651,14 +663,14 @@ func (link *Link) sendRequireRandom(context *context) error {
 		CommandId: MethodSeedRequireRandom,
 	}
 
-	fmt.Println("Send require random.")
+	logger.D.Println("Send require random.")
 	return link.sendPacket(context, packet)
 }
 
 func (link *Link) sendSuccess(context *context, replyFor *proto.NodeAccessor, content proto3.Message) error {
 	contentByte, err := proto3.Marshal(content)
 	if err != nil {
-		log.Fatal(err)
+		logger.E.Fatalln(err)
 	}
 
 	packet := &proto.NodeAccessor{
@@ -671,7 +683,7 @@ func (link *Link) sendSuccess(context *context, replyFor *proto.NodeAccessor, co
 		Content:   contentByte,
 	}
 
-	fmt.Println("Send success.")
+	logger.D.Println("Send success.")
 	return link.sendPacket(context, packet)
 }
 
@@ -695,7 +707,7 @@ func (link *Link) sendFailure(context *context, replyFor *proto.NodeAccessor, co
 		Content:   contentByte,
 	}
 
-	fmt.Println("Send failure.")
+	logger.D.Println("Send failure.")
 	return link.sendPacket(context, packet)
 }
 
@@ -709,14 +721,14 @@ func (link *Link) sendPacket(context *context, packet *proto.NodeAccessor) error
 	link.timeLastSend = getNowMs()
 	packetBin, err := proto3.Marshal(packet)
 	if err != nil {
-		log.Fatal(err)
+		logger.E.Fatalln(err)
 	}
 	frame := ws.NewBinaryFrame(packetBin)
 	return ws.WriteFrame(link.conn, frame)
 }
 
 func (link *Link) close(context *context) error {
-	fmt.Println("close link")
+	logger.D.Println("close link")
 	if link.lockMutex(context) {
 		defer link.unlockMutex(context)
 	}

@@ -20,8 +20,10 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"io"
 	"io/ioutil"
 	"log"
+	"log/syslog"
 	"os"
 
 	"github.com/colonio/colonio-seed/seed"
@@ -42,6 +44,7 @@ type Seed struct {
 
 func newSeed(config *SeedConfig) *Seed {
 	s := &Seed{}
+
 	s.seed = seed.NewSeed(s)
 	s.config = config
 	return s
@@ -70,9 +73,63 @@ func (s *Seed) Bind(uri string) (*seed.Group, error) {
 	}
 }
 
+func initLogger(isSyslog bool, isVerbose bool) {
+	logger := &seed.Logger{}
+
+	var e io.Writer
+	var w io.Writer
+	var i io.Writer
+	var d io.Writer
+	if isSyslog {
+		var err error
+		e, err = syslog.New(syslog.LOG_ERR, "colonio")
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		w, err = syslog.New(syslog.LOG_WARNING, "colonio")
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		i, err = syslog.New(syslog.LOG_INFO, "colonio")
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		if isVerbose {
+			d, err = syslog.New(syslog.LOG_DEBUG, "colonio")
+			if err != nil {
+				log.Fatalln(err)
+			}
+
+		} else {
+			d = ioutil.Discard
+		}
+	} else {
+		e = os.Stderr
+		w = os.Stderr
+		i = os.Stderr
+		if isVerbose {
+			d = os.Stderr
+		} else {
+			d = ioutil.Discard
+		}
+	}
+
+	logger.E = log.New(e, "[ERROR]", log.Ldate|log.Ltime|log.LUTC|log.Lshortfile)
+	logger.W = log.New(w, "[WARN]", log.Ldate|log.Ltime|log.LUTC|log.Lshortfile)
+	logger.I = log.New(i, "[INFO]", log.Ldate|log.Ltime|log.LUTC|log.Lshortfile)
+	logger.D = log.New(d, "[DEBUG]", log.Ldate|log.Ltime|log.LUTC|log.Lshortfile)
+
+	seed.SetLogger(logger)
+}
+
 func main() {
 	// Parse parameter
 	configFName := flag.String("config", "", "configure file")
+	isSyslog := flag.Bool("syslog", false, "Output log with syslog")
+	isVerbose := flag.Bool("verbose", false, "Show commands to run and use verbose output")
 	flag.Parse()
 
 	// Read configure file
@@ -94,6 +151,7 @@ func main() {
 		}
 	}
 
+	initLogger(*isSyslog, *isVerbose)
 	s := newSeed(config)
 	s.start()
 }
