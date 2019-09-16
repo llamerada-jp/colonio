@@ -246,6 +246,8 @@ setup_protoc_native() {
     ${LOCAL_ENV_PATH}/bin/protoc -I=src --cpp_out=src src/core/*.proto
     ${LOCAL_ENV_PATH}/bin/protoc -I=src --cpp_out=src src/core/map_paxos/*.proto
     ${LOCAL_ENV_PATH}/bin/protoc -I=src --cpp_out=src src/core/pubsub_2d/*.proto
+
+    build_protoc
 }
 
 # Build Protocol Buffers for WebAssembly
@@ -274,6 +276,13 @@ build_native() {
     cd ${BUILD_PATH}
     cmake -DLOCAL_ENV_PATH=${LOCAL_ENV_PATH} -DCMAKE_BUILD_TYPE=${BUILD_TYPE} ${ROOT_PATH}
     make
+}
+
+build_protoc() {
+    cd ${ROOT_PATH}
+    ./local/bin/protoc --cpp_out src -I src src/core/*.proto
+    ./local/bin/protoc --cpp_out src -I src src/core/map_paxos/*.proto
+    ./local/bin/protoc --cpp_out src -I src src/core/pubsub_2d/*.proto
 }
 
 build_web() {
