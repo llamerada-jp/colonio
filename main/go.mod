@@ -9,3 +9,5 @@ require (
 )
 
 replace github.com/colonio/colonio-seed/seed => ../seed
+
+replace github.com/colonio/colonio-seed/proto => ../proto

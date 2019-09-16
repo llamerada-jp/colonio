@@ -24,11 +24,12 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"strconv"
 	"sync"
 	"time"
 
+	"github.com/colonio/colonio-seed/proto"
 	"github.com/gobwas/ws"
+	proto3 "github.com/golang/protobuf/proto"
 	"github.com/mailru/easygo/netpoll"
 )
 
@@ -45,14 +46,14 @@ func (c *Config) CastConfig() *Config {
 
 type Link struct {
 	group        *Group
-	nid          string
+	nid          *proto.NodeID
 	mutex        sync.Mutex
 	timeCreate   int64
 	timeLastRecv int64
 	timeLastSend int64
 	conn         net.Conn // WebSocket connection.
 	assigned     bool
-	offerID      string
+	offerID      uint32
 }
 
 type Group struct {
@@ -78,43 +79,6 @@ type Seed struct {
 	//poller      netpoll.Poller
 }
 
-type Packet struct {
-	DstNid    string `json:"dst_nid"`
-	SrcNid    string `json:"src_nid"`
-	ID        string `json:"id"`
-	Mode      int    `json:"mode"`
-	Channel   int    `json:"channel"`
-	CommandID int    `json:"command_id"`
-	Content   string `json:"content"`
-}
-
-type ContentSeedAuth struct {
-	Version string `json:"version"`
-	Token   string `json:"token"`
-	Hint    string `json:"hint"`
-}
-
-type ContentReplySeedAuth struct {
-	Config map[string]interface{} `json:"config"`
-}
-
-type ContentRelayWebrtcConnectOffer struct {
-	PrimeNid  string `json:"prime_nid"`
-	SecondNid string `json:"second_nid"`
-	Sdp       string `json:"sdp"`
-	Type      string `json:"type"`
-}
-
-type ContentHint struct {
-	Hint string `json:"hint"`
-}
-
-type ContentPing struct {
-}
-
-type ContentRequireRandom struct {
-}
-
 type context struct {
 	routineLocal map[int]interface{}
 }
@@ -124,8 +88,15 @@ const (
 	ProtocolVersion = "A1"
 
 	// Node ID.
-	NidNone = ""
-	NidSeed = "seed"
+	NidStrNone    = ""
+	NidStrThis    = "."
+	NidStrSeed    = "seed"
+	NidStrNext    = "next"
+	NidTypeNone   = 0
+	NidTypeNormal = 1
+	NidTypeThis   = 2
+	NidTypeSeed   = 3
+	NidTypeNext   = 4
 
 	// Packet mode.
 	ModeNone      = 0x0000
@@ -137,7 +108,7 @@ const (
 
 	ChannelNone          = 0
 	ChannelSeed          = 1
-	ChannelwebrtcConnect = 2
+	ChannelWebrtcConnect = 2
 
 	// Commonly packet method.
 	MethodError   = 0xffff
@@ -151,7 +122,7 @@ const (
 
 	MethodWebrtcConnectOffer = 1
 
-	// Offer type of webrtc connect.
+	// Offer type of WebRTC connect.
 	OfferTypeFirst = 0
 
 	// Hint
@@ -177,14 +148,36 @@ func newContext() *context {
 	}
 }
 
-func NewSeed(binder GroupBinder) *Seed {
+func NewSeed(binder GroupBinder, logger Logger) *Seed {
 	return &Seed{
 		binder:      binder,
+		logger:      logger,
 		groups:      make(map[string]*Group),
 		poolUpgrade: NewPool(32),
 		poolReceive: NewPool(32),
 		linkPoller:  make(chan *Link),
 	}
+}
+
+func nidToString(nid *proto.NodeID) string {
+	switch nid.Type {
+	//case NidTypeNone:
+	//	return NidNone
+
+	case NidTypeNormal:
+		return fmt.Sprintf("%016x%016x", nid.Id0, nid.Id1)
+
+	case NidTypeThis:
+		return NidStrThis
+
+	case NidTypeSeed:
+		return NidStrSeed
+
+	case NidTypeNext:
+		return NidStrNext
+	}
+
+	return NidStrNone
 }
 
 func (seed *Seed) CreateGroup(groupName string, config *Config) *Group {
@@ -274,14 +267,18 @@ func (seed *Seed) upgradeSocket(context *context, conn net.Conn) error {
 
 	_, err := upgrader.Upgrade(conn)
 	if err != nil {
+		log.Println("upgrade error")
+		log.Println(err)
 		conn.Close()
 		return err
+
+	} else {
+		log.Println("upgrade success and create a link")
+		link := group.createLink(context, conn)
+		seed.linkPoller <- link
+
+		return nil
 	}
-
-	link := group.createLink(context, conn)
-	seed.linkPoller <- link
-
-	return nil
 }
 
 func (seed *Seed) pollLink() {
@@ -343,12 +340,13 @@ func (group *Group) removeLink(context *context, link *Link) {
 	}
 
 	link.group = nil
-	if link.nid != "" {
-		if _, ok := group.nidMap[link.nid]; ok {
-			delete(group.nidMap, link.nid)
+	if link.nid != nil && link.nid.Type != NidTypeNone {
+		nidStr := nidToString(link.nid)
+		if _, ok := group.nidMap[nidStr]; ok {
+			delete(group.nidMap, nidStr)
 		}
-		if _, ok := group.assigned[link.nid]; ok {
-			delete(group.assigned, link.nid)
+		if _, ok := group.assigned[nidStr]; ok {
+			delete(group.assigned, nidStr)
 		}
 	}
 	delete(group.links, link)
@@ -397,7 +395,7 @@ func (group *Group) isOnlyOne(context *context, link *Link) bool {
 		defer group.unlockMutex(context)
 	}
 
-	_, ok := group.assigned[link.nid]
+	_, ok := group.assigned[nidToString(link.nid)]
 	return len(group.assigned) == 0 || (len(group.assigned) == 1 && ok)
 }
 
@@ -441,18 +439,20 @@ func (link *Link) receive(context *context) (bool, error) {
 
 	switch header.OpCode {
 	case ws.OpPing:
+		fmt.Println("receive OpPing")
 		frame := ws.NewPongFrame(payload)
 		if err := ws.WriteFrame(link.conn, frame); err != nil {
 			return false, err
 		}
 
-	case ws.OpText:
-		var packet Packet
-		if err := json.Unmarshal(payload, &packet); err != nil {
+	case ws.OpBinary:
+		fmt.Println("receive OpBinary")
+		var packet proto.NodeAccessor
+		if err := proto3.Unmarshal(payload, &packet); err != nil {
 			return false, err
 		}
 
-		if packet.DstNid == NidSeed {
+		if packet.DstNid.Type == NidTypeSeed {
 			if err := link.receivePacket(context, &packet); err != nil {
 				return false, err
 			}
@@ -467,6 +467,7 @@ func (link *Link) receive(context *context) (bool, error) {
 		}
 
 	case ws.OpClose:
+		fmt.Println("receive OpClose")
 		link.close(context)
 		return false, nil
 	}
@@ -474,10 +475,11 @@ func (link *Link) receive(context *context) (bool, error) {
 	return true, nil
 }
 
-func (link *Link) receivePacket(context *context, packet *Packet) error {
+func (link *Link) receivePacket(context *context, packet *proto.NodeAccessor) error {
 	if packet.Channel == ChannelSeed {
-		switch packet.CommandID {
+		switch packet.CommandId {
 		case MethodSeedAuth:
+			fmt.Println("receive packet auth")
 			return link.recvPacketAuth(context, packet)
 
 		case MethodSeedPing:
@@ -494,9 +496,9 @@ func (link *Link) receivePacket(context *context, packet *Packet) error {
 	}
 }
 
-func (link *Link) recvPacketAuth(context *context, packet *Packet) error {
-	var content ContentSeedAuth
-	if err := json.Unmarshal([]byte(packet.Content), &content); err != nil {
+func (link *Link) recvPacketAuth(context *context, packet *proto.NodeAccessor) error {
+	var content proto.Auth
+	if err := proto3.Unmarshal(packet.Content, &content); err != nil {
 		return err
 	}
 
@@ -504,59 +506,56 @@ func (link *Link) recvPacketAuth(context *context, packet *Packet) error {
 		defer link.group.unlockMutex(context)
 	}
 
-	if l2, ok := link.group.nidMap[packet.SrcNid]; ok && l2 != link {
+	if l2, ok := link.group.nidMap[nidToString(packet.SrcNid)]; ok && l2 != link {
 		// IDが重複している
-		return link.sendFailure(context, packet, struct{}{})
+		return link.sendFailure(context, packet, nil)
 
 	} else if content.Version != ProtocolVersion {
 		// バージョンがサポート外
-		return link.sendFailure(context, packet, struct{}{})
+		return link.sendFailure(context, packet, nil)
 
-	} else if link.nid == NidNone {
+	} else if link.nid == nil || link.nid.Type == NidTypeNone {
 		link.nid = packet.SrcNid
-		link.group.nidMap[packet.SrcNid] = link
-		contentReply := ContentReplySeedAuth{
-			Config: link.group.config.Node,
+		link.group.nidMap[nidToString(packet.SrcNid)] = link
+		link.group.config.Node["revision"] = link.group.config.Revision
+		configByte, err := json.Marshal(link.group.config.Node)
+		if err != nil {
+			log.Fatal(err)
 		}
-		contentReply.Config["revision"] = link.group.config.Revision
+		contentReply := &proto.AuthSuccess{
+			Config: (string)(configByte),
+		}
 		if err := link.sendSuccess(context, packet, contentReply); err != nil {
 			return err
 		}
 	} else {
-		return link.sendFailure(context, packet, struct{}{})
+		fmt.Println("nid?")
+		return link.sendFailure(context, packet, nil)
 	}
 
-	// if hint of assigned is ON, regist node-id as assigned it yet
-	hint, err := strconv.ParseInt(content.Hint, 16, 32)
-	if err != nil {
-		return err
-	}
-	if (hint&HintAssigned) != 0 || link.group.isOnlyOne(context, link) {
+	// if hint of assigned is ON, bind node-id as assigned it yet
+	if (content.Hint&HintAssigned) != 0 || link.group.isOnlyOne(context, link) {
 		link.assigned = true
-		link.group.assigned[packet.SrcNid] = struct{}{}
+		link.group.assigned[nidToString(packet.SrcNid)] = struct{}{}
 	}
 
 	return link.sendHint(context)
 }
 
-func (link *Link) relayPacket(context *context, packet *Packet) error {
+func (link *Link) relayPacket(context *context, packet *proto.NodeAccessor) error {
 	if link.lockMutex(context) {
 		defer link.unlockMutex(context)
 	}
 	// IDの確認用にWEBRTC_CONNECT::OFFERパケットとその返事を利用する
-	if packet.Channel == ChannelwebrtcConnect {
-		switch packet.CommandID {
+	if packet.Channel == ChannelWebrtcConnect {
+		switch packet.CommandId {
 		case MethodWebrtcConnectOffer:
-			var content ContentRelayWebrtcConnectOffer
-			if err := json.Unmarshal([]byte(packet.Content), &content); err != nil {
+			var content proto.Offer
+			if err := proto3.Unmarshal(packet.Content, &content); err != nil {
 				return err
 			}
-			t, err := strconv.ParseInt(content.Type, 16, 32)
-			if err != nil {
-				return err
-			}
-			if t == OfferTypeFirst {
-				link.offerID = packet.ID
+			if content.Type == OfferTypeFirst {
+				link.offerID = packet.Id
 			}
 		}
 	}
@@ -566,26 +565,26 @@ func (link *Link) relayPacket(context *context, packet *Packet) error {
 	}
 
 	if (packet.Mode & ModeReply) != 0x0 {
-		if _, ok := link.group.nidMap[packet.DstNid]; ok {
+		if _, ok := link.group.nidMap[nidToString(packet.DstNid)]; ok {
 			fmt.Println("Relay a packet.")
-			link.group.nidMap[packet.DstNid].sendPacket(context, packet)
+			link.group.nidMap[nidToString(packet.DstNid)].sendPacket(context, packet)
 		} else {
 			fmt.Println("A packet dropped.")
 		}
 
 	} else {
 		// 自分以外のランダムなlinkにパケットを転送
-		srcNid := link.nid
+		srcNidStr := nidToString(link.nid)
 		siz := len(link.group.assigned)
-		if _, ok := link.group.assigned[srcNid]; ok {
+		if _, ok := link.group.assigned[srcNidStr]; ok {
 			siz--
 		}
 		if siz != 0 {
 			i := rand.Intn(siz)
-			for dstNid := range link.group.assigned {
+			for dstNidStr := range link.group.assigned {
 				if i == 0 {
-					return link.group.nidMap[dstNid].sendPacket(context, packet)
-				} else if dstNid != srcNid {
+					return link.group.nidMap[dstNidStr].sendPacket(context, packet)
+				} else if dstNidStr != srcNidStr {
 					i--
 				}
 			}
@@ -599,50 +598,43 @@ func (link *Link) relayPacket(context *context, packet *Packet) error {
 }
 
 func (link *Link) sendHint(context *context) error {
-	var hint int64
+	var hint uint32
 	if link.assigned {
 		hint = hint | HintAssigned
 	}
 	if link.group.isOnlyOne(context, link) {
 		hint = hint | HintOnlyone
 	}
-	content := &ContentHint{
-		Hint: strconv.FormatInt(hint, 16),
+	content := &proto.Hint{
+		Hint: hint,
 	}
-	contentStr, err := json.Marshal(content)
+	contentByte, err := proto3.Marshal(content)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	packet := &Packet{
+	packet := &proto.NodeAccessor{
 		DstNid:    link.nid,
-		SrcNid:    NidSeed,
-		ID:        "00000000",
+		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
+		Id:        0,
 		Mode:      ModeExplicit | ModeOneWay,
 		Channel:   1, // seed
-		CommandID: MethodSeedHint,
-		Content:   string(contentStr),
+		CommandId: MethodSeedHint,
+		Content:   contentByte,
 	}
 
-	fmt.Println("Send hint.")
+	fmt.Printf("Send hint.(%d)\n", len(contentByte))
 	return link.sendPacket(context, packet)
 }
 
 func (link *Link) sendPing(context *context) error {
-	content := &ContentPing{}
-	contentStr, err := json.Marshal(content)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	packet := &Packet{
+	packet := &proto.NodeAccessor{
 		DstNid:    link.nid,
-		SrcNid:    NidSeed,
-		ID:        "00000000",
+		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
+		Id:        0,
 		Mode:      ModeExplicit | ModeOneWay,
 		Channel:   1, //seed
-		CommandID: MethodSeedPing,
-		Content:   string(contentStr),
+		CommandId: MethodSeedPing,
 	}
 
 	fmt.Println("Send ping.")
@@ -650,67 +642,64 @@ func (link *Link) sendPing(context *context) error {
 }
 
 func (link *Link) sendRequireRandom(context *context) error {
-	content := &ContentRequireRandom{}
-	contentStr, err := json.Marshal(content)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	packet := &Packet{
+	packet := &proto.NodeAccessor{
 		DstNid:    link.nid,
-		SrcNid:    NidSeed,
-		ID:        "00000000",
+		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
+		Id:        0,
 		Mode:      ModeExplicit | ModeOneWay,
 		Channel:   1, //seed
-		CommandID: MethodSeedRequireRandom,
-		Content:   string(contentStr),
+		CommandId: MethodSeedRequireRandom,
 	}
 
 	fmt.Println("Send require random.")
 	return link.sendPacket(context, packet)
 }
 
-func (link *Link) sendSuccess(context *context, replyFor *Packet, content interface{}) error {
-	contentStr, err := json.Marshal(content)
+func (link *Link) sendSuccess(context *context, replyFor *proto.NodeAccessor, content proto3.Message) error {
+	contentByte, err := proto3.Marshal(content)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	packet := &Packet{
+	packet := &proto.NodeAccessor{
 		DstNid:    replyFor.SrcNid,
-		SrcNid:    NidSeed,
-		ID:        replyFor.ID,
+		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
+		Id:        replyFor.Id,
 		Mode:      ModeExplicit | ModeOneWay,
 		Channel:   replyFor.Channel,
-		CommandID: MethodSuccess,
-		Content:   string(contentStr),
+		CommandId: MethodSuccess,
+		Content:   contentByte,
 	}
 
 	fmt.Println("Send success.")
 	return link.sendPacket(context, packet)
 }
 
-func (link *Link) sendFailure(context *context, replyFor *Packet, content interface{}) error {
-	contentStr, err := json.Marshal(content)
-	if err != nil {
-		log.Fatal(err)
+func (link *Link) sendFailure(context *context, replyFor *proto.NodeAccessor, content proto3.Message) error {
+	var contentByte []byte
+	if content != nil {
+		var err error
+		contentByte, err = proto3.Marshal(content)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	packet := &Packet{
+	packet := &proto.NodeAccessor{
 		DstNid:    replyFor.SrcNid,
-		SrcNid:    NidSeed,
-		ID:        replyFor.ID,
+		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
+		Id:        replyFor.Id,
 		Mode:      ModeExplicit | ModeOneWay,
 		Channel:   replyFor.Channel,
-		CommandID: MethodFailure,
-		Content:   string(contentStr),
+		CommandId: MethodFailure,
+		Content:   contentByte,
 	}
 
 	fmt.Println("Send failure.")
 	return link.sendPacket(context, packet)
 }
 
-func (link *Link) sendPacket(context *context, packet *Packet) error {
+func (link *Link) sendPacket(context *context, packet *proto.NodeAccessor) error {
 	if link.lockMutex(context) {
 		defer link.unlockMutex(context)
 	}
@@ -718,15 +707,16 @@ func (link *Link) sendPacket(context *context, packet *Packet) error {
 		return nil
 	}
 	link.timeLastSend = getNowMs()
-	packetStr, err := json.Marshal(packet)
+	packetBin, err := proto3.Marshal(packet)
 	if err != nil {
 		log.Fatal(err)
 	}
-	frame := ws.NewTextFrame(packetStr)
+	frame := ws.NewBinaryFrame(packetBin)
 	return ws.WriteFrame(link.conn, frame)
 }
 
 func (link *Link) close(context *context) error {
+	fmt.Println("close link")
 	if link.lockMutex(context) {
 		defer link.unlockMutex(context)
 	}
@@ -735,9 +725,10 @@ func (link *Link) close(context *context) error {
 			defer link.group.unlockMutex(context)
 		}
 
-		if link.nid != "" {
-			delete(link.group.nidMap, link.nid)
-			delete(link.group.assigned, link.nid)
+		if link.nid != nil && link.nid.Type != NidTypeNone {
+			nidStr := nidToString(link.nid)
+			delete(link.group.nidMap, nidStr)
+			delete(link.group.assigned, nidStr)
 		}
 		delete(link.group.links, link)
 		link.group = nil
