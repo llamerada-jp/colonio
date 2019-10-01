@@ -51,6 +51,7 @@ type Link struct {
 	timeCreate   int64
 	timeLastRecv int64
 	timeLastSend int64
+	srcIP        string
 	conn         net.Conn // WebSocket connection.
 	assigned     bool
 	offerID      uint32
@@ -256,9 +257,8 @@ func (seed *Seed) Start(host string, port int) error {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			logger.E.Fatalln(err)
-		} else {
-			logger.I.Printf("Connect from %s\n", conn.RemoteAddr().String())
+			logger.E.Printf("Accept error (%s) %s\n", conn.RemoteAddr().String(), err)
+			continue
 		}
 
 		seed.poolUpgrade.Schedule(func() {
@@ -273,8 +273,15 @@ func (seed *Seed) Start(host string, port int) error {
 
 func (seed *Seed) upgradeSocket(context *context, conn net.Conn) error {
 	var group *Group
+	var srcIP string = conn.RemoteAddr().String()
 
 	upgrader := ws.Upgrader{
+		OnHeader: func(key []byte, value []byte) error {
+			if string(key) == "X-Forwarded-For" {
+				srcIP = string(value)
+			}
+			return nil
+		},
 		OnRequest: func(uri []byte) error {
 			g, err := seed.binder.Bind(string(uri))
 			group = g
@@ -284,13 +291,14 @@ func (seed *Seed) upgradeSocket(context *context, conn net.Conn) error {
 
 	_, err := upgrader.Upgrade(conn)
 	if err != nil {
-		logger.W.Printf("Upgrade error (%s) %v\n", conn.RemoteAddr().String(), err)
+		logger.W.Printf("Upgrade error (%s) %v\n", srcIP, err)
 		conn.Close()
 		return err
 
 	} else {
-		logger.I.Printf("Upgrade success (%s)\n", conn.RemoteAddr().String())
+		logger.I.Printf("Upgrade success (%s)\n", srcIP)
 		link := group.createLink(context, conn)
+		link.srcIP = srcIP
 		seed.linkPoller <- link
 
 		return nil
@@ -310,6 +318,7 @@ func (seed *Seed) pollLink() {
 		desc := netpoll.Must(netpoll.HandleRead(link.conn))
 		poller.Start(desc, func(ev netpoll.Event) {
 			if ev&netpoll.EventReadHup != 0 {
+				logger.W.Printf("Poller setting failed and close (%s)\n", link.srcIP)
 				context := newContext()
 				poller.Stop(desc)
 				link.close(context)
@@ -320,6 +329,7 @@ func (seed *Seed) pollLink() {
 				context := newContext()
 				// 受信データが無くなったら切断
 				if next, err := link.receive(context); !next || err != nil {
+					logger.I.Printf("Close connection (%s)\n", link.srcIP)
 					if err != nil {
 						logger.W.Println(err)
 					}
@@ -540,10 +550,13 @@ func (link *Link) recvPacketAuth(context *context, packet *proto.NodeAccessor) e
 		contentReply := &proto.AuthSuccess{
 			Config: (string)(configByte),
 		}
-		if err := link.sendSuccess(context, packet, contentReply); err != nil {
+		if err := link.sendSuccess(context, packet, contentReply); err == nil {
+			logger.I.Printf("Authenticate success (%s)\n", link.srcIP)
+		} else {
 			return err
 		}
 	} else {
+		logger.W.Printf("Authenticate failed (%s)\n", link.srcIP)
 		return link.sendFailure(context, packet, nil)
 	}
 
