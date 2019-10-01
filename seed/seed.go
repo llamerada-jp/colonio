@@ -257,6 +257,8 @@ func (seed *Seed) Start(host string, port int) error {
 		conn, err := ln.Accept()
 		if err != nil {
 			logger.E.Fatalln(err)
+		} else {
+			logger.I.Printf("Connect from %s\n", conn.RemoteAddr().String())
 		}
 
 		seed.poolUpgrade.Schedule(func() {
@@ -282,12 +284,12 @@ func (seed *Seed) upgradeSocket(context *context, conn net.Conn) error {
 
 	_, err := upgrader.Upgrade(conn)
 	if err != nil {
-		logger.W.Println("upgrade error", err)
+		logger.W.Printf("Upgrade error (%s) %v\n", conn.RemoteAddr().String(), err)
 		conn.Close()
 		return err
 
 	} else {
-		logger.D.Println("upgrade success and create a link")
+		logger.I.Printf("Upgrade success (%s)\n", conn.RemoteAddr().String())
 		link := group.createLink(context, conn)
 		seed.linkPoller <- link
 
