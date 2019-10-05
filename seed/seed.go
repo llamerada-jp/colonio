@@ -533,10 +533,12 @@ func (link *Link) recvPacketAuth(context *context, packet *proto.NodeAccessor) e
 
 	if l2, ok := link.group.nidMap[nidToString(packet.SrcNid)]; ok && l2 != link {
 		// IDが重複している
+		logger.W.Printf("Authenticate failed by duplicate nid (%s)\n", link.srcIP)
 		return link.sendFailure(context, packet, nil)
 
 	} else if content.Version != ProtocolVersion {
 		// バージョンがサポート外
+		logger.W.Printf("Authenticate failed by wrong protocol version (%s)\n", link.srcIP)
 		return link.sendFailure(context, packet, nil)
 
 	} else if link.nid == nil || link.nid.Type == NidTypeNone {
