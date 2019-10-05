@@ -139,7 +139,6 @@
     var t;
     var i = 0;
     while (1) {
-      assert(ptr + i < TOTAL_MEMORY);
       #ifdef NDEBUG
       t=HEAPU8[ptr+i>>0];
       #else
@@ -656,9 +655,8 @@
     let url = convertPointerToString(urlPtr, urlSiz);
     logd('socket connect', seedLink, url);
     let socket = new WebSocket(url);
-    availableSeedLinks[seedLink] = socket;
-
     socket.binaryType = 'arraybuffer';
+    availableSeedLinks[seedLink] = socket;
 
     socket.onopen = () => {
       logd('socket open', seedLink);
@@ -681,9 +679,9 @@
     };
 
     socket.onmessage = (e) => {
-      logd('socket recv', seedLink, dumpPacket(e.data));
+      //logd('socket recv', seedLink, dumpPacket(e.data));
       if (seedLink in availableSeedLinks) {
-        let [dataPtr, dataSiz] = allocPtrString(e.data);
+        let [dataPtr, dataSiz] = allocPtrArrayBuffer(e.data);
 
         ccall('seed_link_ws_on_recv', 'null',
               ['number', 'number', 'number'],
@@ -702,13 +700,11 @@
   }
 
   function seedLinkWsSend(seedLink, dataPtr, dataSiz) {
-    logd('socket send', seedLink, dumpPacket(convertPointerToString(dataPtr, dataSiz)));
+    logd('socket send', seedLink);
     assert(seedLink in availableSeedLinks);
 
-    let data = new Uint8Array(HEAP8, dataPtr, dataSiz);
-    // @todo send by binary
-    availableSeedLinks[seedLink].send(convertPointerToString(dataPtr, dataSiz));
-    //availableSeedLinks[seedLink].send(data);
+    let data = new Uint8Array(HEAP8.buffer, dataPtr, dataSiz);
+    availableSeedLinks[seedLink].send(data);
   }
 
   function seedLinkWsDisconnect(seedLink) {
@@ -779,7 +775,7 @@
       dataChannel.onmessage = (event) => {
         if (webrtcLink in availableWebrtcLinks) {
           if (event.data instanceof ArrayBuffer) {
-            logd('rtc data recv', webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(event.data)));
+            // logd('rtc data recv', webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(event.data)));
             let [dataPtr, dataSiz] = allocPtrArrayBuffer(event.data);
             ccall('webrtc_link_on_dco_message', 'null',
                   ['number', 'number', 'number'],
@@ -789,7 +785,7 @@
           } else if (event.data instanceof Blob) {
             let reader = new FileReader();
             reader.onload = () => {
-              logd('rtc data recv', webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(reader.result)));
+              // logd('rtc data recv', webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(reader.result)));
               let [dataPtr, dataSiz] = allocPtrArrayBuffer(reader.result);
               ccall('webrtc_link_on_dco_message', 'null',
                     ['number', 'number', 'number'],
@@ -980,7 +976,7 @@
   }
 
   function webrtcLinkSend(webrtcLink, dataPtr, dataSiz) {
-    logd('rtc data send', webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(new Uint8Array(Module.HEAPU8.buffer, dataPtr, dataSiz))));
+    logd('rtc data send', webrtcLink);
     try {
       let link = availableWebrtcLinks[webrtcLink];
       let dataChannel = link.dataChannel;

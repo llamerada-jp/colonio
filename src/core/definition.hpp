@@ -134,4 +134,7 @@ static const unsigned int ROUTING_SEED_CONNECT_STEP = 10;
 static const unsigned int ROUTING_SEED_DISCONNECT_STEP = 8;
 static const int64_t SEED_CONNECT_INTERVAL          = 10000;
 static const uint32_t PACKET_ID_NONE = 0x0;
+
+// debug parameter
+static const int DEBUG_PRINT_PACKET_SIZE = 32;
 }  // namesapce colonio

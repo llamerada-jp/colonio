@@ -66,6 +66,20 @@ unsigned int Utils::get_json<unsigned int>(const picojson::object& obj, const st
   }
 }
 
+std::string Utils::dump_binary(const std::string& bin) {
+  std::stringstream out;
+
+  out << std::hex;
+  for (int idx = 0; idx < bin.size(); idx++) {
+    if (idx != 0) {
+      out << " ";
+    }
+    out << std::setw(2) << std::setfill('0') << (0xFF & bin[idx]);
+  }
+
+  return out.str();
+}
+
 std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
   std::string is;
   std::stringstream out;
@@ -80,7 +94,7 @@ std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
   out << is << "mode : "        << Convert::int2str(packet.mode)    << std::endl;
   out << is << "channel : "     << Convert::int2str(packet.channel) << std::endl;
   out << is << "command_id : "  << Convert::int2str(packet.command_id)  << std::endl;
-  // out << is << "content : "     << picojson::value(packet.content).serialize();
+  out << is << "content : "     << dump_binary(std::string(*packet.content_bin, packet.content_offset, packet.content_size));
 
   return out.str();
 }

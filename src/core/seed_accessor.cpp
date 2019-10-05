@@ -139,6 +139,7 @@ void SeedAccessor::relay_packet(std::unique_ptr<const Packet> packet) {
 
     std::string packet_bin;
     packet_sa.SerializeToString(&packet_bin);
+    logd("Binary to seed. size:%d data:%s", packet_bin.size(), Utils::dump_binary(packet_bin).c_str());
     link->send(packet_bin);
 
   } else {
