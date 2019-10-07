@@ -133,8 +133,8 @@ void SeedAccessor::relay_packet(std::unique_ptr<const Packet> packet) {
     packet_sa.set_mode(packet->mode);
     packet_sa.set_channel(packet->channel);
     packet_sa.set_command_id(packet->command_id);
-    if (packet->content_bin != nullptr) {
-      packet_sa.set_content(std::string(*packet->content_bin, packet->content_offset, packet->content_size));
+    if (packet->content != nullptr) {
+      packet_sa.set_content(*packet->content);
     }
 
     std::string packet_bin;
@@ -196,14 +196,14 @@ void SeedAccessor::seed_link_on_recv(SeedLinkBase& link, const std::string& data
     assert(false);
   }
 
-  std::shared_ptr<const std::string> content_bin(new std::string(packet_pb.content()));
+  std::shared_ptr<const std::string> content(new std::string(packet_pb.content()));
   logd("packet size ? :%d", packet_pb.content().size());
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
       Packet {
         NodeID::from_pb(packet_pb.dst_nid()),
         NodeID::from_pb(packet_pb.src_nid()),
         packet_pb.id(),
-        static_cast<uint32_t>(content_bin->size()), 0, content_bin,
+        content,
         static_cast<PacketMode::Type>(packet_pb.mode()),
         static_cast<ModuleChannel::Type>(packet_pb.channel()),
         static_cast<CommandID::Type>(packet_pb.command_id())
@@ -299,14 +299,14 @@ void SeedAccessor::send_auth(const std::string& token) {
   param.set_version(PROTOCOL_VERSION);
   param.set_token(token);
   param.set_hint(hint);
-  std::shared_ptr<std::string> content_bin(new std::string());
-  param.SerializeToString(content_bin.get());
+  std::shared_ptr<std::string> content(new std::string());
+  param.SerializeToString(content.get());
   
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet {
     NodeID::SEED,
     context.my_nid,
     0,
-    static_cast<uint32_t>(content_bin->size()), 0, content_bin,
+    content,
     PacketMode::NONE,
     ModuleChannel::SEED,
     CommandID::Seed::AUTH
@@ -320,7 +320,7 @@ void SeedAccessor::send_ping() {
     NodeID::SEED,
     context.my_nid,
     0,
-    0, 0, nullptr,
+    nullptr,
     PacketMode::NONE,
     ModuleChannel::SEED,
     CommandID::Seed::PING

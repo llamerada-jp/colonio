@@ -160,7 +160,7 @@ void Module::send_packet(std::unique_ptr<Command> command, const NodeID& dst_nid
         dst_nid,
         context.my_nid,
         packet_id,
-        static_cast<uint32_t>(content->size()), 0, content,
+        content,
         mode, channel, command_id
     });
 
@@ -200,7 +200,7 @@ void Module::send_packet(const NodeID& dst_nid, PacketMode::Type mode,
     dst_nid,
     context.my_nid,
     packet_id,
-    static_cast<uint32_t>(content->size()), 0, content,
+    content,
     static_cast<PacketMode::Type>(PacketMode::ONE_WAY | mode),
     channel,
     command_id
@@ -228,7 +228,7 @@ void Module::send_error(const Packet& reply_for, const std::string& message) {
     reply_for.src_nid,
     context.my_nid,
     reply_for.id,
-    static_cast<uint32_t>(content_bin->size()), 0, content_bin,
+    content_bin,
     packet_mode,
     reply_for.channel,
     CommandID::ERROR
@@ -252,7 +252,7 @@ void Module::send_failure(const Packet& reply_for, std::shared_ptr<const std::st
     reply_for.src_nid,
     context.my_nid,
     reply_for.id,
-    static_cast<uint32_t>(content->size()), 0, content,
+    content,
     packet_mode,
     reply_for.channel,
     CommandID::FAILURE
@@ -276,8 +276,7 @@ void Module::send_success(const Packet& reply_for, std::shared_ptr<const std::st
     reply_for.src_nid,
     context.my_nid,
     reply_for.id,
-    content ? static_cast<uint32_t>(content->size()) : 0,
-    0, content,
+    content,
     packet_mode,
     reply_for.channel,
     CommandID::SUCCESS
@@ -311,7 +310,7 @@ void Module::on_persec() {
                   container.dst_nid,
                   container.src_nid,
                   container.packet_id,
-                  static_cast<uint32_t>(container.content->size()), 0, container.content,
+                  container.content,
                   container.mode,
                   container.channel,
                   container.command_id

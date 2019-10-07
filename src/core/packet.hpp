@@ -26,16 +26,14 @@ class Packet {
   const NodeID dst_nid;
   const NodeID src_nid;
   const uint32_t id;
-  const uint32_t content_size;
-  const uint32_t content_offset;
-  std::shared_ptr<const std::string> content_bin;
+  std::shared_ptr<const std::string> content;
   const PacketMode::Type mode;
   const ModuleChannel::Type channel;
   const CommandID::Type command_id;
 
   template<typename T> void parse_content(T* dst) const {
-    assert(content_bin.get() != nullptr);
-    if (!dst->ParseFromString(std::string(*content_bin, content_offset, content_size))) {
+    assert(content.get() != nullptr);
+    if (!dst->ParseFromString(*content)) {
       /// @todo error
       assert(false);
     }

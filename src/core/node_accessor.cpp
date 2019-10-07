@@ -160,6 +160,16 @@ void NodeAccessor::disconnect_link(const NodeID& nid) {
 }
 
 void NodeAccessor::initialize(const picojson::object& config) {
+
+  CONFIG_PACKET_SIZE = Utils::get_json(config, "packetSize", NODE_ACCESSOR_PACKET_SIZE);
+  CONFIG_BUFFER_INTERVAL = Utils::get_json(config, "bufferInterval", NODE_ACCESSOR_BUFFER_INTERVAL);
+
+  if (CONFIG_PACKET_SIZE != 0 && CONFIG_BUFFER_INTERVAL != 0) {
+    context.scheduler.add_interval_task(this, [this]() {
+        send_all_packet();
+      }, CONFIG_BUFFER_INTERVAL);
+  }
+
   webrtc_context.initialize(Utils::get_json<picojson::array>(config, "iceServers"));
 }
 
@@ -172,17 +182,6 @@ bool NodeAccessor::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Pac
     return false;
   }
 
-  NodeAccessorProtocol::NodeAccessor packet_na;
-  packet->dst_nid.to_pb(packet_na.mutable_dst_nid());
-  packet->src_nid.to_pb(packet_na.mutable_src_nid());
-  packet_na.set_id(packet->id);
-  packet_na.set_mode(packet->mode);
-  packet_na.set_channel(packet->channel);
-  packet_na.set_command_id(packet->command_id);
-  if (packet->content_bin) {
-    packet_na.set_content(std::string(*packet->content_bin, packet->content_offset, packet->content_size));
-  }
-
   if (dst_nid == NodeID::NEXT) {
     assert((packet->mode & PacketMode::ONE_WAY) != PacketMode::NONE);
     for (auto& it_link : links) {
@@ -190,9 +189,7 @@ bool NodeAccessor::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Pac
       WebrtcLink& link = *it_link.second.get();
 
       if (link.get_status() == LinkStatus::ONLINE) {
-        nid.to_pb(packet_na.mutable_dst_nid());
-        
-        link.send(*serialize_pb(packet_na));
+        try_send(nid, *packet);
       }
     }
     return true;
@@ -203,7 +200,7 @@ bool NodeAccessor::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Pac
       return false;
 
     } else {
-      return links.at(dst_nid)->send(*serialize_pb(packet_na));
+      return try_send(dst_nid, *packet);
     }
   }
 }
@@ -381,25 +378,67 @@ void NodeAccessor::webrtc_link_on_update_ice(WebrtcLink& link, const picojson::o
  * @param data Received data.
  */
 void NodeAccessor::webrtc_link_on_recv_data(WebrtcLink& link, const std::string& data) {
-  NodeAccessorProtocol::NodeAccessor packet_pb;
-  if (!packet_pb.ParseFromString(data)) {
+  NodeAccessorProtocol::Carrier ca;
+  if (!ca.ParseFromString(data)) {
     /// @todo error
     assert(false);
   }
 
-  std::shared_ptr<const std::string> content_bin(new std::string(packet_pb.content()));
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
-      Packet {
-        NodeID::from_pb(packet_pb.dst_nid()),
-        NodeID::from_pb(packet_pb.src_nid()),
-        packet_pb.id(),
-        static_cast<uint32_t>(content_bin->size()), 0, content_bin,
-        static_cast<PacketMode::Type>(packet_pb.mode()),
-        static_cast<ModuleChannel::Type>(packet_pb.channel()),
-        static_cast<CommandID::Type>(packet_pb.command_id())
-      });
+  for (int i = 0; i < ca.packet_size(); i++) {
+    const NodeAccessorProtocol::Packet& pb_packet = ca.packet(i);
+    if (pb_packet.has_head()) {
+      const NodeAccessorProtocol::Head& pb_head = pb_packet.head();
+      std::unique_ptr<Packet> packet = std::make_unique<Packet>(
+        Packet {
+          NodeID::from_pb(pb_head.dst_nid()),
+          NodeID::from_pb(pb_head.src_nid()),
+          pb_packet.id(),
+          nullptr,
+          static_cast<PacketMode::Type>(pb_head.mode()),
+          static_cast<ModuleChannel::Type>(pb_head.channel()),
+          static_cast<CommandID::Type>(pb_head.command_id())
+        });
+      std::shared_ptr<const std::string> content(new std::string(pb_packet.content()));
 
-  delegate.node_accessor_on_recv_packet(*this, link.nid, std::move(packet));
+      if (pb_packet.index() == 0) {
+        packet->content = content;
+        delegate.node_accessor_on_recv_packet(*this, link.nid, std::move(packet));
+
+      } else {
+        RecvBuffer& recv_buffer = recv_buffers[link.nid];
+        recv_buffer.packet.swap(packet);
+        recv_buffer.last_index = pb_packet.index();
+        recv_buffer.content_list.clear();
+        recv_buffer.content_list.push_back(content);
+      }
+
+    } else {
+      auto it = recv_buffers.find(link.nid);
+      if (it != recv_buffers.end()) {
+        RecvBuffer& recv_buffer = it->second;
+        if (recv_buffer.packet->id == pb_packet.id() && recv_buffer.last_index == pb_packet.index() + 1) {
+          recv_buffer.last_index = pb_packet.index();
+          recv_buffer.content_list.push_back(std::shared_ptr<std::string>(new std::string(pb_packet.content())));
+        }
+
+        if (recv_buffer.last_index == 0) {
+          int content_size = 0;
+          for (auto& one : recv_buffer.content_list) {
+            content_size += one->size();
+          }
+          std::shared_ptr<std::string> content(new std::string());
+          content->reserve(content_size);
+          for (auto& one : recv_buffer.content_list) {
+            content->append(one->data(), one->size());
+          }
+          recv_buffer.packet->content = content;
+          delegate.node_accessor_on_recv_packet(*this, link.nid, std::move(recv_buffer.packet));
+          recv_buffers.erase(it);
+        }
+      }
+      // Ignore packet if ID is different from previous packet.
+    }
+  }
 }
 
 void NodeAccessor::check_link_disconnect() {
@@ -682,6 +721,12 @@ void NodeAccessor::recv_ice(std::unique_ptr<const Packet> packet) {
   }
 }
 
+void NodeAccessor::send_all_packet() {
+  for (auto& it : send_buffers) {
+    send_packet_list(it.first, true);
+  }
+}
+
 void NodeAccessor::send_offer(WebrtcLink* link, const NodeID& prime_nid,
                               const NodeID& second_nid, OFFER_TYPE type) {
   link->get_local_sdp([this, prime_nid, second_nid, type](const std::string& sdp) -> void {
@@ -715,6 +760,142 @@ void NodeAccessor::send_ice(WebrtcLink* link, const picojson::array& ice) {
   }
 
   send_packet(link->nid, mode, CommandID::WebrtcConnect::ICE, serialize_pb(content));
+}
+
+bool NodeAccessor::send_packet_list(const NodeID& dst_nid, bool is_all) {
+  auto link_it = links.find(dst_nid);
+  auto sb_it = send_buffers.find(dst_nid);
+  if (link_it == links.end() || sb_it == send_buffers.end()) {
+    send_buffers.erase(sb_it);
+    return false;
+  }
+  WebrtcLink& link = *link_it->second;
+  std::list<Packet>& sb = sb_it->second;
+  auto it = sb.begin();
+
+  do {
+    { // Bind small packet.
+      NodeAccessorProtocol::Carrier ca;
+      unsigned int size_sum = 0;
+      while (it != sb.end()) {
+        const int content_size = it->content ? it->content->size() : 0;
+        if (size_sum + ESTIMATED_HEAD_SIZE + content_size > CONFIG_PACKET_SIZE) {
+          break;
+        } else {
+          size_sum += ESTIMATED_HEAD_SIZE + content_size;
+        }
+        NodeAccessorProtocol::Packet* packet = ca.add_packet();
+        NodeAccessorProtocol::Head* head = packet->mutable_head();
+        if (it->dst_nid == NodeID::NEXT) {
+          dst_nid.to_pb(head->mutable_dst_nid());
+        } else {
+          it->dst_nid.to_pb(head->mutable_dst_nid());
+        }
+        it->src_nid.to_pb(head->mutable_src_nid());
+        head->set_mode(it->mode);
+        head->set_channel(it->channel);
+        head->set_command_id(it->command_id);
+        packet->set_id(it->id);
+        packet->set_index(0);
+        if (it->content) {
+          packet->set_content(*it->content);
+        }
+        it++;
+      }
+
+      if (ca.packet_size() != 0) {
+        // Send binded packets and remove it.
+        if (link.send(*serialize_pb(ca))) {
+          it = sb.erase(sb.begin(), it);
+        } else {
+          return false;
+        }
+      }
+    }
+
+    while (it != sb.end() && it->content && ESTIMATED_HEAD_SIZE + it->content->size() >= CONFIG_PACKET_SIZE) {
+      const int content_size = it->content ? it->content->size() : 0;
+      // Split large packet to send it.
+      const int num = (ESTIMATED_HEAD_SIZE + content_size) / CONFIG_PACKET_SIZE +
+        ((ESTIMATED_HEAD_SIZE + content_size) % CONFIG_PACKET_SIZE == 0 ? 0 : 1);
+      int size_send = 0;
+      bool result = true;
+      for (int idx = num - 1; result && idx >= 0; idx --) {
+        NodeAccessorProtocol::Carrier ca;
+        NodeAccessorProtocol::Packet* packet = ca.add_packet();
+        // Append header data for only the first packet.
+        if (idx == num - 1) {
+          NodeAccessorProtocol::Head* head = packet->mutable_head();
+          if (it->dst_nid == NodeID::NEXT) {
+            dst_nid.to_pb(head->mutable_dst_nid());
+          } else {
+            it->dst_nid.to_pb(head->mutable_dst_nid());
+          }
+          it->src_nid.to_pb(head->mutable_src_nid());
+          head->set_mode(it->mode);
+          head->set_channel(it->channel);
+          head->set_command_id(it->command_id);
+        }
+        packet->set_id(it->id);
+        packet->set_index(idx);
+
+        // Calc content_size in the packet.
+        int packet_content_size;
+        if (idx == num - 1) {
+          packet_content_size = CONFIG_PACKET_SIZE - ESTIMATED_HEAD_SIZE;
+          assert(size_send + packet_content_size < content_size);
+        } else if (idx == 0) {
+          packet_content_size = content_size - size_send;
+          assert(packet_content_size != 0);
+          assert(packet_content_size <= CONFIG_PACKET_SIZE);
+        } else {
+          packet_content_size = CONFIG_PACKET_SIZE;
+          assert(size_send + CONFIG_PACKET_SIZE < content_size);
+        }
+        packet->set_content(std::string(*it->content, size_send, packet_content_size));
+        size_send += packet_content_size;
+        result = result && link.send(*serialize_pb(ca));
+      }
+
+      // Remove the packet if the sending packet is a success.
+      if (result) {
+        it = sb.erase(it);
+      } else {
+        return false;
+      }
+    }
+  } while (is_all && it != sb.end());
+
+  return true;
+}
+
+bool NodeAccessor::try_send(const NodeID& dst_nid, const Packet& packet) {
+  auto it_buffer = send_buffers.find(dst_nid);
+  if (it_buffer == send_buffers.end()) {
+    it_buffer = send_buffers.insert(std::make_pair(dst_nid, std::list<Packet>())).first;
+  }
+  it_buffer->second.push_back(packet);
+
+  if (CONFIG_BUFFER_INTERVAL == 0) {
+    return send_packet_list(dst_nid, false);
+
+  } else {
+    // Estimating packet size.
+    int estimated_size = 0;
+    for (auto& it : it_buffer->second) {
+      if (it.content) {
+        estimated_size += ESTIMATED_HEAD_SIZE + it.content->size();
+      } else {
+        estimated_size += ESTIMATED_HEAD_SIZE;
+      }
+      if (estimated_size > CONFIG_PACKET_SIZE) {
+        // Send packet if a list of packets size are larger than threthold.
+        return send_packet_list(dst_nid, false);
+      }
+    }
+  }
+  
+  return true;
 }
 
 /**

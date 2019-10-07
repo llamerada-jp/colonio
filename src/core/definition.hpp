@@ -115,6 +115,9 @@ static const Type RELAY_SEED    = 0x0008;
 static const Type NO_RETRY  = 0x0010;
 }  // namespace CommandMode
 
+// Packet header size including index and id.
+static const uint32_t ESTIMATED_HEAD_SIZE = 64;
+
 // default values.
 static const unsigned int MAP_PAXOS_RETRY_MAX = 5;
 static const unsigned int PUBSUB2D_CACHE_TIME = 30000; // [msec]
@@ -127,6 +130,8 @@ static const unsigned int FIRST_LINK_RETRY_MAX      = 3;
 static const int64_t  LINK_TRIAL_TIME_MIN           = 60000;
 static const unsigned int LINKS_MIN                 = 4;
 static const unsigned int LINKS_MAX                 = 24;
+static const unsigned int NODE_ACCESSOR_PACKET_SIZE = 8192;
+static const unsigned int NODE_ACCESSOR_BUFFER_INTERVAL = 100;
 static const unsigned int ROUTING_UPDATE_PERIOD     = 1000;
 static const unsigned int ROUTING_FORCE_UPDATE_TIMES    = 30;
 static const unsigned int ROUTING_SEED_RANDOM_WAIT  = 60000;

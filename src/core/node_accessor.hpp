@@ -84,6 +84,9 @@ class NodeAccessor : public Module,
     OFFER_TYPE type;
   };
 
+  unsigned int CONFIG_PACKET_SIZE;
+  unsigned int CONFIG_BUFFER_INTERVAL;
+
   NodeAccessorDelegate& delegate;
   WebrtcContext webrtc_context;
 
@@ -101,6 +104,16 @@ class NodeAccessor : public Module,
 
   /** Use on update_link_status() */
   std::set<NodeID> last_link_status;
+
+  /** Waiting buffer of packets to send. */
+  std::map<NodeID, std::list<Packet>> send_buffers;
+  /** Waiting buffer of packets to recv. */
+  struct RecvBuffer {
+    std::unique_ptr<Packet> packet;
+    int last_index;
+    std::list<std::shared_ptr<const std::string>> content_list;
+  };
+  std::map<NodeID, RecvBuffer> recv_buffers;
 
   explicit NodeAccessor(const NodeAccessor&);
   NodeAccessor& operator=(const NodeAccessor&);
@@ -121,7 +134,10 @@ class NodeAccessor : public Module,
   void disconnect_random_link();  
   void recv_offer(std::unique_ptr<const Packet> packet);
   void recv_ice(std::unique_ptr<const Packet> packet);
-  void send_offer(WebrtcLink* link, const NodeID& prime_nid, const NodeID& second_nid, OFFER_TYPE type);
+  void send_all_packet();
   void send_ice(WebrtcLink* link, const picojson::array& ice);
+  void send_offer(WebrtcLink* link, const NodeID& prime_nid, const NodeID& second_nid, OFFER_TYPE type);
+  bool send_packet_list(const NodeID& dst_nid, bool is_all);
+  bool try_send(const NodeID& dst_nid, const Packet& packet);
 };
 }  // namespace colonio
