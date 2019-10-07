@@ -15,6 +15,7 @@
  */
 
 #include <cassert>
+#include <tuple>
 
 #include "command.hpp"
 
