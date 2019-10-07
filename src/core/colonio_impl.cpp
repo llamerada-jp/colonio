@@ -286,7 +286,7 @@ void ColonioImpl::initialize_algorithms() {
     const std::string& name = it.first;
     const picojson::object& module_config = Utils::get_json<picojson::object>(modules_config, name);
     const std::string& type = Utils::get_json<std::string>(module_config, "type");
-    ModuleChannel::Type channel = Utils::get_json<double>(module_config, "channel");
+    // ModuleChannel::Type channel = Utils::get_json<double>(module_config, "channel");
 
     if (type == "pubsub2D") {
       PubSub2DImpl* tmp = new PubSub2DImpl(context, *this, *this, module_config);

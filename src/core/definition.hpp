@@ -53,7 +53,7 @@ static const Type NONE  = 0;
 static const Type SEED  = 1;
 static const Type WEBRTC_CONNECT    = 2;
 static const Type SYSTEM_ROUTING    = 15;
-static const Type SYSTEM_ROUTING_2D = 16;
+// static const Type SYSTEM_ROUTING_2D = 16;
 }  // namespace ModuleChannel
 
 namespace CommandID {
