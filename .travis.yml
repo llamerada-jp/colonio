@@ -1,7 +1,18 @@
 language: cpp
-os: linux
-dist: bionic
-compiler: gcc
+matrix:
+  include:
+    - os: linux
+      dist: bionic
+      compiler: gcc
+      addons:
+        apt:
+          update: true
+          packages:
+            - libcurl4-nss-dev
+            - libgoogle-glog-dev
+            - libtool
+            - libx11-dev
+
 script:
   - cd $TRAVIS_BUILD_DIR
   - ./bin/build.sh

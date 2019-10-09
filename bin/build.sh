@@ -83,7 +83,9 @@ setup_native() {
         fi
 
     elif type apt-get > /dev/null 2>&1; then
-        sudo apt-get install -y pkg-config automake cmake build-essential curl libcurl4-nss-dev libtool libx11-dev libgoogle-glog-dev
+        if [ ! ${TRAVIS} ]; then
+            sudo apt-get install -y pkg-config automake cmake build-essential curl libcurl4-nss-dev libtool libx11-dev libgoogle-glog-dev
+        fi
 
         setup_asio
 
