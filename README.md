@@ -12,7 +12,10 @@ Please see [web site](https://www.colonio.dev/) to get more information.
 
 ## Program status
 
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/9fdd7ba69834413084cdc14cdb4eca55)](https://www.codacy.com/manual/llamerada-jp/colonio?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=colonio/colonio&amp;utm_campaign=Badge_Grade)
+* Code quality : [![Codacy Badge](https://api.codacy.com/project/badge/Grade/9fdd7ba69834413084cdc14cdb4eca55)](https://www.codacy.com/manual/llamerada-jp/colonio?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=colonio/colonio&amp;utm_campaign=Badge_Grade)
+
+* Build of the master branch : ![Travis-CI](https://travis-ci.org/colonio/colonio.svg?branch=master)
+* Build of a develop branch : ![Travis-CI](https://travis-ci.org/colonio/colonio.svg?branch=develop)
 
 ## License
 
