@@ -1,0 +1,6 @@
+language: cpp
+os: linux
+dist: bionic
+compiler: gcc
+before_install:
+  - ./bin/build
