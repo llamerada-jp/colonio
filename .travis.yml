@@ -4,5 +4,4 @@ dist: bionic
 compiler: gcc
 script:
   - cd $TRAVIS_BUILD_DIR
-  - ls
-  - ./bin/build
+  - ./bin/build.sh
