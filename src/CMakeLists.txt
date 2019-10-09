@@ -98,6 +98,9 @@ set_source_files_properties(
   COMPILE_FLAGS " -fno-rtti "
   )
 
+# Export values for test.
+set(webrtc_libs "${webrtc_libs}" CACHE STRING "webrtc libs" FORCE)
+
 # Core files.
 file(GLOB HEADER_FILES "*.hpp")
 set(COLONIO_FILES

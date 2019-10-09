@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.10)
 project(colonio)
 
 # Read options.
@@ -9,6 +9,7 @@ project(colonio)
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   option(WITH_PYTHON "Generate library for python." OFF)
   option(WITH_SIMULATE "Generate simulate program." OFF)
+  option(WITH_TEST "Generate test program." OFF)
 endif()
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
@@ -48,3 +49,7 @@ add_custom_target(cpplint
   )
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/src)
+if(WITH_TEST)
+  enable_testing()
+  add_subdirectory(${PROJECT_SOURCE_DIR}/test)
+endif()
