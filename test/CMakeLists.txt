@@ -5,6 +5,9 @@ include_directories(${PROJECT_SOURCE_DIR}/src)
 include_directories(${PROJECT_SOURCE_DIR}/src/c)
 include_directories(${PROJECT_SOURCE_DIR}/src/cpp)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -coverage")
+
 add_executable(node_id
   core/node_id_test.cpp
   ${PROJECT_SOURCE_DIR}/src/core/node_id.cpp

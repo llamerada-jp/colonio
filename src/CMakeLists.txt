@@ -98,8 +98,12 @@ set_source_files_properties(
   COMPILE_FLAGS " -fno-rtti "
   )
 
-# Export values for test.
-set(webrtc_libs "${webrtc_libs}" CACHE STRING "webrtc libs" FORCE)
+if(WITH_TEST)
+  # Export values for test.
+  set(webrtc_libs "${webrtc_libs}" CACHE STRING "webrtc libs" FORCE)
+  # Export coverage data
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -coverage")
+endif()
 
 # Core files.
 file(GLOB HEADER_FILES "*.hpp")
