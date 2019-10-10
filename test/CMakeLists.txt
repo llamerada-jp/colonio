@@ -1,7 +1,9 @@
 ##
 ## Common build option for test.
 ##
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -coverage")
+# Force debug when test.
+set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -coverage -g -O0")
 
 find_package(GTest REQUIRED)
 

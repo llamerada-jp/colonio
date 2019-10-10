@@ -1,4 +1,5 @@
 language: cpp
+
 matrix:
   include:
     - os: linux
@@ -15,4 +16,8 @@ matrix:
 
 script:
   - cd $TRAVIS_BUILD_DIR
-  - ./bin/build.sh
+  - ./bin/build.sh -t
+  - make -C build/ubuntu_x86_64 test
+
+after_success:
+  - coveralls -r ./build/ubuntu_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src --gcov-options '\-lp'
