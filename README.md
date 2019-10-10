@@ -4,7 +4,7 @@ By using the distributed algorithms well, you can take away the load of the serv
 But there is little knowledge of distributed algorithms and we can not try it easily.
 The purpose of the majority of engineers is to realize their own service, and the use of algorithms is a means.
 It is interesting but not essence of work to think and implement difficult algorithms.
-The purpose of vein is to make it more versatile and to make it easy for everyone to use distributed algorithms that are easy to use.
+The purpose of colonio is to make it more versatile and to make it easy for everyone to use distributed algorithms that are easy to use.
 
 ## More information
 
