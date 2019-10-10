@@ -274,9 +274,19 @@ setup_protoc_web() {
 
 # Compile native programs.
 build_native() {
+    if [ "${WITH_SAMPLE}" = 'true' ]; then
+        OPT_SAMPLE='-DWITH_SAMPLE=ON'
+    else
+        OPT_SAMPLE=''
+    fi
+    if [ "${WITH_TEST}" = 'true' ]; then
+        OPT_TEST='-DWITH_TEST=ON'
+    else
+        OPT_TEST=''
+    fi
     mkdir -p ${BUILD_PATH}
     cd ${BUILD_PATH}
-    cmake -DLOCAL_ENV_PATH=${LOCAL_ENV_PATH} -DCMAKE_BUILD_TYPE=${BUILD_TYPE} ${ROOT_PATH}
+    cmake -DLOCAL_ENV_PATH=${LOCAL_ENV_PATH} -DCMAKE_BUILD_TYPE=${BUILD_TYPE} ${OPT_SAMPLE} ${OPT_TEST} ${ROOT_PATH}
     make
 }
 
@@ -299,14 +309,18 @@ show_usage() {
     echo "  -d : Set build type to debug mode." 1>&2
     echo "  -h : Show this help." 1>&2
     echo "  -w : Build webassembly module." 1>&2
+    echo "  -s : Build with sample programs.(Native only)" 1>&2
+    echo "  -t : Build test and coverage programs.(Native only)" 1>&2
 }
 
 # Default options.
 TARGET='native'
 ENABLE_DEBUG='false'
+WITH_SAMPLE='false'
+WITH_TEST='false'
 
 # Decode options.
-while getopts dhw OPT
+while getopts dhstw OPT
 do
 
     case $OPT in
@@ -314,6 +328,10 @@ do
             ;;
         h)  show_usage $0
             exit 0
+            ;;
+        s)  WITH_SAMPLE='true'
+            ;;
+        t)  WITH_TEST='true'
             ;;
         w)  TARGET='web'
             ;;
