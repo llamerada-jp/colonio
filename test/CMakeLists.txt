@@ -21,5 +21,6 @@ add_executable(node_id
 target_link_libraries(node_id colonio_test
   ${GTEST_BOTH_LIBRARIES}
   ${webrtc_libs}
+  ${extra_libs}
   )
 gtest_add_tests(TARGET node_id)

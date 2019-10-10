@@ -83,8 +83,8 @@ setup_native() {
         fi
 
     elif type apt-get > /dev/null 2>&1; then
-        if [ ! ${TRAVIS} ]; then
-            sudo apt-get install -y pkg-config automake cmake build-essential curl libcurl4-nss-dev libtool libx11-dev libgoogle-glog-dev
+        if ! [ -v TRAVIS ]; then
+            sudo apt-get install -y pkg-config automake cmake build-essential curl libcurl4-nss-dev libtool libx11-dev libgoogle-glog-dev libgtest-dev
         fi
 
         setup_asio
@@ -99,6 +99,9 @@ setup_native() {
     setup_websocketpp
     setup_protoc_native
     setup_webrtc
+    if [ "${WITH_TEST}" = 'true' ]; then
+        setup_gtest
+    fi
 }
 
 setup_web() {
@@ -223,6 +226,14 @@ setup_websocketpp() {
     mkdir -p /tmp
     cmake -DCMAKE_INSTALL_PREFIX=${LOCAL_ENV_PATH} ${LOCAL_ENV_PATH}/src/websocketpp
     make install
+}
+
+# Build gtest
+setup_gtest() {
+    cd /usr/src/gtest
+    sudo cmake .
+    sudo cmake --build .
+    sudo mv libg* /usr/local/lib/
 }
 
 # Build Protocol Buffers on native
