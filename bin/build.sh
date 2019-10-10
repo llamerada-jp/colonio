@@ -84,7 +84,7 @@ setup_native() {
 
     elif type apt-get > /dev/null 2>&1; then
         if ! [ -v TRAVIS ]; then
-            sudo apt-get install -y pkg-config automake cmake build-essential curl libcurl4-nss-dev libtool libx11-dev libgoogle-glog-dev libgtest-dev
+            sudo apt-get install -y pkg-config automake cmake build-essential curl libcurl4-nss-dev libtool libx11-dev libgoogle-glog-dev
         fi
 
         setup_asio
@@ -230,10 +230,18 @@ setup_websocketpp() {
 
 # Build gtest
 setup_gtest() {
-    cd /usr/src/gtest
-    sudo cmake .
-    sudo cmake --build .
-    sudo mv libg* /usr/local/lib/
+    if [ -e ${LOCAL_ENV_PATH}/src/googletest ]; then
+        cd ${LOCAL_ENV_PATH}/src/googletest
+        git fetch
+    else
+        cd ${LOCAL_ENV_PATH}/src
+        git clone https://github.com/google/googletest.git
+    fi
+    cd ${LOCAL_ENV_PATH}/src/googletest
+    git checkout refs/tags/release-1.10.0
+    mkdir -p /tmp
+    cmake -DCMAKE_INSTALL_PREFIX=${LOCAL_ENV_PATH} ${LOCAL_ENV_PATH}/src/googletest
+    make install
 }
 
 # Build Protocol Buffers on native
