@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+#ifndef NDEBUG
+#  include <glog/logging.h>
+#endif
+
 #include <hiredis/hiredis.h>
 #include <picojson.h>
 #include <unistd.h>
@@ -198,14 +202,13 @@ void on_map_set_failure(colonio::MapFailureReason reason) {
 }
 
 int main(int argc, char* argv[]) {
-  // libuv
-  uv_loop_t* loop = uv_default_loop();
+#ifndef NDEBUG
+  google::InitGoogleLogging(argv[0]);
+  google::InstallFailureSignalHandler();
+#endif
 
-  // libuv for timer
-  is_running = true;
-  uv_timer_t timer;
-  uv_timer_init(loop, &timer);
-  uv_timer_start(&timer, on_timer, 0, 1000);
+  // Libuv
+  uv_loop_t* loop = uv_default_loop();
   
   // redis
   rc = redisConnect(REDIS_HOST.c_str(), REDIS_PORT);
@@ -213,6 +216,12 @@ int main(int argc, char* argv[]) {
   // colonio
   my_colonio.reset(new MyColonio(loop));
   my_colonio->connect(SERVER_URL, "", on_success, on_failure);
+
+  // libuv for timer
+  is_running = true;
+  uv_timer_t timer;
+  uv_timer_init(loop, &timer);
+  uv_timer_start(&timer, on_timer, 0, 1000);
 
   // loop
   my_colonio->run();

@@ -20,7 +20,7 @@ NODES_NUM = 30
 MAP_CIRCLE_R  = 350
 NODE_RECT_W = 10
 VALUE_CIRCLE_R = 350
-COMMAND = os.path.join(os.path.dirname(os.path.abspath('__file__')), '..', '..', '..', 'bin', 'simulate')
+COMMAND = '/Users/llamerada/develop/colonio/build/vscode/sample/simulate'
 RANDOM_KILL_RATE = 0
 # COMMAND = ['valgrind', '--leak-check=full', COMMAND]
 
