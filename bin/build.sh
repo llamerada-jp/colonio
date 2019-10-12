@@ -228,22 +228,6 @@ setup_websocketpp() {
     make install
 }
 
-# Build gtest
-setup_gtest() {
-    if [ -e ${LOCAL_ENV_PATH}/src/googletest ]; then
-        cd ${LOCAL_ENV_PATH}/src/googletest
-        git fetch
-    else
-        cd ${LOCAL_ENV_PATH}/src
-        git clone https://github.com/google/googletest.git
-    fi
-    cd ${LOCAL_ENV_PATH}/src/googletest
-    git checkout refs/tags/release-1.10.0
-    mkdir -p /tmp
-    cmake -DCMAKE_INSTALL_PREFIX=${LOCAL_ENV_PATH} ${LOCAL_ENV_PATH}/src/googletest
-    make install
-}
-
 # Build Protocol Buffers on native
 setup_protoc_native() {
     if ! [ -e ${LOCAL_ENV_PATH}/bin/protoc ]; then
@@ -289,6 +273,22 @@ setup_protoc_web() {
     emconfigure ./configure --prefix=${LOCAL_ENV_PATH}/wa --disable-shared
     emmake make
     emmake make install
+}
+
+setup_gtest() {
+    if [ -e ${LOCAL_ENV_PATH}/src/googletest ]; then
+        cd ${LOCAL_ENV_PATH}/src/googletest
+        git fetch
+    else
+        cd ${LOCAL_ENV_PATH}/src
+        git clone https://github.com/google/googletest.git googletest
+    fi
+    cd ${LOCAL_ENV_PATH}/src/googletest
+    git checkout refs/tags/release-1.10.0
+    git submodule update --init --recursive
+    cmake -DCMAKE_INSTALL_PREFIX=${LOCAL_ENV_PATH} .
+    make
+    make install
 }
 
 # Compile native programs.
