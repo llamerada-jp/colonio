@@ -104,6 +104,33 @@ std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
   return out.str();
 }
 
+/**
+ * This method returns a formatted text like the printf method.
+ * Format rule is the same as the printf, because this method uses snprintf inner it.
+ * @param format string.
+ * @param dummy dummy parameter, should be set 0.
+ * @return formatted string as same as the printf.
+ */
+std::string Utils::format_string(const std::string& format, int dummy, ...) {
+  std::vector<char> buffer(format.size() + 2);
+  int r = 0;
+  va_list args;
+  va_list args_copy;
+
+  va_start(args, dummy);
+  va_copy(args_copy, args);
+  while ((r = vsnprintf(buffer.data(), buffer.size(), format.c_str(), args_copy)) >= 0 &&
+         static_cast<unsigned int>(r) >= buffer.size()) {
+    buffer.resize(r + 1);
+    va_end(args_copy);
+    va_copy(args_copy, args);
+  }
+  va_end(args);
+  va_end(args_copy);
+
+  return std::string(buffer.data());
+}
+
 static std::chrono::system_clock::time_point msec_start = std::chrono::system_clock::now();
 int64_t Utils::get_current_msec() {
   auto now = std::chrono::system_clock::now();

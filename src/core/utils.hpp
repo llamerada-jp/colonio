@@ -68,6 +68,7 @@ template<>
 unsigned int get_json<unsigned int>(const picojson::object& obj, const std::string& key,
                                     const unsigned int& default_value);
 
+std::string format_string(const std::string& format, int dummy, ...);
 std::string dump_binary(const std::string& bin);
 std::string dump_packet(const Packet& packet, unsigned int indent = 0);
 int64_t get_current_msec();
