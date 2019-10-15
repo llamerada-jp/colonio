@@ -23,6 +23,7 @@
 #include <sys/param.h>
 
 #include <cassert>
+#include <cstdarg>
 #include <cstring>
 #include <iomanip>
 #include <memory>
