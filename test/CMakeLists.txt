@@ -15,12 +15,15 @@ add_library(colonio_test STATIC
   ${CORE_FILES}
   )
 
-add_executable(node_id core/node_id_test.cpp)
-target_link_libraries(node_id colonio_test ${GTEST_LDFLAGS} ${webrtc_libs} ${extra_libs})
-target_compile_options(node_id PUBLIC ${GTEST_CFLAGS})
-add_test(TARGET node_id)
+set(core_test_targets
+  logger
+  node_id
+  utils
+  )
 
-add_executable(utils core/utils_test.cpp)
-target_link_libraries(utils colonio_test ${GTEST_LDFLAGS} ${webrtc_libs} ${extra_libs})
-target_compile_options(utils PUBLIC ${GTEST_CFLAGS})
-add_test(TARGET utils)
+foreach(test_target IN LISTS core_test_targets)
+  add_executable(${test_target} "core/${test_target}_test.cpp")
+  target_link_libraries(${test_target} colonio_test ${GTEST_LDFLAGS} ${webrtc_libs} ${extra_libs})
+  target_compile_options(${test_target} PUBLIC ${GTEST_CFLAGS})
+  add_test(NAME "${test_target}_test" COMMAND "${test_target}")
+endforeach()

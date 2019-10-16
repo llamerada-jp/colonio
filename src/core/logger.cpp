@@ -35,22 +35,7 @@ Logger::~Logger() {
 }
 
 void Logger::output(const std::string& file, unsigned long line,
-                    LogLevel::Type level, unsigned long mid, const std::string& format, int dummy, ...) {
-  std::vector<char> buffer(format.size() * 1.5);
-  int r = 0;
-  va_list args;
-  va_list args_copy;
-  va_start(args, dummy);
-  va_copy(args_copy, args);
-  while ((r = vsnprintf(buffer.data(), buffer.size(), format.c_str(), args_copy)) >= 0 &&
-         static_cast<unsigned int>(r) >= buffer.size()) {
-    buffer.resize(r + 1);
-    va_end(args_copy);
-    va_copy(args_copy, args);
-  }
-  va_end(args);
-  va_end(args_copy);
-
+                    LogLevel::Type level, unsigned long mid, const std::string& message) {
   std::stringstream stream;
   switch (level) {
     case LogLevel::INFO:  stream << "[I]"; break;
@@ -67,7 +52,7 @@ void Logger::output(const std::string& file, unsigned long line,
     stream << " " << std::setw(8) << std::setfill('0') <<  std::hex << mid;
   }
 
-  stream << " : " << buffer.data();
+  stream << " : " << message;
   
   delegate.logger_on_output(*this, level, stream.str());
 }
