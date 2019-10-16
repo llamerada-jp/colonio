@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include <cassert>
 #include <string>
 #include <picojson.h>
 
