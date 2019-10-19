@@ -19,8 +19,7 @@ int main(int argc, char* argv[]) {
   colonio_t colonio;
 
   colonio_init(&colonio, on_require_invoke);
-  colonio_connect(&colonio, "http://coloniodev:8080/colonio/core.json", "",
-               connect_on_success, connect_on_failure);
+  colonio_connect(&colonio, "http://coloniodev:8080/colonio/core.json", "", connect_on_success, connect_on_failure);
 
   return 0;
 }

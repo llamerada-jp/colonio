@@ -19,10 +19,9 @@
 #include <cstdint>
 #include <string>
 
-#include "protocol.pb.h"
-
-#include "node_id.hpp"
 #include "colonio/value.hpp"
+#include "node_id.hpp"
+#include "protocol.pb.h"
 
 namespace colonio {
 class ValueImpl {

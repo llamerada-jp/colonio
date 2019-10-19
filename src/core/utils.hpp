@@ -15,9 +15,10 @@
  */
 #pragma once
 
+#include <picojson.h>
+
 #include <cassert>
 #include <string>
-#include <picojson.h>
 
 namespace colonio {
 class Packet;
@@ -66,8 +67,8 @@ T get_json(const picojson::object& obj, const std::string& key, const T& default
   }
 }
 template<>
-unsigned int get_json<unsigned int>(const picojson::object& obj, const std::string& key,
-                                    const unsigned int& default_value);
+unsigned int get_json<unsigned int>(
+    const picojson::object& obj, const std::string& key, const unsigned int& default_value);
 
 std::string format_string(const std::string& format, int dummy, ...);
 std::string dump_binary(const std::string& bin);

@@ -38,8 +38,7 @@
 
 namespace colonio {
 template<>
-bool Utils::check_json_optional<unsigned int>(const picojson::object& obj, const std::string& key,
-                                              unsigned int* dst) {
+bool Utils::check_json_optional<unsigned int>(const picojson::object& obj, const std::string& key, unsigned int* dst) {
   auto it = obj.find(key);
   if (it == obj.end()) {
     return false;
@@ -56,8 +55,8 @@ bool Utils::check_json_optional<unsigned int>(const picojson::object& obj, const
 }
 
 template<>
-unsigned int Utils::get_json<unsigned int>(const picojson::object& obj, const std::string& key,
-                                           const unsigned int& default_value) {
+unsigned int Utils::get_json<unsigned int>(
+    const picojson::object& obj, const std::string& key, const unsigned int& default_value) {
   auto it = obj.find(key);
   if (it != obj.end() && it->second.is<double>()) {
     return it->second.get<double>();
@@ -94,13 +93,13 @@ std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
     is += " ";
   }
 
-  out << is << "dst_nid : "     << packet.dst_nid.to_str()  << std::endl;
-  out << is << "src_nid : "     << packet.src_nid.to_str()  << std::endl;
-  out << is << "id : "          << Convert::int2str(packet.id)      << std::endl;
-  out << is << "mode : "        << Convert::int2str(packet.mode)    << std::endl;
-  out << is << "channel : "     << Convert::int2str(packet.channel) << std::endl;
-  out << is << "command_id : "  << Convert::int2str(packet.command_id)  << std::endl;
-  out << is << "content : "     << dump_binary(*packet.content);
+  out << is << "dst_nid : " << packet.dst_nid.to_str() << std::endl;
+  out << is << "src_nid : " << packet.src_nid.to_str() << std::endl;
+  out << is << "id : " << Convert::int2str(packet.id) << std::endl;
+  out << is << "mode : " << Convert::int2str(packet.mode) << std::endl;
+  out << is << "channel : " << Convert::int2str(packet.channel) << std::endl;
+  out << is << "command_id : " << Convert::int2str(packet.command_id) << std::endl;
+  out << is << "content : " << dump_binary(*packet.content);
 
   return out.str();
 }
@@ -191,13 +190,13 @@ std::string Utils::file_dirname(const std::string& path) {
 bool Utils::is_safevalue(double v) {
   if (
 #ifdef _MSC_VER
-          ! _finite(v)
-#elif __cplusplus>=201103L || !(defined(isnan) && defined(isinf))
-          std::isnan(v) || std::isinf(v)
+      !_finite(v)
+#elif __cplusplus >= 201103L || !(defined(isnan) && defined(isinf))
+      std::isnan(v) || std::isinf(v)
 #else
-          isnan(v) || isinf(v)
+      isnan(v) || isinf(v)
 #endif
-      ) {
+  ) {
     return false;
   } else {
     return true;

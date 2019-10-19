@@ -31,11 +31,13 @@ class HttpAccessorCurl : public HttpAccessorBase {
   HttpAccessorCurl();
   virtual ~HttpAccessorCurl();
 
-  void post(const std::string& url, const std::string& payload,
-            const std::string& content_type, HttpAccessorDelegate* delegate) override;
+  void post(
+      const std::string& url, const std::string& payload, const std::string& content_type,
+      HttpAccessorDelegate* delegate) override;
+
  private:
   /** cURL's instance for connect to the server. */
-  CURL *curl;
+  CURL* curl;
   std::mutex mutex;
 };
 

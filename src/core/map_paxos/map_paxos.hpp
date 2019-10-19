@@ -17,25 +17,25 @@
 
 #include <functional>
 
-#include "core/system_1d.hpp"
 #include "colonio/map.hpp"
+#include "core/system_1d.hpp"
 
 namespace colonio {
 typedef uint32_t PAXOS_N;
 
 class MapPaxos : public System1D<Map> {
  public:
-  MapPaxos(Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate,
-           const picojson::object& config);
+  MapPaxos(
+      Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate,
+      const picojson::object& config);
   virtual ~MapPaxos();
 
-  void get(const Value& key,
-           const std::function<void(const Value&)>& on_success,
-           const std::function<void(MapFailureReason)>& on_failure) override;
-  void set(const Value& key, const Value& value,
-           const std::function<void()>& on_success,
-           const std::function<void(MapFailureReason)>& on_failure,
-           MapOption::Type opt = 0x0) override;
+  void get(
+      const Value& key, const std::function<void(const Value&)>& on_success,
+      const std::function<void(MapFailureReason)>& on_failure) override;
+  void set(
+      const Value& key, const Value& value, const std::function<void()>& on_success,
+      const std::function<void(MapFailureReason)>& on_failure, MapOption::Type opt = 0x0) override;
 
   void system_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) override;
 
@@ -105,10 +105,9 @@ class MapPaxos : public System1D<Map> {
       const MapOption::Type opt;
       MapPaxos& parent;
 
-      Info(MapPaxos& parent_, const Value& key_, const Value& value_,
-           const std::function<void()>& cb_on_success_,
-           const std::function<void(MapFailureReason)>& cb_on_failure_,
-           const MapOption::Type& opt_);
+      Info(
+          MapPaxos& parent_, const Value& key_, const Value& value_, const std::function<void()>& cb_on_success_,
+          const std::function<void(MapFailureReason)>& cb_on_failure_, const MapOption::Type& opt_);
     };
     std::unique_ptr<Info> info;
 
@@ -141,10 +140,9 @@ class MapPaxos : public System1D<Map> {
       MapPaxos& parent;
       std::vector<Reply> replys;
       bool is_finished;
-      Info(MapPaxos& parent_,
-           std::unique_ptr<const Packet> packet_reply_,
-           std::unique_ptr<Value>  key_,
-           MapOption::Type opt_);
+      Info(
+          MapPaxos& parent_, std::unique_ptr<const Packet> packet_reply_, std::unique_ptr<Value> key_,
+          MapOption::Type opt_);
       virtual ~Info();
     };
 
@@ -181,10 +179,9 @@ class MapPaxos : public System1D<Map> {
       std::vector<Reply> replys;
       bool is_finished;
 
-      Info(MapPaxos& parent_,
-           std::unique_ptr<const Packet> packet_reply_,
-           std::unique_ptr<Value>  key_,
-           MapOption::Type opt_);
+      Info(
+          MapPaxos& parent_, std::unique_ptr<const Packet> packet_reply_, std::unique_ptr<Value> key_,
+          MapOption::Type opt_);
       virtual ~Info();
     };
 
@@ -218,16 +215,18 @@ class MapPaxos : public System1D<Map> {
   void recv_packet_hint(std::unique_ptr<const Packet> packet);
   void recv_packet_prepare(std::unique_ptr<const Packet> packet);
   void recv_packet_set(std::unique_ptr<const Packet> packet);
-  void send_packet_accept(ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply,
-                          std::unique_ptr<Value> key, MapOption::Type opt);
+  void send_packet_accept(
+      ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply, std::unique_ptr<Value> key,
+      MapOption::Type opt);
   void send_packet_balance_acceptor(const Value& key, const AcceptorInfo& acceptor);
   void send_packet_balance_proposer(const Value& key, const ProposerInfo& proposer);
-  void send_packet_get(std::unique_ptr<Value> key, int count_retry,
-                       const std::function<void(const Value&)>& on_success,
-                       const std::function<void(MapFailureReason)>& on_failure);
+  void send_packet_get(
+      std::unique_ptr<Value> key, int count_retry, const std::function<void(const Value&)>& on_success,
+      const std::function<void(MapFailureReason)>& on_failure);
   void send_packet_hint(const Value& key, const Value& value, PAXOS_N n, PAXOS_N i);
-  void send_packet_prepare(ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply,
-                           std::unique_ptr<Value> key, MapOption::Type opt);
+  void send_packet_prepare(
+      ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply, std::unique_ptr<Value> key,
+      MapOption::Type opt);
   void send_packet_set(std::unique_ptr<CommandSet::Info> info);
 
 #ifndef NDEBUG

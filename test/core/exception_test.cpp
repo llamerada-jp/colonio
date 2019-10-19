@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#include <gtest/gtest.h>
-
 #include "core/exception.hpp"
+
+#include <gtest/gtest.h>
 
 using namespace colonio;
 

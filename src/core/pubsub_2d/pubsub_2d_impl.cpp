@@ -14,20 +14,21 @@
  * limitations under the License.
  */
 
-#include <cassert>
+#include "pubsub_2d_impl.hpp"
 
-#include "pubsub_2d_protocol.pb.h"
+#include <cassert>
 
 #include "core/convert.hpp"
 #include "core/coord_system.hpp"
 #include "core/definition.hpp"
 #include "core/utils.hpp"
 #include "core/value_impl.hpp"
-#include "pubsub_2d_impl.hpp"
+#include "pubsub_2d_protocol.pb.h"
 
 namespace colonio {
-PubSub2DImpl::PubSub2DImpl(Context& context, ModuleDelegate& module_delegate,
-                           System2DDelegate& system_delegate, const picojson::object& config) :
+PubSub2DImpl::PubSub2DImpl(
+    Context& context, ModuleDelegate& module_delegate, System2DDelegate& system_delegate,
+    const picojson::object& config) :
     System2D(context, module_delegate, system_delegate, Utils::get_json<double>(config, "channel")),
     conf_cache_time(PUBSUB2D_CACHE_TIME) {
   Utils::check_json_optional(config, "cacheTime", &conf_cache_time);
@@ -39,17 +40,17 @@ PubSub2DImpl::~PubSub2DImpl() {
   context.scheduler.remove_task(this);
 }
 
-void PubSub2DImpl::publish(const std::string& name, double x, double y, double r, const Value& value,
-                           const std::function<void()>& on_success,
-                           const std::function<void(PubSub2DFailureReason)>& on_failure) {
-  uint64_t uid = assign_uid();
-  Cache& c = cache[uid];
-  c.name = name;
-  c.center = Coordinate(x, y);
-  c.r = r;
-  c.uid = uid;
+void PubSub2DImpl::publish(
+    const std::string& name, double x, double y, double r, const Value& value, const std::function<void()>& on_success,
+    const std::function<void(PubSub2DFailureReason)>& on_failure) {
+  uint64_t uid  = assign_uid();
+  Cache& c      = cache[uid];
+  c.name        = name;
+  c.center      = Coordinate(x, y);
+  c.r           = r;
+  c.uid         = uid;
   c.create_time = Utils::get_current_msec();
-  c.data = value;
+  c.data        = value;
 
   if (context.coord_system->get_distance(c.center, context.get_my_position()) < r) {
     if (c.data.get_type() == Value::STRING_T) {
@@ -69,8 +70,7 @@ void PubSub2DImpl::publish(const std::string& name, double x, double y, double r
   }
 }
 
-void PubSub2DImpl::on(const std::string& name,
-                      const std::function<void(const Value&)>& subscriber) {
+void PubSub2DImpl::on(const std::string& name, const std::function<void(const Value&)>& subscriber) {
   assert(funcs_subscriber.find(name) == funcs_subscriber.end());
 
   funcs_subscriber.insert(std::make_pair(name, subscriber));
@@ -134,10 +134,9 @@ void PubSub2DImpl::CommandKnock::on_success(std::unique_ptr<const Packet> packet
   }
 }
 
-
-PubSub2DImpl::CommandPass::CommandPass(PubSub2DImpl& parent_, uint64_t uid_,
-                                       const std::function<void()>& cb_on_success_,
-                                       const std::function<void(PubSub2DFailureReason)>& cb_on_failure_) :
+PubSub2DImpl::CommandPass::CommandPass(
+    PubSub2DImpl& parent_, uint64_t uid_, const std::function<void()>& cb_on_success_,
+    const std::function<void(PubSub2DFailureReason)>& cb_on_failure_) :
     Command(CommandID::PubSub2D::PASS, PacketMode::NONE),
     parent(parent_),
     uid(uid_),
@@ -176,7 +175,7 @@ void PubSub2DImpl::clear_cache() {
       it_c = cache.erase(it_c);
 
     } else {
-      it_c ++;
+      it_c++;
     }
   }
 }
@@ -185,14 +184,12 @@ void PubSub2DImpl::recv_packet_knock(std::unique_ptr<const Packet> packet) {
   Pubsub2DProtocol::Knock content;
   packet->parse_content(&content);
   Coordinate center = Coordinate::from_pb(content.center());
-  double r = content.r();
-  uint64_t uid = content.uid();
+  double r          = content.r();
+  uint64_t uid      = content.uid();
 
-  if (cache.find(uid) == cache.end() &&
-      context.coord_system->get_distance(context.get_my_position(), center) < r) {
+  if (cache.find(uid) == cache.end() && context.coord_system->get_distance(context.get_my_position(), center) < r) {
     send_success(*packet, nullptr);
   } else {
-
     send_failure(*packet, nullptr);
   }
 }
@@ -201,28 +198,26 @@ void PubSub2DImpl::recv_packet_deffuse(std::unique_ptr<const Packet> packet) {
   Pubsub2DProtocol::Deffuse content;
   packet->parse_content(&content);
   Coordinate center = Coordinate::from_pb(content.center());
-  double r = content.r();
-  uint64_t uid = content.uid();
+  double r          = content.r();
+  uint64_t uid      = content.uid();
 
-  if (cache.find(uid) == cache.end() &&
-      context.coord_system->get_distance(context.get_my_position(), center) < r) {
+  if (cache.find(uid) == cache.end() && context.coord_system->get_distance(context.get_my_position(), center) < r) {
     const std::string& name = content.name();
-    const Value data = ValueImpl::from_pb(content.data());
-    Cache& c = cache[uid];
-    c.name = name;
-    c.center = center;
-    c.r = r;
-    c.uid = uid;
-    c.create_time = std::time(nullptr);
-    c.data = data;
+    const Value data        = ValueImpl::from_pb(content.data());
+    Cache& c                = cache[uid];
+    c.name                  = name;
+    c.center                = center;
+    c.r                     = r;
+    c.uid                   = uid;
+    c.create_time           = std::time(nullptr);
+    c.data                  = data;
 
     if (c.data.get_type() == Value::STRING_T) {
       send_packet_knock(packet->src_nid, c);
 
     } else {
       for (auto& it_np : next_positions) {
-        if (it_np.first != packet->src_nid &&
-            context.coord_system->get_distance(c.center, it_np.second) < r) {
+        if (it_np.first != packet->src_nid && context.coord_system->get_distance(c.center, it_np.second) < r) {
           send_packet_deffuse(it_np.first, c);
         }
       }
@@ -239,17 +234,17 @@ void PubSub2DImpl::recv_packet_pass(std::unique_ptr<const Packet> packet) {
   Pubsub2DProtocol::Pass content;
   packet->parse_content(&content);
   Coordinate center = Coordinate::from_pb(content.center());
-  double r = content.r();
-  
+  double r          = content.r();
+
   if (context.coord_system->get_distance(center, context.get_my_position()) < r) {
-    uint64_t uid = content.uid();
-    Cache& c = cache[uid];
-    c.name = content.name();
-    c.center = center;
-    c.r = r;
-    c.uid = uid;
+    uint64_t uid  = content.uid();
+    Cache& c      = cache[uid];
+    c.name        = content.name();
+    c.center      = center;
+    c.r           = r;
+    c.uid         = uid;
     c.create_time = Utils::get_current_msec();
-    c.data = ValueImpl::from_pb(content.data());
+    c.data        = ValueImpl::from_pb(content.data());
 
     if (c.data.get_type() == Value::STRING_T) {
       // @todo send_success after check the result.
@@ -284,11 +279,10 @@ void PubSub2DImpl::send_packet_knock(const NodeID& exclude, const Cache& cache) 
   std::shared_ptr<const std::string> param_bin = serialize_pb(param);
 
   for (auto& it_np : next_positions) {
-    const NodeID& nid = it_np.first;
+    const NodeID& nid    = it_np.first;
     Coordinate& position = it_np.second;
 
-    if (nid != exclude &&
-        context.coord_system->get_distance(cache.center, position) < cache.r) {
+    if (nid != exclude && context.coord_system->get_distance(cache.center, position) < cache.r) {
       std::unique_ptr<Command> command = std::make_unique<CommandKnock>(*this, cache.uid);
       send_packet(std::move(command), nid, param_bin);
     }
@@ -306,9 +300,9 @@ void PubSub2DImpl::send_packet_deffuse(const NodeID& dst_nid, const Cache& cache
   send_packet(dst_nid, PacketMode::ONE_WAY, CommandID::PubSub2D::DEFFUSE, serialize_pb(param));
 }
 
-void PubSub2DImpl::send_packet_pass(const Cache& cache,
-                                    const std::function<void()>& on_success,
-                                    const std::function<void(PubSub2DFailureReason)>& on_failure) {
+void PubSub2DImpl::send_packet_pass(
+    const Cache& cache, const std::function<void()>& on_success,
+    const std::function<void(PubSub2DFailureReason)>& on_failure) {
   Pubsub2DProtocol::Pass param;
   cache.center.to_pb(param.mutable_center());
   param.set_r(cache.r);
@@ -317,7 +311,7 @@ void PubSub2DImpl::send_packet_pass(const Cache& cache,
   ValueImpl::to_pb(param.mutable_data(), cache.data);
 
   std::unique_ptr<Command> command = std::make_unique<CommandPass>(*this, cache.uid, on_success, on_failure);
-  const NodeID& nid = get_relay_nid(cache.center);
+  const NodeID& nid                = get_relay_nid(cache.center);
   send_packet(std::move(command), nid, serialize_pb(param));
 }
 }  // namespace colonio

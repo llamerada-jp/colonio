@@ -18,7 +18,7 @@
 namespace colonio {
 namespace Protocol {
 class Coordinate;
-} // Protocol
+}  // namespace Protocol
 
 class Coordinate {
  public:

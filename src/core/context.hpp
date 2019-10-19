@@ -53,9 +53,9 @@ class Context {
 
 #ifndef NDEBUG
   bool enable_debug_event;
-  std::function <void(DebugEvent::Type type, const picojson::value& data)> func_on_debug_event;
+  std::function<void(DebugEvent::Type type, const picojson::value& data)> func_on_debug_event;
 #endif
-  
+
   Context(const Context&);
   void operator=(const Context&);
 };

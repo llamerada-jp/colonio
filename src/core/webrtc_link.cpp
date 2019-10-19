@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <cassert>
-
 #include "webrtc_link.hpp"
+
+#include <cassert>
 
 namespace colonio {
 /**
@@ -40,9 +40,9 @@ WebrtcLinkBase::InitData::~InitData() {
 void WebrtcLinkBase::InitData::hook_on_delete(std::function<void(void*)> func, void* v) {
   assert(has_delete_func == false);
 
-  has_delete_func   = true;
-  on_delete_func    = func;
-  on_delete_v       = v;
+  has_delete_func = true;
+  on_delete_func  = func;
+  on_delete_v     = v;
 }
 
 WebrtcLinkBase::WebrtcLinkBase(WebrtcLinkDelegate& delegate_, Context& context_, WebrtcContext& webrtc_context_) :

@@ -23,8 +23,7 @@
 #include "webrtc_link.hpp"
 
 namespace colonio {
-WebrtcLinkNative::CSDO::CSDO(WebrtcLink& parent_) :
-    parent(parent_) {
+WebrtcLinkNative::CSDO::CSDO(WebrtcLink& parent_) : parent(parent_) {
 }
 
 void WebrtcLinkNative::CSDO::OnSuccess(webrtc::SessionDescriptionInterface* desc) {
@@ -35,8 +34,7 @@ void WebrtcLinkNative::CSDO::OnFailure(const std::string& error) {
   parent.on_csd_failure(error);
 }
 
-WebrtcLinkNative::DCO::DCO(WebrtcLink& parent_) :
-    parent(parent_) {
+WebrtcLinkNative::DCO::DCO(WebrtcLink& parent_) : parent(parent_) {
 }
 
 void WebrtcLinkNative::DCO::OnStateChange() {
@@ -50,8 +48,7 @@ void WebrtcLinkNative::DCO::OnMessage(const webrtc::DataBuffer& buffer) {
 void WebrtcLinkNative::DCO::OnBufferedAmountChange(uint64_t previous_amount) {
 }
 
-WebrtcLinkNative::PCO::PCO(WebrtcLink& parent_) :
-    parent(parent_) {
+WebrtcLinkNative::PCO::PCO(WebrtcLink& parent_) : parent(parent_) {
 }
 
 void WebrtcLinkNative::PCO::OnAddStream(rtc::scoped_refptr<webrtc::MediaStreamInterface> stream) {
@@ -68,13 +65,11 @@ void WebrtcLinkNative::PCO::OnIceCandidate(const webrtc::IceCandidateInterface* 
   parent.on_pco_ice_candidate(candidate);
 }
 
-void WebrtcLinkNative::PCO::OnIceConnectionChange(
-    webrtc::PeerConnectionInterface::IceConnectionState new_state) {
+void WebrtcLinkNative::PCO::OnIceConnectionChange(webrtc::PeerConnectionInterface::IceConnectionState new_state) {
   parent.on_pco_connection_change(new_state);
 }
 
-void WebrtcLinkNative::PCO::OnIceGatheringChange(
-    webrtc::PeerConnectionInterface::IceGatheringState new_state) {
+void WebrtcLinkNative::PCO::OnIceGatheringChange(webrtc::PeerConnectionInterface::IceGatheringState new_state) {
 }
 
 void WebrtcLinkNative::PCO::OnRemoveStream(rtc::scoped_refptr<webrtc::MediaStreamInterface> stream) {
@@ -83,12 +78,10 @@ void WebrtcLinkNative::PCO::OnRemoveStream(rtc::scoped_refptr<webrtc::MediaStrea
 void WebrtcLinkNative::PCO::OnRenegotiationNeeded() {
 }
 
-void WebrtcLinkNative::PCO::OnSignalingChange(
-    webrtc::PeerConnectionInterface::SignalingState new_state) {
+void WebrtcLinkNative::PCO::OnSignalingChange(webrtc::PeerConnectionInterface::SignalingState new_state) {
 }
 
-WebrtcLinkNative::SSDO::SSDO(WebrtcLink& parent_) :
-    parent(parent_) {
+WebrtcLinkNative::SSDO::SSDO(WebrtcLink& parent_) : parent(parent_) {
 }
 
 void WebrtcLinkNative::SSDO::OnSuccess() {
@@ -98,8 +91,8 @@ void WebrtcLinkNative::SSDO::OnFailure(const std::string& error) {
   parent.on_ssd_failure(error);
 }
 
-WebrtcLinkNative::WebrtcLinkNative(WebrtcLinkDelegate& delegate_, Context& context_,
-                                   WebrtcContext& webrtc_context, bool is_create_dc) :
+WebrtcLinkNative::WebrtcLinkNative(
+    WebrtcLinkDelegate& delegate_, Context& context_, WebrtcContext& webrtc_context, bool is_create_dc) :
     WebrtcLinkBase(delegate_, context_, webrtc_context),
     csdo(new rtc::RefCountedObject<CSDO>(*this)),
     dco(*this),
@@ -109,9 +102,8 @@ WebrtcLinkNative::WebrtcLinkNative(WebrtcLinkDelegate& delegate_, Context& conte
     prev_status(LinkStatus::CONNECTING),
     dco_status(LinkStatus::CONNECTING),
     pco_status(LinkStatus::CONNECTING) {
-
-  peer_connection = webrtc_context.peer_connection_factory->
-    CreatePeerConnection(webrtc_context.pc_config, nullptr, nullptr, &pco);
+  peer_connection =
+      webrtc_context.peer_connection_factory->CreatePeerConnection(webrtc_context.pc_config, nullptr, nullptr, &pco);
 
   if (peer_connection.get() == nullptr) {
     /// @todo error
@@ -183,12 +175,10 @@ LinkStatus::Type WebrtcLinkNative::get_status() {
       pco_status = this->pco_status;
     }
 
-    if (dco_status == LinkStatus::ONLINE &&
-        pco_status == LinkStatus::ONLINE) {
+    if (dco_status == LinkStatus::ONLINE && pco_status == LinkStatus::ONLINE) {
       return LinkStatus::ONLINE;
 
-    } else if (dco_status == LinkStatus::OFFLINE &&
-               pco_status == LinkStatus::OFFLINE) {
+    } else if (dco_status == LinkStatus::OFFLINE && pco_status == LinkStatus::OFFLINE) {
       return LinkStatus::OFFLINE;
 
     } else {
@@ -243,11 +233,9 @@ void WebrtcLinkNative::update_ice(const picojson::object& ice) {
   LinkStatus::Type status = get_status();
   if (status == LinkStatus::CONNECTING || status == LinkStatus::ONLINE) {
     webrtc::SdpParseError err_sdp;
-    webrtc::IceCandidateInterface* ice_ptr =
-      CreateIceCandidate(ice.at("sdpMid").get<std::string>(),
-                         static_cast<int>(ice.at("sdpMLineIndex").get<double>()),
-                         ice.at("candidate").get<std::string>(),
-                         &err_sdp);
+    webrtc::IceCandidateInterface* ice_ptr = CreateIceCandidate(
+        ice.at("sdpMid").get<std::string>(), static_cast<int>(ice.at("sdpMLineIndex").get<double>()),
+        ice.at("candidate").get<std::string>(), &err_sdp);
     if (!err_sdp.line.empty() && !err_sdp.description.empty()) {
       /// @todo error
       std::cout << "Error on CreateIceCandidate" << std::endl
@@ -270,20 +258,15 @@ void WebrtcLinkNative::on_change_status() {
       pco_status = this->pco_status;
     }
 
-    if (init_data &&
-        dco_status == LinkStatus::ONLINE &&
-        pco_status == LinkStatus::ONLINE) {
+    if (init_data && dco_status == LinkStatus::ONLINE && pco_status == LinkStatus::ONLINE) {
       init_data.reset();
 
-    } else if ((dco_status == LinkStatus::OFFLINE ||
-                pco_status == LinkStatus::OFFLINE) &&
-               dco_status != pco_status) {
+    } else if ((dco_status == LinkStatus::OFFLINE || pco_status == LinkStatus::OFFLINE) && dco_status != pco_status) {
       disconnect();
 
-    } else if (dco_status == LinkStatus::OFFLINE &&
-               pco_status == LinkStatus::OFFLINE) {
+    } else if (dco_status == LinkStatus::OFFLINE && pco_status == LinkStatus::OFFLINE) {
       peer_connection = nullptr;
-      data_channel = nullptr;
+      data_channel    = nullptr;
     }
   }
 
@@ -373,7 +356,7 @@ void WebrtcLinkNative::on_dco_message(const webrtc::DataBuffer& buffer) {
  */
 void WebrtcLinkNative::on_dco_state_change(webrtc::DataChannelInterface::DataState status) {
   LinkStatus::Type should;
-  switch(status) {  
+  switch (status) {
     case webrtc::DataChannelInterface::kConnecting:
       should = LinkStatus::CONNECTING;
       break;
@@ -412,8 +395,7 @@ void WebrtcLinkNative::on_dco_state_change(webrtc::DataChannelInterface::DataSta
  * Raise status change event by peer connection status.
  * @param status Peer connection status.
  */
-void WebrtcLinkNative::on_pco_connection_change(
-    webrtc::PeerConnectionInterface::IceConnectionState status) {
+void WebrtcLinkNative::on_pco_connection_change(webrtc::PeerConnectionInterface::IceConnectionState status) {
   LinkStatus::Type should;
   switch (status) {
     case webrtc::PeerConnectionInterface::kIceConnectionNew:
@@ -462,8 +444,7 @@ void WebrtcLinkNative::on_pco_ice_candidate(const webrtc::IceCandidateInterface*
   candidate->ToString(&candidate_str);
   ice->insert(std::make_pair("candidate", picojson::value(candidate_str)));
   ice->insert(std::make_pair("sdpMid", picojson::value(candidate->sdp_mid())));
-  ice->insert(std::make_pair("sdpMLineIndex",
-                             picojson::value(static_cast<double>(candidate->sdp_mline_index()))));
+  ice->insert(std::make_pair("sdpMLineIndex", picojson::value(static_cast<double>(candidate->sdp_mline_index()))));
 
   {
     std::lock_guard<std::mutex> guard(mutex_ice);

@@ -15,6 +15,7 @@
  */
 
 #include "seed_link_websocket_native.hpp"
+
 #include "context.hpp"
 
 namespace colonio {
@@ -31,15 +32,14 @@ SeedLinkWebsocketNative::SeedLinkWebsocketNative(SeedLinkDelegate& delegate_, Co
 
 SeedLinkWebsocketNative::~SeedLinkWebsocketNative() {
   client.stop_perpetual();
-        
-            
+
   websocketpp::lib::error_code ec;
   client.close(con->get_handle(), websocketpp::close::status::going_away, "", ec);
   if (ec) {
     // @todo error
     std::cout << "> Error closing connection: " << ec.message() << std::endl;
   }
-  
+
   m_thread->join();
   context.scheduler.remove_task(this);
 }
@@ -55,29 +55,22 @@ void SeedLinkWebsocketNative::connect(const std::string& url) {
   }
 
   con->set_open_handler([this](std::weak_ptr<void>) {
-      context.scheduler.add_timeout_task(this, [this]() {
-          this->delegate.seed_link_on_connect(*this);
-        }, 0);
-    });
+    context.scheduler.add_timeout_task(this, [this]() { this->delegate.seed_link_on_connect(*this); }, 0);
+  });
 
   con->set_fail_handler([this](std::weak_ptr<void>) {
-      context.scheduler.add_timeout_task(this, [this]() {
-          this->delegate.seed_link_on_error(*this);
-        }, 0);
-    });
+    context.scheduler.add_timeout_task(this, [this]() { this->delegate.seed_link_on_error(*this); }, 0);
+  });
 
   con->set_close_handler([this](std::weak_ptr<void>) {
-      context.scheduler.add_timeout_task(this, [this]() {
-          this->delegate.seed_link_on_disconnect(*this);
-        }, 0);
-    });
+    context.scheduler.add_timeout_task(this, [this]() { this->delegate.seed_link_on_disconnect(*this); }, 0);
+  });
 
   con->set_message_handler([this](std::weak_ptr<void>, message_ptr msg) {
-      std::string msg_str(msg->get_payload());
-      context.scheduler.add_timeout_task(this, [this, msg_str]() {
-          this->delegate.seed_link_on_recv(*this, msg_str);
-        }, 0);
-    });
+    std::string msg_str(msg->get_payload());
+    context.scheduler.add_timeout_task(
+        this, [this, msg_str]() { this->delegate.seed_link_on_recv(*this, msg_str); }, 0);
+  });
 
   client.connect(con);
 }
@@ -88,7 +81,7 @@ void SeedLinkWebsocketNative::disconnect() {
 
 void SeedLinkWebsocketNative::send(const std::string& data) {
   websocketpp::lib::error_code ec;
-        
+
   client.send(con->get_handle(), data, websocketpp::frame::opcode::binary, ec);
   if (ec) {
     // @todo error

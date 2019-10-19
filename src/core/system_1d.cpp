@@ -20,8 +20,8 @@ namespace colonio {
 System1DDelegate::~System1DDelegate() {
 }
 
-System1DBase::System1DBase(Context& context, ModuleDelegate& module_delegate,
-                           System1DDelegate& system_delegate, ModuleChannel::Type channel) :
+System1DBase::System1DBase(
+    Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate, ModuleChannel::Type channel) :
     Module(context, module_delegate, channel),
     delegate(system_delegate) {
 }

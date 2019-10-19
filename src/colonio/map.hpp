@@ -15,22 +15,22 @@
  */
 #pragma once
 
+#include <colonio/value.hpp>
 #include <cstdint>
 #include <functional>
-
-#include <colonio/value.hpp>
 
 namespace colonio {
 
 namespace MapOption {
 typedef uint32_t Type;
 static const Type NONE                = 0x0;
-static const Type ERROR_WITHOUT_EXIST = 0x1; // del, unlook
+static const Type ERROR_WITHOUT_EXIST = 0x1;  // del, unlook
 // static const Type ERROR_WITH_EXIST    = 0x2; // set
-static const Type TRY_LOCK            = 0x4; // lock
+static const Type TRY_LOCK = 0x4;  // lock
 }  // namespace MapOption
 
-enum class MapFailureReason : uint32_t {
+enum class MapFailureReason : uint32_t
+{
   NONE,
   SYSTEM_ERROR,
   NOT_EXIST_KEY,
@@ -43,12 +43,11 @@ class Map {
  public:
   virtual ~Map();
 
-  virtual void get(const Value& key,
-                   const std::function<void(const Value&)>& on_success,
-                   const std::function<void(MapFailureReason)>& on_failure) = 0;
-  virtual void set(const Value& key, const Value& value,
-                   const std::function<void()>& on_success,
-                   const std::function<void(MapFailureReason)>& on_failure,
-                   MapOption::Type opt = 0x0) = 0;
+  virtual void get(
+      const Value& key, const std::function<void(const Value&)>& on_success,
+      const std::function<void(MapFailureReason)>& on_failure) = 0;
+  virtual void set(
+      const Value& key, const Value& value, const std::function<void()>& on_success,
+      const std::function<void(MapFailureReason)>& on_failure, MapOption::Type opt = 0x0) = 0;
 };
 }  // namespace colonio

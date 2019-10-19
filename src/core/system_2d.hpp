@@ -28,25 +28,27 @@ class System2DDelegate {
 
 class System2DBase : public Module {
  public:
-  virtual void system_2d_on_change_my_position(const Coordinate& position) = 0;
-  virtual void system_2d_on_change_nearby(const std::set<NodeID>& nids) = 0;
+  virtual void system_2d_on_change_my_position(const Coordinate& position)                        = 0;
+  virtual void system_2d_on_change_nearby(const std::set<NodeID>& nids)                           = 0;
   virtual void system_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) = 0;
 
  protected:
-  System2DBase(Context& context, ModuleDelegate& module_delegate,
-               System2DDelegate& system_delegate, ModuleChannel::Type channel);
+  System2DBase(
+      Context& context, ModuleDelegate& module_delegate, System2DDelegate& system_delegate,
+      ModuleChannel::Type channel);
 
   const NodeID& get_relay_nid(const Coordinate& position);
-  
+
  private:
   System2DDelegate& delegate;
 };
 
-template <class BASE> class System2D : public BASE,
-                                       public System2DBase {
+template<class BASE>
+class System2D : public BASE, public System2DBase {
  protected:
-  System2D(Context& context, ModuleDelegate& module_delegate,
-           System2DDelegate& system_delegate, ModuleChannel::Type channel) :
+  System2D(
+      Context& context, ModuleDelegate& module_delegate, System2DDelegate& system_delegate,
+      ModuleChannel::Type channel) :
       System2DBase(context, module_delegate, system_delegate, channel) {
   }
 };

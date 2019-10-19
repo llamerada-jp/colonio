@@ -35,12 +35,14 @@ namespace Convert {
  * @param num A source integer.
  * @return A integer as string.
  */
-template<class T> std::string int2str(T num) {
+template<class T>
+std::string int2str(T num) {
   std::ostringstream os;
   os << std::hex << std::setfill('0') << std::setw(sizeof(T) * 2) << num;
   return os.str();
 }
-template<> std::string int2str<uint8_t>(uint8_t num);
+template<>
+std::string int2str<uint8_t>(uint8_t num);
 
 /**
  * Convert virtual-address to string.
@@ -56,13 +58,15 @@ inline std::string vaddr2str(const vaddr_t& addr) {
  * @param str A source string.
  * @return A converted integer.
  */
-template<class T> T str2int(const std::string& str) {
+template<class T>
+T str2int(const std::string& str) {
   std::istringstream is(str);
   T v;
   is >> std::hex >> v;
   return v;
 }
-template<> uint8_t str2int<uint8_t>(const std::string& str);
+template<>
+uint8_t str2int<uint8_t>(const std::string& str);
 
 /**
  * Convert virtual-address from string.
@@ -84,7 +88,8 @@ inline bool json2bool(const picojson::value& json) {
 
 Coordinate json2coordinate(const picojson::value& json);
 
-template<class T> T json2enum(const picojson::value& json) {
+template<class T>
+T json2enum(const picojson::value& json) {
   // @TODO check range
   return static_cast<T>(str2int<uint32_t>(json.get<std::string>()));
 }
@@ -94,7 +99,8 @@ template<class T> T json2enum(const picojson::value& json) {
  * @param json Source JSON.
  * @return A converted integer.
  */
-template<class T> T json2int(const picojson::value& json) {
+template<class T>
+T json2int(const picojson::value& json) {
   return str2int<T>(json.get<std::string>());
 }
 
@@ -144,11 +150,13 @@ inline picojson::value bool2json(bool b) {
  * @param num Source integer.
  * @return Integer as JSON.
  */
-template<class T> picojson::value int2json(T num) {
+template<class T>
+picojson::value int2json(T num) {
   return picojson::value(int2str<T>(num));
 }
 
-template<class T> picojson::value enum2json(T e) {
+template<class T>
+picojson::value enum2json(T e) {
   return picojson::value(int2json(static_cast<uint32_t>(e)));
 }
 

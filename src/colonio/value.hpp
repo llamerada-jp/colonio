@@ -20,7 +20,8 @@ namespace colonio {
 class ValueImpl;
 class Value {
  public:
-  enum Type {
+  enum Type
+  {
     NULL_T,
     BOOL_T,
     INT_T,
@@ -39,8 +40,10 @@ class Value {
   Value& operator=(const Value& src);
   bool operator<(const Value& b) const;
 
-  template <typename T> const T& get() const;
-  template <typename T> T& get();
+  template<typename T>
+  const T& get() const;
+  template<typename T>
+  T& get();
   Type get_type() const;
   void reset();
   void set(bool v);

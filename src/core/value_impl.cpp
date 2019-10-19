@@ -13,49 +13,43 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "core/value_impl.hpp"
+
 #include <cassert>
 
 #include "convert.hpp"
-#include "core/value_impl.hpp"
 
 namespace colonio {
-ValueImpl::ValueImpl() :
-    type(Value::NULL_T) {
+ValueImpl::ValueImpl() : type(Value::NULL_T) {
   memset(&storage, 0, sizeof(Storage));
 }
-    
-ValueImpl::ValueImpl(bool v) :
-    type(Value::BOOL_T) {
+
+ValueImpl::ValueImpl(bool v) : type(Value::BOOL_T) {
   memset(&storage, 0, sizeof(Storage));
   storage.bool_v = v;
 }
 
-ValueImpl::ValueImpl(int64_t v) :
-    type(Value::INT_T) {
+ValueImpl::ValueImpl(int64_t v) : type(Value::INT_T) {
   memset(&storage, 0, sizeof(Storage));
   storage.int64_v = v;
 }
 
-ValueImpl::ValueImpl(double v) :
-    type(Value::DOUBLE_T) {
+ValueImpl::ValueImpl(double v) : type(Value::DOUBLE_T) {
   memset(&storage, 0, sizeof(Storage));
   storage.double_v = v;
 }
 
-ValueImpl::ValueImpl(const std::string& v) :
-    type(Value::STRING_T) {
+ValueImpl::ValueImpl(const std::string& v) : type(Value::STRING_T) {
   memset(&storage, 0, sizeof(Storage));
   storage.string_v = new std::string(v);
 }
 
-ValueImpl::ValueImpl(const char* v) :
-    type(Value::STRING_T) {
+ValueImpl::ValueImpl(const char* v) : type(Value::STRING_T) {
   memset(&storage, 0, sizeof(Storage));
   storage.string_v = new std::string(v);
 }
 
-ValueImpl::ValueImpl(const ValueImpl& src) :
-    type(src.type) {
+ValueImpl::ValueImpl(const ValueImpl& src) : type(src.type) {
   memset(&storage, 0, sizeof(Storage));
 
   if (src.type == Value::STRING_T) {
@@ -69,7 +63,7 @@ ValueImpl::ValueImpl(const ValueImpl& src) :
 ValueImpl::~ValueImpl() {
   if (type == Value::STRING_T) {
     delete storage.string_v;
-    type = Value::NULL_T;
+    type             = Value::NULL_T;
     storage.string_v = nullptr;
   }
 }
@@ -77,7 +71,7 @@ ValueImpl::~ValueImpl() {
 void ValueImpl::to_pb(Protocol::Value* pb, const Value& value) {
   switch (value.impl->type) {
     case Value::NULL_T:
-      //pb->clear_value();
+      // pb->clear_value();
       pb->Clear();
       break;
 
@@ -99,7 +93,7 @@ void ValueImpl::to_pb(Protocol::Value* pb, const Value& value) {
 
     default:
       assert(false);
-      //pb->clear_value();
+      // pb->clear_value();
       pb->Clear();
   }
 }
@@ -172,7 +166,6 @@ std::string ValueImpl::to_str(const Value& value) {
 }
 
 bool ValueImpl::operator<(const ValueImpl& b) const {
-
   if (type != b.type) {
     return type < b.type;
 

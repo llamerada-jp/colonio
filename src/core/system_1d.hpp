@@ -32,8 +32,9 @@ class System1DBase : public Module {
   virtual void system_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) = 0;
 
  protected:
-  System1DBase(Context& context, ModuleDelegate& module_delegate,
-               System1DDelegate& system_delegate, ModuleChannel::Type channel);
+  System1DBase(
+      Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate,
+      ModuleChannel::Type channel);
 
   bool system_1d_check_coverd_range(const NodeID& nid);
 
@@ -41,11 +42,12 @@ class System1DBase : public Module {
   System1DDelegate& delegate;
 };
 
-template <class BASE> class System1D : public BASE,
-                                       public System1DBase {
+template<class BASE>
+class System1D : public BASE, public System1DBase {
  protected:
-  System1D(Context& context, ModuleDelegate& module_delegate,
-           System1DDelegate& system_delegate, ModuleChannel::Type channel) :
+  System1D(
+      Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate,
+      ModuleChannel::Type channel) :
       System1DBase(context, module_delegate, system_delegate, channel) {
   }
 };

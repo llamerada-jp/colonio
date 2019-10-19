@@ -13,18 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "scheduler.hpp"
+
 #include <cassert>
 #include <iostream>
 
-#include "scheduler.hpp"
 #include "utils.hpp"
 
 namespace colonio {
 SchedulerDelegate::~SchedulerDelegate() {
 }
 
-Scheduler::Scheduler(SchedulerDelegate& delegate_) :
-    delegate(delegate_) {
+Scheduler::Scheduler(SchedulerDelegate& delegate_) : delegate(delegate_) {
 }
 
 Scheduler::~Scheduler() {
@@ -35,14 +35,14 @@ void Scheduler::add_interval_task(void* src, std::function<void()> func, unsigne
 
   std::lock_guard<std::mutex> guard(mtx);
   int64_t next = ((Utils::get_current_msec() / 1000) + 1) * 1000 + msec;
-  tasks.push_back(std::make_shared<Task>(Task {src, func, msec, next}));
+  tasks.push_back(std::make_shared<Task>(Task{src, func, msec, next}));
 }
 
 void Scheduler::add_timeout_task(void* src, std::function<void()> func, unsigned int msec) {
   std::lock_guard<std::mutex> guard(mtx);
 
   if (msec == 0 && running_tasks.size() != 0) {
-    running_tasks.push_back(std::make_shared<Task>(Task {src, func, 0, 0}));
+    running_tasks.push_back(std::make_shared<Task>(Task{src, func, 0, 0}));
 
   } else {
     int64_t min_next = INT64_MAX;
@@ -53,7 +53,7 @@ void Scheduler::add_timeout_task(void* src, std::function<void()> func, unsigned
     }
 
     int64_t current_msec = Utils::get_current_msec();
-    tasks.push_back(std::make_shared<Task>(Task {src, func, 0, current_msec + msec}));
+    tasks.push_back(std::make_shared<Task>(Task{src, func, 0, current_msec + msec}));
 
     if (min_next - current_msec > msec) {
       delegate.scheduler_on_require_invoke(*this, msec);
@@ -76,10 +76,10 @@ unsigned int Scheduler::invoke() {
           while ((*it)->next <= current_msec) {
             (*it)->next += (*it)->interval;
           }
-          it ++;
+          it++;
         }
       } else {
-        it ++;
+        it++;
       }
     }
   }
@@ -112,7 +112,7 @@ unsigned int Scheduler::invoke() {
         min_next = it->next;
       }
     }
-    int64_t next =  min_next - Utils::get_current_msec();
+    int64_t next = min_next - Utils::get_current_msec();
     if (next > 0) {
       return next;
     } else {
@@ -141,15 +141,15 @@ bool Scheduler::is_having_task(void* src) {
 
 void Scheduler::remove_task(void* src) {
   std::lock_guard<std::mutex> guard(mtx);
- 
+
   if (running_tasks.size() != 0) {
     auto it = running_tasks.begin();
-    it ++;
+    it++;
     while (it != running_tasks.end()) {
       if ((*it)->src == src) {
         it = running_tasks.erase(it);
       } else {
-        it ++;
+        it++;
       }
     }
   }
@@ -160,7 +160,7 @@ void Scheduler::remove_task(void* src) {
       if ((*it)->src == src) {
         it = tasks.erase(it);
       } else {
-        it ++;
+        it++;
       }
     }
   }

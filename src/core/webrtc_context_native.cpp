@@ -13,17 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <cassert>
-#include <iostream>
-
 #include <api/audio_codecs/builtin_audio_decoder_factory.h>
 #include <api/audio_codecs/builtin_audio_encoder_factory.h>
 #include <api/video_codecs/builtin_video_decoder_factory.h>
 #include <api/video_codecs/builtin_video_encoder_factory.h>
 #include <rtc_base/ssl_adapter.h>
 
-#include "webrtc_context.hpp"
+#include <cassert>
+#include <iostream>
+
 #include "utils.hpp"
+#include "webrtc_context.hpp"
 
 namespace colonio {
 
@@ -80,15 +80,9 @@ void WebrtcContextNative::initialize(const picojson::array& ice_servers) {
   signaling_thread->Start();
 
   peer_connection_factory = webrtc::CreatePeerConnectionFactory(
-      network_thread.get(),
-      worker_thread.get(),
-      signaling_thread.get(),
-      nullptr /* default_adm */,
-      webrtc::CreateBuiltinAudioEncoderFactory(),
-      webrtc::CreateBuiltinAudioDecoderFactory(),
-      webrtc::CreateBuiltinVideoEncoderFactory(),
-      webrtc::CreateBuiltinVideoDecoderFactory(),
-      nullptr /* audio_mixer */,
+      network_thread.get(), worker_thread.get(), signaling_thread.get(), nullptr /* default_adm */,
+      webrtc::CreateBuiltinAudioEncoderFactory(), webrtc::CreateBuiltinAudioDecoderFactory(),
+      webrtc::CreateBuiltinVideoEncoderFactory(), webrtc::CreateBuiltinVideoDecoderFactory(), nullptr /* audio_mixer */,
       nullptr /* audio_processing */);
 
   if (peer_connection_factory.get() == nullptr) {

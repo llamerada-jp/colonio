@@ -21,8 +21,8 @@ namespace colonio {
 System2DDelegate::~System2DDelegate() {
 }
 
-System2DBase::System2DBase(Context& context, ModuleDelegate& module_delegate,
-                           System2DDelegate& system_delegate, ModuleChannel::Type channel) :
+System2DBase::System2DBase(
+    Context& context, ModuleDelegate& module_delegate, System2DDelegate& system_delegate, ModuleChannel::Type channel) :
     Module(context, module_delegate, channel),
     delegate(system_delegate) {
 }

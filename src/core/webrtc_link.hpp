@@ -40,9 +40,9 @@ class WebrtcLinkDelegate {
  public:
   virtual ~WebrtcLinkDelegate();
   virtual void webrtc_link_on_change_stateus(WebrtcLink& link, LinkStatus::Type status) = 0;
-  virtual void webrtc_link_on_error(WebrtcLink& link) = 0;
+  virtual void webrtc_link_on_error(WebrtcLink& link)                                   = 0;
   virtual void webrtc_link_on_update_ice(WebrtcLink& link, const picojson::object& ice) = 0;
-  virtual void webrtc_link_on_recv_data(WebrtcLink& link, const std::string& data) = 0;
+  virtual void webrtc_link_on_recv_data(WebrtcLink& link, const std::string& data)      = 0;
 };
 
 class WebrtcLinkBase {
@@ -69,18 +69,18 @@ class WebrtcLinkBase {
   NodeID nid;
   /// Event handler.
   WebrtcLinkDelegate& delegate;
-  /// 
+  ///
   std::unique_ptr<InitData> init_data;
 
   WebrtcLinkBase(WebrtcLinkDelegate& delegate_, Context& context_, WebrtcContext& webrtc_context);
   virtual ~WebrtcLinkBase();
 
-  virtual void disconnect() = 0;
+  virtual void disconnect()                                                = 0;
   virtual void get_local_sdp(std::function<void(const std::string&)> func) = 0;
-  virtual LinkStatus::Type get_status() = 0;
-  virtual bool send(const std::string& data) = 0;
-  virtual void set_remote_sdp(const std::string& sdp) = 0;
-  virtual void update_ice(const picojson::object& ice) = 0;
+  virtual LinkStatus::Type get_status()                                    = 0;
+  virtual bool send(const std::string& data)                               = 0;
+  virtual void set_remote_sdp(const std::string& sdp)                      = 0;
+  virtual void update_ice(const picojson::object& ice)                     = 0;
 
  protected:
   Context& context;

@@ -18,10 +18,10 @@
 #include <list>
 #include <set>
 
-#include "routing_protocol.pb.h"
-
+#include "coordinate.hpp"
 #include "module.hpp"
 #include "node_id.hpp"
+#include "routing_protocol.pb.h"
 
 namespace colonio {
 class Context;
@@ -33,13 +33,14 @@ class Routing2D;
 class RoutingDelegate {
  public:
   virtual ~RoutingDelegate();
-  virtual void routing_do_connect_node(Routing& routing, const NodeID& nid) = 0;
-  virtual void routing_do_disconnect_node(Routing& routing, const NodeID& nid) = 0;
-  virtual void routing_do_connect_seed(Routing& route) = 0;
-  virtual void routing_do_disconnect_seed(Routing& route) = 0;
+  virtual void routing_do_connect_node(Routing& routing, const NodeID& nid)                                         = 0;
+  virtual void routing_do_disconnect_node(Routing& routing, const NodeID& nid)                                      = 0;
+  virtual void routing_do_connect_seed(Routing& route)                                                              = 0;
+  virtual void routing_do_disconnect_seed(Routing& route)                                                           = 0;
   virtual void routing_on_system_1d_change_nearby(Routing& routing, const NodeID& prev_nid, const NodeID& next_nid) = 0;
-  virtual void routing_on_system_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids) = 0;
-  virtual void routing_on_system_2d_change_nearby_position(Routing& routing, const std::map<NodeID, Coordinate>& positions) = 0;
+  virtual void routing_on_system_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids)                   = 0;
+  virtual void routing_on_system_2d_change_nearby_position(
+      Routing& routing, const std::map<NodeID, Coordinate>& positions) = 0;
 };
 
 class RoutingAlgorithm {
@@ -48,36 +49,36 @@ class RoutingAlgorithm {
 
   RoutingAlgorithm(const std::string& name_);
   virtual ~RoutingAlgorithm();
-  virtual const std::set<NodeID>& get_required_nodes() = 0;
-  virtual void on_change_my_position(const Coordinate& position) = 0;
+  virtual const std::set<NodeID>& get_required_nodes()                 = 0;
+  virtual void on_change_my_position(const Coordinate& position)       = 0;
   virtual void on_recv_packet(const NodeID& nid, const Packet& packet) = 0;
-  virtual void send_routing_info(RoutingProtocol::RoutingInfo* param) = 0;
-  virtual bool update_routing_info(const std::set<NodeID>& online_links, bool has_update_ol,
-                                   const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>,
-                                   RoutingProtocol::RoutingInfo>>& routing_infos) = 0;
+  virtual void send_routing_info(RoutingProtocol::RoutingInfo* param)  = 0;
+  virtual bool update_routing_info(
+      const std::set<NodeID>& online_links, bool has_update_ol,
+      const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>, RoutingProtocol::RoutingInfo>>&
+          routing_infos) = 0;
 };
 
 class RoutingAlgorithm1DDelegate {
  public:
   virtual ~RoutingAlgorithm1DDelegate();
-  virtual void algorithm_1d_on_change_nearby(RoutingAlgorithm& algorithm,
-                                             const NodeID& prev_nid, const NodeID& next_nid) = 0;
+  virtual void algorithm_1d_on_change_nearby(
+      RoutingAlgorithm& algorithm, const NodeID& prev_nid, const NodeID& next_nid) = 0;
 };
 
 class RoutingAlgorithm2DDelegate {
  public:
   virtual ~RoutingAlgorithm2DDelegate();
   virtual void algorithm_2d_on_change_nearby(RoutingAlgorithm& algorithm, const std::set<NodeID>& nids) = 0;
-  virtual void algorithm_2d_on_change_nearby_position(RoutingAlgorithm& algorithm, const std::map<NodeID, Coordinate>& positions) = 0;
+  virtual void algorithm_2d_on_change_nearby_position(
+      RoutingAlgorithm& algorithm, const std::map<NodeID, Coordinate>& positions) = 0;
 };
 
-class Routing : public Module,
-                public RoutingAlgorithm1DDelegate,
-                public RoutingAlgorithm2DDelegate {
+class Routing : public Module, public RoutingAlgorithm1DDelegate, public RoutingAlgorithm2DDelegate {
  public:
-  Routing(Context& context, ModuleDelegate& module_delegate,
-          RoutingDelegate& routing_delegate, ModuleChannel::Type channel,
-          const picojson::object& config);
+  Routing(
+      Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, ModuleChannel::Type channel,
+      const picojson::object& config);
   virtual ~Routing();
 
   const NodeID& get_relay_nid_1d(const Packet& packet);
@@ -117,11 +118,12 @@ class Routing : public Module,
   int64_t passed_seed_connection;
   int64_t routing_countdown;
 
-  void algorithm_1d_on_change_nearby(RoutingAlgorithm& algorithm,
-                                     const NodeID& prev_nid, const NodeID& next_nid) override;
+  void algorithm_1d_on_change_nearby(
+      RoutingAlgorithm& algorithm, const NodeID& prev_nid, const NodeID& next_nid) override;
 
   void algorithm_2d_on_change_nearby(RoutingAlgorithm& algorithm, const std::set<NodeID>& nids) override;
-  void algorithm_2d_on_change_nearby_position(RoutingAlgorithm& algorithm, const std::map<NodeID, Coordinate>& positions) override;
+  void algorithm_2d_on_change_nearby_position(
+      RoutingAlgorithm& algorithm, const std::map<NodeID, Coordinate>& positions) override;
 
   void module_on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status) override;
   void module_process_command(std::unique_ptr<const Packet> packet) override;

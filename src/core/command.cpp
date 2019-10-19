@@ -14,16 +14,14 @@
  * limitations under the License.
  */
 
+#include "command.hpp"
+
 #include <cassert>
 #include <tuple>
 
-#include "command.hpp"
-
 namespace colonio {
 
-Command::Command(CommandID::Type id_, PacketMode::Type mode_) :
-    id(id_),
-    mode(mode_) {
+Command::Command(CommandID::Type id_, PacketMode::Type mode_) : id(id_), mode(mode_) {
 }
 
 /**

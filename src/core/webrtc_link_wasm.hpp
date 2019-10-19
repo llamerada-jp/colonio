@@ -35,8 +35,7 @@ class WebrtcLinkWasm : public WebrtcLinkBase {
   WebrtcLinkWasm* debug_ptr;
 #endif
 
-  WebrtcLinkWasm(WebrtcLinkDelegate& delegate_, Context& context_,
-                 WebrtcContext& webrtc_context, bool is_create_dc);
+  WebrtcLinkWasm(WebrtcLinkDelegate& delegate_, Context& context_, WebrtcContext& webrtc_context, bool is_create_dc);
   virtual ~WebrtcLinkWasm();
 
   void on_csd_failure();

@@ -24,9 +24,9 @@ class SeedLinkBase;
 class SeedLinkDelegate {
  public:
   virtual ~SeedLinkDelegate();
-  virtual void seed_link_on_connect(SeedLinkBase& link) = 0;
-  virtual void seed_link_on_disconnect(SeedLinkBase& link) = 0;
-  virtual void seed_link_on_error(SeedLinkBase& link) = 0;
+  virtual void seed_link_on_connect(SeedLinkBase& link)                       = 0;
+  virtual void seed_link_on_disconnect(SeedLinkBase& link)                    = 0;
+  virtual void seed_link_on_error(SeedLinkBase& link)                         = 0;
   virtual void seed_link_on_recv(SeedLinkBase& link, const std::string& data) = 0;
 };
 
@@ -38,8 +38,8 @@ class SeedLinkBase {
   virtual ~SeedLinkBase();
 
   virtual void connect(const std::string& url) = 0;
-  virtual void disconnect() = 0;
-  virtual void send(const std::string& data) = 0;
+  virtual void disconnect()                    = 0;
+  virtual void send(const std::string& data)   = 0;
 
  protected:
   Context& context;

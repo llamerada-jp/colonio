@@ -24,16 +24,16 @@ class HttpAccessorBase;
 class HttpAccessorDelegate {
  public:
   virtual ~HttpAccessorDelegate();
-  virtual void http_accessor_on_response(HttpAccessorBase& http, int code, const std::string& content) = 0;
-  virtual void http_accessor_on_error(HttpAccessorBase& http, const std::string& message,
-                                      const std::string& field) = 0;
+  virtual void http_accessor_on_response(HttpAccessorBase& http, int code, const std::string& content)              = 0;
+  virtual void http_accessor_on_error(HttpAccessorBase& http, const std::string& message, const std::string& field) = 0;
 };
 
 class HttpAccessorBase {
  public:
   virtual ~HttpAccessorBase();
-  virtual void post(const std::string& url, const std::string& payload,
-                    const std::string& content_type, HttpAccessorDelegate* delegate) = 0;
+  virtual void post(
+      const std::string& url, const std::string& payload, const std::string& content_type,
+      HttpAccessorDelegate* delegate) = 0;
 };
 }  // namespace colonio
 

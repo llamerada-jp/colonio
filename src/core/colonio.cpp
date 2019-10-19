@@ -13,10 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "colonio/colonio.hpp"
+
 #include <cassert>
 
 #include "colonio_impl.hpp"
-#include "colonio/colonio.hpp"
 
 namespace colonio {
 Colonio::Colonio() {
@@ -34,13 +35,11 @@ PubSub2D& Colonio::access_pubsub2d(const std::string& name) {
   return impl->access<PubSub2D>(name);
 }
 
-void Colonio::connect(const std::string& url, const std::string& token,
-                   std::function<void(Colonio&)> on_success,
-                   std::function<void(Colonio&)> on_failure) {
+void Colonio::connect(
+    const std::string& url, const std::string& token, std::function<void(Colonio&)> on_success,
+    std::function<void(Colonio&)> on_failure) {
   assert(impl);
-  impl->connect(url, token,
-                [this, on_success]() { on_success(*this); },
-                [this, on_failure]() { on_failure(*this); });
+  impl->connect(url, token, [this, on_success]() { on_success(*this); }, [this, on_failure]() { on_failure(*this); });
 }
 
 void Colonio::disconnect() {

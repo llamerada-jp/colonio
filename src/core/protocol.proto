@@ -23,5 +23,3 @@ message Value {
     bytes string_v = 4;
   }
 }
-
-

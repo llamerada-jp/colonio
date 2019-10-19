@@ -18,7 +18,6 @@
 #include <uv.h>
 
 #include <cassert>
-
 #include <colonio/colonio.hpp>
 
 namespace colonio_helper {
@@ -39,11 +38,9 @@ class ColonioLibuv : public colonio::Colonio {
     THIS.invoke_colonio();
   }
 
-  ColonioLibuv(uv_loop_t* loop_) :
-      loop(loop_) {
-
+  ColonioLibuv(uv_loop_t* loop_) : loop(loop_) {
     if (loop == nullptr) {
-      loop = uv_default_loop();
+      loop     = uv_default_loop();
       is_local = true;
     } else {
       is_local = false;

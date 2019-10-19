@@ -13,6 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "routing.hpp"
+
 #include <algorithm>
 #include <cassert>
 #include <map>
@@ -22,7 +24,6 @@
 
 #include "context.hpp"
 #include "convert.hpp"
-#include "routing.hpp"
 #include "routing_1d.hpp"
 #include "routing_2d.hpp"
 #include "utils.hpp"
@@ -32,8 +33,7 @@ namespace colonio {
 RoutingDelegate::~RoutingDelegate() {
 }
 
-RoutingAlgorithm::RoutingAlgorithm(const std::string& name_) :
-    name(name_) {
+RoutingAlgorithm::RoutingAlgorithm(const std::string& name_) : name(name_) {
 }
 
 RoutingAlgorithm::~RoutingAlgorithm() {
@@ -50,9 +50,9 @@ RoutingAlgorithm2DDelegate::~RoutingAlgorithm2DDelegate() {
  * @param delegate_ Delegate instance (should WebrtcBundle).
  * @param my_nid_ Node-id of this node.
  */
-Routing::Routing(Context& context, ModuleDelegate& module_delegate,
-                 RoutingDelegate& routing_delegate, ModuleChannel::Type channel,
-                 const picojson::object& config) :
+Routing::Routing(
+    Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, ModuleChannel::Type channel,
+    const picojson::object& config) :
     Module(context, module_delegate, channel),
     CONFIG_UPDATE_PERIOD(Utils::get_json(config, "updatePeriod", ROUTING_UPDATE_PERIOD)),
     CONFIG_FORCE_UPDATE_TIMES(Utils::get_json(config, "forceUpdateTimes", ROUTING_FORCE_UPDATE_TIMES)),
@@ -73,8 +73,7 @@ Routing::Routing(Context& context, ModuleDelegate& module_delegate,
   }
 
   // set a watch.
-  dists_from_seed.insert(std::make_pair(NodeID::NONE,
-                                        std::make_pair(NodeID::NONE, INT32_MAX)));
+  dists_from_seed.insert(std::make_pair(NodeID::NONE, std::make_pair(NodeID::NONE, INT32_MAX)));
 
   // add task
   context.scheduler.add_interval_task(this, std::bind(&Routing::update, this), CONFIG_UPDATE_PERIOD);
@@ -98,9 +97,9 @@ const NodeID& Routing::get_relay_nid_2d(const Coordinate& dest) {
 }
 
 std::tuple<const NodeID&, const NodeID&, uint32_t> Routing::get_route_to_seed() {
-  return std::make_tuple(std::ref(next_to_seed),
-                         std::ref(dists_from_seed.at(next_to_seed).first),
-                         dists_from_seed.at(next_to_seed).second);
+  return std::make_tuple(
+      std::ref(next_to_seed), std::ref(dists_from_seed.at(next_to_seed).first),
+      dists_from_seed.at(next_to_seed).second);
 }
 
 bool Routing::is_direct_connect(const NodeID& nid) {
@@ -117,7 +116,7 @@ void Routing::on_change_my_position(const Coordinate& position) {
  * @param nids A set of links those are online.
  */
 void Routing::on_change_online_links(const std::set<NodeID>& nids) {
-  online_links = nids;
+  online_links            = nids;
   has_update_online_links = true;
 
   auto it = dists_from_seed.begin();
@@ -126,7 +125,7 @@ void Routing::on_change_online_links(const std::set<NodeID>& nids) {
     if (nid != NodeID::NONE && nids.find(nid) == nids.end()) {
       it = dists_from_seed.erase(it);
     } else {
-      it ++;
+      it++;
     }
   }
 
@@ -140,8 +139,8 @@ void Routing::on_recv_packet(const NodeID& nid, const Packet& packet) {
   }
 }
 
-void Routing::algorithm_1d_on_change_nearby(RoutingAlgorithm& algorithm,
-                                            const NodeID& prev_nid, const NodeID& next_nid) {
+void Routing::algorithm_1d_on_change_nearby(
+    RoutingAlgorithm& algorithm, const NodeID& prev_nid, const NodeID& next_nid) {
   delegate.routing_on_system_1d_change_nearby(*this, prev_nid, next_nid);
 }
 
@@ -149,7 +148,8 @@ void Routing::algorithm_2d_on_change_nearby(RoutingAlgorithm& algorithm, const s
   delegate.routing_on_system_2d_change_nearby(*this, nids);
 }
 
-void Routing::algorithm_2d_on_change_nearby_position(RoutingAlgorithm& algorithm, const std::map<NodeID, Coordinate>& positions) {
+void Routing::algorithm_2d_on_change_nearby_position(
+    RoutingAlgorithm& algorithm, const std::map<NodeID, Coordinate>& positions) {
   delegate.routing_on_system_2d_change_nearby_position(*this, positions);
 }
 
@@ -161,7 +161,7 @@ void Routing::module_on_change_accessor_status(LinkStatus::Type seed_status, Lin
 }
 
 void Routing::module_process_command(std::unique_ptr<const Packet> packet) {
-  switch(packet->command_id) {
+  switch (packet->command_id) {
     case CommandID::Routing::ROUTING:
       recv_routing_info(std::move(packet));
       break;
@@ -177,8 +177,7 @@ void Routing::recv_routing_info(std::unique_ptr<const Packet> packet) {
   packet->parse_content(&content);
   NodeID seed_nid = NodeID::from_pb(content.seed_nid());
   if (seed_nid == context.my_nid) {
-    if (seed_status == LinkStatus::OFFLINE &&
-        dists_from_seed.find(packet->src_nid) != dists_from_seed.end()) {
+    if (seed_status == LinkStatus::OFFLINE && dists_from_seed.find(packet->src_nid) != dists_from_seed.end()) {
       dists_from_seed.erase(packet->src_nid);
     }
   } else {
@@ -221,7 +220,7 @@ void Routing::send_routing_info() {
     NodeID seed_nid;
     uint32_t distance;
     std::tie(seed_nid, distance) = dists_from_seed.at(next_to_seed);
-    
+
     param.set_seed_distance(distance + 1);
     seed_nid.to_pb(param.mutable_seed_nid());
   }
@@ -286,7 +285,7 @@ void Routing::update_route_to_seed() {
 
   for (auto& it : dists_from_seed) {
     if (it.second.second < min) {
-      min = it.second.second;
+      min          = it.second.second;
       next_to_seed = it.first;
     }
   }

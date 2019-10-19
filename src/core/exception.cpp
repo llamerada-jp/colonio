@@ -17,8 +17,11 @@
 #include "exception.hpp"
 
 namespace colonio {
-Exception::Exception(int l, const std::string& f, const std::string& m)
-    : line(l), file(Utils::file_basename(f, true)), message(m) {}
+Exception::Exception(int l, const std::string& f, const std::string& m) :
+    line(l),
+    file(Utils::file_basename(f, true)),
+    message(m) {
+}
 
 const char* Exception::what() const noexcept {
   // Pass message without line-no and file name.

@@ -15,15 +15,14 @@
  */
 #pragma once
 
-#include <functional>
-#include <memory>
-#include <string>
-#include <tuple>
-
 #include <colonio/constant.hpp>
 #include <colonio/map.hpp>
 #include <colonio/pubsub_2d.hpp>
 #include <colonio/value.hpp>
+#include <functional>
+#include <memory>
+#include <string>
+#include <tuple>
 
 namespace colonio {
 class Colonio;
@@ -36,9 +35,9 @@ class Colonio {
 
   Map& access_map(const std::string& name);
   PubSub2D& access_pubsub2d(const std::string& name);
-  void connect(const std::string& url, const std::string& token,
-               std::function<void(Colonio&)> on_success,
-               std::function<void(Colonio&)> on_failure);
+  void connect(
+      const std::string& url, const std::string& token, std::function<void(Colonio&)> on_success,
+      std::function<void(Colonio&)> on_failure);
   void disconnect();
   std::string get_my_nid();
   std::tuple<double, double> set_position(double x, double y);

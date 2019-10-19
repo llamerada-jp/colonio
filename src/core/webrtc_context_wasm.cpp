@@ -22,10 +22,10 @@
 #include "webrtc_context.hpp"
 
 extern "C" {
-  typedef unsigned long COLONIO_PTR_T;
+typedef unsigned long COLONIO_PTR_T;
 
-  extern void webrtc_context_initialize();
-  extern void webrtc_context_add_ice_server(COLONIO_PTR_T str_ptr, int str_siz);
+extern void webrtc_context_initialize();
+extern void webrtc_context_add_ice_server(COLONIO_PTR_T str_ptr, int str_siz);
 }
 
 namespace colonio {

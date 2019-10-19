@@ -15,6 +15,8 @@
  */
 #pragma once
 
+#include <picojson.h>
+
 #include "coord_system.hpp"
 
 namespace colonio {

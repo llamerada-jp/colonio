@@ -21,38 +21,36 @@
 #include "webrtc_link.hpp"
 
 extern "C" {
-  typedef unsigned long COLONIO_PTR_T;
+typedef unsigned long COLONIO_PTR_T;
 
-  extern void webrtc_link_initialize(COLONIO_PTR_T this_ptr, bool is_create_dc);
-  extern void webrtc_link_finalize(COLONIO_PTR_T this_ptr);
-  extern void webrtc_link_disconnect(COLONIO_PTR_T this_ptr);
-  extern void webrtc_link_get_local_sdp(COLONIO_PTR_T this_ptr, bool had_remote_sdp_set);
-  extern void webrtc_link_send(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, int data_siz);
-  extern void webrtc_link_set_remote_sdp(COLONIO_PTR_T this_ptr, COLONIO_PTR_T sdp_ptr, int sdp_siz, bool is_offer);
-  extern void webrtc_link_update_ice(COLONIO_PTR_T this_ptr, COLONIO_PTR_T ice_ptr, int ice_siz);
+extern void webrtc_link_initialize(COLONIO_PTR_T this_ptr, bool is_create_dc);
+extern void webrtc_link_finalize(COLONIO_PTR_T this_ptr);
+extern void webrtc_link_disconnect(COLONIO_PTR_T this_ptr);
+extern void webrtc_link_get_local_sdp(COLONIO_PTR_T this_ptr, bool had_remote_sdp_set);
+extern void webrtc_link_send(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, int data_siz);
+extern void webrtc_link_set_remote_sdp(COLONIO_PTR_T this_ptr, COLONIO_PTR_T sdp_ptr, int sdp_siz, bool is_offer);
+extern void webrtc_link_update_ice(COLONIO_PTR_T this_ptr, COLONIO_PTR_T ice_ptr, int ice_siz);
 
-  EMSCRIPTEN_KEEPALIVE void webrtc_link_on_csd_failure(COLONIO_PTR_T this_ptr);
-  EMSCRIPTEN_KEEPALIVE void webrtc_link_on_csd_success(COLONIO_PTR_T this_ptr, COLONIO_PTR_T sdp_ptr, int sdp_siz);
-  EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_close(COLONIO_PTR_T this_ptr);
-  EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_error(COLONIO_PTR_T this_ptr,
-                                                     COLONIO_PTR_T message_ptr, int message_siz);
-  EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_message(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, int data_siz);
-  EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_open(COLONIO_PTR_T this_ptr);
-  EMSCRIPTEN_KEEPALIVE void webrtc_link_on_pco_ice_candidate(COLONIO_PTR_T this_ptr,
-                                                             COLONIO_PTR_T ice_ptr, int ice_siz);
-  EMSCRIPTEN_KEEPALIVE void webrtc_link_on_pco_state_change(COLONIO_PTR_T this_ptr,
-                                                            COLONIO_PTR_T state_ptr, int state_siz);
+EMSCRIPTEN_KEEPALIVE void webrtc_link_on_csd_failure(COLONIO_PTR_T this_ptr);
+EMSCRIPTEN_KEEPALIVE void webrtc_link_on_csd_success(COLONIO_PTR_T this_ptr, COLONIO_PTR_T sdp_ptr, int sdp_siz);
+EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_close(COLONIO_PTR_T this_ptr);
+EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_error(COLONIO_PTR_T this_ptr, COLONIO_PTR_T message_ptr, int message_siz);
+EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_message(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, int data_siz);
+EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_open(COLONIO_PTR_T this_ptr);
+EMSCRIPTEN_KEEPALIVE void webrtc_link_on_pco_ice_candidate(COLONIO_PTR_T this_ptr, COLONIO_PTR_T ice_ptr, int ice_siz);
+EMSCRIPTEN_KEEPALIVE void webrtc_link_on_pco_state_change(
+    COLONIO_PTR_T this_ptr, COLONIO_PTR_T state_ptr, int state_siz);
 }
 
 void webrtc_link_on_csd_failure(COLONIO_PTR_T this_ptr) {
-  colonio::WebrtcLinkWasm &THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
+  colonio::WebrtcLinkWasm& THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
   assert(THIS.debug_ptr == &THIS);
 
   THIS.on_csd_failure();
 }
 
 void webrtc_link_on_csd_success(COLONIO_PTR_T this_ptr, COLONIO_PTR_T sdp_ptr, int sdp_siz) {
-  colonio::WebrtcLinkWasm &THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
+  colonio::WebrtcLinkWasm& THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
   assert(THIS.debug_ptr == &THIS);
 
   std::string sdp(reinterpret_cast<char*>(sdp_ptr), sdp_siz);
@@ -60,14 +58,14 @@ void webrtc_link_on_csd_success(COLONIO_PTR_T this_ptr, COLONIO_PTR_T sdp_ptr, i
 }
 
 void webrtc_link_on_dco_close(COLONIO_PTR_T this_ptr) {
-  colonio::WebrtcLinkWasm &THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
+  colonio::WebrtcLinkWasm& THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
   assert(THIS.debug_ptr == &THIS);
 
   THIS.on_dco_close();
 }
 
 void webrtc_link_on_dco_error(COLONIO_PTR_T this_ptr, COLONIO_PTR_T message_ptr, int message_siz) {
-  colonio::WebrtcLinkWasm &THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
+  colonio::WebrtcLinkWasm& THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
   assert(THIS.debug_ptr == &THIS);
 
   std::string message(reinterpret_cast<char*>(message_ptr), message_siz);
@@ -75,7 +73,7 @@ void webrtc_link_on_dco_error(COLONIO_PTR_T this_ptr, COLONIO_PTR_T message_ptr,
 }
 
 void webrtc_link_on_dco_message(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, int data_siz) {
-  colonio::WebrtcLinkWasm &THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
+  colonio::WebrtcLinkWasm& THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
   assert(THIS.debug_ptr == &THIS);
 
   std::string data(reinterpret_cast<char*>(data_ptr), data_siz);
@@ -83,14 +81,14 @@ void webrtc_link_on_dco_message(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, 
 }
 
 void webrtc_link_on_dco_open(COLONIO_PTR_T this_ptr) {
-  colonio::WebrtcLinkWasm &THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
+  colonio::WebrtcLinkWasm& THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
   assert(THIS.debug_ptr == &THIS);
 
   THIS.on_dco_open();
 }
 
 void webrtc_link_on_pco_ice_candidate(COLONIO_PTR_T this_ptr, COLONIO_PTR_T ice_ptr, int ice_siz) {
-  colonio::WebrtcLinkWasm &THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
+  colonio::WebrtcLinkWasm& THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
   assert(THIS.debug_ptr == &THIS);
 
   std::string ice(reinterpret_cast<char*>(ice_ptr), ice_siz);
@@ -98,7 +96,7 @@ void webrtc_link_on_pco_ice_candidate(COLONIO_PTR_T this_ptr, COLONIO_PTR_T ice_
 }
 
 void webrtc_link_on_pco_state_change(COLONIO_PTR_T this_ptr, COLONIO_PTR_T state_ptr, int state_siz) {
-  colonio::WebrtcLinkWasm &THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
+  colonio::WebrtcLinkWasm& THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
   assert(THIS.debug_ptr == &THIS);
 
   std::string state(reinterpret_cast<char*>(state_ptr), state_siz);
@@ -106,20 +104,18 @@ void webrtc_link_on_pco_state_change(COLONIO_PTR_T this_ptr, COLONIO_PTR_T state
 }
 
 namespace colonio {
-WebrtcLinkWasm::WebrtcLinkWasm(WebrtcLinkDelegate& delegate_, Context& context_,
-                               WebrtcContext& webrtc_context_, bool is_create_dc) :
+WebrtcLinkWasm::WebrtcLinkWasm(
+    WebrtcLinkDelegate& delegate_, Context& context_, WebrtcContext& webrtc_context_, bool is_create_dc) :
     WebrtcLinkBase(delegate_, context_, webrtc_context_),
     is_remote_sdp_set(false),
     prev_status(LinkStatus::CONNECTING),
     dco_status(LinkStatus::CONNECTING),
     pco_status(LinkStatus::CONNECTING) {
-
 #ifndef NDEBUG
   debug_ptr = this;
 #endif
 
-  webrtc_link_initialize(reinterpret_cast<COLONIO_PTR_T>(this),
-                         is_create_dc);
+  webrtc_link_initialize(reinterpret_cast<COLONIO_PTR_T>(this), is_create_dc);
 }
 
 WebrtcLinkWasm::~WebrtcLinkWasm() {
@@ -148,7 +144,7 @@ void WebrtcLinkWasm::on_dco_close() {
 }
 
 void WebrtcLinkWasm::on_dco_error(const std::string& message) {
-  assert(false); //
+  assert(false);  //
 }
 
 void WebrtcLinkWasm::on_dco_message(const std::string& data) {
@@ -173,7 +169,7 @@ void WebrtcLinkWasm::on_pco_ice_candidate(const std::string& ice_str) {
       /// @todo error
       assert(false);
     }
-  
+
     std::unique_ptr<picojson::object> ice = std::make_unique<picojson::object>(v.get<picojson::object>());
 
     ice_que.push_back(std::move(ice));
@@ -215,20 +211,17 @@ void WebrtcLinkWasm::disconnect() {
 void WebrtcLinkWasm::get_local_sdp(std::function<void(const std::string&)> func) {
   on_get_local_sdp = func;
 
-  webrtc_link_get_local_sdp(reinterpret_cast<COLONIO_PTR_T>(this),
-                            is_remote_sdp_set);
+  webrtc_link_get_local_sdp(reinterpret_cast<COLONIO_PTR_T>(this), is_remote_sdp_set);
 }
 
 LinkStatus::Type WebrtcLinkWasm::get_status() {
   if (init_data) {
     return LinkStatus::CONNECTING;
 
-  } else if (dco_status == LinkStatus::ONLINE &&
-             pco_status == LinkStatus::ONLINE) {
+  } else if (dco_status == LinkStatus::ONLINE && pco_status == LinkStatus::ONLINE) {
     return LinkStatus::ONLINE;
 
-  } else if (dco_status == LinkStatus::OFFLINE &&
-             pco_status == LinkStatus::OFFLINE) {
+  } else if (dco_status == LinkStatus::OFFLINE && pco_status == LinkStatus::OFFLINE) {
     return LinkStatus::OFFLINE;
 
   } else {
@@ -238,9 +231,7 @@ LinkStatus::Type WebrtcLinkWasm::get_status() {
 
 bool WebrtcLinkWasm::send(const std::string& data) {
   if (get_status() == LinkStatus::ONLINE) {
-    webrtc_link_send(reinterpret_cast<COLONIO_PTR_T>(this),
-                     reinterpret_cast<COLONIO_PTR_T>(data.c_str()),
-                     data.size());
+    webrtc_link_send(reinterpret_cast<COLONIO_PTR_T>(this), reinterpret_cast<COLONIO_PTR_T>(data.c_str()), data.size());
     return true;
 
   } else {
@@ -250,13 +241,10 @@ bool WebrtcLinkWasm::send(const std::string& data) {
 
 void WebrtcLinkWasm::set_remote_sdp(const std::string& sdp) {
   LinkStatus::Type status = get_status();
-  if (status == LinkStatus::CONNECTING ||
-      status == LinkStatus::ONLINE) {
-
-    webrtc_link_set_remote_sdp(reinterpret_cast<COLONIO_PTR_T>(this),
-                               reinterpret_cast<COLONIO_PTR_T>(sdp.c_str()),
-                               sdp.size(),
-                               local_sdp.empty());
+  if (status == LinkStatus::CONNECTING || status == LinkStatus::ONLINE) {
+    webrtc_link_set_remote_sdp(
+        reinterpret_cast<COLONIO_PTR_T>(this), reinterpret_cast<COLONIO_PTR_T>(sdp.c_str()), sdp.size(),
+        local_sdp.empty());
     is_remote_sdp_set = true;
   }
 }
@@ -265,21 +253,16 @@ void WebrtcLinkWasm::update_ice(const picojson::object& ice) {
   LinkStatus::Type status = get_status();
   if (status == LinkStatus::CONNECTING || status == LinkStatus::ONLINE) {
     std::string ice_str = picojson::value(ice).serialize();
-    webrtc_link_update_ice(reinterpret_cast<COLONIO_PTR_T>(this),
-                           reinterpret_cast<COLONIO_PTR_T>(ice_str.c_str()),
-                           ice_str.size());
+    webrtc_link_update_ice(
+        reinterpret_cast<COLONIO_PTR_T>(this), reinterpret_cast<COLONIO_PTR_T>(ice_str.c_str()), ice_str.size());
   }
 }
 
 void WebrtcLinkWasm::on_change_status() {
-  if (init_data &&
-      dco_status == LinkStatus::ONLINE &&
-      pco_status == LinkStatus::ONLINE) {
+  if (init_data && dco_status == LinkStatus::ONLINE && pco_status == LinkStatus::ONLINE) {
     init_data.reset();
 
-  } else if ((dco_status == LinkStatus::OFFLINE ||
-              pco_status == LinkStatus::OFFLINE) &&
-             dco_status != pco_status) {
+  } else if ((dco_status == LinkStatus::OFFLINE || pco_status == LinkStatus::OFFLINE) && dco_status != pco_status) {
     disconnect();
   }
 

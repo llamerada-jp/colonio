@@ -1,0 +1,13 @@
+BasedOnStyle: Google
+AlignAfterOpenBracket: AlwaysBreak
+AlignConsecutiveAssignments: true
+AllowShortFunctionsOnASingleLine: None
+BraceWrapping:
+    AfterEnum: true
+BreakBeforeBraces: Custom
+BreakConstructorInitializers: AfterColon
+ColumnLimit: 120
+FixNamespaceComments: true
+IncludeBlocks: Regroup
+IndentPPDirectives: AfterHash
+SpaceAfterTemplateKeyword: false

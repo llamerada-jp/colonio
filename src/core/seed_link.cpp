@@ -20,9 +20,7 @@ namespace colonio {
 SeedLinkDelegate::~SeedLinkDelegate() {
 }
 
-SeedLinkBase::SeedLinkBase(SeedLinkDelegate& delegate_, Context& context_) :
-    delegate(delegate_),
-    context(context_) {
+SeedLinkBase::SeedLinkBase(SeedLinkDelegate& delegate_, Context& context_) : delegate(delegate_), context(context_) {
 }
 
 SeedLinkBase::~SeedLinkBase() {

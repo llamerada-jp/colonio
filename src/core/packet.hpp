@@ -22,7 +22,7 @@ namespace colonio {
 class Packet {
  public:
   static const unsigned int PACKET_HEAD_SIZE;
-  
+
   const NodeID dst_nid;
   const NodeID src_nid;
   const uint32_t id;
@@ -31,7 +31,8 @@ class Packet {
   const ModuleChannel::Type channel;
   const CommandID::Type command_id;
 
-  template<typename T> void parse_content(T* dst) const {
+  template<typename T>
+  void parse_content(T* dst) const {
     assert(content.get() != nullptr);
     if (!dst->ParseFromString(*content)) {
       /// @todo error

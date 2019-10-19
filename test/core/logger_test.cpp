@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-#include <gtest/gtest.h>
-
 #include "core/logger.hpp"
+
+#include <gtest/gtest.h>
 
 using namespace colonio;
 
 class DummyContext : public LoggerDelegate {
-  public:
+ public:
   Logger logger;
 
   Logger* last_logger;
@@ -32,20 +32,20 @@ class DummyContext : public LoggerDelegate {
   }
 
   void logger_on_output(Logger& logger, LogLevel::Type level, const std::string& message) override {
-    last_logger = &logger;
-    last_level  = level;
+    last_logger  = &logger;
+    last_level   = level;
     last_message = message;
   }
 };
 
 class LoggerTest : public ::testing::Test {
-  protected:
+ protected:
   DummyContext context;
   DummyContext context2;
 
   void test_output() {
     // 異なるインスタンスは互いに独立していること
-    logI(context,  0, "test0");
+    logI(context, 0, "test0");
     logE(context2, 1, "test1");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_EQ(LogLevel::INFO, context.last_level);

@@ -15,15 +15,14 @@
  */
 #pragma once
 
-#include <websocketpp/config/asio_client.hpp>
 #include <websocketpp/client.hpp>
+#include <websocketpp/config/asio_client.hpp>
 
 #include "seed_link.hpp"
 
 namespace colonio {
 class SeedLinkWebsocketNative : public SeedLinkBase {
  public:
-
   SeedLinkWebsocketNative(SeedLinkDelegate& delegate_, Context& context_);
   virtual ~SeedLinkWebsocketNative();
 

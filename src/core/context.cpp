@@ -13,18 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "context.hpp"
+
 #include <cassert>
 #include <mutex>
 #include <random>
 
-#include "context.hpp"
 #include "coord_system.hpp"
 
 namespace colonio {
 
 // Random value generator.
 static std::random_device seed_gen;
-static std::mt19937    rnd32(seed_gen());
+static std::mt19937 rnd32(seed_gen());
 static std::mt19937_64 rnd64(seed_gen());
 static std::mutex mutex32;
 static std::mutex mutex64;
@@ -72,8 +73,7 @@ void Context::set_my_position(const Coordinate& pos) {
   coord_system->set_my_position(pos);
   Coordinate new_my_position = coord_system->get_my_position();
 
-  if (prev_my_position.x != new_my_position.x ||
-      prev_my_position.y != new_my_position.y) {
+  if (prev_my_position.x != new_my_position.x || prev_my_position.y != new_my_position.y) {
     logI((*this), 0x00020002, "Change my position.(x=%f, y=%f)", new_my_position.x, new_my_position.y);
 
     for (auto& it : funcs_on_change_my_position) {
@@ -85,7 +85,7 @@ void Context::set_my_position(const Coordinate& pos) {
 #ifndef NDEBUG
 void Context::hook_on_debug_event(std::function<void(DebugEvent::Type type, const picojson::value& data)> cb) {
   func_on_debug_event = cb;
-  enable_debug_event = true;
+  enable_debug_event  = true;
 }
 
 void Context::debug_event(DebugEvent::Type type, const picojson::value& data) {

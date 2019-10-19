@@ -14,25 +14,27 @@
  * limitations under the License.
  */
 
+#include "convert.hpp"
+
 #include <cassert>
-#include <iostream>
 #include <iomanip>
+#include <iostream>
 #include <string>
 #include <vector>
 
-#include "convert.hpp"
 #include "utils.hpp"
 
 namespace colonio {
 
-template<> std::string Convert::int2str<uint8_t>(uint8_t num) {
+template<>
+std::string Convert::int2str<uint8_t>(uint8_t num) {
   std::ostringstream os;
-  os << std::hex << std::setfill('0') <<
-    std::setw(sizeof(uint8_t) * 2) << static_cast<uint32_t>(num);
+  os << std::hex << std::setfill('0') << std::setw(sizeof(uint8_t) * 2) << static_cast<uint32_t>(num);
   return os.str();
 }
 
-template<> uint8_t Convert::str2int<uint8_t>(const std::string& str) {
+template<>
+uint8_t Convert::str2int<uint8_t>(const std::string& str) {
   std::istringstream is(str);
   uint32_t v;
   is >> std::hex >> v;
@@ -52,8 +54,7 @@ std::string Convert::json2bin(const picojson::value& json) {
 
 Coordinate Convert::json2coordinate(const picojson::value& json) {
   const picojson::array& arr = json.get<picojson::array>();
-  return Coordinate(arr.at(0).get<double>(),
-                    arr.at(1).get<double>());
+  return Coordinate(arr.at(0).get<double>(), arr.at(1).get<double>());
 }
 
 /**
@@ -79,7 +80,7 @@ picojson::value Convert::bin2json(const std::string& bin) {
 picojson::value Convert::bin2json(const uint8_t* bin, unsigned int size) {
   std::ostringstream os;
   os << std::hex << std::setfill('0');
-  for (unsigned int i = 0; i < size; i ++) {
+  for (unsigned int i = 0; i < size; i++) {
     os << std::setw(2) << (0xFF & static_cast<int>(bin[i]));
   }
   return picojson::value(os.str());

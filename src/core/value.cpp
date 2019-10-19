@@ -13,34 +13,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "colonio/value.hpp"
+
 #include <cassert>
 
 #include "value_impl.hpp"
-#include "colonio/value.hpp"
 
 namespace colonio {
-Value::Value() :
-    impl(std::make_unique<ValueImpl>()) {
+Value::Value() : impl(std::make_unique<ValueImpl>()) {
 }
 
-Value::Value(bool v) :
-    impl(std::make_unique<ValueImpl>(v)) {
+Value::Value(bool v) : impl(std::make_unique<ValueImpl>(v)) {
 }
 
-Value::Value(int64_t v) :
-    impl(std::make_unique<ValueImpl>(v)) {
+Value::Value(int64_t v) : impl(std::make_unique<ValueImpl>(v)) {
 }
 
-Value::Value(double v) :
-    impl(std::make_unique<ValueImpl>(v)) {
+Value::Value(double v) : impl(std::make_unique<ValueImpl>(v)) {
 }
 
-Value::Value(const std::string& v) :
-    impl(std::make_unique<ValueImpl>(v)) {
+Value::Value(const std::string& v) : impl(std::make_unique<ValueImpl>(v)) {
 }
 
-Value::Value(const Value& src) :
-    impl(std::make_unique<ValueImpl>(*src.impl)) {
+Value::Value(const Value& src) : impl(std::make_unique<ValueImpl>(*src.impl)) {
 }
 
 Value::~Value() {
@@ -57,20 +52,22 @@ bool Value::operator<(const Value& b) const {
 }
 
 // 'get' method.
-#define M_GET(CTYPE, VTYPE, STORAGE)                    \
-  template <> const CTYPE& Value::get<CTYPE>() const {  \
-    assert(get_type() == Value::VTYPE);                 \
-    return STORAGE;                                     \
-  }                                                     \
-  template <> CTYPE& Value::get<CTYPE>() {              \
-    assert(get_type() == Value::VTYPE);                 \
-    return STORAGE;                                     \
+#define M_GET(CTYPE, VTYPE, STORAGE)       \
+  template<>                               \
+  const CTYPE& Value::get<CTYPE>() const { \
+    assert(get_type() == Value::VTYPE);    \
+    return STORAGE;                        \
+  }                                        \
+  template<>                               \
+  CTYPE& Value::get<CTYPE>() {             \
+    assert(get_type() == Value::VTYPE);    \
+    return STORAGE;                        \
   }
 
-M_GET(bool,         BOOL_T,     impl->storage.bool_v)
-M_GET(int64_t,      INT_T,      impl->storage.int64_v)
-M_GET(double,       DOUBLE_T,   impl->storage.double_v)
-M_GET(std::string,  STRING_T,   *impl->storage.string_v)
+M_GET(bool, BOOL_T, impl->storage.bool_v)
+M_GET(int64_t, INT_T, impl->storage.int64_v)
+M_GET(double, DOUBLE_T, impl->storage.double_v)
+M_GET(std::string, STRING_T, *impl->storage.string_v)
 #undef M_GET
 
 Value::Type Value::get_type() const {
@@ -86,25 +83,25 @@ void Value::reset() {
 }
 
 // 'set' method.
-#define M_SET(CTYPE, VTYPE, STORAGE)            \
-  void Value::set(CTYPE v) {                    \
-    if (get_type() == Value::STRING_T) {        \
-      delete impl->storage.string_v;            \
-    }                                           \
-    impl->type = Value::VTYPE;                  \
-    impl->STORAGE = v;                          \
+#define M_SET(CTYPE, VTYPE, STORAGE)     \
+  void Value::set(CTYPE v) {             \
+    if (get_type() == Value::STRING_T) { \
+      delete impl->storage.string_v;     \
+    }                                    \
+    impl->type    = Value::VTYPE;        \
+    impl->STORAGE = v;                   \
   }
 
-M_SET(bool,     BOOL_T, storage.bool_v)
-M_SET(int64_t,  INT_T,  storage.int64_v)
-M_SET(double,   DOUBLE_T,   storage.double_v)
+M_SET(bool, BOOL_T, storage.bool_v)
+M_SET(int64_t, INT_T, storage.int64_v)
+M_SET(double, DOUBLE_T, storage.double_v)
 #undef M_SET
 
 void Value::set(const std::string& v) {
   if (get_type() == Value::STRING_T) {
     delete impl->storage.string_v;
   }
-  impl->type = Value::STRING_T;
+  impl->type             = Value::STRING_T;
   impl->storage.string_v = new std::string(v);
 }
 }  // namespace colonio

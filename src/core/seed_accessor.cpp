@@ -13,6 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "seed_accessor.hpp"
+
 #include <cassert>
 #include <istream>
 #include <map>
@@ -21,21 +23,19 @@
 #include <string>
 #include <vector>
 
-#include "seed_accessor_protocol.pb.h"
-
 #include "context.hpp"
 #include "convert.hpp"
 #include "logger.hpp"
 #include "packet.hpp"
-#include "seed_accessor.hpp"
+#include "seed_accessor_protocol.pb.h"
 #include "utils.hpp"
 
 namespace colonio {
 SeedAccessorDelegate::~SeedAccessorDelegate() {
 }
 
-SeedAccessor::SeedAccessor(Context& context_, SeedAccessorDelegate& delegate_,
-                           const std::string& url_, const std::string& token_) :
+SeedAccessor::SeedAccessor(
+    Context& context_, SeedAccessorDelegate& delegate_, const std::string& url_, const std::string& token_) :
     context(context_),
     delegate(delegate_),
     url(url_),
@@ -48,7 +48,7 @@ SeedAccessor::SeedAccessor(Context& context_, SeedAccessorDelegate& delegate_,
 /**
  */
 SeedAccessor::~SeedAccessor() {
-  context.scheduler.remove_task(this);  
+  context.scheduler.remove_task(this);
   disconnect();
 }
 
@@ -65,21 +65,24 @@ void SeedAccessor::connect(unsigned int interval) {
   }
 
   auth_status = AuthStatus::NONE;
-  link = std::make_unique<SeedLink>(*this, context);
-  
+  link        = std::make_unique<SeedLink>(*this, context);
+
   if (last_connect_time + interval < current_msec) {
     last_connect_time = current_msec;
     link->connect(url);
 
   } else {
-    context.scheduler.add_timeout_task(this, [this]() {
-        int64_t current_msec = Utils::get_current_msec();
-        last_connect_time = current_msec;
-        link->connect(url);
-        delegate.seed_accessor_on_change_status(*this, get_status());
-      }, last_connect_time + interval - current_msec);
+    context.scheduler.add_timeout_task(
+        this,
+        [this]() {
+          int64_t current_msec = Utils::get_current_msec();
+          last_connect_time    = current_msec;
+          link->connect(url);
+          delegate.seed_accessor_on_change_status(*this, get_status());
+        },
+        last_connect_time + interval - current_msec);
   }
-  
+
   delegate.seed_accessor_on_change_status(*this, get_status());
 }
 
@@ -113,8 +116,7 @@ LinkStatus::Type SeedAccessor::get_status() {
 }
 
 bool SeedAccessor::is_only_one() {
-  if (get_status() == LinkStatus::ONLINE &&
-      (hint & SeedHint::ONLYONE) != 0) {
+  if (get_status() == LinkStatus::ONLINE && (hint & SeedHint::ONLYONE) != 0) {
     return true;
 
   } else {
@@ -152,19 +154,25 @@ void SeedAccessor::seed_link_on_connect(SeedLinkBase& link) {
 }
 
 void SeedAccessor::seed_link_on_disconnect(SeedLinkBase& l) {
-  context.scheduler.add_timeout_task(this, [this, &l]() {
-      if (link.get() == &l) {
-        disconnect();
-      }
-    }, 0);
+  context.scheduler.add_timeout_task(
+      this,
+      [this, &l]() {
+        if (link.get() == &l) {
+          disconnect();
+        }
+      },
+      0);
 }
 
 void SeedAccessor::seed_link_on_error(SeedLinkBase& l) {
-  context.scheduler.add_timeout_task(this, [this, &l]() {
-      if (link.get() == &l) {
-        disconnect();
-      }
-    }, 0);
+  context.scheduler.add_timeout_task(
+      this,
+      [this, &l]() {
+        if (link.get() == &l) {
+          disconnect();
+        }
+      },
+      0);
 }
 
 void SeedAccessor::seed_link_on_recv(SeedLinkBase& link, const std::string& data) {
@@ -199,18 +207,11 @@ void SeedAccessor::seed_link_on_recv(SeedLinkBase& link, const std::string& data
   std::shared_ptr<const std::string> content(new std::string(packet_pb.content()));
   logd("packet size ? :%d", packet_pb.content().size());
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
-      Packet {
-        NodeID::from_pb(packet_pb.dst_nid()),
-        NodeID::from_pb(packet_pb.src_nid()),
-        packet_pb.id(),
-        content,
-        static_cast<PacketMode::Type>(packet_pb.mode()),
-        static_cast<ModuleChannel::Type>(packet_pb.channel()),
-        static_cast<CommandID::Type>(packet_pb.command_id())
-      });
+      Packet{NodeID::from_pb(packet_pb.dst_nid()), NodeID::from_pb(packet_pb.src_nid()), packet_pb.id(), content,
+             static_cast<PacketMode::Type>(packet_pb.mode()), static_cast<ModuleChannel::Type>(packet_pb.channel()),
+             static_cast<CommandID::Type>(packet_pb.command_id())});
 
-  if (packet->src_nid == NodeID::SEED && packet->channel == ModuleChannel::SEED &&
-      packet->id == 0) {
+  if (packet->src_nid == NodeID::SEED && packet->channel == ModuleChannel::SEED && packet->id == 0) {
     switch (packet->command_id) {
       case CommandID::SUCCESS: {
         recv_auth_success(*packet);
@@ -259,7 +260,7 @@ void SeedAccessor::recv_auth_success(const Packet& packet) {
     /// @todo error
     assert(false);
   }
-  
+
   auth_status = AuthStatus::SUCCESS;
   delegate.seed_accessor_on_recv_config(*this, v.get<picojson::object>());
   delegate.seed_accessor_on_change_status(*this, get_status());
@@ -301,30 +302,16 @@ void SeedAccessor::send_auth(const std::string& token) {
   param.set_hint(hint);
   std::shared_ptr<std::string> content(new std::string());
   param.SerializeToString(content.get());
-  
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet {
-    NodeID::SEED,
-    context.my_nid,
-    0,
-    content,
-    PacketMode::NONE,
-    ModuleChannel::SEED,
-    CommandID::Seed::AUTH
-  });
+
+  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
+      Packet{NodeID::SEED, context.my_nid, 0, content, PacketMode::NONE, ModuleChannel::SEED, CommandID::Seed::AUTH});
 
   relay_packet(std::move(packet));
 }
 
 void SeedAccessor::send_ping() {
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet {
-    NodeID::SEED,
-    context.my_nid,
-    0,
-    nullptr,
-    PacketMode::NONE,
-    ModuleChannel::SEED,
-    CommandID::Seed::PING
-  });
+  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
+      Packet{NodeID::SEED, context.my_nid, 0, nullptr, PacketMode::NONE, ModuleChannel::SEED, CommandID::Seed::PING});
 
   relay_packet(std::move(packet));
 }

@@ -34,15 +34,15 @@ class SeedAccessor;
 class SeedAccessorDelegate {
  public:
   virtual ~SeedAccessorDelegate();
-  virtual void seed_accessor_on_change_status(SeedAccessor& sa, LinkStatus::Type status) = 0;
-  virtual void seed_accessor_on_recv_config(SeedAccessor& sa, const picojson::object& config) = 0;
+  virtual void seed_accessor_on_change_status(SeedAccessor& sa, LinkStatus::Type status)            = 0;
+  virtual void seed_accessor_on_recv_config(SeedAccessor& sa, const picojson::object& config)       = 0;
   virtual void seed_accessor_on_recv_packet(SeedAccessor& sa, std::unique_ptr<const Packet> packet) = 0;
-  virtual void seed_accessor_on_recv_require_random(SeedAccessor& sa) = 0;
+  virtual void seed_accessor_on_recv_require_random(SeedAccessor& sa)                               = 0;
 };
 
 namespace AuthStatus {
 typedef int Type;
-static const Type NONE = 0;
+static const Type NONE    = 0;
 static const Type SUCCESS = 1;
 static const Type FAILURE = 2;
 }  // namespace AuthStatus
@@ -52,8 +52,7 @@ static const Type FAILURE = 2;
  */
 class SeedAccessor : public SeedLinkDelegate {
  public:
-  SeedAccessor(Context& context_, SeedAccessorDelegate& delegate_,
-               const std::string& url_, const std::string& token_);
+  SeedAccessor(Context& context_, SeedAccessorDelegate& delegate_, const std::string& url_, const std::string& token_);
   virtual ~SeedAccessor();
 
   void connect(unsigned int interval = SEED_CONNECT_INTERVAL);

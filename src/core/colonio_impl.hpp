@@ -18,6 +18,7 @@
 #include <functional>
 #include <string>
 
+#include "colonio/colonio.hpp"
 #include "context.hpp"
 #include "definition.hpp"
 #include "logger.hpp"
@@ -29,17 +30,16 @@
 #include "seed_accessor.hpp"
 #include "system_1d.hpp"
 #include "system_2d.hpp"
-#include "colonio/colonio.hpp"
 
 namespace colonio {
 class ColonioImpl : public LoggerDelegate,
-                 public ModuleDelegate,
-                 public NodeAccessorDelegate,
-                 public RoutingDelegate,
-                 public SchedulerDelegate,
-                 public SeedAccessorDelegate,
-                 public System1DDelegate,
-                 public System2DDelegate {
+                    public ModuleDelegate,
+                    public NodeAccessorDelegate,
+                    public RoutingDelegate,
+                    public SchedulerDelegate,
+                    public SeedAccessorDelegate,
+                    public System1DDelegate,
+                    public System2DDelegate {
  public:
   Context context;
   picojson::object config;
@@ -47,7 +47,8 @@ class ColonioImpl : public LoggerDelegate,
   ColonioImpl(Colonio& colonio_);
   virtual ~ColonioImpl();
 
-  template<typename T> T& access(const std::string& name) {
+  template<typename T>
+  T& access(const std::string& name) {
     auto it = modules_named.find(name);
     if (it == modules_named.end()) {
       // @todo error
@@ -60,9 +61,9 @@ class ColonioImpl : public LoggerDelegate,
     }
   }
 
-  void connect(const std::string& url, const std::string& token,
-               std::function<void()> on_success,
-               std::function<void()> on_failure);
+  void connect(
+      const std::string& url, const std::string& token, std::function<void()> on_success,
+      std::function<void()> on_failure);
   const NodeID& get_my_nid();
   LinkStatus::Type get_status();
   void disconnect();
@@ -90,22 +91,20 @@ class ColonioImpl : public LoggerDelegate,
   void logger_on_output(Logger& logger, LogLevel::Type level, const std::string& message) override;
 
   void module_do_send_packet(Module& module, std::unique_ptr<const Packet> packet) override;
-  void module_do_relay_packet(Module& module, const NodeID& dst_nid,
-                              std::unique_ptr<const Packet> packet) override;
+  void module_do_relay_packet(Module& module, const NodeID& dst_nid, std::unique_ptr<const Packet> packet) override;
 
   void node_accessor_on_change_online_links(NodeAccessor& na, const std::set<NodeID> nids) override;
   void node_accessor_on_change_status(NodeAccessor& na, LinkStatus::Type status) override;
-  void node_accessor_on_recv_packet(NodeAccessor& na, const NodeID& nid,
-                                    std::unique_ptr<const Packet> packet) override;
+  void node_accessor_on_recv_packet(NodeAccessor& na, const NodeID& nid, std::unique_ptr<const Packet> packet) override;
 
   void routing_do_connect_node(Routing& routing, const NodeID& nid) override;
   void routing_do_disconnect_node(Routing& routing, const NodeID& nid) override;
   void routing_do_connect_seed(Routing& route) override;
   void routing_do_disconnect_seed(Routing& route) override;
-  void routing_on_system_1d_change_nearby(Routing& routing,
-                                          const NodeID& prev_nid, const NodeID& next_nid) override;
+  void routing_on_system_1d_change_nearby(Routing& routing, const NodeID& prev_nid, const NodeID& next_nid) override;
   void routing_on_system_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids) override;
-  void routing_on_system_2d_change_nearby_position(Routing& routing, const std::map<NodeID, Coordinate>& positions) override;
+  void routing_on_system_2d_change_nearby_position(
+      Routing& routing, const std::map<NodeID, Coordinate>& positions) override;
 
   void seed_accessor_on_change_status(SeedAccessor& sa, LinkStatus::Type status) override;
   void seed_accessor_on_recv_config(SeedAccessor& sa, const picojson::object& config) override;

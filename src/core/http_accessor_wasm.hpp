@@ -31,8 +31,9 @@ class HttpAccessorWasm : public HttpAccessorBase {
   HttpAccessorWasm();
   virtual ~HttpAccessorWasm();
 
-  void post(const std::string& url, const std::string& payload,
-            const std::string& content_type, HttpAccessorDelegate* delegate_) override;
+  void post(
+      const std::string& url, const std::string& payload, const std::string& content_type,
+      HttpAccessorDelegate* delegate_) override;
 };
 
 typedef HttpAccessorWasm HttpAccessor;

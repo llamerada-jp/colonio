@@ -14,22 +14,22 @@
  * limitations under the License.
  */
 
-#include <emscripten.h>
-
 #include "seed_link_websocket_wasm.hpp"
 
+#include <emscripten.h>
+
 extern "C" {
-  typedef unsigned long COLONIO_PTR_T;
+typedef unsigned long COLONIO_PTR_T;
 
-  extern void seed_link_ws_connect(COLONIO_PTR_T this_ptr, COLONIO_PTR_T url_ptr, int url_siz);
-  extern void seed_link_ws_disconnect(COLONIO_PTR_T this_ptr);
-  extern void seed_link_ws_finalize(COLONIO_PTR_T this_ptr);
-  extern void seed_link_ws_send(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, int data_siz);
+extern void seed_link_ws_connect(COLONIO_PTR_T this_ptr, COLONIO_PTR_T url_ptr, int url_siz);
+extern void seed_link_ws_disconnect(COLONIO_PTR_T this_ptr);
+extern void seed_link_ws_finalize(COLONIO_PTR_T this_ptr);
+extern void seed_link_ws_send(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, int data_siz);
 
-  EMSCRIPTEN_KEEPALIVE void seed_link_ws_on_connect(COLONIO_PTR_T this_ptr);
-  EMSCRIPTEN_KEEPALIVE void seed_link_ws_on_disconnect(COLONIO_PTR_T this_ptr);
-  EMSCRIPTEN_KEEPALIVE void seed_link_ws_on_error(COLONIO_PTR_T this_ptr, COLONIO_PTR_T msg_ptr, int msg_siz);
-  EMSCRIPTEN_KEEPALIVE void seed_link_ws_on_recv(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, int data_siz);
+EMSCRIPTEN_KEEPALIVE void seed_link_ws_on_connect(COLONIO_PTR_T this_ptr);
+EMSCRIPTEN_KEEPALIVE void seed_link_ws_on_disconnect(COLONIO_PTR_T this_ptr);
+EMSCRIPTEN_KEEPALIVE void seed_link_ws_on_error(COLONIO_PTR_T this_ptr, COLONIO_PTR_T msg_ptr, int msg_siz);
+EMSCRIPTEN_KEEPALIVE void seed_link_ws_on_recv(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, int data_siz);
 }
 
 void seed_link_ws_on_connect(COLONIO_PTR_T this_ptr) {
@@ -63,7 +63,6 @@ void seed_link_ws_on_recv(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, int da
 namespace colonio {
 SeedLinkWebsocketWasm::SeedLinkWebsocketWasm(SeedLinkDelegate& delegate_, Context& context_) :
     SeedLinkBase(delegate_, context_) {
-
 #ifndef NDEBUG
   debug_ptr = this;
 #endif
@@ -78,9 +77,7 @@ SeedLinkWebsocketWasm::~SeedLinkWebsocketWasm() {
 }
 
 void SeedLinkWebsocketWasm::connect(const std::string& url) {
-  seed_link_ws_connect(reinterpret_cast<COLONIO_PTR_T>(this),
-                       reinterpret_cast<COLONIO_PTR_T>(url.c_str()),
-                       url.size());
+  seed_link_ws_connect(reinterpret_cast<COLONIO_PTR_T>(this), reinterpret_cast<COLONIO_PTR_T>(url.c_str()), url.size());
 }
 
 void SeedLinkWebsocketWasm::disconnect() {
@@ -88,8 +85,6 @@ void SeedLinkWebsocketWasm::disconnect() {
 }
 
 void SeedLinkWebsocketWasm::send(const std::string& data) {
-  seed_link_ws_send(reinterpret_cast<COLONIO_PTR_T>(this),
-                    reinterpret_cast<COLONIO_PTR_T>(data.c_str()),
-                    data.size());
+  seed_link_ws_send(reinterpret_cast<COLONIO_PTR_T>(this), reinterpret_cast<COLONIO_PTR_T>(data.c_str()), data.size());
 }
 }  // namespace colonio

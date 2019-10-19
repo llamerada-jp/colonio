@@ -19,9 +19,8 @@
 #  error For native.
 #endif
 
-#include <picojson.h>
-
 #include <api/peer_connection_interface.h>
+#include <picojson.h>
 
 #include <atomic>
 #include <condition_variable>
@@ -37,8 +36,7 @@ class Context;
 
 class WebrtcLinkNative : public WebrtcLinkBase {
  public:
-  WebrtcLinkNative(WebrtcLinkDelegate& delegate_, Context& context_,
-                   WebrtcContext& webrtc_context, bool is_create_dc);
+  WebrtcLinkNative(WebrtcLinkDelegate& delegate_, Context& context_, WebrtcContext& webrtc_context, bool is_create_dc);
   virtual ~WebrtcLinkNative();
 
   void disconnect() override;
@@ -79,10 +77,8 @@ class WebrtcLinkNative : public WebrtcLinkBase {
     void OnAddStream(rtc::scoped_refptr<webrtc::MediaStreamInterface> stream) override;
     void OnDataChannel(rtc::scoped_refptr<webrtc::DataChannelInterface> data_channel) override;
     void OnIceCandidate(const webrtc::IceCandidateInterface* candidate) override;
-    void OnIceConnectionChange(
-        webrtc::PeerConnectionInterface::IceConnectionState new_state) override;
-    void OnIceGatheringChange(
-        webrtc::PeerConnectionInterface::IceGatheringState new_state) override;
+    void OnIceConnectionChange(webrtc::PeerConnectionInterface::IceConnectionState new_state) override;
+    void OnIceGatheringChange(webrtc::PeerConnectionInterface::IceGatheringState new_state) override;
     void OnRemoveStream(rtc::scoped_refptr<webrtc::MediaStreamInterface> stream) override;
     void OnRenegotiationNeeded() override;
     void OnSignalingChange(webrtc::PeerConnectionInterface::SignalingState new_state) override;

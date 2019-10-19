@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
+#include "coordinate.hpp"
+
 #include <cassert>
 #include <cmath>
 #include <limits>
 
 #include "protocol.pb.h"
-
-#include "coordinate.hpp"
 
 namespace colonio {
 Coordinate::Coordinate() :
@@ -28,9 +28,7 @@ Coordinate::Coordinate() :
     y(std::numeric_limits<double>::signaling_NaN()) {
 }
 
-Coordinate::Coordinate(double x_, double y_) :
-    x(x_),
-    y(y_) {
+Coordinate::Coordinate(double x_, double y_) : x(x_), y(y_) {
 }
 
 Coordinate Coordinate::from_pb(const Protocol::Coordinate& pb) {
@@ -38,8 +36,7 @@ Coordinate Coordinate::from_pb(const Protocol::Coordinate& pb) {
 }
 
 bool Coordinate::operator<(const Coordinate& r) const {
-  assert(!std::isnan(x) && !std::isnan(y) &&
-         !std::isnan(r.x) && !std::isnan(r.y));
+  assert(!std::isnan(x) && !std::isnan(y) && !std::isnan(r.x) && !std::isnan(r.y));
 
   if (x != r.x) {
     return x < r.x;
@@ -50,15 +47,13 @@ bool Coordinate::operator<(const Coordinate& r) const {
 }
 
 bool Coordinate::operator!=(const Coordinate& r) const {
-  assert(!std::isnan(x) && !std::isnan(y) &&
-         !std::isnan(r.x) && !std::isnan(r.y));
+  assert(!std::isnan(x) && !std::isnan(y) && !std::isnan(r.x) && !std::isnan(r.y));
 
   return x != r.x || y != r.y;
 }
 
 bool Coordinate::is_enable() {
-  if (!std::isnan(x) &&
-      !std::isnan(y)) {
+  if (!std::isnan(x) && !std::isnan(y)) {
     return true;
 
   } else {

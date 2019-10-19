@@ -35,12 +35,12 @@
 
 static const std::string SERVER_URL = "http://localdev:8080/ws/simulate";
 static const std::string REDIS_HOST = "localdev";
-static const int         REDIS_PORT = 6379;
+static const int REDIS_PORT         = 6379;
 
 std::random_device rd;
 std::mt19937 mt(rd());
 std::uniform_real_distribution<double> rand_lon(-180.0, 180.0);
-std::uniform_real_distribution<double> rand_lat(-90.0,  90.0 );
+std::uniform_real_distribution<double> rand_lat(-90.0, 90.0);
 double lon;
 double lat;
 double target_lon;
@@ -50,15 +50,16 @@ static redisContext* rc;
 bool is_online = false;
 colonio::Map* map;
 std::string now_str;
-bool is_running = true;
+bool is_running  = true;
 int64_t val_set1 = 0;
 int64_t val_set2 = 0;
 
-#define redis_command(cmd, ...) {                                       \
+#define redis_command(cmd, ...)                                                        \
+  {                                                                                    \
     redisReply* r = reinterpret_cast<redisReply*>(redisCommand(rc, cmd, __VA_ARGS__)); \
-    if (r != nullptr) {                                                 \
-      freeReplyObject(r);                                               \
-    }                                                                   \
+    if (r != nullptr) {                                                                \
+      freeReplyObject(r);                                                              \
+    }                                                                                  \
   }
 
 void on_success(colonio::Colonio& colonio);
@@ -73,8 +74,7 @@ void on_map_set_failure(colonio::MapFailureReason reason);
 
 class MyColonio : public colonio_helper::ColonioLibuv {
  public:
-  MyColonio(uv_loop_t* loop) :
-      ColonioLibuv(loop) {
+  MyColonio(uv_loop_t* loop) : ColonioLibuv(loop) {
   }
 
   void on_output_log(colonio::LogLevel::Type level, const std::string& message) override {
@@ -95,17 +95,16 @@ std::unique_ptr<MyColonio> my_colonio;
 void on_success(colonio::Colonio& colonio) {
   redis_command("HSET inits %s %s", std::to_string(getpid()).c_str(), colonio.get_my_nid().c_str());
   is_online = true;
-  map = &(my_colonio->access_map("map"));
+  map       = &(my_colonio->access_map("map"));
 
   is_running = false;
 
   //*
-  lon = rand_lon(mt);
-  lat = rand_lat(mt);
+  lon        = rand_lon(mt);
+  lat        = rand_lat(mt);
   target_lon = rand_lon(mt);
   target_lat = rand_lat(mt);
-  my_colonio->set_position(M_PI * lon / 180.0,
-                        M_PI * lat / 180.0);
+  my_colonio->set_position(M_PI * lon / 180.0, M_PI * lat / 180.0);
   //*/
 }
 
@@ -115,21 +114,10 @@ void on_failure(colonio::Colonio& colonio) {
 }
 
 void on_debug_event(colonio::DebugEvent::Type type, const std::string& json_str) {
-  static const char* DB_KEY[] = {
-    "map_set",
-    "links",
-    "nexts",
-    "position",
-    "required1d",
-    "required2d",
-    "known1d",
-    "known2d"
-  };
+  static const char* DB_KEY[] = {"map_set",    "links",      "nexts",   "position",
+                                 "required1d", "required2d", "known1d", "known2d"};
   assert(type <= 7);
-  redis_command("HSET %s %s %s",
-                DB_KEY[type],
-                my_colonio->get_my_nid().c_str(),
-                json_str.c_str());
+  redis_command("HSET %s %s %s", DB_KEY[type], my_colonio->get_my_nid().c_str(), json_str.c_str());
 }
 
 void on_timer(uv_timer_t* handle) {
@@ -145,10 +133,9 @@ void on_timer(uv_timer_t* handle) {
   }
 
   is_running = true;
-  val_set1 ++;
+  val_set1++;
   std::cout << now_str << " map set:" << val_set1 << std::endl;
-  map->set(colonio::Value(my_colonio->get_my_nid()), colonio::Value(val_set1),
-           on_map_set, on_map_set_failure);
+  map->set(colonio::Value(my_colonio->get_my_nid()), colonio::Value(val_set1), on_map_set, on_map_set_failure);
 
   //*
   if (mt() % 100 == 0) {
@@ -159,8 +146,7 @@ void on_timer(uv_timer_t* handle) {
   if (lon > target_lon) lon -= 1;
   if (lat < target_lat) lat += 1;
   if (lat > target_lat) lat -= 1;
-  my_colonio->set_position(M_PI * lon / 180.0,
-                        M_PI * lat / 180.0);
+  my_colonio->set_position(M_PI * lon / 180.0, M_PI * lat / 180.0);
   //*/
 }
 
@@ -209,7 +195,7 @@ int main(int argc, char* argv[]) {
 
   // Libuv
   uv_loop_t* loop = uv_default_loop();
-  
+
   // redis
   rc = redisConnect(REDIS_HOST.c_str(), REDIS_PORT);
 
