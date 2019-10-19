@@ -21,8 +21,8 @@
 using namespace colonio;
 
 TEST(UtilsTest, format_string) {
-  EXPECT_EQ(Utils::format_string("", 0), "");
-  EXPECT_EQ(Utils::format_string("test", 0), "test");
-  EXPECT_EQ(Utils::format_string("test %d", 0, 0), "test 0");
-  EXPECT_EQ(Utils::format_string("test %s %d", 0, "hello world", 1), "test hello world 1");
+  EXPECT_STREQ(Utils::format_string("", 0).c_str(), "");
+  EXPECT_STREQ(Utils::format_string("test", 0).c_str(), "test");
+  EXPECT_STREQ(Utils::format_string("test %d", 0, 0).c_str(), "test 0");
+  EXPECT_STREQ(Utils::format_string("test %s %d", 0, "hello world", 1).c_str(), "test hello world 1");
 }
