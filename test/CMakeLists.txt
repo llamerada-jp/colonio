@@ -16,6 +16,7 @@ add_library(colonio_test STATIC
   )
 
 set(core_test_targets
+  exception
   logger
   node_id
   utils

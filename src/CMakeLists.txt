@@ -9,6 +9,7 @@ set(COLONIO_FILES
   core/coord_system.cpp
   core/coord_system_sphere.cpp
   core/coordinate.cpp
+  core/exception.cpp
   core/export_c.cpp
   core/logger.cpp
   core/map.cpp
@@ -117,7 +118,7 @@ else()
       PREFIX "${PYTHON_MODULE_PREFIX}"
       SUFFIX "${PYTHON_MODULE_EXTENSION}"
       )
-    
+
     install(TARGETS colonio_py
       RUNTIME DESTINATION ${PROJECT_SOURCE_DIR}/local/bin
       LIBRARY DESTINATION ${PROJECT_SOURCE_DIR}/local/lib
