@@ -16,6 +16,7 @@
 #pragma once
 
 #include <list>
+#include <mutex>
 #include <set>
 
 #include "coordinate.hpp"
