@@ -23,21 +23,21 @@ extern "C" {
 #include <string>
 #include <tuple>
 
-#include "protocol.pb.h"
-
 #include "context.hpp"
 #include "convert.hpp"
 #include "definition.hpp"
+#include "exception.hpp"
 #include "node_id.hpp"
+#include "protocol.pb.h"
 
 namespace colonio {
 // Node types.
 namespace Type {
-static const int NONE       = 0;
-static const int NORMAL     = 1;
-static const int THIS       = 2;
-static const int SEED       = 3;
-static const int NEXT       = 4;
+static const int NONE   = 0;
+static const int NORMAL = 1;
+static const int THIS   = 2;
+static const int SEED   = 3;
+static const int NEXT   = 4;
 }  // namespace Type
 
 const NodeID NodeID::NONE(Type::NONE);
@@ -62,27 +62,21 @@ const NodeID NodeID::RANGE_7(0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
 /**
  * Default constructor, it set NONE value.
  */
-NodeID::NodeID() :
-    type(Type::NONE),
-    id {0, 0} {
+NodeID::NodeID() : type(Type::NONE), id{0, 0} {
 }
 
 /**
  * Copy constructor, copy type and id.
  * @param src Copy source.
  */
-NodeID::NodeID(const NodeID& src) :
-    type(src.type),
-    id {src.id[0], src.id[1]} {
+NodeID::NodeID(const NodeID& src) : type(src.type), id{src.id[0], src.id[1]} {
 }
 
 /**
  * Constructor with a special node type.
  * @param type_ A special node type without normal.
  */
-NodeID::NodeID(int type_) :
-    type(type_),
-    id {0, 0} {
+NodeID::NodeID(int type_) : type(type_), id{0, 0} {
   assert(type_ != Type::NORMAL);
 }
 
@@ -91,20 +85,25 @@ NodeID::NodeID(int type_) :
  * @param id0 ID of the first half 64bit.
  * @param id1 ID of the latter half 64bit.
  */
-NodeID::NodeID(uint64_t id0, uint64_t id1) :
-    type(Type::NORMAL),
-    id {id0, id1} {
+NodeID::NodeID(uint64_t id0, uint64_t id1) : type(Type::NORMAL), id{id0, id1} {
 }
 
 /**
  * Make a node-id from a string.
+ * Rule:
+ * from_str("") => NodeID::NONE
+ * from_str(".") => NodeID::THIS
+ * from_str("seed") => NodeID::SEED
+ * from_str("next") => NodeID::NEXT
+ * from_str("0123456789abcdef0123456789ABCDEF") => Normal node-id(0x0123456789ABCDEF0123456789ABCDEF)
+ * other => Exception
  * @param str A source string value.
  * @return A node-id.
  */
 NodeID NodeID::from_str(const std::string& str) {
   bool is_normal = true;
-  uint64_t id0 = 0;
-  uint64_t id1 = 0;
+  uint64_t id0   = 0;
+  uint64_t id1   = 0;
 
   if (str.size() == 32) {
     for (unsigned int i = 0; i < 16; i++) {
@@ -161,32 +160,44 @@ NodeID NodeID::from_str(const std::string& str) {
       return NEXT;
 
     } else {
-      /// TDDO error
-      assert(false);
-      return NONE;
+      THROW_EX("Illegal node-id string. (string : %s)", str.c_str());
     }
   }
 }
 
+/**
+ * Make a node-id from a packet of Protocol Buffers.
+ * @param pb A source packet value.
+ * @return A node-id.
+ * @exception Raise when a illegal packet was selected.
+ */
 NodeID NodeID::from_pb(const Protocol::NodeID& pb) {
   switch (pb.type()) {
+    case Type::NONE:
+      return NodeID::NONE;
+
     case Type::NORMAL:
       return NodeID(pb.id0(), pb.id1());
 
     case Type::THIS:
-      return NodeID(Type::THIS);
+      return NodeID::THIS;
 
     case Type::SEED:
-      return NodeID(Type::SEED);
+      return NodeID::SEED;
 
     case Type::NEXT:
-      return NodeID(Type::NEXT);
+      return NodeID::NEXT;
 
     default:
-      return NodeID(Type::NONE);
+      THROW_EX("Illegal node-id type in Protocol Buffers. (type : %d)", pb.type());
   }
 }
 
+/**
+ * Make a node-id from md5 hash of a input string.
+ * @param pb A source string value.
+ * @return A node-id.
+ */
 NodeID NodeID::make_hash_from_str(const std::string& str) {
   MD5_CTX ctx;
   unsigned char md5[16];
@@ -195,16 +206,14 @@ NodeID NodeID::make_hash_from_str(const std::string& str) {
   MD5_Update(&ctx, str.c_str(), str.size());
   MD5_Final(md5, &ctx);
 
-  uint64_t id0 =
-    (static_cast<uint64_t>(md5[ 0]) << 0x38) | (static_cast<uint64_t>(md5[ 1]) << 0x30) |
-    (static_cast<uint64_t>(md5[ 2]) << 0x28) | (static_cast<uint64_t>(md5[ 3]) << 0x20) |
-    (static_cast<uint64_t>(md5[ 4]) << 0x18) | (static_cast<uint64_t>(md5[ 5]) << 0x10) |
-    (static_cast<uint64_t>(md5[ 6]) << 0x08) | (static_cast<uint64_t>(md5[ 7]) << 0x00);
-  uint64_t id1 =
-    (static_cast<uint64_t>(md5[ 8]) << 0x38) | (static_cast<uint64_t>(md5[ 9]) << 0x30) |
-    (static_cast<uint64_t>(md5[10]) << 0x28) | (static_cast<uint64_t>(md5[11]) << 0x20) |
-    (static_cast<uint64_t>(md5[12]) << 0x18) | (static_cast<uint64_t>(md5[13]) << 0x10) |
-    (static_cast<uint64_t>(md5[14]) << 0x08) | (static_cast<uint64_t>(md5[15]) << 0x00);
+  uint64_t id0 = (static_cast<uint64_t>(md5[0]) << 0x38) | (static_cast<uint64_t>(md5[1]) << 0x30) |
+                 (static_cast<uint64_t>(md5[2]) << 0x28) | (static_cast<uint64_t>(md5[3]) << 0x20) |
+                 (static_cast<uint64_t>(md5[4]) << 0x18) | (static_cast<uint64_t>(md5[5]) << 0x10) |
+                 (static_cast<uint64_t>(md5[6]) << 0x08) | (static_cast<uint64_t>(md5[7]) << 0x00);
+  uint64_t id1 = (static_cast<uint64_t>(md5[8]) << 0x38) | (static_cast<uint64_t>(md5[9]) << 0x30) |
+                 (static_cast<uint64_t>(md5[10]) << 0x28) | (static_cast<uint64_t>(md5[11]) << 0x20) |
+                 (static_cast<uint64_t>(md5[12]) << 0x18) | (static_cast<uint64_t>(md5[13]) << 0x10) |
+                 (static_cast<uint64_t>(md5[14]) << 0x08) | (static_cast<uint64_t>(md5[15]) << 0x00);
 
   return NodeID(id0, id1);
 }
@@ -218,7 +227,7 @@ NodeID NodeID::make_random() {
 }
 
 NodeID& NodeID::operator=(const NodeID& src) {
-  type = src.type;
+  type  = src.type;
   id[0] = src.id[0];
   id[1] = src.id[1];
 
@@ -370,8 +379,7 @@ NodeID NodeID::distance_from(const NodeID& a) const {
   std::tie(a0, a1) = add_mod(a0, a1, 0x0, 0x1);
 
   if (a0 >= 0x8000000000000000) {
-    std::tie(a0, a1) = add_mod(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, ~a0, ~a1);
-    std::tie(a0, a1) = add_mod(a0, a1, 0x0, 0x1);
+    std::tie(a0, a1) = add_mod(~a0, ~a1, 0x0, 0x1);
   }
 
   return NodeID(a0, a1);
@@ -386,7 +394,7 @@ NodeID NodeID::distance_from(const NodeID& a) const {
  * @return True if A <= this < B.
  */
 bool NodeID::is_between(const NodeID& a, const NodeID& b) const {
-  assert(type   == Type::NORMAL);
+  assert(type == Type::NORMAL);
   assert(a.type == Type::NORMAL);
   assert(b.type == Type::NORMAL);
 
@@ -429,14 +437,14 @@ bool NodeID::is_special() const {
  */
 int NodeID::log2() const {
   static const uint64_t TOP = 0x8000000000000000;
-  for (unsigned int i = 0; i <= sizeof(id[0]); i++) {
+  for (unsigned int i = 0; i <= sizeof(id[0]) * 8; i++) {
     if ((TOP >> i) & id[0]) {
-      return i + 64;
+      return 127 - i;
     }
   }
-  for (unsigned int i = 0; i <= sizeof(id[1]); i++) {
+  for (unsigned int i = 0; i <= sizeof(id[1]) * 8; i++) {
     if ((TOP >> i) & id[1]) {
-      return i;
+      return 63 - i;
     }
   }
   return 0;
@@ -492,6 +500,7 @@ void NodeID::to_pb(Protocol::NodeID* pb) const {
 
 /**
  * Convert a node-id to a JSON.
+ * Deprecated. For only debug.
  * @param nid A source node-id.
  * @return Node-id as a JSON.
  */

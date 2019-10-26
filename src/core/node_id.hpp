@@ -27,18 +27,28 @@ class NodeID;
 }  // namespace Protocol
 
 /**
- * Node-id is assigned for each node process run in any devices.
+ * NodeID is the ID it assigned for each node process run in any devices.
+ * ID is unique in a system (not unique in systems).
+ * ID has a 128-bit address space. In addition to the normal address,
+ * it has a special state indicating none(empty), seed, this node, and next nodes.
  */
 class NodeID {
  public:
+  /// NONE is meaning no one node is not pointed like the null.
   static const NodeID NONE;
+  /// SEED is meaning seed server in this system.
   static const NodeID SEED;
+  /// THIS is meaning this node.
   static const NodeID THIS;
+  /// NEXT is meaning all neighboring nodes that arrive from this node in 1 step.
   static const NodeID NEXT;
 
+  /// Max node ID in normal addressing.
   static const NodeID NID_MAX;
+  /// Minimum node ID in normal addressing.
   static const NodeID NID_MIN;
 
+  /// Quarter node ID is meaning 1/4 of max node ID in normal addressing.
   static const NodeID QUARTER;
 
   static const NodeID RANGE_0;
