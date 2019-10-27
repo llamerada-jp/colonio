@@ -264,11 +264,7 @@ bool NodeID::operator!=(const NodeID& b) const {
 bool NodeID::operator<(const NodeID& b) const {
   if (type == b.type) {
     if (type == Type::NORMAL) {
-      if (id[0] == b.id[0]) {
-        return id[1] < b.id[1];
-      } else {
-        return id[0] < b.id[0];
-      }
+      return compare(*this, b) == -1;
 
     } else {
       return false;
@@ -282,11 +278,7 @@ bool NodeID::operator<(const NodeID& b) const {
 bool NodeID::operator>(const NodeID& b) const {
   if (type == b.type) {
     if (type == Type::NORMAL) {
-      if (id[0] == b.id[0]) {
-        return id[1] > b.id[1];
-      } else {
-        return id[0] > b.id[0];
-      }
+      return compare(*this, b) == 1;
 
     } else {
       return false;
