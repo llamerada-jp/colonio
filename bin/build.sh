@@ -47,39 +47,24 @@ set_env_info() {
 # Install requirement packages for building native program.
 setup_native() {
     if [ "${ID}" = 'macos' ]; then
-        # cmake
-        if brew list | grep cmake; then
-            :
-        else
-            brew install cmake
-        fi
+        req_pkg=''
+        has_pkg=$(brew list)
+        for p in \
+            asio\
+            cmake\
+            glog\
+            libuv\
+            pybind11
+        do
+            if echo "${has_pkg}" | grep ${p}; then
+                :
+            else
+                req_pkg="${p} ${req_pkg}"
+            fi
+        done
 
-        # libuv
-        if brew list | grep libuv; then
-            :
-        else
-            brew install libuv
-        fi
-
-        # pybind11
-        if brew list | grep pybind11; then
-            :
-        else
-            brew install pybind11
-        fi
-
-        # glog
-        if brew list | grep glog; then
-            :
-        else
-            brew install glog
-        fi
-
-        # asio
-        if brew list | grep asio; then
-            :
-        else
-            brew install asio
+        if [ "${req_pkg}" != '' ] ; then
+            brew install ${req_pkg}
         fi
 
     elif type apt-get > /dev/null 2>&1; then
