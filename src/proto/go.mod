@@ -1,5 +1,5 @@
-module github.com/colonio/colonio-seed/proto
+module github.com/colonio/colonio-seed/src/proto
 
-go 1.12
+go 1.13
 
 require github.com/golang/protobuf v1.3.2

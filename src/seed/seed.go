@@ -27,7 +27,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/colonio/colonio-seed/proto"
+	"github.com/colonio/colonio-seed/src/proto"
 	"github.com/gobwas/ws"
 	proto3 "github.com/golang/protobuf/proto"
 	"github.com/mailru/easygo/netpoll"
@@ -472,7 +472,7 @@ func (link *Link) receive(context *context) (bool, error) {
 
 	case ws.OpBinary:
 		logger.D.Println("receive OpBinary")
-		var packet proto.NodeAccessor
+		var packet proto.SeedAccessor
 		if err := proto3.Unmarshal(payload, &packet); err != nil {
 			return false, err
 		}
@@ -500,7 +500,7 @@ func (link *Link) receive(context *context) (bool, error) {
 	return true, nil
 }
 
-func (link *Link) receivePacket(context *context, packet *proto.NodeAccessor) error {
+func (link *Link) receivePacket(context *context, packet *proto.SeedAccessor) error {
 	if packet.Channel == ChannelSeed {
 		switch packet.CommandId {
 		case MethodSeedAuth:
@@ -521,7 +521,7 @@ func (link *Link) receivePacket(context *context, packet *proto.NodeAccessor) er
 	}
 }
 
-func (link *Link) recvPacketAuth(context *context, packet *proto.NodeAccessor) error {
+func (link *Link) recvPacketAuth(context *context, packet *proto.SeedAccessor) error {
 	var content proto.Auth
 	if err := proto3.Unmarshal(packet.Content, &content); err != nil {
 		return err
@@ -571,7 +571,7 @@ func (link *Link) recvPacketAuth(context *context, packet *proto.NodeAccessor) e
 	return link.sendHint(context)
 }
 
-func (link *Link) relayPacket(context *context, packet *proto.NodeAccessor) error {
+func (link *Link) relayPacket(context *context, packet *proto.SeedAccessor) error {
 	if link.lockMutex(context) {
 		defer link.unlockMutex(context)
 	}
@@ -642,7 +642,7 @@ func (link *Link) sendHint(context *context) error {
 		logger.E.Fatalln(err)
 	}
 
-	packet := &proto.NodeAccessor{
+	packet := &proto.SeedAccessor{
 		DstNid:    link.nid,
 		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
 		Id:        0,
@@ -657,7 +657,7 @@ func (link *Link) sendHint(context *context) error {
 }
 
 func (link *Link) sendPing(context *context) error {
-	packet := &proto.NodeAccessor{
+	packet := &proto.SeedAccessor{
 		DstNid:    link.nid,
 		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
 		Id:        0,
@@ -671,7 +671,7 @@ func (link *Link) sendPing(context *context) error {
 }
 
 func (link *Link) sendRequireRandom(context *context) error {
-	packet := &proto.NodeAccessor{
+	packet := &proto.SeedAccessor{
 		DstNid:    link.nid,
 		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
 		Id:        0,
@@ -684,13 +684,13 @@ func (link *Link) sendRequireRandom(context *context) error {
 	return link.sendPacket(context, packet)
 }
 
-func (link *Link) sendSuccess(context *context, replyFor *proto.NodeAccessor, content proto3.Message) error {
+func (link *Link) sendSuccess(context *context, replyFor *proto.SeedAccessor, content proto3.Message) error {
 	contentByte, err := proto3.Marshal(content)
 	if err != nil {
 		logger.E.Fatalln(err)
 	}
 
-	packet := &proto.NodeAccessor{
+	packet := &proto.SeedAccessor{
 		DstNid:    replyFor.SrcNid,
 		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
 		Id:        replyFor.Id,
@@ -704,7 +704,7 @@ func (link *Link) sendSuccess(context *context, replyFor *proto.NodeAccessor, co
 	return link.sendPacket(context, packet)
 }
 
-func (link *Link) sendFailure(context *context, replyFor *proto.NodeAccessor, content proto3.Message) error {
+func (link *Link) sendFailure(context *context, replyFor *proto.SeedAccessor, content proto3.Message) error {
 	var contentByte []byte
 	if content != nil {
 		var err error
@@ -714,7 +714,7 @@ func (link *Link) sendFailure(context *context, replyFor *proto.NodeAccessor, co
 		}
 	}
 
-	packet := &proto.NodeAccessor{
+	packet := &proto.SeedAccessor{
 		DstNid:    replyFor.SrcNid,
 		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
 		Id:        replyFor.Id,
@@ -728,7 +728,7 @@ func (link *Link) sendFailure(context *context, replyFor *proto.NodeAccessor, co
 	return link.sendPacket(context, packet)
 }
 
-func (link *Link) sendPacket(context *context, packet *proto.NodeAccessor) error {
+func (link *Link) sendPacket(context *context, packet *proto.SeedAccessor) error {
 	if link.lockMutex(context) {
 		defer link.unlockMutex(context)
 	}
