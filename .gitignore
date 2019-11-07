@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+/bin/seed
 
 # Test binary, build with `go test -c`
 *.test
@@ -16,3 +17,5 @@
 
 # Runtime path
 /etc
+/local
+/src/proto

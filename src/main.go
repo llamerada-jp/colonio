@@ -26,7 +26,7 @@ import (
 	"log/syslog"
 	"os"
 
-	"github.com/colonio/colonio-seed/seed"
+	"github.com/colonio/colonio-seed/src/seed"
 )
 
 type SeedConfig struct {
