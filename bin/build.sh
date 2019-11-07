@@ -100,7 +100,7 @@ setup_protobuf() {
 setup_colonio() {
   if [ -z "${COLONIO_GIT_PATH+x}" ] ; then
     if [ -e "${LOCAL_ENV_PATH}/src/colonio" ] ; then
-    cd ${LOCAL_ENV_PATH}/src/colonio
+      cd ${LOCAL_ENV_PATH}/src/colonio
       git pull
     else
       cd ${LOCAL_ENV_PATH}/src
