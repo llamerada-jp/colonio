@@ -195,11 +195,15 @@ func nidToString(nid *proto.NodeID) string {
 	return NidStrNone
 }
 
-func (seed *Seed) CreateGroup(groupName string, config *Config) *Group {
+func (seed *Seed) CreateGroup(groupName string, config *Config) (*Group, error) {
 	if _, ok := seed.groups[groupName]; ok {
 		logger.E.Fatalln("Duplicate group : " + groupName)
 	}
 	tickerPeriod := make(chan bool)
+
+	if err := checkConfig(config); err != nil {
+		return nil, err
+	}
 
 	group := &Group{
 		seed:         seed,
@@ -232,7 +236,7 @@ func (seed *Seed) CreateGroup(groupName string, config *Config) *Group {
 	}()
 
 	seed.groups[groupName] = group
-	return group
+	return group, nil
 }
 
 func (seed *Seed) GetGroup(name string) (group *Group, ok bool) {
@@ -269,6 +273,18 @@ func (seed *Seed) Start(host string, port int) error {
 			}
 		})
 	}
+}
+
+func checkConfig(config *Config) error {
+	if config.PingInterval <= 0 {
+		return errors.New("Config value of PingInverval must be larger then 0.")
+	}
+
+	if config.Timeout <= 0 {
+		return errors.New("Config value of Inverval must be larger then 0.")
+	}
+
+	return nil
 }
 
 func (seed *Seed) upgradeSocket(context *context, conn net.Conn) error {

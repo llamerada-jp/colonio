@@ -64,7 +64,11 @@ func (s *Seed) Bind(uri string) (*seed.Group, error) {
 			return group, nil
 
 		} else {
-			s.group = s.seed.CreateGroup("default", s.config.CastConfig())
+			var err error
+			s.group, err = s.seed.CreateGroup("default", s.config.CastConfig())
+			if err != nil {
+				log.Fatal("Fatal on CreateGroup", err)
+			}
 			return s.group, nil
 		}
 
