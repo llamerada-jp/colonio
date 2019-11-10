@@ -34,6 +34,8 @@ set_env_info() {
         fi
     fi
 
+    export COLONIO_GIT_PATH=${ROOT_PATH}
+
     if [ -z "${LOCAL_ENV_PATH+x}" ] ; then
         export LOCAL_ENV_PATH=${ROOT_PATH}/local
     fi
@@ -159,7 +161,7 @@ setup_webrtc() {
     if [ "${ID}" = 'macos' ]; then
         readonly WEBRTC_VER="m76"
         readonly WEBRTC_FILE="libwebrtc-76.0.3809.100-macosx-10.14.6.zip"
-        
+
     else
         readonly WEBRTC_VER="m76"
         readonly WEBRTC_FILE="libwebrtc-76.0.3809.132-ubuntu-18.04-x64.tar.gz"
@@ -224,7 +226,7 @@ setup_protoc_native() {
             git clone https://github.com/protocolbuffers/protobuf.git protobuf_native
         fi
             cd ${LOCAL_ENV_PATH}/src/protobuf_native
-        git checkout refs/tags/v3.9.1
+        git checkout refs/tags/v3.10.1
         git submodule update --init --recursive
         ./autogen.sh
         ./configure --prefix=${LOCAL_ENV_PATH}
@@ -276,6 +278,24 @@ setup_gtest() {
     make install
 }
 
+setup_seed() {
+    # Clone or pull the repogitory of seed.
+    if [ -z "${COLONIO_SEED_GIT_PATH+x}" ] ; then
+        if [ -e "${LOCAL_ENV_PATH}/src/colonio-seed" ] ; then
+            cd ${LOCAL_ENV_PATH}/src/colonio-seed
+            git pull
+        else
+            cd ${LOCAL_ENV_PATH}/src
+            git clone https://github.com/colonio/colonio-seed.git
+        fi
+        readonly COLONIO_SEED_GIT_PATH=${LOCAL_ENV_PATH}/src/colonio-seed
+    fi
+
+    # Build program of seed and export path.
+    ${COLONIO_SEED_GIT_PATH}/bin/build.sh
+    export COLONIO_SEED_BIN_PATH=${COLONIO_SEED_GIT_PATH}/bin/seed
+}
+
 # Compile native programs.
 build_native() {
     if [ "${WITH_SAMPLE}" = 'true' ]; then
@@ -284,7 +304,7 @@ build_native() {
         OPT_SAMPLE=''
     fi
     if [ "${WITH_TEST}" = 'true' ]; then
-        OPT_TEST='-DWITH_TEST=ON'
+        OPT_TEST="-DWITH_TEST=ON -DCOLONIO_SEED_BIN_PATH=${COLONIO_SEED_BIN_PATH}"
     else
         OPT_TEST=''
     fi
@@ -359,6 +379,9 @@ fi
 
 if [ "${TARGET}" = 'native' ]; then
     setup_native
+    if [ "${WITH_TEST}" = 'true' ] ; then
+        setup_seed
+    fi
     build_native
 else # web
     setup_web
