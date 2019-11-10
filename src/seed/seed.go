@@ -560,6 +560,9 @@ func (link *Link) recvPacketAuth(context *context, packet *proto.SeedAccessor) e
 	} else if link.nid == nil || link.nid.Type == NidTypeNone {
 		link.nid = packet.SrcNid
 		link.group.nidMap[nidToString(packet.SrcNid)] = link
+		if link.group.config.Node == nil {
+			link.group.config.Node = make(map[string]interface{})
+		}
 		link.group.config.Node["revision"] = link.group.config.Revision
 		configByte, err := json.Marshal(link.group.config.Node)
 		if err != nil {
