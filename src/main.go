@@ -42,6 +42,8 @@ type Seed struct {
 	config *SeedConfig
 }
 
+var logger seed.Logger
+
 func newSeed(config *SeedConfig) *Seed {
 	s := &Seed{}
 
@@ -53,7 +55,7 @@ func newSeed(config *SeedConfig) *Seed {
 func (s *Seed) start() {
 	err := s.seed.Start(s.config.Host, s.config.Port)
 	if err != nil {
-		log.Fatal(err)
+		logger.E.Fatal("Fatal on Start", err)
 	}
 }
 
@@ -67,7 +69,7 @@ func (s *Seed) Bind(uri string) (*seed.Group, error) {
 			var err error
 			s.group, err = s.seed.CreateGroup("default", s.config.CastConfig())
 			if err != nil {
-				log.Fatal("Fatal on CreateGroup", err)
+				logger.E.Fatal("Fatal on CreateGroup", err)
 			}
 			return s.group, nil
 		}
@@ -78,8 +80,6 @@ func (s *Seed) Bind(uri string) (*seed.Group, error) {
 }
 
 func initLogger(isSyslog bool, isVerbose bool) {
-	logger := &seed.Logger{}
-
 	var e io.Writer
 	var w io.Writer
 	var i io.Writer
@@ -126,7 +126,7 @@ func initLogger(isSyslog bool, isVerbose bool) {
 	logger.I = log.New(i, "[INFO]", log.Ldate|log.Ltime|log.LUTC|log.Lshortfile)
 	logger.D = log.New(d, "[DEBUG]", log.Ldate|log.Ltime|log.LUTC|log.Lshortfile)
 
-	seed.SetLogger(logger)
+	seed.SetLogger(&logger)
 }
 
 func main() {
@@ -136,26 +136,27 @@ func main() {
 	isVerbose := flag.Bool("verbose", false, "Show commands to run and use verbose output")
 	flag.Parse()
 
+	initLogger(*isSyslog, *isVerbose)
+
 	// Read configure file
 	var config *SeedConfig
 	if *configFName == "" {
-		log.Fatal("You must set the configure file name.")
+		logger.E.Fatal("You must set the configure file name.")
 	}
 	if _, err := os.Stat(*configFName); err != nil {
-		log.Fatal(err)
+		logger.E.Fatal(err)
 
 	} else {
 		f, err := ioutil.ReadFile(*configFName)
 		if err != nil {
-			log.Fatal(err)
+			logger.E.Fatal(err)
 		}
 		config = &SeedConfig{}
 		if err := json.Unmarshal(f, config); err != nil {
-			log.Fatal(err)
+			logger.E.Fatal(err)
 		}
 	}
 
-	initLogger(*isSyslog, *isVerbose)
 	s := newSeed(config)
 	s.start()
 }
