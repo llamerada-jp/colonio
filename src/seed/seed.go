@@ -33,11 +33,33 @@ import (
 	"github.com/mailru/easygo/netpoll"
 )
 
+type ConfigNodeAccessor struct {
+	bufferInterval *uint32 `json:"bufferInterval"`
+	packetSize     *uint32 `json:"packetSize"`
+}
+
+type ConfigIceServer struct {
+	urls       *string `json:"urls"`
+	username   *string `json:"username"`
+	credential *string `json:"credential"`
+}
+
+type ConfigRouting struct {
+	updatePeriod     *uint32 `json:"updatePeriod"`
+	forceUpdateTimes *uint32 `json:"forceUpdateTimes"`
+}
+
+type ConfigNode struct {
+	Revision     float64            `json:"revision"`
+	NodeAccessor ConfigNodeAccessor `json:"nodeAccessor"`
+	IceServers   []ConfigIceServer  `json:"iceServers"`
+}
+
 type Config struct {
-	Revision     float64                `json:"revision"`
-	PingInterval int64                  `json:"pingInterval"`
-	Timeout      int64                  `json:"timeout"`
-	Node         map[string]interface{} `json:"node"`
+	Revision     float64     `json:"revision"`
+	PingInterval int64       `json:"pingInterval"`
+	Timeout      int64       `json:"timeout"`
+	Node         *ConfigNode `json:"node"`
 }
 
 func (c *Config) CastConfig() *Config {
@@ -201,7 +223,7 @@ func (seed *Seed) CreateGroup(groupName string, config *Config) (*Group, error) 
 	}
 	tickerPeriod := make(chan bool)
 
-	if err := checkConfig(config); err != nil {
+	if err := seed.checkConfig(config); err != nil {
 		return nil, err
 	}
 
@@ -253,6 +275,7 @@ func (seed *Seed) Start(host string, port int) error {
 	logger.I.Printf("Start colonio host = %s , port = %d\n", host, port)
 	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
+		logger.E.Print(err)
 		return err
 	}
 
@@ -275,13 +298,22 @@ func (seed *Seed) Start(host string, port int) error {
 	}
 }
 
-func checkConfig(config *Config) error {
+func (seed *Seed) checkConfig(config *Config) error {
 	if config.PingInterval <= 0 {
-		return errors.New("Config value of PingInverval must be larger then 0.")
+		return errors.New("Config value of `pingInverval` must be larger then 0.")
 	}
 
 	if config.Timeout <= 0 {
-		return errors.New("Config value of Inverval must be larger then 0.")
+		return errors.New("Config value of `inverval` must be larger then 0.")
+	}
+
+	if config.Node == nil {
+		return errors.New("Config value of `node` must be map type structure.")
+
+	} else {
+		if config.Node.IceServers == nil || len(config.Node.IceServers) == 0 {
+			return errors.New("Config value of `node.iceServers` required")
+		}
 	}
 
 	return nil
@@ -560,10 +592,7 @@ func (link *Link) recvPacketAuth(context *context, packet *proto.SeedAccessor) e
 	} else if link.nid == nil || link.nid.Type == NidTypeNone {
 		link.nid = packet.SrcNid
 		link.group.nidMap[nidToString(packet.SrcNid)] = link
-		if link.group.config.Node == nil {
-			link.group.config.Node = make(map[string]interface{})
-		}
-		link.group.config.Node["revision"] = link.group.config.Revision
+		link.group.config.Node.Revision = link.group.config.Revision
 		configByte, err := json.Marshal(link.group.config.Node)
 		if err != nil {
 			logger.E.Fatalln(err)
