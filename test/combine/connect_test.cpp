@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "colonio/colonio_libuv.hpp"
@@ -30,20 +31,25 @@ TEST(ConnectTest, connectSingle) {
 
   ColonioLibuv node(helper.get_libuv_instance());
 
-  /*
-    node.connect(
-        "http://localhost:8080/test", "",
-        [&](Colonio& c) {
-          helper.mark("a");
-          c.disconnect();
-        },
-        [&](Colonio& c) {
-          ADD_FAILURE();
-          c.disconnect();
-        });
-  */
+  node.connect(
+      "http://localhost:8080/test", "",
+      [&](Colonio& c) {
+        helper.mark("a");
+        c.disconnect();
+      },
+      [&](Colonio& c) {
+        ADD_FAILURE();
+        c.disconnect();
+      });
 
   // node.run();
-  // helper.run();
+  helper.run();
   helper.check_route("a");
+}
+
+int main(int argc, char** argv) {
+  google::InitGoogleLogging(argv[0]);
+  google::InstallFailureSignalHandler();
+
+  CHECK_EQ(RUN_ALL_TESTS(), 0);
 }

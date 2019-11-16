@@ -32,7 +32,7 @@ set(test_targets_combine
 
 foreach(test_target IN LISTS test_targets_combine)
   add_executable(combine_${test_target} "combine/${test_target}_test.cpp")
-  target_link_libraries(combine_${test_target} colonio_test ${GTEST_LDFLAGS} ${webrtc_libs} ${extra_libs})
+  target_link_libraries(combine_${test_target} colonio_test ${GTEST_LDFLAGS} ${webrtc_libs} ${extra_libs} glog)
   target_compile_options(combine_${test_target} PUBLIC ${GTEST_CFLAGS})
   add_test(NAME "combine_${test_target}_test" COMMAND "combine_${test_target}")
 endforeach()

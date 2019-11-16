@@ -121,9 +121,19 @@ class TestSeed {
     config.insert(std::make_pair("revision", picojson::value(static_cast<double>(revision))));
     config.insert(std::make_pair("timeout", picojson::value(static_cast<double>(timeout))));
 
+    picojson::object ice_server;
+    ice_server.insert(std::make_pair("urls", picojson::value("stun:stun.l.google.com:19302")));
+
+    picojson::array ice_servers;
+    ice_servers.push_back(picojson::value(ice_server));
+
+    picojson::object node;
+    node.insert(std::make_pair("iceServers", picojson::value(ice_servers)));
+    config.insert(std::make_pair("node", picojson::value(node)));
+
     std::string fname = tmpdir + "/colonio_test_config.json";
     std::ofstream f(fname);
-    f << picojson::value(config).serialize();
+    f << picojson::value(config).serialize(true);
     f.close();
 
     return fname;
