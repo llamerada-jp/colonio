@@ -34,32 +34,32 @@ import (
 )
 
 type ConfigNodeAccessor struct {
-	bufferInterval *uint32 `json:"bufferInterval"`
-	packetSize     *uint32 `json:"packetSize"`
+	BufferInterval *uint32 `json:"bufferInterval,omitempty"`
+	PacketSize     *uint32 `json:"packetSize,omitempty"`
 }
 
 type ConfigIceServer struct {
-	urls       *string `json:"urls"`
-	username   *string `json:"username"`
-	credential *string `json:"credential"`
+	Urls       []string `json:"urls,omitempty"`
+	Username   *string `json:"username,omitempty"`
+	Credential *string `json:"credential,omitempty"`
 }
 
 type ConfigRouting struct {
-	updatePeriod     *uint32 `json:"updatePeriod"`
-	forceUpdateTimes *uint32 `json:"forceUpdateTimes"`
+	UpdatePeriod     *uint32 `json:"updatePeriod,omitempty"`
+	ForceUpdateTimes *uint32 `json:"forceUpdateTimes,omitempty"`
 }
 
 type ConfigNode struct {
 	Revision     float64            `json:"revision"`
-	NodeAccessor ConfigNodeAccessor `json:"nodeAccessor"`
-	IceServers   []ConfigIceServer  `json:"iceServers"`
+	NodeAccessor *ConfigNodeAccessor `json:"nodeAccessor,omitempty"`
+	IceServers   []ConfigIceServer  `json:"iceServers,omitempty"`
 }
 
 type Config struct {
-	Revision     float64     `json:"revision"`
+	Revision     float64     `json:"revision,omitempty"`
 	PingInterval int64       `json:"pingInterval"`
 	Timeout      int64       `json:"timeout"`
-	Node         *ConfigNode `json:"node"`
+	Node         *ConfigNode `json:"node,omitempty"`
 }
 
 func (c *Config) CastConfig() *Config {
