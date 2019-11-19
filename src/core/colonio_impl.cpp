@@ -28,6 +28,8 @@ ColonioImpl::ColonioImpl(Colonio& colonio_) :
     context(*this, *this),
     colonio(colonio_),
     is_first_link(true),
+    node_accessor(nullptr),
+    routing(nullptr),
     node_status(LinkStatus::OFFLINE),
     seed_status(LinkStatus::OFFLINE) {
 #ifndef NDEBUG
@@ -63,8 +65,8 @@ void ColonioImpl::connect(
   on_connect_failure = on_failure;
 
   seed_accessor = std::make_unique<SeedAccessor>(context, *this, url, token);
-  node_accessor = std::make_unique<NodeAccessor>(context, *this, *this);
-  add_module(node_accessor.get());
+  node_accessor = new NodeAccessor(context, *this, *this);
+  add_module(node_accessor);
 
   context.scheduler.add_timeout_task(
       this, [this]() { on_change_accessor_status(seed_accessor->get_status(), node_accessor->get_status()); }, 0);
@@ -88,9 +90,9 @@ void ColonioImpl::disconnect() {
   seed_accessor->disconnect();
   node_accessor->disconnect_all();
 
-  routing.reset();
+  node_accessor = nullptr;
+  routing       = nullptr;
   seed_accessor.reset();
-  node_accessor.reset();
 
   context.scheduler.add_timeout_task(
       this, [this]() { on_change_accessor_status(LinkStatus::OFFLINE, LinkStatus::OFFLINE); }, 0);
@@ -247,9 +249,9 @@ void ColonioImpl::seed_accessor_on_recv_config(SeedAccessor& sa, const picojson:
     }
 
     // routing
-    routing = std::make_unique<Routing>(
+    routing = new Routing(
         context, *this, *this, ModuleChannel::SYSTEM_ROUTING, Utils::get_json<picojson::object>(config, "routing"));
-    add_module(routing.get());
+    add_module(routing);
 
     // modules
     initialize_algorithms();
@@ -267,7 +269,7 @@ void ColonioImpl::seed_accessor_on_recv_packet(SeedAccessor& sa, std::unique_ptr
 }
 
 void ColonioImpl::seed_accessor_on_recv_require_random(SeedAccessor& sa) {
-  if (node_accessor) {
+  if (node_accessor != nullptr) {
     node_accessor->connect_random_link();
   }
 }
@@ -348,7 +350,7 @@ void ColonioImpl::on_change_accessor_status(LinkStatus::Type seed_status, LinkSt
     status = LinkStatus::CONNECTING;
 
   } else if (!seed_accessor) {
-    assert(!node_accessor);
+    assert(node_accessor == nullptr);
 
     status = LinkStatus::OFFLINE;
 

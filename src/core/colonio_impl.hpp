@@ -79,8 +79,8 @@ class ColonioImpl : public LoggerDelegate,
   std::set<System2DBase*> modules_2d;
 
   std::unique_ptr<SeedAccessor> seed_accessor;
-  std::unique_ptr<NodeAccessor> node_accessor;
-  std::unique_ptr<Routing> routing;
+  NodeAccessor* node_accessor;
+  Routing* routing;
 
   std::function<void()> on_connect_success;
   std::function<void()> on_connect_failure;
