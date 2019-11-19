@@ -105,6 +105,7 @@ class WebrtcLinkNative : public WebrtcLinkBase {
 
   rtc::scoped_refptr<webrtc::PeerConnectionInterface> peer_connection;
   rtc::scoped_refptr<webrtc::DataChannelInterface> data_channel;
+  webrtc::DataChannelInit dc_config;
 
   std::mutex mutex;
   std::condition_variable_any cond;

@@ -111,7 +111,7 @@ WebrtcLinkNative::WebrtcLinkNative(
   }
 
   if (is_create_dc) {
-    data_channel = peer_connection->CreateDataChannel("data_channel", &webrtc_context.dc_config);
+    data_channel = peer_connection->CreateDataChannel("data_channel", &dc_config);
     if (data_channel.get() == nullptr) {
       /// @todo error
       assert(false);

@@ -29,7 +29,6 @@ class WebrtcContextNative : public WebrtcContextBase {
  public:
   rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> peer_connection_factory;
   webrtc::PeerConnectionInterface::RTCConfiguration pc_config;
-  webrtc::DataChannelInit dc_config;
 
   WebrtcContextNative();
   virtual ~WebrtcContextNative();
