@@ -19,6 +19,8 @@
 #include <cassert>
 #include <tuple>
 
+#include "utils.hpp"
+
 namespace colonio {
 
 Command::Command(CommandID::Type id_, PacketMode::Type mode_) : id(id_), mode(mode_) {
@@ -39,7 +41,7 @@ std::tuple<CommandID::Type, PacketMode::Type> Command::get_define() {
  * @param packet Received error packet.
  */
 void Command::on_error(const std::string& message) {
-  assert(false);
+  colonio_throw(message);
 }
 
 /**

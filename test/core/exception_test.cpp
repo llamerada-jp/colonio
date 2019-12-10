@@ -18,15 +18,34 @@
 
 #include <gtest/gtest.h>
 
+#include "core/utils.hpp"
+
 using namespace colonio;
 
-TEST(UtilsTest, format_string) {
+TEST(UtilsTest, Exception) {
   try {
-    THROW_EX("test");
+    colonio_throw("test");
+
+  } catch (FatalException& e) {
+    FAIL();
+
   } catch (Exception& e) {
-    EXPECT_EQ(e.line, 25);
+    EXPECT_EQ(e.line, 27);
     EXPECT_STREQ(e.file.c_str(), "exception_test");
     EXPECT_EQ(e.message, "test");
     EXPECT_STREQ(e.what(), "test");
+  }
+
+  try {
+    colonio_fatal("test");
+
+  } catch (FatalException& e) {
+    EXPECT_EQ(e.line, 40);
+    EXPECT_STREQ(e.file.c_str(), "exception_test");
+    EXPECT_EQ(e.message, "test");
+    EXPECT_STREQ(e.what(), "test");
+
+  } catch (Exception& e) {
+    FAIL();
   }
 }

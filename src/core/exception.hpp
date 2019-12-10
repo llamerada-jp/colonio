@@ -18,15 +18,7 @@
 #include <exception>
 #include <string>
 
-#include "utils.hpp"
-
 namespace colonio {
-/**
- * THROW_EX macro is helper function to throw exception with line number and file name.
- * @param FORMAT Format string of an exception message that similar to printf.
- */
-#define THROW_EX(FORMAT, ...) throw Exception(__LINE__, __FILE__, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
-
 /**
  * Exception class is for throwing when error and exception on processing in any module.
  * It containing line no, file name and a message string for display or bug report.
@@ -46,5 +38,15 @@ class Exception : public std::exception {
    * Pass message without line-no and file name.
    */
   const char* what() const noexcept override;
+};
+
+/**
+ * FatalException class is for throwing when fatal error.
+ * It containing the same information for Exception class.
+ */
+class FatalException : public Exception {
+ public:
+  FatalException(int l, const std::string& f, const std::string& m) : Exception(l, f, m) {
+  }
 };
 }  // namespace colonio

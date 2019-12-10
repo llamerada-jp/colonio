@@ -40,7 +40,7 @@ namespace colonio {
 template<>
 bool Utils::check_json_optional<unsigned int>(const picojson::object& obj, const std::string& key, unsigned int* dst) {
   auto it = obj.find(key);
-  if (it == obj.end()) {
+  if (it == obj.end() || it->second.is<picojson::null>()) {
     return false;
 
   } else if (it->second.is<double>()) {
@@ -201,6 +201,15 @@ bool Utils::is_safevalue(double v) {
   } else {
     return true;
   }
+}
+
+void Utils::output_assert(
+    const std::string& func, const std::string& file, unsigned long line, const std::string& exp,
+    const std::string& mesg) {
+  printf(
+      "Assersion failed: (%s) func: %s, file: %s, line: %ld\n%s\n", exp.c_str(), func.c_str(), file.c_str(), line,
+      mesg.c_str());
+  exit(-1);
 }
 
 double Utils::pmod(double a, double b) {

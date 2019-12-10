@@ -160,7 +160,7 @@ NodeID NodeID::from_str(const std::string& str) {
       return NEXT;
 
     } else {
-      THROW_EX("Illegal node-id string. (string : %s)", str.c_str());
+      colonio_throw("Illegal node-id string. (string : %s)", str.c_str());
     }
   }
 }
@@ -189,7 +189,7 @@ NodeID NodeID::from_pb(const Protocol::NodeID& pb) {
       return NodeID::NEXT;
 
     default:
-      THROW_EX("Illegal node-id type in Protocol Buffers. (type : %d)", pb.type());
+      colonio_throw("Illegal node-id type in Protocol Buffers. (type : %d)", pb.type());
   }
 }
 

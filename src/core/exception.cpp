@@ -16,6 +16,8 @@
 
 #include "exception.hpp"
 
+#include "utils.hpp"
+
 namespace colonio {
 Exception::Exception(int l, const std::string& f, const std::string& m) :
     line(l),
