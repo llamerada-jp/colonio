@@ -40,8 +40,8 @@ type ConfigNodeAccessor struct {
 
 type ConfigIceServer struct {
 	Urls       []string `json:"urls,omitempty"`
-	Username   *string `json:"username,omitempty"`
-	Credential *string `json:"credential,omitempty"`
+	Username   *string  `json:"username,omitempty"`
+	Credential *string  `json:"credential,omitempty"`
 }
 
 type ConfigRouting struct {
@@ -49,10 +49,17 @@ type ConfigRouting struct {
 	ForceUpdateTimes *uint32 `json:"forceUpdateTimes,omitempty"`
 }
 
+type ConfigModule struct {
+	Type    string `json:"type"`
+	Channel uint32 `json:"channel"`
+}
+
 type ConfigNode struct {
-	Revision     float64            `json:"revision"`
-	NodeAccessor *ConfigNodeAccessor `json:"nodeAccessor,omitempty"`
-	IceServers   []ConfigIceServer  `json:"iceServers,omitempty"`
+	Revision     float64                 `json:"revision"`
+	NodeAccessor *ConfigNodeAccessor     `json:"nodeAccessor,omitempty"`
+	IceServers   []ConfigIceServer       `json:"iceServers,omitempty"`
+	Routing      *ConfigRouting          `json:"routing,omitempty"`
+	Modules      map[string]ConfigModule `json:"modules,omitempty"`
 }
 
 type Config struct {
@@ -313,6 +320,10 @@ func (seed *Seed) checkConfig(config *Config) error {
 	} else {
 		if config.Node.IceServers == nil || len(config.Node.IceServers) == 0 {
 			return errors.New("Config value of `node.iceServers` required")
+		}
+
+		if config.Node.Routing == nil {
+			return errors.New("Config value of `node.routing` required")
 		}
 	}
 
