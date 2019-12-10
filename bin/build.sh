@@ -158,13 +158,12 @@ setup_picojson() {
 # Download libwebrtc
 setup_webrtc() {
     cd ${LOCAL_ENV_PATH}/src
+    readonly WEBRTC_VER="m78"
     if [ "${ID}" = 'macos' ]; then
-        readonly WEBRTC_VER="m76"
-        readonly WEBRTC_FILE="libwebrtc-76.0.3809.100-macosx-10.14.6.zip"
+        readonly WEBRTC_FILE="libwebrtc-78.0.3904.108-macosx-10.15.1.zip"
 
     else
-        readonly WEBRTC_VER="m76"
-        readonly WEBRTC_FILE="libwebrtc-76.0.3809.132-ubuntu-18.04-x64.tar.gz"
+        readonly WEBRTC_FILE="libwebrtc-78.0.3904.108-ubuntu-18.04-x64.tar.gz"
     fi
 
     if ! [ -e "${WEBRTC_FILE}" ]; then
