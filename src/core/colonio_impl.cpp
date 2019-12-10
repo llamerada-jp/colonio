@@ -81,17 +81,17 @@ LinkStatus::Type ColonioImpl::get_status() {
 }
 
 void ColonioImpl::disconnect() {
-  for (auto& module_named : modules_named) {
-    module_named.second.reset();
-  }
-  modules_1d.clear();
-  modules_2d.clear();
-
   seed_accessor->disconnect();
   node_accessor->disconnect_all();
 
+  modules.clear();
+  modules_named.clear();
   node_accessor = nullptr;
   routing       = nullptr;
+
+  modules_1d.clear();
+  modules_2d.clear();
+
   seed_accessor.reset();
 
   context.scheduler.add_timeout_task(
@@ -284,14 +284,14 @@ void ColonioImpl::scheduler_on_require_invoke(Scheduler& sched, unsigned int mse
 }
 
 void ColonioImpl::add_module(Module* module, const std::string& name) {
-  modules.insert(std::make_pair(module->channel, module));
+  modules.insert(std::make_pair(module->channel, std::unique_ptr<Module>(module)));
   if (name != "") {
-    modules_named.insert(std::make_pair(name, std::unique_ptr<Module>(module)));
+    modules_named.insert(std::make_pair(name, module));
   }
 }
 
 void ColonioImpl::initialize_algorithms() {
-  const picojson::object& modules_config = Utils::get_json<picojson::object>(config, "modules");
+  const picojson::object& modules_config = Utils::get_json<picojson::object>(config, "modules", picojson::object());
   for (auto& it : modules_config) {
     const std::string& name               = it.first;
     const picojson::object& module_config = Utils::get_json<picojson::object>(modules_config, name);
@@ -415,7 +415,7 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
         [this, p]() {
           auto it = modules.find(p.channel);
           if (it != modules.end()) {
-            it->second->on_recv_packet(std::make_unique<const Packet>(p));
+            it->second->on_recv_packet(std::make_unique<Packet>(p));
 
           } else {
             // @todo error
