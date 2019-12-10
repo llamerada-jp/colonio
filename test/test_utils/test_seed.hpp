@@ -30,7 +30,17 @@
 
 class TestSeed {
  public:
-  TestSeed() : flg_running(false), flg_break(false), pid(0), path("/test"), ping_interval(1000), port(8080), revision(0), timeout(10000) {
+  TestSeed() :
+      flg_running(false),
+      flg_break(false),
+      pid(0),
+      path("/test"),
+      ping_interval(1000),
+      port(8080),
+      revision(0.1),
+      timeout(10000),
+      update_period(500),
+      force_update_times(20) {
   }
 
   virtual ~TestSeed() {
@@ -57,6 +67,8 @@ class TestSeed {
     } else {
       // Start monitoring thread on the parent(current) prcess.
       flg_running = true;
+      // Reduce retry on sign-in by waiting to start the seed.
+      sleep(1);
 
       monitoring_thread = std::make_unique<std::thread>([&]() {
         int status;
@@ -106,6 +118,9 @@ class TestSeed {
   double revision;
   int timeout;
 
+  int update_period;
+  int force_update_times;
+
   std::string generate_config() {
     std::string tmpdir;
     if (getenv("TMPDIR") == nullptr) {
@@ -121,14 +136,21 @@ class TestSeed {
     config.insert(std::make_pair("revision", picojson::value(static_cast<double>(revision))));
     config.insert(std::make_pair("timeout", picojson::value(static_cast<double>(timeout))));
 
+    picojson::array urls;
+    urls.push_back(picojson::value("stun:stun.l.google.com:19302"));
     picojson::object ice_server;
-    ice_server.insert(std::make_pair("urls", picojson::value("stun:stun.l.google.com:19302")));
+    ice_server.insert(std::make_pair("urls", picojson::value(urls)));
 
     picojson::array ice_servers;
     ice_servers.push_back(picojson::value(ice_server));
 
+    picojson::object routing;
+    routing.insert(std::make_pair("updatePeriod", picojson::value(static_cast<double>(update_period))));
+    routing.insert(std::make_pair("forceUpdateTimes", picojson::value(static_cast<double>(force_update_times))));
+
     picojson::object node;
     node.insert(std::make_pair("iceServers", picojson::value(ice_servers)));
+    node.insert(std::make_pair("routing", picojson::value(routing)));
     config.insert(std::make_pair("node", picojson::value(node)));
 
     std::string fname = tmpdir + "/colonio_test_config.json";
