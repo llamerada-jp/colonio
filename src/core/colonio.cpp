@@ -45,7 +45,6 @@ void Colonio::connect(
 void Colonio::disconnect() {
   assert(impl);
   impl->disconnect();
-  impl.reset();
 }
 
 std::string Colonio::get_my_nid() {
