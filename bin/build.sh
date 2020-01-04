@@ -338,7 +338,7 @@ build_web() {
 }
 
 show_usage() {
-    echo "Usage: $1 [-dhw]" 1>&2
+    echo "Usage: $1 [-cdhwst]" 1>&2
     echo "  -c : Build test with coverage.(Native only)" 1>&2
     echo "  -d : Set build type to debug mode." 1>&2
     echo "  -h : Show this help." 1>&2
@@ -355,7 +355,7 @@ WITH_SAMPLE='false'
 WITH_TEST='false'
 
 # Decode options.
-while getopts dhstw OPT
+while getopts cdhstw OPT
 do
     case $OPT in
         c)  ENABLE_COVERAGE='true'
