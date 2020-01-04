@@ -19,7 +19,7 @@ install:
 
 script:
   - cd $TRAVIS_BUILD_DIR
-  - ./bin/build.sh -t
+  - ./bin/build.sh -c
   - make -C build/ubuntu_x86_64 test
 
 after_success:

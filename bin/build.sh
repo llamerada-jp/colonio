@@ -145,7 +145,8 @@ setup_libuv() {
 setup_picojson() {
     if [ -e ${LOCAL_ENV_PATH}/src/picojson ]; then
         cd ${LOCAL_ENV_PATH}/src/picojson
-        git fetch
+        git checkout master
+        git pull
     else
         cd ${LOCAL_ENV_PATH}/src
         git clone https://github.com/kazuho/picojson.git
@@ -184,7 +185,8 @@ setup_webrtc() {
 setup_asio() {
     if [ -e ${LOCAL_ENV_PATH}/src/asio ]; then
         cd ${LOCAL_ENV_PATH}/src/asio
-        git fetch
+        git checkout master
+        git pull
     else
         cd ${LOCAL_ENV_PATH}/src/
         git clone https://github.com/chriskohlhoff/asio.git
@@ -202,7 +204,8 @@ setup_asio() {
 setup_websocketpp() {
     if [ -e ${LOCAL_ENV_PATH}/src/websocketpp ]; then
         cd ${LOCAL_ENV_PATH}/src/websocketpp
-        git fetch
+        git checkout master
+        git pull
     else
         cd ${LOCAL_ENV_PATH}/src
         git clone https://github.com/zaphoyd/websocketpp.git
@@ -219,7 +222,8 @@ setup_protoc_native() {
     if ! [ -e ${LOCAL_ENV_PATH}/bin/protoc ]; then
         if [ -e ${LOCAL_ENV_PATH}/src/protobuf_native ]; then
             cd ${LOCAL_ENV_PATH}/src/protobuf_native
-            git fetch
+            git checkout master
+            git pull
         else
             cd ${LOCAL_ENV_PATH}/src
             git clone https://github.com/protocolbuffers/protobuf.git protobuf_native
@@ -247,7 +251,8 @@ setup_protoc_web() {
 
     if [ -e ${LOCAL_ENV_PATH}/src/protobuf_wa ]; then
         cd ${LOCAL_ENV_PATH}/src/protobuf_wa
-        git fetch
+        git checkout master
+        git pull
     else
         cd ${LOCAL_ENV_PATH}/src
         git clone https://github.com/protocolbuffers/protobuf.git protobuf_wa
@@ -264,7 +269,8 @@ setup_protoc_web() {
 setup_gtest() {
     if [ -e ${LOCAL_ENV_PATH}/src/googletest ]; then
         cd ${LOCAL_ENV_PATH}/src/googletest
-        git fetch
+        git checkout master
+        git pull
     else
         cd ${LOCAL_ENV_PATH}/src
         git clone https://github.com/google/googletest.git googletest
@@ -303,7 +309,11 @@ build_native() {
         OPT_SAMPLE=''
     fi
     if [ "${WITH_TEST}" = 'true' ]; then
-        OPT_TEST="-DWITH_TEST=ON -DCOLONIO_SEED_BIN_PATH=${COLONIO_SEED_BIN_PATH}"
+        if [ "${ENABLE_COVERAGE}" = 'tru' ]; then
+            OPT_TEST="-DWITH_TEST=ON -DWITH_COVERAGE=ON -DCOLONIO_SEED_BIN_PATH=${COLONIO_SEED_BIN_PATH}"
+        else
+            OPT_TEST="-DWITH_TEST=ON -DCOLONIO_SEED_BIN_PATH=${COLONIO_SEED_BIN_PATH}"
+        fi
     else
         OPT_TEST=''
     fi
@@ -329,24 +339,28 @@ build_web() {
 
 show_usage() {
     echo "Usage: $1 [-dhw]" 1>&2
+    echo "  -c : Build test with coverage.(Native only)" 1>&2
     echo "  -d : Set build type to debug mode." 1>&2
     echo "  -h : Show this help." 1>&2
     echo "  -w : Build webassembly module." 1>&2
     echo "  -s : Build with sample programs.(Native only)" 1>&2
-    echo "  -t : Build test and coverage programs.(Native only)" 1>&2
+    echo "  -t : Build test programs.(Native only)" 1>&2
 }
 
 # Default options.
 TARGET='native'
 ENABLE_DEBUG='false'
+ENABLE_COVERAGE='false'
 WITH_SAMPLE='false'
 WITH_TEST='false'
 
 # Decode options.
 while getopts dhstw OPT
 do
-
     case $OPT in
+        c)  ENABLE_COVERAGE='true'
+            ENABLE_DEBUG='true'
+            ;;
         d)  ENABLE_DEBUG='true'
             ;;
         h)  show_usage $0

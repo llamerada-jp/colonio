@@ -3,7 +3,10 @@
 ##
 # Force debug when test.
 set(CMAKE_BUILD_TYPE Debug)
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -coverage -g -O0")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
+if("${WITH_COVERAGE}")
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -coverage")
+endif()
 
 find_package(PkgConfig)
 pkg_search_module(GTEST REQUIRED gtest_main)

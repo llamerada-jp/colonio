@@ -6,6 +6,7 @@ find_package(PkgConfig)
 option(WITH_PYTHON "Generate library for python. (For native only)" OFF)
 option(WITH_SAMPLE "Generate simulate program. (For native only)" OFF)
 option(WITH_TEST   "Generate test program. (For native only)" OFF)
+option(WITH_COVERAGE "Build test with coverage.(Native only)" OFF)
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   ##
