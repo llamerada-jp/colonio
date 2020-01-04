@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <glog/logging.h>
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include "colonio/colonio_libuv.hpp"
@@ -23,6 +23,7 @@
 
 using namespace colonio;
 using namespace colonio_helper;
+using ::testing::MatchesRegex;
 
 TEST(ConnectTest, connectSingle) {
   AsyncHelper helper;
@@ -38,19 +39,11 @@ TEST(ConnectTest, connectSingle) {
         c.disconnect();
       },
       [&](Colonio& c) {
-        ADD_FAILURE();
+        FAIL();
         c.disconnect();
       });
 
   // node.run();
   helper.run();
-  helper.check_route("a");
-}
-
-int main(int argc, char** argv) {
-  google::InitGoogleLogging(argv[0]);
-  google::InstallFailureSignalHandler();
-
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  EXPECT_THAT(helper.get_route(), MatchesRegex("^a$"));
 }

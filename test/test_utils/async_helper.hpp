@@ -17,11 +17,12 @@
 
 #include <uv.h>
 
+#include <sstream>
 #include <string>
 
 class AsyncHelper {
  public:
-  std::string marks;
+  std::stringstream marks;
   std::unique_ptr<uv_loop_t> loop;
 
   AsyncHelper() {
@@ -43,15 +44,14 @@ class AsyncHelper {
   }
 
   void mark(const std::string& m) {
-    marks.append(m);
+    marks << m;
   }
 
   void run() {
     uv_run(get_libuv_instance(), UV_RUN_DEFAULT);
   }
 
-  bool check_route(const std::string& exp) {
-    EXPECT_TRUE(false);
-    return true;
+  std::string get_route() {
+    return marks.str();
   }
 };
