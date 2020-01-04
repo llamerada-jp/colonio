@@ -309,7 +309,7 @@ build_native() {
         OPT_SAMPLE=''
     fi
     if [ "${WITH_TEST}" = 'true' ]; then
-        if [ "${ENABLE_COVERAGE}" = 'tru' ]; then
+        if [ "${ENABLE_COVERAGE}" = 'true' ]; then
             OPT_TEST="-DWITH_TEST=ON -DWITH_COVERAGE=ON -DCOLONIO_SEED_BIN_PATH=${COLONIO_SEED_BIN_PATH}"
         else
             OPT_TEST="-DWITH_TEST=ON -DCOLONIO_SEED_BIN_PATH=${COLONIO_SEED_BIN_PATH}"
@@ -359,7 +359,7 @@ while getopts cdhstw OPT
 do
     case $OPT in
         c)  ENABLE_COVERAGE='true'
-            ENABLE_DEBUG='true'
+            WITH_TEST='true'
             ;;
         d)  ENABLE_DEBUG='true'
             ;;
