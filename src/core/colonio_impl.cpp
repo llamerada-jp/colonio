@@ -28,6 +28,7 @@ ColonioImpl::ColonioImpl(Colonio& colonio_) :
     context(*this, *this),
     colonio(colonio_),
     is_first_link(true),
+    enable_retry(true),
     node_accessor(nullptr),
     routing(nullptr),
     node_status(LinkStatus::OFFLINE),
@@ -36,14 +37,6 @@ ColonioImpl::ColonioImpl(Colonio& colonio_) :
   context.hook_on_debug_event(
       [this](DebugEvent::Type event, const picojson::value& json) { colonio.on_debug_event(event, json.serialize()); });
 #endif
-  context.scheduler.add_interval_task(
-      this,
-      [this]() {
-        for (auto& module : modules) {
-          module.second->module_on_persec(seed_status, node_status);
-        }
-      },
-      1000);
 }
 
 ColonioImpl::~ColonioImpl() {
@@ -60,7 +53,17 @@ void ColonioImpl::connect(
     logi(0x00010001, "Connect start.(url=%s)", url.c_str());
   }
 
+  context.scheduler.add_interval_task(
+      this,
+      [this]() {
+        for (auto& module : modules) {
+          module.second->module_on_persec(seed_status, node_status);
+        }
+      },
+      1000);
+
   is_first_link      = true;
+  enable_retry       = true;
   on_connect_success = on_success;
   on_connect_failure = on_failure;
 
@@ -81,21 +84,27 @@ LinkStatus::Type ColonioImpl::get_status() {
 }
 
 void ColonioImpl::disconnect() {
+  enable_retry = false;
   seed_accessor->disconnect();
   node_accessor->disconnect_all();
 
-  modules.clear();
-  modules_named.clear();
-  node_accessor = nullptr;
-  routing       = nullptr;
-
-  modules_1d.clear();
-  modules_2d.clear();
-
-  seed_accessor.reset();
-
   context.scheduler.add_timeout_task(
-      this, [this]() { on_change_accessor_status(LinkStatus::OFFLINE, LinkStatus::OFFLINE); }, 0);
+      this,
+      [this]() {
+        on_change_accessor_status(LinkStatus::OFFLINE, LinkStatus::OFFLINE);
+        modules.clear();
+        modules_named.clear();
+        node_accessor = nullptr;
+        routing       = nullptr;
+
+        modules_1d.clear();
+        modules_2d.clear();
+
+        seed_accessor.reset();
+
+        context.scheduler.remove_task(this);
+      },
+      0);
 }
 
 Coordinate ColonioImpl::set_position(const Coordinate& pos) {
@@ -183,7 +192,9 @@ void ColonioImpl::routing_do_disconnect_node(Routing& routing, const NodeID& nid
 }
 
 void ColonioImpl::routing_do_connect_seed(Routing& route) {
-  seed_accessor->connect();
+  if (enable_retry) {
+    seed_accessor->connect();
+  }
 }
 
 void ColonioImpl::routing_do_disconnect_seed(Routing& route) {
@@ -360,7 +371,7 @@ void ColonioImpl::on_change_accessor_status(LinkStatus::Type seed_status, LinkSt
     context.scheduler.add_timeout_task(this, std::bind(&ColonioImpl::disconnect, this), 0);
     status = LinkStatus::OFFLINE;
 
-  } else {
+  } else if (enable_retry) {
     seed_accessor->connect();
     status = LinkStatus::CONNECTING;
   }

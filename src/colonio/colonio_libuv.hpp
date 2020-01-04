@@ -24,16 +24,10 @@ namespace colonio_helper {
 class ColonioLibuv : public colonio::Colonio {
  public:
   uv_loop_t* loop;
-  uv_async_t async;
   uv_timer_t timer;
   bool is_local;
 
   static void on_timer(uv_timer_t* handler) {
-    ColonioLibuv& THIS = *reinterpret_cast<ColonioLibuv*>(handler->data);
-    THIS.invoke_colonio();
-  }
-
-  static void on_async(uv_async_t* handler) {
     ColonioLibuv& THIS = *reinterpret_cast<ColonioLibuv*>(handler->data);
     THIS.invoke_colonio();
   }
@@ -46,14 +40,10 @@ class ColonioLibuv : public colonio::Colonio {
       is_local = false;
     }
 
-    // async
-    uv_async_init(loop, &async, on_async);
-    async.data = this;
-
     // timer
     uv_timer_init(loop, &timer);
     timer.data = this;
-    uv_timer_start(&timer, on_timer, 1000, 1000);
+    uv_timer_start(&timer, on_timer, 1000, 0);
   }
 
   virtual ~ColonioLibuv() {
@@ -71,14 +61,18 @@ class ColonioLibuv : public colonio::Colonio {
 
  protected:
   void on_require_invoke(unsigned int msec) override {
-    uv_async_send(&async);
+    uv_timer_stop(&timer);
+    uv_timer_start(&timer, on_timer, msec, 0);
   }
 
   void invoke_colonio() {
     uv_timer_stop(&timer);
+
     unsigned int next_msec = invoke();
 
-    uv_timer_start(&timer, on_timer, next_msec, 100);
+    if (next_msec != 0) {
+      uv_timer_start(&timer, on_timer, next_msec, 0);
+    }
   }
 };
 };  // namespace colonio_helper

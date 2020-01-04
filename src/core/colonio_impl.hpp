@@ -72,9 +72,10 @@ class ColonioImpl : public LoggerDelegate,
  private:
   Colonio& colonio;
   bool is_first_link;
+  bool enable_retry;
 
-  std::map<ModuleChannel::Type, Module*> modules;
-  std::map<std::string, std::unique_ptr<Module>> modules_named;
+  std::map<uint32_t, std::unique_ptr<Module>> modules;
+  std::map<std::string, Module*> modules_named;
   std::set<System1DBase*> modules_1d;
   std::set<System2DBase*> modules_2d;
 

@@ -73,9 +73,6 @@ unsigned int Scheduler::invoke() {
         if ((*it)->interval == 0) {
           it = tasks.erase(it);
         } else {
-          while ((*it)->next <= current_msec) {
-            (*it)->next += (*it)->interval;
-          }
           it++;
         }
       } else {
@@ -106,17 +103,20 @@ unsigned int Scheduler::invoke() {
 
   {
     std::lock_guard<std::mutex> guard(mtx);
-    int64_t min_next = INT64_MAX;
-    for (auto& it : tasks) {
-      if (min_next > it->next) {
-        min_next = it->next;
-      }
-    }
-    int64_t next = min_next - Utils::get_current_msec();
-    if (next > 0) {
-      return next;
-    } else {
+    if (tasks.size() == 0) {
       return 0;
+    } else {
+      int64_t current_msec = Utils::get_current_msec();
+      int64_t min_next     = INT64_MAX;
+      for (auto& it : tasks) {
+        while (it->next <= current_msec) {
+          it->next += it->interval;
+        }
+        if (min_next > it->next) {
+          min_next = it->next;
+        }
+      }
+      return min_next - current_msec;
     }
   }
 }
