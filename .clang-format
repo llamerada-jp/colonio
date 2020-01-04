@@ -1,13 +1,32 @@
-BasedOnStyle: Google
-AlignAfterOpenBracket: AlwaysBreak
+---
+# BasedOnStyle: 'Google'
+AccessModifierOffset: -1
+AlignAfterOpenBracket: 'AlwaysBreak'
 AlignConsecutiveAssignments: true
-AllowShortFunctionsOnASingleLine: None
+AllowShortFunctionsOnASingleLine: 'None'
+AlwaysBreakAfterReturnType: 'None'
+AlwaysBreakTemplateDeclarations: true
 BraceWrapping:
     AfterEnum: true
-BreakBeforeBraces: Custom
-BreakConstructorInitializers: AfterColon
+BreakBeforeBraces: 'Custom'
+BreakConstructorInitializersBeforeComma: true
+BreakConstructorInitializers: 'AfterColon'
+PenaltyReturnTypeOnItsOwnLine: 200
 ColumnLimit: 120
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+ConstructorInitializerIndentWidth: 4
 FixNamespaceComments: true
-IncludeBlocks: Regroup
-IndentPPDirectives: AfterHash
+IncludeBlocks: 'Regroup'
+IncludeCategories:
+  - Regex:           '^<.*\.h>'
+    Priority:        1
+  - Regex:           '^<.*'
+    Priority:        2
+  - Regex:           '.*'
+    Priority:        3
+IndentPPDirectives: 'AfterHash'
+PointerAlignment: 'Left'
+SortIncludes: true
 SpaceAfterTemplateKeyword: false
+SpacesBeforeTrailingComments: 2
+UseTab: 'Never'
