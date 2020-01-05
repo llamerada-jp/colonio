@@ -311,11 +311,13 @@ void ColonioImpl::initialize_algorithms() {
 
     if (type == "pubsub2D") {
       PubSub2DImpl* tmp = new PubSub2DImpl(context, *this, *this, module_config);
+      logd("add PubSub2D module channel:%d name:%s", tmp->channel, name.c_str());
       add_module(tmp, name);
       modules_2d.insert(tmp);
 
     } else if (type == "mapPaxos") {
       MapPaxos* tmp = new MapPaxos(context, *this, *this, module_config);
+      logd("add MapPaxos module channel:%d name:%s", tmp->channel, name.c_str());
       add_module(tmp, name);
       modules_1d.insert(tmp);
 

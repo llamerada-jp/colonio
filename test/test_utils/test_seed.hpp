@@ -91,6 +91,18 @@ class TestSeed {
     port = p;
   }
 
+  void set_coord_system_sphere(double r) {
+    coord_system.insert(std::make_pair("type", picojson::value("sphere")));
+    coord_system.insert(std::make_pair("radius", picojson::value(r)));
+  }
+
+  void add_module_map_paxos(const std::string& name, unsigned int channel) {
+    picojson::object m;
+    m.insert(std::make_pair("type", picojson::value("mapPaxos")));
+    m.insert(std::make_pair("channel", picojson::value(static_cast<double>(channel))));
+    modules.insert(std::make_pair(name, picojson::value(m)));
+  }
+
   void stop() {
     {
       std::lock_guard<std::mutex> guard(mtx);
@@ -120,6 +132,9 @@ class TestSeed {
 
   int update_period;
   int force_update_times;
+
+  picojson::object coord_system;
+  picojson::object modules;
 
   std::string generate_config() {
     std::string tmpdir;
@@ -151,6 +166,12 @@ class TestSeed {
     picojson::object node;
     node.insert(std::make_pair("iceServers", picojson::value(ice_servers)));
     node.insert(std::make_pair("routing", picojson::value(routing)));
+    if (!coord_system.empty()) {
+      node.insert(std::make_pair("coordSystem2D", picojson::value(coord_system)));
+    }
+    if (!modules.empty()) {
+      node.insert(std::make_pair("modules", picojson::value(modules)));
+    }
     config.insert(std::make_pair("node", picojson::value(node)));
 
     std::string fname = tmpdir + "/colonio_test_config.json";
