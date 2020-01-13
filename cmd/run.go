@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2019-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package main
+package cmd
 
 import (
 	"encoding/json"
@@ -26,7 +26,7 @@ import (
 	"log/syslog"
 	"os"
 
-	"github.com/colonio/colonio-seed/src/seed"
+	"github.com/colonio/colonio-seed/pkg/seed"
 )
 
 type SeedConfig struct {
@@ -129,7 +129,7 @@ func initLogger(isSyslog bool, isVerbose bool) {
 	seed.SetLogger(&logger)
 }
 
-func main() {
+func Execute() {
 	// Parse parameter
 	configFName := flag.String("config", "", "configure file")
 	isSyslog := flag.Bool("syslog", false, "Output log with syslog")

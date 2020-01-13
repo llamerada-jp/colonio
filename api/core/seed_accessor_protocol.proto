@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+option go_package = "proto";
+
+import "core/protocol.proto";
+
+package colonio.SeedAccessorProtocol;
+
+message SeedAccessor {
+  Protocol.NodeID dst_nid = 1;
+  Protocol.NodeID src_nid = 2;
+  uint32 id = 3;
+  uint32 mode = 4;
+  uint32 channel = 5;
+  uint32 module_no = 6;
+  uint32 command_id = 7;
+  bytes content = 8;
+}
+
+message Auth {
+  string version = 1;
+  uint32 hint = 2;
+  string token = 3;
+}
+
+message AuthSuccess {
+  string config = 1;
+}
+
+message Hint {
+  uint32 hint = 1;
+}

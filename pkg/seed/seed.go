@@ -27,7 +27,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/colonio/colonio-seed/src/proto"
+	proto "github.com/colonio/colonio-seed/pkg/seed/core"
 	"github.com/gobwas/ws"
 	proto3 "github.com/golang/protobuf/proto"
 	"github.com/mailru/easygo/netpoll"

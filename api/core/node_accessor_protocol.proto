@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+option go_package = "proto";
+
+import "core/protocol.proto";
+
+package colonio.NodeAccessorProtocol;
+
+message Carrier {
+  repeated Packet packet = 1;
+}
+
+message Head {
+  Protocol.NodeID dst_nid = 1;
+  Protocol.NodeID src_nid = 2;
+  uint32 mode = 3;
+  uint32 channel = 4;
+  uint32 module_no = 6;
+  uint32 command_id = 5;
+}
+
+message Packet {
+  // Enable head if index is 0.
+  Head head = 1;
+  // ID is common to sequence of packets.
+  uint32 id = 2;
+  // index decreses by 1 in a sequance of packets.
+  uint32 index = 3;
+  bytes content = 4;
+}
+
+message ICE {
+  Protocol.NodeID local_nid = 1;
+  Protocol.NodeID remote_nid = 2;
+  string ice = 3;
+}
+
+message Offer {
+  Protocol.NodeID prime_nid = 1;
+  Protocol.NodeID second_nid = 2;
+  string sdp = 3;
+  uint32 type = 4;
+}
+
+message OfferSuccess {
+  uint32 status = 1;
+  Protocol.NodeID second_nid = 2;
+  string sdp = 3;
+}
+
+message OfferFailure {
+  uint32 status = 1;
+  Protocol.NodeID prime_nid = 2;
+}
