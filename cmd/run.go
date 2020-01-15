@@ -131,9 +131,9 @@ func initLogger(isSyslog bool, isVerbose bool) {
 
 func Execute() {
 	// Parse parameter
-	configFName := flag.String("config", "", "configure file")
-	isSyslog := flag.Bool("syslog", false, "Output log with syslog")
-	isVerbose := flag.Bool("verbose", false, "Show commands to run and use verbose output")
+	configFName := flag.String("config", "", "Specify the configuration file.")
+	isSyslog := flag.Bool("syslog", false, "Output log using syslog.")
+	isVerbose := flag.Bool("verbose", false, "Output verbose logs.")
 	flag.Parse()
 
 	initLogger(*isSyslog, *isVerbose)
