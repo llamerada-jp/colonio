@@ -2,8 +2,9 @@
 
 set -eux
 
-readonly GO_VERSION='1.13.4'
+readonly GO_VERSION='1.13.3'
 readonly PROTOC_VERSION='3.10.1'
+readonly GO_PROTOBUF_VERSION='1.3.2'
 
 readonly UNAME_S=$(uname -s)
 readonly UNAME_P=$(uname -p)
@@ -30,20 +31,24 @@ set_env_info() {
 # TODO: I want check version of golang.
 setup_go() {
   if [ ${UNAME_S} = 'Darwin' ] ; then
+    set +e
     type go
     if ! [ $? = 0 ] ; then
       brew install go
     fi
+    set -e
     export GO=$(which go)
     export PATH=$(go env GOPATH)/bin:${PATH}
 
   elif [ ${UNAME_S} = 'Linux' ] ; then
     is_ok='false'
     if [ -e ${LOCAL_ENV_PATH}/go/bin/go ] ; then
+      set +e
       ${LOCAL_ENV_PATH}/go/bin/go version | grep ${GO_VERSION}
       if [ $? = 0 ] ; then
         is_ok='true'
       fi
+      set -e
     fi
     if [ ${is_ok} = 'false' ] ; then
       cd ${LOCAL_ENV_PATH}/src
@@ -51,20 +56,22 @@ setup_go() {
       cd ${LOCAL_ENV_PATH}
       tar vzxf ${LOCAL_ENV_PATH}/src/go${GO_VERSION}.linux-amd64.tar.gz
     fi
-    export GOPATH=${LOCAL_ENV_PATH}/go
+    # export GOPATH=${LOCAL_ENV_PATH}/go
     # export GOROOT=${LOCAL_ENV_PATH}/go
-    export GO=${GOPATH}/bin/go
-    export PATH=${GOPATH}/bin:${PATH}
+    export GO=${LOCAL_ENV_PATH}/go/bin/go
+    export PATH=$(${GO} env GOPATH)/bin:${PATH}
   fi
 }
 
 setup_protobuf() {
   is_ok='false'
   if [ -e ${LOCAL_ENV_PATH}/bin/protoc ]; then
+    set +e
     ${LOCAL_ENV_PATH}/bin/protoc --version | grep ${PROTOC_VERSION}
     if [ $? = 0 ] ; then
       is_ok='true'
     fi
+    set -e
   fi
   if [ ${is_ok} = 'false' ] ; then
     fname=""
@@ -93,7 +100,18 @@ setup_protobuf() {
     unzip src/${fname}
   fi
 
-  ${GO} install github.com/golang/protobuf/protoc-gen-go
+  if [ -e ${LOCAL_ENV_PATH}/src/protobuf ]; then
+    cd ${LOCAL_ENV_PATH}/src/protobuf
+    git checkout .
+    git checkout master
+    git pull
+  else
+    cd ${LOCAL_ENV_PATH}/src
+    git clone https://github.com/golang/protobuf
+  fi
+  cd ${LOCAL_ENV_PATH}/src/protobuf
+  git checkout "refs/tags/v${GO_PROTOBUF_VERSION}"
+  ${GO} install ./protoc-gen-go
 }
 
 build() {
