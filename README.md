@@ -24,10 +24,10 @@ $ ./build.sh
 
 ## Checked under
 
-* macOS Catalina Version 10.15.2 + homebrew
-* Ubuntu Bionic 18.04 (x86_64)
-* Ubuntu Bionic 18.04 (WSL2)
-* Ubuntu Xenial 16.04 (TravisCI)
+  * macOS Catalina Version 10.15.2 + homebrew
+  * Ubuntu Bionic 18.04 (x86_64)
+  * Ubuntu Bionic 18.04 (WSL2)
+  * Ubuntu Xenial 16.04 (TravisCI)
 
 ## License
 
