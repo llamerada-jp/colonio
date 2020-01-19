@@ -18,7 +18,7 @@
 #include <map>
 #include <string>
 
-#include "c/colonio/colonio.h"
+#include "colonio/colonio.h"
 
 extern "C" {
   typedef unsigned long COLONIO_PTR_T;

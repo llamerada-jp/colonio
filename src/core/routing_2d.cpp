@@ -357,8 +357,8 @@ void Routing2D::delaunay_shift_duplicate_point(NodePoint& np) {
   uint64_t id0;
   uint64_t id1;
   np.nid.get_raw(&id0, &id1);
-  double shift_x = (context.coord_system->PRECISION * id0) / UINT64_MAX;
-  double shift_y = (context.coord_system->PRECISION * id1) / UINT64_MAX;
+  double shift_x = (context.coord_system->PRECISION * id0) / static_cast<double>(UINT64_MAX);
+  double shift_y = (context.coord_system->PRECISION * id1) / static_cast<double>(UINT64_MAX);
   np.shifted_position.x += shift_x;
   np.shifted_position.y += shift_y;
 }

@@ -20,23 +20,24 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   # Add local include path.
   # include_directories(/usr/local/include)
   include_directories(${LOCAL_ENV_PATH}/include)
-  include_directories(${LOCAL_ENV_PATH}/wa/include)
+  include_directories(${LOCAL_ENV_PATH}/wasm/include)
   include_directories(${PROJECT_SOURCE_DIR}/src)
 
   # Add local library path.
-  link_directories(${LOCAL_ENV_PATH}/wa/lib)
+  link_directories(${LOCAL_ENV_PATH}/wasm/lib)
 
   # WebAssembly(emscripten) compile options.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s WASM=1")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s ALLOW_MEMORY_GROWTH=1")
+  # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s ALLOW_MEMORY_GROWTH=1")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s NO_EXIT_RUNTIME=1")
-  # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s NO_FILESYSTEM=1")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s NO_FILESYSTEM=1")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s RESERVED_FUNCTION_POINTERS=32")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s EXTRA_EXPORTED_RUNTIME_METHODS=['addFunction','ccall','cwrap']")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s DISABLE_EXCEPTION_CATCHING=0")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s ERROR_ON_UNDEFINED_SYMBOLS=0")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --js-library ${CMAKE_CURRENT_SOURCE_DIR}/js/api.js")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Oz --llvm-ltoo 1")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s USE_PTHREADS=1")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --js-library ${CMAKE_CURRENT_SOURCE_DIR}/src/js/api.js")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Oz --llvm-lto 1")
 
   # Use -s ASSERTIONS=2 to get some useful information about the function pointer being called, and its type.
   # But, Its causes very slow to load wasm.
