@@ -19,20 +19,30 @@ readonly UNAME_P=$(uname -p)
 # Set local environment path.
 set_env_info() {
   readonly ROOT_PATH=$(cd $(dirname $0)/.. && pwd)
+
+  # Build path and options.
   if [ ${TARGET} = 'wasm' ]; then
     readonly BUILD_PATH=${ROOT_PATH}/build/webassembly
-
   elif [ ${UNAME_S} = 'Darwin' ]; then
     readonly BUILD_PATH=${ROOT_PATH}/build/${UNAME_S}
-
   elif [ ${UNAME_S} = 'Linux' ]; then
     . /etc/os-release
     readonly BUILD_PATH=${ROOT_PATH}/build/${ID}_${VERSION_ID}_${UNAME_P}
     export CC=cc
     export CXX=c++
-
   else
     echo "Thank you for useing. But sorry, this platform is not supported yet."
+    exit 1
+  fi
+
+  # Job number for make command.
+  if ! [ -z ${TRAVIS+x} ]; then
+    readonly JOB_COUNT=1
+  elif [ ${UNAME_S} = 'Darwin' ]; then
+    readonly JOB_COUNT=$(sysctl -n hw.logicalcpu)
+  elif [ ${UNAME_S} = 'Linux' ]; then
+    readonly JOB_COUNT=$(nproc)
+  else
     exit 1
   fi
 
@@ -152,7 +162,7 @@ setup_libuv() {
     cd "libuv-v${LIBUV_VERSION}"
     sh autogen.sh
     ./configure --prefix=${LOCAL_ENV_PATH}
-    make -j
+    make -j ${JOB_COUNT}
     make install
   fi
 }
@@ -225,7 +235,7 @@ setup_asio() {
     cd asio
     ./autogen.sh
     ./configure --prefix=${LOCAL_ENV_PATH} --without-boost
-    make -j
+    make -j ${JOB_COUNT}
     make install
   fi
 }
@@ -255,7 +265,7 @@ setup_websocketpp() {
     cd ${LOCAL_ENV_PATH}/src/websocketpp
     git checkout "refs/tags/${WEBSOCKETPP_VERSION}"
     cmake -DCMAKE_INSTALL_PREFIX=${LOCAL_ENV_PATH} ${LOCAL_ENV_PATH}/src/websocketpp
-    make -j
+    make -j ${JOB_COUNT}
     make install
   fi
 }
@@ -287,7 +297,7 @@ setup_protoc_native() {
     git submodule update --init --recursive
     ./autogen.sh
     ./configure --prefix=${LOCAL_ENV_PATH}
-    make -j
+    make -j ${JOB_COUNT}
     make install
   fi
 
@@ -328,7 +338,7 @@ setup_protoc_wasm() {
     git submodule update --init --recursive
     ./autogen.sh
     emconfigure ./configure --prefix=${LOCAL_ENV_PATH}/wasm --disable-shared
-    emmake make -j
+    emmake make -j ${JOB_COUNT}
     emmake make install
   fi
 }
@@ -356,7 +366,7 @@ setup_gtest() {
     git checkout "refs/tags/release-${GTEST_VERSION}"
     git submodule update --init --recursive
     cmake -DCMAKE_INSTALL_PREFIX=${LOCAL_ENV_PATH} .
-    make -j
+    make -j ${JOB_COUNT}
     make install
   fi
 }
@@ -394,7 +404,7 @@ build_native() {
   mkdir -p ${BUILD_PATH}
   cd ${BUILD_PATH}
   cmake -DLOCAL_ENV_PATH=${LOCAL_ENV_PATH} -DCMAKE_BUILD_TYPE=${BUILD_TYPE} ${opt} ${ROOT_PATH}
-  make -j
+  make -j ${JOB_COUNT}
 }
 
 build_protoc() {
@@ -408,7 +418,7 @@ build_wasm() {
   mkdir -p ${BUILD_PATH}
   cd ${BUILD_PATH}
   emcmake cmake -DLOCAL_ENV_PATH=${LOCAL_ENV_PATH} -DCMAKE_BUILD_TYPE=${BUILD_TYPE} ${ROOT_PATH}
-  emmake make -j
+  emmake make -j ${JOB_COUNT}
 }
 
 show_usage() {
