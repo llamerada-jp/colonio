@@ -22,6 +22,7 @@ set_env_info() {
       export LOCAL_ENV_PATH=${ROOT_PATH}/local
   fi
   mkdir -p ${LOCAL_ENV_PATH}/bin
+  mkdir -p ${LOCAL_ENV_PATH}/lib
   mkdir -p ${LOCAL_ENV_PATH}/src
   export PATH=${LOCAL_ENV_PATH}/bin:${PATH}
   export PKG_CONFIG_PATH=${LOCAL_ENV_PATH}/lib/pkgconfig/
@@ -56,9 +57,9 @@ setup_go() {
       cd ${LOCAL_ENV_PATH}
       tar vzxf ${LOCAL_ENV_PATH}/src/go${GO_VERSION}.linux-amd64.tar.gz
     fi
-    # export GOPATH=${LOCAL_ENV_PATH}/go
-    # export GOROOT=${LOCAL_ENV_PATH}/go
-    export GO=${LOCAL_ENV_PATH}/go/bin/go
+    export GOPATH=${LOCAL_ENV_PATH}/go
+    export GOROOT=${LOCAL_ENV_PATH}/go
+    export GO=${GOPATH}/bin/go
     export PATH=$(${GO} env GOPATH)/bin:${PATH}
   fi
 }

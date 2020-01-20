@@ -1,0 +1,10 @@
+language: go
+
+matrix:
+  include:
+    - os: linux
+      dist: bionic
+
+script:
+  - cd $TRAVIS_BUILD_DIR
+  - ./build.sh
