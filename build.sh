@@ -57,8 +57,9 @@ setup_go() {
       cd ${LOCAL_ENV_PATH}
       tar vzxf ${LOCAL_ENV_PATH}/src/go${GO_VERSION}.linux-amd64.tar.gz
     fi
+
+    export GO111MODULE=on
     export GOPATH=${LOCAL_ENV_PATH}/go
-    export GOROOT=${LOCAL_ENV_PATH}/go
     export GO=${GOPATH}/bin/go
     export PATH=$(${GO} env GOPATH)/bin:${PATH}
   fi

@@ -5,6 +5,17 @@ matrix:
     - os: linux
       dist: bionic
 
+go:
+  - 1.13.x
+
+env:  GO111MODULE=on GOFLAGS='-mod vendor'
+
+git:
+  depth: 1
+
+notifications:
+  email: false
+
 script:
   - cd $TRAVIS_BUILD_DIR
   - ./build.sh
