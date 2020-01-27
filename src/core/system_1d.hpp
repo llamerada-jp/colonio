@@ -33,8 +33,8 @@ class System1DBase : public Module {
 
  protected:
   System1DBase(
-      Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate,
-      ModuleChannel::Type channel, ModuleNo module_no);
+      Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate, ModuleChannel::Type channel,
+      ModuleNo module_no);
 
   bool system_1d_check_coverd_range(const NodeID& nid);
 
@@ -46,8 +46,8 @@ template<class BASE>
 class System1D : public BASE, public System1DBase {
  protected:
   System1D(
-      Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate,
-      ModuleChannel::Type channel, ModuleNo module_no) :
+      Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate, ModuleChannel::Type channel,
+      ModuleNo module_no) :
       System1DBase(context, module_delegate, system_delegate, channel, module_no) {
   }
 };

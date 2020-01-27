@@ -55,8 +55,8 @@ bool Utils::check_json_optional<unsigned int>(const picojson::object& obj, const
 }
 
 template<>
-unsigned int Utils::get_json<unsigned int>(
-    const picojson::object& obj, const std::string& key, const unsigned int& default_value) {
+unsigned int
+Utils::get_json<unsigned int>(const picojson::object& obj, const std::string& key, const unsigned int& default_value) {
   auto it = obj.find(key);
   if (it != obj.end() && it->second.is<double>()) {
     return it->second.get<double>();

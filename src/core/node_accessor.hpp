@@ -33,13 +33,12 @@ class NodeAccessorDelegate {
  public:
   virtual ~NodeAccessorDelegate();
   virtual void node_accessor_on_change_online_links(NodeAccessor& na, const std::set<NodeID> nids) = 0;
-  virtual void node_accessor_on_change_status(NodeAccessor& na, LinkStatus::Type status) = 0;
-  virtual void node_accessor_on_recv_packet(NodeAccessor& na, const NodeID& nid,
-                                            std::unique_ptr<const Packet> packet) = 0;
+  virtual void node_accessor_on_change_status(NodeAccessor& na, LinkStatus::Type status)           = 0;
+  virtual void node_accessor_on_recv_packet(
+      NodeAccessor& na, const NodeID& nid, std::unique_ptr<const Packet> packet) = 0;
 };
 
-class NodeAccessor : public Module,
-                     public WebrtcLinkDelegate {
+class NodeAccessor : public Module, public WebrtcLinkDelegate {
  public:
   NodeAccessor(Context& context, ModuleDelegate& module_delegate, NodeAccessorDelegate& na_delegate);
   virtual ~NodeAccessor();
@@ -131,7 +130,7 @@ class NodeAccessor : public Module,
   void create_first_link();
   WebrtcLink* create_link(bool is_create_dc);
   void disconnect_first_link();
-  void disconnect_random_link();  
+  void disconnect_random_link();
   void recv_offer(std::unique_ptr<const Packet> packet);
   void recv_ice(std::unique_ptr<const Packet> packet);
   void send_all_packet();

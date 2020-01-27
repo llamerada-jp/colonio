@@ -29,8 +29,7 @@ static const Type ERROR_WITHOUT_EXIST = 0x1;  // del, unlook
 static const Type TRY_LOCK = 0x4;  // lock
 }  // namespace MapOption
 
-enum class MapFailureReason : uint32_t
-{
+enum class MapFailureReason : uint32_t {
   NONE,
   SYSTEM_ERROR,
   NOT_EXIST_KEY,

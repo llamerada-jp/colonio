@@ -15,27 +15,21 @@
  */
 #pragma once
 
-#include <functional>
-
 #include <colonio/value.hpp>
+#include <functional>
 
 namespace colonio {
 
-enum class PubSub2DFailureReason : uint32_t {
-  NONE,
-  SYSTEM_ERROR,
-  NOONE_RECV
-};
+enum class PubSub2DFailureReason : uint32_t { NONE, SYSTEM_ERROR, NOONE_RECV };
 
 class PubSub2D {
  public:
   virtual ~PubSub2D();
 
-  virtual void publish(const std::string& name, double x, double y, double r, const Value& value,
-                       const std::function<void()>& on_success,
-                       const std::function<void(PubSub2DFailureReason)>& on_failure) = 0;
-  virtual void on(const std::string& name,
-                  const std::function<void(const Value&)>& subscriber) = 0;
-  virtual void off(const std::string& name) = 0;
+  virtual void publish(
+      const std::string& name, double x, double y, double r, const Value& value,
+      const std::function<void()>& on_success, const std::function<void(PubSub2DFailureReason)>& on_failure) = 0;
+  virtual void on(const std::string& name, const std::function<void(const Value&)>& subscriber)              = 0;
+  virtual void off(const std::string& name)                                                                  = 0;
 };
 }  // namespace colonio

@@ -28,9 +28,10 @@ class Routing2D : public RoutingAlgorithm {
   void on_change_my_position(const Coordinate& position) override;
   void on_recv_packet(const NodeID& nid, const Packet& packet) override;
   void send_routing_info(RoutingProtocol::RoutingInfo* param) override;
-  bool update_routing_info(const std::set<NodeID>& online_links, bool has_update_ol,
-                           const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>,
-                           RoutingProtocol::RoutingInfo>>& routing_infos) override;
+  bool update_routing_info(
+      const std::set<NodeID>& online_links, bool has_update_ol,
+      const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>, RoutingProtocol::RoutingInfo>>& routing_infos)
+      override;
 
   bool on_change_online_links(const std::set<NodeID>& nids);
   bool on_recv_routing_info(const Packet& packet, const RoutingProtocol::RoutingInfo& routing_info);
@@ -86,6 +87,5 @@ class Routing2D : public RoutingAlgorithm {
   void delaunay_make_nodes(std::map<NodeID, NodePoint>& nodes);
   void delaunay_shift_duplicate_point(NodePoint& np);
   void update_required_nodes();
-  
 };
 }  // namespace colonio

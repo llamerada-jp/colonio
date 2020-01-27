@@ -13,16 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "http_accessor_curl.hpp"
+
 #include <cassert>
 #include <functional>
 #include <mutex>
 #include <string>
 
-#include "http_accessor_curl.hpp"
-
 namespace colonio {
 
-static size_t curl_write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
+static size_t curl_write_callback(void* contents, size_t size, size_t nmemb, void* userp) {
   std::string& content = *reinterpret_cast<std::string*>(userp);
   content.append(reinterpret_cast<char*>(contents), size * nmemb);
   return size * nmemb;
@@ -47,8 +47,9 @@ HttpAccessorCurl::~HttpAccessorCurl() {
   curl_global_cleanup();
 }
 
-void HttpAccessorCurl::post(const std::string& url, const std::string& payload,
-                            const std::string& content_type, HttpAccessorDelegate* delegate) {
+void HttpAccessorCurl::post(
+    const std::string& url, const std::string& payload, const std::string& content_type,
+    HttpAccessorDelegate* delegate) {
   assert(curl != nullptr);
   assert(delegate != nullptr);
 
@@ -58,9 +59,9 @@ void HttpAccessorCurl::post(const std::string& url, const std::string& payload,
   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
 
   // Set header for http protocol.
-  curl_slist *headers = nullptr;
+  curl_slist* headers  = nullptr;
   std::string type_str = "Content-Type: " + content_type;
-  headers = curl_slist_append(headers, type_str.c_str());  
+  headers              = curl_slist_append(headers, type_str.c_str());
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
   // To get response content.

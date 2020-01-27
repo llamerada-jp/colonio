@@ -90,8 +90,7 @@ class PythonMap {
 
 class PythonColonio : public colonio_helper::ColonioLibuv {
  public:
-  enum RUN_MODE
-  {
+  enum RUN_MODE {
     DEFAULT,
     ONCE,
     NOWAIT,

@@ -13,20 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "routing_1d.hpp"
+
 #include <cassert>
 
 #include "context.hpp"
 #include "convert.hpp"
-#include "routing_1d.hpp"
 #include "utils.hpp"
 
 namespace colonio {
 
-static const int LEVELS = 8;
-static const NodeID LEVEL_RANGE[LEVELS] = {
-  NodeID::RANGE_0, NodeID::RANGE_1, NodeID::RANGE_2, NodeID::RANGE_3,
-  NodeID::RANGE_4, NodeID::RANGE_5, NodeID::RANGE_6, NodeID::RANGE_7
-};
+static const int LEVELS                 = 8;
+static const NodeID LEVEL_RANGE[LEVELS] = {NodeID::RANGE_0, NodeID::RANGE_1, NodeID::RANGE_2, NodeID::RANGE_3,
+                                           NodeID::RANGE_4, NodeID::RANGE_5, NodeID::RANGE_6, NodeID::RANGE_7};
 
 Routing1D::ConnectedNode::ConnectedNode(int level_) :
     connected_time(Utils::get_current_msec()),
@@ -70,7 +69,7 @@ bool Routing1D::on_change_online_links(const std::set<NodeID>& nids) {
     const NodeID& nid = it->first;
     if (nids.find(nid) == nids.end()) {
       is_changed = true;
-      it = connected_nodes.erase(it);
+      it         = connected_nodes.erase(it);
     } else {
       it++;
     }
@@ -84,12 +83,12 @@ void Routing1D::on_recv_packet(const NodeID& nid, const Packet& packet) {
   auto find = connected_nodes.find(nid);
   if (find != connected_nodes.end()) {
     ConnectedNode& cn = find->second;
-    cn.raw_score ++;
+    cn.raw_score++;
   }
 
   RouteInfo* ri = std::get<1>(get_nearest_info(packet.src_nid));
   if (ri != nullptr) {
-    ri->raw_score ++;
+    ri->raw_score++;
   }
 }
 
@@ -102,7 +101,7 @@ bool Routing1D::on_recv_routing_info(const Packet& packet, const RoutingProtocol
   }
 
   ConnectedNode& cn = connected_nodes.at(packet.src_nid);
-  
+
   std::set<NodeID> nexts;
   int odd_score = 0;
 
@@ -134,9 +133,9 @@ void Routing1D::send_routing_info(RoutingProtocol::RoutingInfo* param) {
   }
 }
 
-bool Routing1D::update_routing_info(const std::set<NodeID>& online_links, bool has_update_ol,
-                                    const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>,
-                                    RoutingProtocol::RoutingInfo>>& routing_infos) {
+bool Routing1D::update_routing_info(
+    const std::set<NodeID>& online_links, bool has_update_ol,
+    const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>, RoutingProtocol::RoutingInfo>>& routing_infos) {
   bool is_changed = false;
 
   if (has_update_ol) {
@@ -190,23 +189,23 @@ const NodeID& Routing1D::get_relay_nid(const Packet& packet) {
       std::tie(nearest_nid, nearest_info) = get_nearest_info(packet.dst_nid);
 
       assert(nearest_info != nullptr);
-      nearest_info->raw_score ++;
+      nearest_info->raw_score++;
 
       NodeID nearest_dist = context.my_nid.distance_from(packet.dst_nid);
-      ConnectedNode* cn = nullptr;
+      ConnectedNode* cn   = nullptr;
 
       for (auto& it : connected_nodes) {
         const NodeID& it_nid = it.first;
-        NodeID dist = it_nid.distance_from(packet.dst_nid);
+        NodeID dist          = it_nid.distance_from(packet.dst_nid);
         if (dist < nearest_dist) {
           nearest_dist = dist;
-          cn = &it.second;
-          nearest_nid = &it.first;
+          cn           = &it.second;
+          nearest_nid  = &it.first;
         }
       }
 
       if (cn != nullptr) {
-        connected_nodes.at(*nearest_nid).raw_score ++;
+        connected_nodes.at(*nearest_nid).raw_score++;
       }
 
       return nearest_info->root_nid;
@@ -230,8 +229,7 @@ bool Routing1D::is_orphan(unsigned int nodes_count) {
     }
   }
 
-  if (nids.size() < ORPHAN_NODES_MAX &&
-      nids.size() < nodes_count / 2) {
+  if (nids.size() < ORPHAN_NODES_MAX && nids.size() < nodes_count / 2) {
     return true;
 
   } else {
@@ -260,7 +258,7 @@ std::tuple<NodeID, NodeID> Routing1D::get_nearby_nid(const NodeID& nid, const st
     if (nids.size() == 1) {
       // set NONE
 
-    } else  if (find == nids.begin()) {
+    } else if (find == nids.begin()) {
       p_nid = *nids.rbegin();
       n_nid = *std::next(find);
 
@@ -277,7 +275,7 @@ std::tuple<NodeID, NodeID> Routing1D::get_nearby_nid(const NodeID& nid, const st
     if (nids.size() == 0) {
       // set NONE
 
-    } else  if (find == nids.begin()) {
+    } else if (find == nids.begin()) {
       p_nid = *nids.rbegin();
       n_nid = *find;
 
@@ -295,13 +293,13 @@ std::tuple<NodeID, NodeID> Routing1D::get_nearby_nid(const NodeID& nid, const st
 }
 
 std::tuple<const NodeID*, Routing1D::RouteInfo*> Routing1D::get_nearest_info(const NodeID& nid) {
-  NodeID nearest_dist = context.my_nid.distance_from(nid);
+  NodeID nearest_dist       = context.my_nid.distance_from(nid);
   const NodeID* nearest_nid = nullptr;
-  RouteInfo* nearest_info = nullptr;
+  RouteInfo* nearest_info   = nullptr;
 
   for (auto& it : route_infos) {
     const NodeID& it_nid = it.first;
-    NodeID dist = it_nid.distance_from(nid);
+    NodeID dist          = it_nid.distance_from(nid);
     if (dist < nearest_dist) {
       nearest_dist = dist;
       nearest_nid  = &it_nid;
@@ -360,10 +358,9 @@ void Routing1D::update_required_nodes() {
 
   for (auto& it : connected_nodes) {
     const NodeID& root = it.first;
-    ConnectedNode& cn = it.second;
+    ConnectedNode& cn  = it.second;
 
-    if (cn.nexts.size() < LINKS_MIN ||
-        cn.connected_time + LINK_TRIAL_TIME_MIN > current_msec) {
+    if (cn.nexts.size() < LINKS_MIN || cn.connected_time + LINK_TRIAL_TIME_MIN > current_msec) {
       required_nodes.insert(root);
 
     } else {
@@ -375,8 +372,7 @@ void Routing1D::update_required_nodes() {
       }
       nids.insert(context.my_nid);
       std::tie(prev, next) = get_nearby_nid(root, nids);
-      if (prev == context.my_nid ||
-          next == context.my_nid) {
+      if (prev == context.my_nid || next == context.my_nid) {
         required_nodes.insert(root);
       }
     }
@@ -389,39 +385,37 @@ void Routing1D::update_required_nodes() {
     const NodeID& nid = it.first;
     ConnectedNode& cn = it.second;
 
-    if (cn.level != -1 &&
-        next_nids.find(nid) == next_nids.end()) {
+    if (cn.level != -1 && next_nids.find(nid) == next_nids.end()) {
       connected_nids[cn.level].push_back(nid);
     }
   }
 
   for (auto it : route_infos) {
     const NodeID& nid = it.first;
-    RouteInfo& ri = it.second;
+    RouteInfo& ri     = it.second;
 
-    if (ri.level != -1 &&
-        connected_nodes.find(nid) == connected_nodes.end()) {
+    if (ri.level != -1 && connected_nodes.find(nid) == connected_nodes.end()) {
       route_nids[ri.level].push_back(nid);
     }
   }
 
   for (int level = 0; level < LEVELS; level++) {
-    std::list<NodeID>& cnids = connected_nids[level];
+    std::list<NodeID>& cnids   = connected_nids[level];
     std::vector<NodeID>& rnids = route_nids[level];
 
     cnids.sort([this](NodeID& a, NodeID& b) {
-        ConnectedNode& a_cn = connected_nodes.at(a);
-        ConnectedNode& b_cn = connected_nodes.at(b);
-        int a_score = a_cn.odd_score + a_cn.raw_score;
-        int b_score = b_cn.odd_score + b_cn.raw_score;
+      ConnectedNode& a_cn = connected_nodes.at(a);
+      ConnectedNode& b_cn = connected_nodes.at(b);
+      int a_score         = a_cn.odd_score + a_cn.raw_score;
+      int b_score         = b_cn.odd_score + b_cn.raw_score;
 
-        if (a_score == b_score) {
-          return a_cn.connected_time < b_cn.connected_time;
+      if (a_score == b_score) {
+        return a_cn.connected_time < b_cn.connected_time;
 
-        } else {
-          return a_score > b_score;
-        }
-      });
+      } else {
+        return a_score > b_score;
+      }
+    });
 
     bool need_connect = true;
     if (cnids.size() >= 2) {
@@ -437,7 +431,7 @@ void Routing1D::update_required_nodes() {
     }
 
     if (need_connect && rnids.size() > 0) {
-      int idx = context.get_rnd_32() % rnids.size();
+      int idx           = context.get_rnd_32() % rnids.size();
       const NodeID& nid = rnids[idx];
       required_nodes.insert(nid);
     }
@@ -475,8 +469,7 @@ void Routing1D::update_route_infos() {
         known_nids.insert(std::make_pair(nid, root_nid));
 
       } else {
-        if (nid.distance_from(root_nid) <
-            nid.distance_from(find->second)) {
+        if (nid.distance_from(root_nid) < nid.distance_from(find->second)) {
           known_nids.at(nid) = root_nid;
         }
       }
@@ -486,8 +479,8 @@ void Routing1D::update_route_infos() {
   // Find the prev and the next node.
   known_nids.insert(std::make_pair(context.my_nid, NodeID::NONE));
   if (known_nids.size() == 1) {
-    prev_nid = NodeID::NONE;
-    next_nid = NodeID::NONE;
+    prev_nid      = NodeID::NONE;
+    next_nid      = NodeID::NONE;
     range_min_nid = NodeID::NID_MIN;
     range_max_nid = NodeID::NID_MAX;
 
@@ -496,8 +489,8 @@ void Routing1D::update_route_infos() {
     for (auto& it : known_nids) {
       nids.insert(it.first);
     }
-    NodeID prev_nid_bk = prev_nid;
-    NodeID next_nid_bk = next_nid;
+    NodeID prev_nid_bk           = prev_nid;
+    NodeID next_nid_bk           = next_nid;
     std::tie(prev_nid, next_nid) = get_nearby_nid(context.my_nid, nids);
     assert(prev_nid != NodeID::NONE);
     assert(next_nid != NodeID::NONE);
@@ -517,13 +510,13 @@ void Routing1D::update_route_infos() {
     if (known_nids.find(it->first) == known_nids.end()) {
       it = route_infos.erase(it);
     } else {
-      it ++;
+      it++;
     }
   }
 
   for (auto& it : known_nids) {
     const NodeID& known_nid = it.first;
-    const NodeID& root_nid = it.second;
+    const NodeID& root_nid  = it.second;
 
     if (route_infos.find(known_nid) == route_infos.end()) {
       route_infos.insert(std::make_pair(known_nid, RouteInfo(root_nid, get_level(known_nid))));
@@ -533,7 +526,7 @@ void Routing1D::update_route_infos() {
       route_infos.insert(std::make_pair(known_nid, RouteInfo(root_nid, get_level(known_nid))));
     }
   }
-  
+
 #ifndef NDEBUG
   {
     picojson::array a;

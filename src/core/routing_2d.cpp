@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 
+#include "routing_2d.hpp"
+
 #include <cassert>
 
 #include "context.hpp"
 #include "convert.hpp"
 #include "coord_system.hpp"
-#include "routing_2d.hpp"
 #include "utils.hpp"
 
 namespace colonio {
@@ -53,11 +54,11 @@ bool Routing2D::on_change_online_links(const std::set<NodeID>& nids) {
   while (it != connected_nodes.end()) {
     const NodeID& nid = it->first;
     if (nids.find(nid) == nids.end()) {
-      it = connected_nodes.erase(it);
+      it         = connected_nodes.erase(it);
       is_changed = true;
 
     } else {
-      it ++;
+      it++;
     }
   }
 
@@ -82,7 +83,7 @@ bool Routing2D::on_recv_routing_info(const Packet& packet, const RoutingProtocol
     Coordinate position = Coordinate::from_pb(routing_info.r2d_position());
     if (!cn.position.is_enable() || cn.position != position) {
       cn.position = position;
-      is_changed = true;
+      is_changed  = true;
     }
   }
   cn.nexts.clear();
@@ -113,9 +114,9 @@ void Routing2D::send_routing_info(RoutingProtocol::RoutingInfo* param) {
   }
 }
 
-bool Routing2D::update_routing_info(const std::set<NodeID>& online_links, bool has_update_ol,
-                                    const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>,
-                                    RoutingProtocol::RoutingInfo>>& routing_infos) {
+bool Routing2D::update_routing_info(
+    const std::set<NodeID>& online_links, bool has_update_ol,
+    const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>, RoutingProtocol::RoutingInfo>>& routing_infos) {
   bool is_changed = false;
   if (has_update_ol) {
     is_changed = is_changed || on_change_online_links(online_links);
@@ -132,7 +133,7 @@ bool Routing2D::update_routing_info(const std::set<NodeID>& online_links, bool h
 #ifndef NDEBUG
   picojson::object o;
   picojson::object nodes;
-  picojson::array  links;
+  picojson::array links;
   std::list<std::pair<const NodeID&, const NodeID&>> link_tmp;
 
   for (auto& it : connected_nodes) {
@@ -140,9 +141,8 @@ bool Routing2D::update_routing_info(const std::set<NodeID>& online_links, bool h
       nodes.insert(std::make_pair(it.first.to_str(), Convert::coordinate2json(it.second.position)));
       const NodeID& n1 = NodeID::THIS;
       const NodeID& n2 = it.first == context.my_nid ? NodeID::THIS : it.first;
-      link_tmp.push_back(n1 < n2 ?
-                         std::make_pair(std::ref(n1), std::ref(n2)) :
-                         std::make_pair(std::ref(n2), std::ref(n1)));
+      link_tmp.push_back(
+          n1 < n2 ? std::make_pair(std::ref(n1), std::ref(n2)) : std::make_pair(std::ref(n2), std::ref(n1)));
     }
   }
 
@@ -152,16 +152,15 @@ bool Routing2D::update_routing_info(const std::set<NodeID>& online_links, bool h
         nodes.insert(std::make_pair(it2.first.to_str(), Convert::coordinate2json(it2.second)));
         const NodeID& n1 = it1.first == context.my_nid ? NodeID::THIS : it1.first;
         const NodeID& n2 = it2.first == context.my_nid ? NodeID::THIS : it2.first;
-        link_tmp.push_back(n1 < n2 ?
-                           std::make_pair(std::ref(n1), std::ref(n2)) :
-                           std::make_pair(std::ref(n2), std::ref(n1)));
+        link_tmp.push_back(
+            n1 < n2 ? std::make_pair(std::ref(n1), std::ref(n2)) : std::make_pair(std::ref(n2), std::ref(n1)));
       }
     }
   }
 
   link_tmp.sort();
   link_tmp.unique();
-  
+
   for (auto& it : link_tmp) {
     picojson::array one_pair;
     one_pair.push_back(it.first.to_json());
@@ -179,21 +178,20 @@ bool Routing2D::update_routing_info(const std::set<NodeID>& online_links, bool h
 
 const NodeID& Routing2D::get_relay_nid(const Coordinate& position) {
   const NodeID* near_nid = &NodeID::THIS;
-  double min_distance = std::numeric_limits<double>::max();
+  double min_distance    = std::numeric_limits<double>::max();
 
   for (auto& node : connected_nodes) {
     double distance = context.coord_system->get_distance(context.get_my_position(), node.second.position);
     if (distance < min_distance) {
       min_distance = distance;
-      near_nid = & node.first;
+      near_nid     = &node.first;
     }
   }
 
   return *near_nid;
 }
 
-Routing2D::NodePoint::NodePoint() :
-    nid(NodeID::NONE) {
+Routing2D::NodePoint::NodePoint() : nid(NodeID::NONE) {
 }
 
 Routing2D::NodePoint::NodePoint(const NodeID& nid_, const Coordinate& position_, const Coordinate& sposition) :
@@ -204,8 +202,8 @@ Routing2D::NodePoint::NodePoint(const NodeID& nid_, const Coordinate& position_,
 
 Routing2D::NodePoint& Routing2D::NodePoint::operator=(const NodePoint& r) {
   if (&r != this) {
-    nid = r.nid;
-    position = r.position;
+    nid              = r.nid;
+    position         = r.position;
     shifted_position = r.shifted_position;
   }
 
@@ -220,7 +218,7 @@ Routing2D::Triangle::Triangle(const NodePoint& p1, const NodePoint& p2, const No
   int i = 0;
   for (auto& it : work) {
     p[i] = *(it.second);
-    i ++;
+    i++;
   }
 }
 
@@ -237,7 +235,7 @@ bool Routing2D::Triangle::operator<(const Triangle& t) const {
 }
 
 bool Routing2D::Triangle::check_contain_node(const NodeID& nid) const {
-  for (int i = 0; i < 3; i ++) {
+  for (int i = 0; i < 3; i++) {
     if (p[i].nid == nid) {
       return true;
     }
@@ -246,9 +244,8 @@ bool Routing2D::Triangle::check_contain_node(const NodeID& nid) const {
 }
 
 bool Routing2D::Triangle::check_equal(const Triangle& t) const {
-  for (int i = 0; i < 3; i ++) {
-    if (p[i].nid != t.p[i].nid ||
-        p[i].shifted_position != t.p[i].shifted_position) {
+  for (int i = 0; i < 3; i++) {
+    if (p[i].nid != t.p[i].nid || p[i].shifted_position != t.p[i].shifted_position) {
       return false;
     }
   }
@@ -266,10 +263,8 @@ Routing2D::Circle Routing2D::Triangle::get_circumscribed_circle(Context& context
   double c = 2.0 * ((x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1));
   Circle ret;
   ret.center = Coordinate(
-      ((y3 - y1) * (x2 * x2 - x1 * x1 + y2 * y2 - y1 * y1) +
-       (y1 - y2) * (x3 * x3 - x1 * x1 + y3 * y3 - y1 * y1)) / c,
-      ((x1 - x3) * (x2 * x2 - x1 * x1 + y2 * y2 - y1 * y1) +
-       (x2 - x1) * (x3 * x3 - x1 * x1 + y3 * y3 - y1 * y1)) / c);
+      ((y3 - y1) * (x2 * x2 - x1 * x1 + y2 * y2 - y1 * y1) + (y1 - y2) * (x3 * x3 - x1 * x1 + y3 * y3 - y1 * y1)) / c,
+      ((x1 - x3) * (x2 * x2 - x1 * x1 + y2 * y2 - y1 * y1) + (x2 - x1) * (x3 * x3 - x1 * x1 + y3 * y3 - y1 * y1)) / c);
   ret.r = context.coord_system->get_distance(ret.center, p[0].shifted_position);
 
   return ret;
@@ -280,7 +275,7 @@ void Routing2D::delaunay_add_tmp_triangle(std::map<Triangle, bool>& tmp_triangle
   for (auto& tmp_triangle : tmp_triangles) {
     if (triangle.check_equal(tmp_triangle.first)) {
       tmp_triangle.second = false;
-      is_unique = false;
+      is_unique           = false;
     }
   }
   if (is_unique) {
@@ -303,17 +298,16 @@ void Routing2D::delaunay_check_duplicate_point(std::map<NodeID, NodePoint>& node
 }
 
 Routing2D::Triangle Routing2D::delaunay_get_huge_triangle() {
-  Coordinate center((context.coord_system->MAX_X - context.coord_system->MIN_X) / 2,
-                    (context.coord_system->MAX_Y - context.coord_system->MIN_Y) / 2);
-  double r = context.coord_system->get_distance(center, Coordinate(context.coord_system->MIN_X,
-                                                                   context.coord_system->MIN_Y));
+  Coordinate center(
+      (context.coord_system->MAX_X - context.coord_system->MIN_X) / 2,
+      (context.coord_system->MAX_Y - context.coord_system->MIN_Y) / 2);
+  double r =
+      context.coord_system->get_distance(center, Coordinate(context.coord_system->MIN_X, context.coord_system->MIN_Y));
   Coordinate p1(center.x - sqrt(3) * r, center.y - r);
   Coordinate p2(center.x + sqrt(3) * r, center.y - r);
   Coordinate p3(center.x, center.y + 2 * r);
 
-  return Triangle(NodePoint(NodeID::NONE, p1, p1),
-                  NodePoint(NodeID::NONE, p2, p2),
-                  NodePoint(NodeID::NONE, p3, p3));
+  return Triangle(NodePoint(NodeID::NONE, p1, p1), NodePoint(NodeID::NONE, p2, p2), NodePoint(NodeID::NONE, p3, p3));
 }
 
 /**
@@ -323,31 +317,30 @@ Routing2D::Triangle Routing2D::delaunay_get_huge_triangle() {
  */
 void Routing2D::delaunay_make_nodes(std::map<NodeID, NodePoint>& nodes) {
   const NodeID& my_nid = context.my_nid;
-  Coordinate base = context.get_my_position();
+  Coordinate base      = context.get_my_position();
 
   nodes.insert(std::make_pair(NodeID::THIS, NodePoint(NodeID::THIS, base, Coordinate(0.0, 0.0))));
 
   for (auto& it_cn : connected_nodes) {
-    if (nodes.find(it_cn.first) == nodes.end() &&
-        it_cn.second.position.is_enable()) {
+    if (nodes.find(it_cn.first) == nodes.end() && it_cn.second.position.is_enable()) {
       assert(it_cn.first != my_nid);
-      nodes.insert(std::make_pair(it_cn.first,
-                                  NodePoint(it_cn.first, it_cn.second.position,
-                                            context.coord_system->shift_for_routing_2d(base, it_cn.second.position))));
+      nodes.insert(std::make_pair(
+          it_cn.first, NodePoint(
+                           it_cn.first, it_cn.second.position,
+                           context.coord_system->shift_for_routing_2d(base, it_cn.second.position))));
 
     } else if (it_cn.second.position.is_enable()) {
-      auto it_nodes = nodes.find(it_cn.first);
-      it_nodes->second.shifted_position =
-        context.coord_system->shift_for_routing_2d(base, it_cn.second.position);
+      auto it_nodes                     = nodes.find(it_cn.first);
+      it_nodes->second.shifted_position = context.coord_system->shift_for_routing_2d(base, it_cn.second.position);
     }
 
     for (auto& it_next : it_cn.second.nexts) {
-      if (nodes.find(it_next.first) == nodes.end() &&
-          it_next.second.is_enable()) {
+      if (nodes.find(it_next.first) == nodes.end() && it_next.second.is_enable()) {
         assert(it_next.first != my_nid);
-        nodes.insert(std::make_pair(it_next.first,
-                                    NodePoint(it_next.first, it_next.second,
-                                              context.coord_system->shift_for_routing_2d(base, it_next.second))));
+        nodes.insert(std::make_pair(
+            it_next.first,
+            NodePoint(
+                it_next.first, it_next.second, context.coord_system->shift_for_routing_2d(base, it_next.second))));
       }
     }
   }
@@ -375,7 +368,7 @@ void Routing2D::update_required_nodes() {
 
   for (auto& it_node : nodes) {
     std::map<Triangle, bool> tmp_triangles;
-    const NodeID& nid = it_node.first;
+    const NodeID& nid           = it_node.first;
     const NodePoint& node_point = it_node.second;
 
     auto it_triangle = triangles.begin();
@@ -388,7 +381,7 @@ void Routing2D::update_required_nodes() {
         it_triangle = triangles.erase(it_triangle);
 
       } else {
-        it_triangle ++;
+        it_triangle++;
       }
     }
 
@@ -412,31 +405,31 @@ void Routing2D::update_required_nodes() {
   }
 
   // Check change for nearby node info.
-  bool is_changed_nearby = false;
+  bool is_changed_nearby         = false;
   bool is_changed_nearby_positon = false;
   for (auto& nid : required_nodes) {
     auto it = nearby_nodes.find(nid);
     if (it == nearby_nodes.end()) {
       nearby_nodes.insert(std::make_pair(nid, nodes.at(nid).position));
-      is_changed_nearby = true;
+      is_changed_nearby         = true;
       is_changed_nearby_positon = true;
     }
   }
   auto it_nn = nearby_nodes.begin();
   while (it_nn != nearby_nodes.end()) {
     if (required_nodes.find(it_nn->first) == required_nodes.end()) {
-      it_nn = nearby_nodes.erase(it_nn);
-      is_changed_nearby = true;
+      it_nn                     = nearby_nodes.erase(it_nn);
+      is_changed_nearby         = true;
       is_changed_nearby_positon = true;
 
     } else {
       const Coordinate& nearby_position = nodes.at(it_nn->first).position;
       if (it_nn->second != nearby_position) {
-        it_nn->second = nearby_position;
+        it_nn->second             = nearby_position;
         is_changed_nearby_positon = true;
       }
 
-      it_nn ++;
+      it_nn++;
     }
   }
   if (is_changed_nearby) {

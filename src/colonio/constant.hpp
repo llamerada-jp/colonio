@@ -17,17 +17,11 @@
 
 namespace colonio {
 namespace LogLevel {
-enum Type
-{
-  INFO,
-  ERROR,
-  DEBUG
-};
+enum Type { INFO, ERROR, DEBUG };
 }  // namespace LogLevel
 
 namespace DebugEvent {
-enum Type
-{
+enum Type {
   MAP_SET,
   LINKS,
   NEXTS,

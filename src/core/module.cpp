@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-#include <cassert>
+#include "module.hpp"
 
-#include "module_protocol.pb.h"
+#include <cassert>
 
 #include "context.hpp"
 #include "convert.hpp"
-#include "module.hpp"
+#include "module_protocol.pb.h"
 #include "utils.hpp"
 
 namespace colonio {
@@ -142,8 +142,8 @@ void Module::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Packet> p
  * @param dst_nid Destination node-id.
  * @param content Packet content.
  */
-void Module::send_packet(std::unique_ptr<Command> command, const NodeID& dst_nid,
-                         std::shared_ptr<const std::string> content) {
+void Module::send_packet(
+    std::unique_ptr<Command> command, const NodeID& dst_nid, std::shared_ptr<const std::string> content) {
   uint32_t packet_id = Context::get_rnd_32();
   std::unique_ptr<const Packet> packet;
   {
@@ -153,8 +153,8 @@ void Module::send_packet(std::unique_ptr<Command> command, const NodeID& dst_nid
     }
 
     std::tuple<CommandID::Type, PacketMode::Type> t = command->get_define();
-    CommandID::Type command_id = std::get<0>(t);
-    PacketMode::Type mode = std::get<1>(t);
+    CommandID::Type command_id                      = std::get<0>(t);
+    PacketMode::Type mode                           = std::get<1>(t);
 
     assert(mode & PacketMode::ONE_WAY || dst_nid != NodeID::NEXT);
 
@@ -176,8 +176,9 @@ void Module::send_packet(std::unique_ptr<Command> command, const NodeID& dst_nid
  * @param dst_nid Destination node-id.
  * @param content Packet content.
  */
-void Module::send_packet(const NodeID& dst_nid, PacketMode::Type mode,
-                         CommandID::Type command_id, std::shared_ptr<const std::string> content) {
+void Module::send_packet(
+    const NodeID& dst_nid, PacketMode::Type mode, CommandID::Type command_id,
+    std::shared_ptr<const std::string> content) {
   uint32_t packet_id = Context::get_rnd_32();
   {
     std::lock_guard<std::mutex> guard(mutex_containers);
@@ -192,7 +193,6 @@ void Module::send_packet(const NodeID& dst_nid, PacketMode::Type mode,
 
   delegate.module_do_send_packet(*this, std::move(packet));
 }
-
 
 /**
  * Send a error packet for the received packet.
@@ -276,7 +276,7 @@ void Module::on_persec() {
                 Packet{container.dst_nid, container.src_nid, container.packet_id, container.content, container.mode,
                        container.channel, container.module_no, container.command_id}));
           }
-          
+
           container.retry_count++;
           container.send_time = Utils::get_current_msec();
         }

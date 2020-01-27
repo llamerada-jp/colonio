@@ -1,17 +1,14 @@
 ---
-# BasedOnStyle: 'Google'
+BasedOnStyle: 'Google'
 AccessModifierOffset: -1
 AlignAfterOpenBracket: 'AlwaysBreak'
 AlignConsecutiveAssignments: true
 AllowShortFunctionsOnASingleLine: 'None'
 AlwaysBreakAfterReturnType: 'None'
 AlwaysBreakTemplateDeclarations: true
-BraceWrapping:
-    AfterEnum: true
-BreakBeforeBraces: 'Custom'
 BreakConstructorInitializersBeforeComma: true
 BreakConstructorInitializers: 'AfterColon'
-PenaltyReturnTypeOnItsOwnLine: 200
+PenaltyReturnTypeOnItsOwnLine: 120
 ColumnLimit: 120
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
 ConstructorInitializerIndentWidth: 4

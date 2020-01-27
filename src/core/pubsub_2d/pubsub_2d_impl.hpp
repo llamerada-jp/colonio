@@ -15,22 +15,22 @@
  */
 #pragma once
 
+#include "colonio/pubsub_2d.hpp"
 #include "core/system_2d.hpp"
 #include "core/value_impl.hpp"
-#include "colonio/pubsub_2d.hpp"
 
 namespace colonio {
 class PubSub2DImpl : public System2D<PubSub2D> {
  public:
-  PubSub2DImpl(Context& context, ModuleDelegate& module_delegate,
-               System2DDelegate& system_delegate, const picojson::object& config, ModuleNo module_no);
+  PubSub2DImpl(
+      Context& context, ModuleDelegate& module_delegate, System2DDelegate& system_delegate,
+      const picojson::object& config, ModuleNo module_no);
   virtual ~PubSub2DImpl();
 
-  void publish(const std::string& name, double x, double y, double r, const Value& value,
-               const std::function<void()>& on_success,
-               const std::function<void(PubSub2DFailureReason)>& on_failure) override;
-  void on(const std::string& name,
-          const std::function<void(const Value&)>& subscriber) override;
+  void publish(
+      const std::string& name, double x, double y, double r, const Value& value,
+      const std::function<void()>& on_success, const std::function<void(PubSub2DFailureReason)>& on_failure) override;
+  void on(const std::string& name, const std::function<void(const Value&)>& subscriber) override;
   void off(const std::string& name) override;
 
   void module_process_command(std::unique_ptr<const Packet> packet) override;
@@ -71,9 +71,9 @@ class PubSub2DImpl : public System2D<PubSub2D> {
 
   class CommandPass : public Command {
    public:
-    CommandPass(PubSub2DImpl& parent_, uint64_t uid_,
-                const std::function<void()>& cb_on_success_,
-                const std::function<void(PubSub2DFailureReason)>& cb_on_failure_);
+    CommandPass(
+        PubSub2DImpl& parent_, uint64_t uid_, const std::function<void()>& cb_on_success_,
+        const std::function<void(PubSub2DFailureReason)>& cb_on_failure_);
 
     void on_error(const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
@@ -95,9 +95,8 @@ class PubSub2DImpl : public System2D<PubSub2D> {
 
   void send_packet_knock(const NodeID& exclude, const Cache& cache);
   void send_packet_deffuse(const NodeID& dst_nid, const Cache& cache);
-  void send_packet_pass(const Cache& cache,
-                        const std::function<void()>& on_success,
-                        const std::function<void(PubSub2DFailureReason)>& on_failure);
-
+  void send_packet_pass(
+      const Cache& cache, const std::function<void()>& on_success,
+      const std::function<void(PubSub2DFailureReason)>& on_failure);
 };
 }  // namespace colonio

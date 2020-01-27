@@ -20,14 +20,7 @@ namespace colonio {
 class ValueImpl;
 class Value {
  public:
-  enum Type
-  {
-    NULL_T,
-    BOOL_T,
-    INT_T,
-    DOUBLE_T,
-    STRING_T
-  };
+  enum Type { NULL_T, BOOL_T, INT_T, DOUBLE_T, STRING_T };
 
   Value();
   Value(const Value& src);
