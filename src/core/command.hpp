@@ -33,7 +33,7 @@ class Command {
 
   virtual void on_error(const std::string& message);
   virtual void on_failure(std::unique_ptr<const Packet> packet);
-  virtual void on_success(std::unique_ptr<const Packet> packet);
+  virtual void on_success(std::unique_ptr<const Packet> packet) = 0;
 
  protected:
   const CommandID::Type id;

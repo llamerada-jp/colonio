@@ -51,12 +51,4 @@ void Command::on_error(const std::string& message) {
 void Command::on_failure(std::unique_ptr<const Packet> packet) {
   assert(false);
 }
-
-/**
- * It will be called when a success reply has arrived for the send packet.
- * @param packet Received reply packet.
- */
-void Command::on_success(std::unique_ptr<const Packet> packet) {
-  assert(false);
-}
 }  // namespace colonio
