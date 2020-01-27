@@ -59,8 +59,10 @@ setup_go() {
     fi
 
     export GO111MODULE=on
-    export GOPATH=${LOCAL_ENV_PATH}/go
-    export GO=${GOPATH}/bin/go
+    export GOPATH=${LOCAL_ENV_PATH}/gopath
+    export GOROOT=${LOCAL_ENV_PATH}/go
+    mkdir -p ${GOPATH}
+    export GO=${GOROOT}/bin/go
     export PATH=$(${GO} env GOPATH)/bin:${PATH}
   fi
 }
