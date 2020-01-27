@@ -59,7 +59,7 @@ class TestSeed {
 
     } else if (pid == 0) {
       // Exec seed program on the child process.
-      if (execl(COLONIO_SEED_BIN_PATH, COLONIO_SEED_BIN_PATH, "-config", config.c_str(), nullptr) == -1) {
+      if (execl(COLONIO_SEED_BIN_PATH, COLONIO_SEED_BIN_PATH, "-verbose", "-config", config.c_str(), nullptr) == -1) {
         perror("execl");
       }
       exit(EXIT_FAILURE);
