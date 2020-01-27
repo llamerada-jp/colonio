@@ -28,8 +28,8 @@
 namespace colonio {
 PubSub2DImpl::PubSub2DImpl(
     Context& context, ModuleDelegate& module_delegate, System2DDelegate& system_delegate,
-    const picojson::object& config) :
-    System2D(context, module_delegate, system_delegate, Utils::get_json<double>(config, "channel")),
+    const picojson::object& config, ModuleNo module_no) :
+    System2D(context, module_delegate, system_delegate, Utils::get_json<double>(config, "channel"), module_no),
     conf_cache_time(PUBSUB2D_CACHE_TIME) {
   Utils::check_json_optional(config, "cacheTime", &conf_cache_time);
 

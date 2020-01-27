@@ -134,6 +134,7 @@ void SeedAccessor::relay_packet(std::unique_ptr<const Packet> packet) {
     packet_sa.set_id(packet->id);
     packet_sa.set_mode(packet->mode);
     packet_sa.set_channel(packet->channel);
+    packet_sa.set_module_no(packet->module_no);
     packet_sa.set_command_id(packet->command_id);
     if (packet->content != nullptr) {
       packet_sa.set_content(*packet->content);
@@ -209,7 +210,7 @@ void SeedAccessor::seed_link_on_recv(SeedLinkBase& link, const std::string& data
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
       Packet{NodeID::from_pb(packet_pb.dst_nid()), NodeID::from_pb(packet_pb.src_nid()), packet_pb.id(), content,
              static_cast<PacketMode::Type>(packet_pb.mode()), static_cast<ModuleChannel::Type>(packet_pb.channel()),
-             static_cast<CommandID::Type>(packet_pb.command_id())});
+             static_cast<ModuleNo>(packet_pb.module_no()), static_cast<CommandID::Type>(packet_pb.command_id())});
 
   if (packet->src_nid == NodeID::SEED && packet->channel == ModuleChannel::SEED && packet->id == 0) {
     switch (packet->command_id) {
@@ -303,15 +304,15 @@ void SeedAccessor::send_auth(const std::string& token) {
   std::shared_ptr<std::string> content(new std::string());
   param.SerializeToString(content.get());
 
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
-      Packet{NodeID::SEED, context.my_nid, 0, content, PacketMode::NONE, ModuleChannel::SEED, CommandID::Seed::AUTH});
+  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet{
+      NodeID::SEED, context.my_nid, 0, content, PacketMode::NONE, ModuleChannel::SEED, 0, CommandID::Seed::AUTH});
 
   relay_packet(std::move(packet));
 }
 
 void SeedAccessor::send_ping() {
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
-      Packet{NodeID::SEED, context.my_nid, 0, nullptr, PacketMode::NONE, ModuleChannel::SEED, CommandID::Seed::PING});
+  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet{
+      NodeID::SEED, context.my_nid, 0, nullptr, PacketMode::NONE, ModuleChannel::SEED, 0, CommandID::Seed::PING});
 
   relay_packet(std::move(packet));
 }

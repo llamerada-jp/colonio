@@ -53,7 +53,7 @@ RoutingAlgorithm2DDelegate::~RoutingAlgorithm2DDelegate() {
 Routing::Routing(
     Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, ModuleChannel::Type channel,
     const picojson::object& config) :
-    Module(context, module_delegate, channel),
+    Module(context, module_delegate, channel, 0),
     CONFIG_UPDATE_PERIOD(Utils::get_json(config, "updatePeriod", ROUTING_UPDATE_PERIOD)),
     CONFIG_FORCE_UPDATE_TIMES(Utils::get_json(config, "forceUpdateTimes", ROUTING_FORCE_UPDATE_TIMES)),
     delegate(routing_delegate),

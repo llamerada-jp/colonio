@@ -15,6 +15,7 @@ message Head {
   Protocol.NodeID src_nid = 2;
   uint32 mode = 3;
   uint32 channel = 4;
+  uint32 module_no = 6;
   uint32 command_id = 5;
 }
 

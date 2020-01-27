@@ -56,6 +56,8 @@ static const Type SYSTEM_ROUTING = 15;
 // static const Type SYSTEM_ROUTING_2D = 16;
 }  // namespace ModuleChannel
 
+typedef uint16_t ModuleNo;
+
 namespace CommandID {
 typedef uint16_t Type;
 static const Type ERROR   = 0xFFFF;

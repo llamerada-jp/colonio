@@ -34,8 +34,9 @@ ModuleDelegate::~ModuleDelegate() {
  * Constructor with a module that parent module of this instance.
  * @param module Moule type.
  */
-Module::Module(Context& context_, ModuleDelegate& delegate_, ModuleChannel::Type channel_) :
+Module::Module(Context& context_, ModuleDelegate& delegate_, ModuleChannel::Type channel_, ModuleNo module_no_) :
     channel(channel_),
+    module_no(module_no_),
     context(context_),
     delegate(delegate_) {
   context.scheduler.add_interval_task(this, std::bind(&Module::on_persec, this), 1000);
@@ -62,6 +63,7 @@ void Module::module_on_persec(LinkStatus::Type seed_status, LinkStatus::Type nod
  * If pacekt is another type, call delegate method for general process.
  */
 void Module::on_recv_packet(std::unique_ptr<const Packet> packet) {
+  assert(packet->module_no == module_no);
   assert(packet->channel == channel);
 
   if (packet->command_id == CommandID::SUCCESS) {
@@ -156,24 +158,12 @@ void Module::send_packet(std::unique_ptr<Command> command, const NodeID& dst_nid
 
     assert(mode & PacketMode::ONE_WAY || dst_nid != NodeID::NEXT);
 
-    packet = std::make_unique<const Packet>(Packet {
-        dst_nid,
-        context.my_nid,
-        packet_id,
-        content,
-        mode, channel, command_id
-    });
+    packet = std::make_unique<const Packet>(
+        Packet{dst_nid, context.my_nid, packet_id, content, mode, channel, module_no, command_id});
 
-    containers.insert(
-        std::make_pair(packet_id, Container({
-              dst_nid,
-              context.my_nid,
-              packet_id,
-              mode,
-              channel,
-              command_id,
-              content,
-              0, Utils::get_current_msec(), std::move(command) })));
+    containers.insert(std::make_pair(
+        packet_id, Container({dst_nid, context.my_nid, packet_id, mode, channel, module_no, command_id, content, 0,
+                              Utils::get_current_msec(), std::move(command)})));
   }
   delegate.module_do_send_packet(*this, std::move(packet));
 }
@@ -196,15 +186,9 @@ void Module::send_packet(const NodeID& dst_nid, PacketMode::Type mode,
     }
   }
 
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet {
-    dst_nid,
-    context.my_nid,
-    packet_id,
-    content,
-    static_cast<PacketMode::Type>(PacketMode::ONE_WAY | mode),
-    channel,
-    command_id
-  });
+  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
+      Packet{dst_nid, context.my_nid, packet_id, content, static_cast<PacketMode::Type>(PacketMode::ONE_WAY | mode),
+             channel, module_no, command_id});
 
   delegate.module_do_send_packet(*this, std::move(packet));
 }
@@ -224,15 +208,9 @@ void Module::send_error(const Packet& reply_for, const std::string& message) {
     packet_mode |= PacketMode::RELAY_SEED;
   }
 
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet {
-    reply_for.src_nid,
-    context.my_nid,
-    reply_for.id,
-    content_bin,
-    packet_mode,
-    reply_for.channel,
-    CommandID::ERROR
-  });
+  std::unique_ptr<const Packet> packet =
+      std::make_unique<const Packet>(Packet{reply_for.src_nid, context.my_nid, reply_for.id, content_bin, packet_mode,
+                                            reply_for.channel, reply_for.module_no, CommandID::ERROR});
 
   delegate.module_do_send_packet(*this, std::move(packet));
 }
@@ -248,15 +226,9 @@ void Module::send_failure(const Packet& reply_for, std::shared_ptr<const std::st
     packet_mode |= PacketMode::RELAY_SEED;
   }
 
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet {
-    reply_for.src_nid,
-    context.my_nid,
-    reply_for.id,
-    content,
-    packet_mode,
-    reply_for.channel,
-    CommandID::FAILURE
-  });
+  std::unique_ptr<const Packet> packet =
+      std::make_unique<const Packet>(Packet{reply_for.src_nid, context.my_nid, reply_for.id, content, packet_mode,
+                                            reply_for.channel, reply_for.module_no, CommandID::FAILURE});
 
   delegate.module_do_send_packet(*this, std::move(packet));
 }
@@ -272,15 +244,9 @@ void Module::send_success(const Packet& reply_for, std::shared_ptr<const std::st
     packet_mode |= PacketMode::RELAY_SEED;
   }
 
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet {
-    reply_for.src_nid,
-    context.my_nid,
-    reply_for.id,
-    content,
-    packet_mode,
-    reply_for.channel,
-    CommandID::SUCCESS
-  });
+  std::unique_ptr<const Packet> packet =
+      std::make_unique<const Packet>(Packet{reply_for.src_nid, context.my_nid, reply_for.id, content, packet_mode,
+                                            reply_for.channel, reply_for.module_no, CommandID::SUCCESS});
 
   delegate.module_do_send_packet(*this, std::move(packet));
 }
@@ -306,15 +272,9 @@ void Module::on_persec() {
         } else {
           if ((container.mode & PacketMode::NO_RETRY) == PacketMode::NONE) {
             // retry
-            retry_packets.insert(std::make_unique<Packet>(Packet {
-                  container.dst_nid,
-                  container.src_nid,
-                  container.packet_id,
-                  container.content,
-                  container.mode,
-                  container.channel,
-                  container.command_id
-            }));
+            retry_packets.insert(std::make_unique<Packet>(
+                Packet{container.dst_nid, container.src_nid, container.packet_id, container.content, container.mode,
+                       container.channel, container.module_no, container.command_id}));
           }
           
           container.retry_count++;

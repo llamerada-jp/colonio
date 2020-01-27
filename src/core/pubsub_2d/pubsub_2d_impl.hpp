@@ -23,7 +23,7 @@ namespace colonio {
 class PubSub2DImpl : public System2D<PubSub2D> {
  public:
   PubSub2DImpl(Context& context, ModuleDelegate& module_delegate,
-               System2DDelegate& system_delegate, const picojson::object& config);
+               System2DDelegate& system_delegate, const picojson::object& config, ModuleNo module_no);
   virtual ~PubSub2DImpl();
 
   void publish(const std::string& name, double x, double y, double r, const Value& value,

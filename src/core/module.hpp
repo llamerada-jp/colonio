@@ -16,6 +16,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 
 #include "command.hpp"
 #include "definition.hpp"
@@ -35,6 +36,7 @@ class ModuleDelegate {
 class Module {
  public:
   const ModuleChannel::Type channel;
+  const ModuleNo module_no;
 
   virtual ~Module();
 
@@ -50,7 +52,7 @@ class Module {
  protected:
   Context& context;
 
-  Module(Context& context_, ModuleDelegate& delegate_, ModuleChannel::Type channel_);
+  Module(Context& context_, ModuleDelegate& delegate_, ModuleChannel::Type channel_, ModuleNo module_no_);
 
   virtual void module_process_command(std::unique_ptr<const Packet> packet) = 0;
 
@@ -77,6 +79,7 @@ class Module {
     uint32_t packet_id;
     PacketMode::Type mode;
     ModuleChannel::Type channel;
+    ModuleNo module_no;
     CommandID::Type command_id;
     std::shared_ptr<const std::string> content;
 

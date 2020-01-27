@@ -451,8 +451,8 @@ void MapPaxos::CommandAccept::postprocess() {
 /* class KeyValueStore */
 MapPaxos::MapPaxos(
     Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate,
-    const picojson::object& config) :
-    System1D(context, module_delegate, system_delegate, Utils::get_json<double>(config, "channel")),
+    const picojson::object& config, ModuleNo module_no) :
+    System1D(context, module_delegate, system_delegate, Utils::get_json<double>(config, "channel"), module_no),
     conf_retry_max(MAP_PAXOS_RETRY_MAX) {
   Utils::check_json_optional(config, "retryMax", &conf_retry_max);
 }

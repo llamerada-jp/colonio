@@ -35,7 +35,7 @@ class System2DBase : public Module {
  protected:
   System2DBase(
       Context& context, ModuleDelegate& module_delegate, System2DDelegate& system_delegate,
-      ModuleChannel::Type channel);
+      ModuleChannel::Type channel, ModuleNo module_no);
 
   const NodeID& get_relay_nid(const Coordinate& position);
 
@@ -48,8 +48,8 @@ class System2D : public BASE, public System2DBase {
  protected:
   System2D(
       Context& context, ModuleDelegate& module_delegate, System2DDelegate& system_delegate,
-      ModuleChannel::Type channel) :
-      System2DBase(context, module_delegate, system_delegate, channel) {
+      ModuleChannel::Type channel, ModuleNo module_no) :
+      System2DBase(context, module_delegate, system_delegate, channel, module_no) {
   }
 };
 }  // namespace colonio

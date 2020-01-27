@@ -27,7 +27,7 @@ class MapPaxos : public System1D<Map> {
  public:
   MapPaxos(
       Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate,
-      const picojson::object& config);
+      const picojson::object& config, ModuleNo module_no);
   virtual ~MapPaxos();
 
   void get(

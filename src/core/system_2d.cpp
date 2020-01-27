@@ -22,8 +22,8 @@ System2DDelegate::~System2DDelegate() {
 }
 
 System2DBase::System2DBase(
-    Context& context, ModuleDelegate& module_delegate, System2DDelegate& system_delegate, ModuleChannel::Type channel) :
-    Module(context, module_delegate, channel),
+    Context& context, ModuleDelegate& module_delegate, System2DDelegate& system_delegate, ModuleChannel::Type channel, ModuleNo module_no) :
+    Module(context, module_delegate, channel, module_no),
     delegate(system_delegate) {
 }
 

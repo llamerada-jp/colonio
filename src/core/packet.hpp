@@ -29,6 +29,7 @@ class Packet {
   std::shared_ptr<const std::string> content;
   const PacketMode::Type mode;
   const ModuleChannel::Type channel;
+  const ModuleNo module_no;
   const CommandID::Type command_id;
 
   template<typename T>

@@ -12,8 +12,9 @@ message SeedAccessor {
   uint32 id = 3;
   uint32 mode = 4;
   uint32 channel = 5;
-  uint32 command_id = 6;
-  bytes content = 7;
+  uint32 module_no = 6;
+  uint32 command_id = 7;
+  bytes content = 8;
 }
 
 message Auth {
