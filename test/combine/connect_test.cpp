@@ -17,12 +17,9 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "colonio/colonio_libuv.hpp"
-#include "test_utils/async_helper.hpp"
-#include "test_utils/test_seed.hpp"
+#include "test_utils/all.hpp"
 
 using namespace colonio;
-using namespace colonio_helper;
 using ::testing::MatchesRegex;
 
 TEST(ConnectTest, connect_single) {
@@ -30,7 +27,7 @@ TEST(ConnectTest, connect_single) {
   TestSeed seed;
   seed.run();
 
-  ColonioLibuv node(helper.get_libuv_instance());
+  ColonioNode node("node", helper.get_libuv_instance());
 
   node.connect(
       "http://localhost:8080/test", "",
@@ -60,8 +57,8 @@ TEST(ConnectTest, connect_multi) {
   seed.add_module_map_paxos(MAP_NAME, 256);
   seed.run();
 
-  ColonioLibuv node1("node1", helper.get_libuv_instance());
-  ColonioLibuv node2("node2", helper.get_libuv_instance());
+  ColonioNode node1("node1", helper.get_libuv_instance());
+  ColonioNode node2("node2", helper.get_libuv_instance());
 
   // connect node1
   printf("connect node1\n");
@@ -76,7 +73,7 @@ TEST(ConnectTest, connect_multi) {
               helper.mark("a");
               EXPECT_NE(&node1, &node2);
               EXPECT_NE(&c1, &c2);
-              EXPECT_STRNE(node1.get_local_nid(), node2.get_local_nid());
+              EXPECT_STRNE(node1.get_local_nid().c_str(), node2.get_local_nid().c_str());
               EXPECT_EQ(&node1, &c1);
               EXPECT_EQ(&node2, &c2);
               c2.disconnect();
