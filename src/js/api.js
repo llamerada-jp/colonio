@@ -15,22 +15,22 @@
  */
 
 mergeInto(LibraryManager.library, {
-  js_on_output_log: function(p1, p2, p3, p4) { jsOnOutputLog(p1, p2, p3, p4); },
-  js_on_debug_event: function(p1, p2, p3, p4) { jsOnDebugEvent(p1, p2, p3, p4); },
+  js_on_output_log: function (p1, p2, p3, p4) { jsOnOutputLog(p1, p2, p3, p4); },
+  js_on_debug_event: function (p1, p2, p3, p4) { jsOnDebugEvent(p1, p2, p3, p4); },
 
-  seed_link_ws_connect: function(p1, p2, p3) { seedLinkWsConnect(p1, p2, p3); },
-  seed_link_ws_disconnect: function(p1) { seedLinkWsDisconnect(p1); },
-  seed_link_ws_finalize: function(p1) { seedLinkWsFinalize(p1); },
-  seed_link_ws_send: function(p1, p2, p3) { seedLinkWsSend(p1, p2, p3); },
+  seed_link_ws_connect: function (p1, p2, p3) { seedLinkWsConnect(p1, p2, p3); },
+  seed_link_ws_disconnect: function (p1) { seedLinkWsDisconnect(p1); },
+  seed_link_ws_finalize: function (p1) { seedLinkWsFinalize(p1); },
+  seed_link_ws_send: function (p1, p2, p3) { seedLinkWsSend(p1, p2, p3); },
 
-  webrtc_context_initialize: function() { webrtcContextInitialize(); },
-  webrtc_context_add_ice_server: function(p1, p2) { webrtcContextAddIceServer(p1, p2); },
+  webrtc_context_initialize: function () { webrtcContextInitialize(); },
+  webrtc_context_add_ice_server: function (p1, p2) { webrtcContextAddIceServer(p1, p2); },
 
-  webrtc_link_initialize: function(p1, p2) { webrtcLinkInitialize(p1, p2); },
-  webrtc_link_finalize: function(p1) { webrtcLinkFinalize(p1); },
-  webrtc_link_disconnect: function(p1) { webrtcLinkDisconnect(p1); },
-  webrtc_link_get_local_sdp: function(p1, p2) { webrtcLinkGetLocalSdp(p1, p2); },
-  webrtc_link_send: function(p1, p2, p3) { webrtcLinkSend(p1, p2, p3); },
-  webrtc_link_set_remote_sdp: function(p1, p2, p3, p4) { webrtcLinkSetRemoteSdp(p1, p2, p3, p4); },
-  webrtc_link_update_ice: function(p1, p2, p3) { webrtcLinkUpdateIce(p1, p2, p3); }
+  webrtc_link_initialize: function (p1, p2) { webrtcLinkInitialize(p1, p2); },
+  webrtc_link_finalize: function (p1) { webrtcLinkFinalize(p1); },
+  webrtc_link_disconnect: function (p1) { webrtcLinkDisconnect(p1); },
+  webrtc_link_get_local_sdp: function (p1, p2) { webrtcLinkGetLocalSdp(p1, p2); },
+  webrtc_link_send: function (p1, p2, p3) { webrtcLinkSend(p1, p2, p3); },
+  webrtc_link_set_remote_sdp: function (p1, p2, p3, p4) { webrtcLinkSetRemoteSdp(p1, p2, p3, p4); },
+  webrtc_link_update_ice: function (p1, p2, p3) { webrtcLinkUpdateIce(p1, p2, p3); }
 });
