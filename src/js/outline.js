@@ -20,14 +20,14 @@
   #  define logd(...) // do nothing
   #else
   #  define logd(...) console.log((new Date()).toISOString(), __VA_ARGS__)
-  #  define dumpPacket(str) function() { let j = JSON.parse(str); /* j.content = JSON.parse(j.content); */return j; }()
+  #  define dumpPacket(str) function() { let j = JSON.parse(str); /* j.content = JSON.parse(j.content); */return j; } ()
   #endif
 
   const ID_MAX = 2147483647;
-  
+
   /* Push/Pop object */
   let idObjectPair = new Object();
-  
+
   function pushObject(obj) {
     let id = Math.floor(Math.random() * ID_MAX);
     if (id in idObjectPair) {
@@ -36,7 +36,7 @@
     idObjectPair[id] = obj;
     return id;
   }
-  
+
   function popObject(id) {
     assert((id in idObjectPair), 'Wrong id :' + id);
     let obj = idObjectPair[id];
@@ -74,7 +74,7 @@
   }
 
   function allocPtrString(str) {
-    assert(typeof(str) === 'string');
+    assert(typeof (str) === 'string');
     let siz = lengthBytesUTF8(str);
     let ptr = allocPtr(siz + 1);
     stringToUTF8(str, ptr, siz + 1);
@@ -83,7 +83,7 @@
 
   function allocPtrArrayBuffer(buffer) {
     let siz = buffer.byteLength;
-    let ptr = allocPtr( siz === 0 ? 1 : siz);
+    let ptr = allocPtr(siz === 0 ? 1 : siz);
     if (siz !== 0) {
       HEAP8.set(new Int8Array(buffer), ptr);
     }
@@ -118,7 +118,7 @@
     //ptr = String(ptr);
     let key = clazz + '/' + type;
     if (ptr in eventFuncs &&
-        key in eventFuncs[ptr]) {
+      key in eventFuncs[ptr]) {
       return eventFuncs[ptr][key];
 
     } else {
@@ -140,9 +140,9 @@
     var i = 0;
     while (1) {
       #ifdef NDEBUG
-      t=HEAPU8[ptr+i>>0];
+      t = HEAPU8[ptr + i >> 0];
       #else
-      t = ((SAFE_HEAP_LOAD((((ptr)+(i))|0), 1, 1))|0);
+      t = ((SAFE_HEAP_LOAD((((ptr) + (i)) | 0), 1, 1)) | 0);
       #endif
       hasUtf |= t;
       if (t == 0 && !length) break;
@@ -249,11 +249,11 @@
 
     init() {
       const promise = new Promise((resolve, reject) => {
-        addFuncAfterLoad(() => { 
+        addFuncAfterLoad(() => {
           // Initialize module.
           this._colonioPtr = ccall('js_init', 'number',
-                                ['number'],
-                                [addFunction(this._onRequireInvoke.bind(this), 'vii')]);
+            ['number'],
+            [addFunction(this._onRequireInvoke.bind(this), 'vii')]);
 
           resolve();
         });
@@ -276,8 +276,8 @@
         let [tokenPtr] = allocPtrString(token);
 
         ccall('js_connect', 'null',
-              ['number', 'number', 'number', 'number'],
-              [this._colonioPtr, urlPtr, tokenPtr, onSuccess, onFailure]);
+          ['number', 'number', 'number', 'number'],
+          [this._colonioPtr, urlPtr, tokenPtr, onSuccess, onFailure]);
 
         freePtr(url);
         freePtr(token);
@@ -305,8 +305,8 @@
       if (!(name in this._instanceCache)) {
         let [namePtr] = allocPtrString(name);
         this._instanceCache[name] = new ColonioMap(ccall('js_access_map', 'number',
-                                                      ['number', 'number'],
-                                                      [this._colonioPtr, namePtr]));
+          ['number', 'number'],
+          [this._colonioPtr, namePtr]));
         freePtr(namePtr);
       }
       return this._instanceCache[name];
@@ -316,8 +316,8 @@
       if (!(name in this._instanceCache)) {
         let [namePtr] = allocPtrString(name);
         this._instanceCache[name] = new Pubsub2D(ccall('js_access_pubsub2d', 'number',
-                                                       ['number', 'number'],
-                                                       [this._colonioPtr, namePtr]));
+          ['number', 'number'],
+          [this._colonioPtr, namePtr]));
         freePtr(namePtr);
       }
       return this._instanceCache[name];
@@ -328,7 +328,7 @@
         clearTimeout(this._timerInvoke);
         this._timerInvoke = false;
       }
-      
+
       ccall('js_disconnect', 'null', ['number'], [this._colonioPtr]);
 
       delete this._instanceCache;
@@ -344,8 +344,8 @@
 
     setPosition(x, y) {
       ccall('js_set_position', 'null',
-            ['number', 'number', 'number'],
-            [this._colonioPtr, x, y]);
+        ['number', 'number', 'number'],
+        [this._colonioPtr, x, y]);
     }
 
     on(type, func) {
@@ -393,7 +393,7 @@
       });
     }
   }
-  
+
   /**
    * ColonioValue is wrap for Value class.
    */
@@ -413,24 +413,24 @@
     static Bool(value) {
       let valuePtr = ccall('js_value_init', 'number', []);
       ccall('js_value_set_bool', 'null',
-            ['number', 'boolean'],
-            [valuePtr, value]);
+        ['number', 'boolean'],
+        [valuePtr, value]);
       return new ColonioValue(valuePtr);
     }
 
     static Int(value) {
       let valuePtr = ccall('js_value_init', 'number', []);
       ccall('js_value_set_int', 'null',
-            ['number', 'number'],
-            [valuePtr, value]);
+        ['number', 'number'],
+        [valuePtr, value]);
       return new ColonioValue(valuePtr);
     }
 
     static Double(value) {
       let valuePtr = ccall('js_value_init', 'number', []);
       ccall('js_value_set_double', 'null',
-            ['number', 'number'],
-            [valuePtr, value]);
+        ['number', 'number'],
+        [valuePtr, value]);
       return new ColonioValue(valuePtr);
     }
 
@@ -438,8 +438,8 @@
       let valuePtr = ccall('js_value_init', 'number', []);
       let [stringPtr, stringSiz] = allocPtrString(value);
       ccall('js_value_set_string', 'null',
-            ['number', 'number', 'number'],
-            [valuePtr, stringPtr, stringSiz]);
+        ['number', 'number', 'number'],
+        [valuePtr, stringPtr, stringSiz]);
       freePtr(stringPtr);
       return new ColonioValue(valuePtr);
     }
@@ -547,8 +547,8 @@
         });
 
         ccall('js_map_get_value', 'null',
-              ['number', 'number', 'number'],
-              [this._mapPtr, keyValue._valuePtr, id]);
+          ['number', 'number', 'number'],
+          [this._mapPtr, keyValue._valuePtr, id]);
 
         keyValue.release();
       });
@@ -570,8 +570,8 @@
         });
 
         ccall('js_map_set_value', 'null',
-              ['number', 'number', 'number', 'number', 'number'],
-              [this._mapPtr, keyValue._valuePtr, valValue._valuePtr, id, opt]);
+          ['number', 'number', 'number', 'number', 'number'],
+          [this._mapPtr, keyValue._valuePtr, valValue._valuePtr, id, opt]);
 
         keyValue.release();
         valValue.release();
@@ -612,8 +612,8 @@
         });
 
         ccall('js_pubsub2d_publish', 'null',
-              ['number', 'number', 'number', 'number', 'number', 'number', 'number', 'number'],
-              [this._pubsub2DPtr, namePtr, nameSiz, x, y, r, value._valuePtr, id]);
+          ['number', 'number', 'number', 'number', 'number', 'number', 'number', 'number'],
+          [this._pubsub2DPtr, namePtr, nameSiz, x, y, r, value._valuePtr, id]);
 
         freePtr(namePtr);
         value.release();
@@ -631,8 +631,8 @@
       let [namePtr, nameSiz] = allocPtrString(name);
 
       ccall('js_pubsub2d_on', 'null',
-            ['number', 'number', 'number', 'number'],
-            [this._pubsub2DPtr, namePtr, nameSiz, id]);
+        ['number', 'number', 'number', 'number'],
+        [this._pubsub2DPtr, namePtr, nameSiz, id]);
 
       freePtr(namePtr);
     }
@@ -641,8 +641,8 @@
       let [namePtr, nameSiz] = allocPtrString(name);
 
       ccall('js_pubsub2d_off', 'null',
-            ['number', 'number', 'number'],
-            [this._pubsub2DPtr, namePtr, nameSiz]);
+        ['number', 'number', 'number'],
+        [this._pubsub2DPtr, namePtr, nameSiz]);
 
       freePtr(namePtr);
     }
@@ -671,8 +671,8 @@
         let [msgPtr, msgSiz] = allocPtrString(JSON.stringify(error));
 
         ccall('seed_link_ws_on_error', 'null',
-              ['number', 'number', 'number'],
-              [seedLink, msgPtr, msgSiz]);
+          ['number', 'number', 'number'],
+          [seedLink, msgPtr, msgSiz]);
 
         freePtr(msgPtr);
       }
@@ -684,8 +684,8 @@
         let [dataPtr, dataSiz] = allocPtrArrayBuffer(e.data);
 
         ccall('seed_link_ws_on_recv', 'null',
-              ['number', 'number', 'number'],
-              [seedLink, dataPtr, dataSiz]);
+          ['number', 'number', 'number'],
+          [seedLink, dataPtr, dataSiz]);
 
         freePtr(dataPtr);
       }
@@ -722,10 +722,10 @@
       // 2 : CLOSING
       // 3 : CLOSED
       if (availableSeedLinks[seedLink].readyState != 2 &&
-          availableSeedLinks[seedLink].readyState != 3) {
+        availableSeedLinks[seedLink].readyState != 3) {
         availableSeedLinks[seedLink].close();
       }
-      
+
       delete availableSeedLinks[seedLink];
     } else {
       logd('double finalize', seedLink);
@@ -738,9 +738,9 @@
 
   function webrtcContextInitialize() {
     webrtcContextPcConfig = {
-      iceServers:[]
+      iceServers: []
     };
-    
+
     webrtcContextDcConfig = {
       orderd: true,
       // maxRetransmitTime: 3000,
@@ -766,8 +766,8 @@
         if (webrtcLink in availableWebrtcLinks) {
           let [messagePtr, messageSiz] = allocPtrString(error.message);
           ccall('webrtc_link_on_dco_error', 'null',
-                ['number', 'number', 'number'],
-                [webrtcLink, messagePtr, messageSiz]);
+            ['number', 'number', 'number'],
+            [webrtcLink, messagePtr, messageSiz]);
           freePtr(messagePtr);
         }
       };
@@ -778,8 +778,8 @@
             // logd('rtc data recv', webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(event.data)));
             let [dataPtr, dataSiz] = allocPtrArrayBuffer(event.data);
             ccall('webrtc_link_on_dco_message', 'null',
-                  ['number', 'number', 'number'],
-                  [webrtcLink, dataPtr, dataSiz]);
+              ['number', 'number', 'number'],
+              [webrtcLink, dataPtr, dataSiz]);
             freePtr(dataPtr);
 
           } else if (event.data instanceof Blob) {
@@ -788,8 +788,8 @@
               // logd('rtc data recv', webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(reader.result)));
               let [dataPtr, dataSiz] = allocPtrArrayBuffer(reader.result);
               ccall('webrtc_link_on_dco_message', 'null',
-                    ['number', 'number', 'number'],
-                    [webrtcLink, dataPtr, dataSiz]);
+                ['number', 'number', 'number'],
+                [webrtcLink, dataPtr, dataSiz]);
               freePtr(dataPtr);
             };
             reader.readAsArrayBuffer(event.data);
@@ -805,8 +805,8 @@
         logd('rtc data open', webrtcLink);
         if (webrtcLink in availableWebrtcLinks) {
           ccall('webrtc_link_on_dco_open', 'null',
-                ['number'],
-                [webrtcLink]);
+            ['number'],
+            [webrtcLink]);
         }
       };
 
@@ -814,8 +814,8 @@
         logd('rtc data close', webrtcLink);
         if (webrtcLink in availableWebrtcLinks) {
           ccall('webrtc_link_on_dco_close', 'null',
-                ['number'],
-                [webrtcLink]);
+            ['number'],
+            [webrtcLink]);
         }
       };
     };
@@ -836,7 +836,7 @@
     let dataChannel = null;
     if (isCreateDc) {
       dataChannel = peer.createDataChannel('data_channel',
-                                           webrtcContextDcConfig);
+        webrtcContextDcConfig);
       setEvent(dataChannel);
     }
 
@@ -857,8 +857,8 @@
 
         let [icePtr, iceSiz] = allocPtrString(ice);
         ccall('webrtc_link_on_pco_ice_candidate', 'null',
-              ['number', 'number', 'number'],
-              [webrtcLink, icePtr, iceSiz]);
+          ['number', 'number', 'number'],
+          [webrtcLink, icePtr, iceSiz]);
         freePtr(icePtr);
       }
     };
@@ -871,8 +871,8 @@
         if (link.dataChannel !== null) {
           let [messagePtr, messageSiz] = allocPtrString("duplicate data channel.");
           ccall('webrtc_link_on_dco_error', 'null',
-                ['number', 'number', 'number'],
-                [webrtcLink, messagePtr, messageSiz]);
+            ['number', 'number', 'number'],
+            [webrtcLink, messagePtr, messageSiz]);
           freePtr(messagePtr);
         }
 
@@ -888,8 +888,8 @@
         let peer = link.peer;
         let [statePtr, stateSiz] = allocPtrString(peer.iceConnectionState);
         ccall('webrtc_link_on_pco_state_change', 'null',
-              ['number', 'number', 'number'],
-              [webrtcLink, statePtr, stateSiz]);
+          ['number', 'number', 'number'],
+          [webrtcLink, statePtr, stateSiz]);
         freePtr(statePtr);
       }
     };
@@ -938,15 +938,15 @@
           logd('rtc createAnswer', webrtcLink);
           let [sdpPtr, sdpSiz] = allocPtrString(description.sdp);
           ccall('webrtc_link_on_csd_success', 'null',
-                ['number', 'number', 'number'],
-                [webrtcLink, sdpPtr, sdpSiz]);
+            ['number', 'number', 'number'],
+            [webrtcLink, sdpPtr, sdpSiz]);
           freePtr(sdpPtr);
 
         }).catch((e) => {
           logd('rtc createAnswer error', webrtcLink, e);
           ccall('webrtc_link_on_csd_failure', 'null',
-                ['number'],
-                [webrtcLink]);
+            ['number'],
+            [webrtcLink]);
         });
 
       } else {
@@ -958,15 +958,15 @@
           logd('rtc createOffer', webrtcLink);
           let [sdpPtr, sdpSiz] = allocPtrString(description.sdp);
           ccall('webrtc_link_on_csd_success', 'null',
-                ['number', 'number', 'number'],
-                [webrtcLink, sdpPtr, sdpSiz]);
+            ['number', 'number', 'number'],
+            [webrtcLink, sdpPtr, sdpSiz]);
           freePtr(sdpPtr);
 
         }).catch((e) => {
           console.error(e);
           ccall('webrtc_link_on_csd_failure', 'null',
-                ['number'],
-                [webrtcLink]);
+            ['number'],
+            [webrtcLink]);
         });
       }
 
@@ -1028,19 +1028,19 @@
     execFuncsAfterLoad
   ];
 
-  Module['print'] = function(text) {
+  Module['print'] = function (text) {
     if (arguments.length > 1) {
       text = Array.prototype.slice.call(arguments).join(' ');
     }
     console.log(text);
   };
 
-  Module['printErr'] = function(text) {
+  Module['printErr'] = function (text) {
     if (arguments.length > 1) {
       text = Array.prototype.slice.call(arguments).join(' ');
     }
     console.error(text);
   };
-  
+
   #include "colonio.js"
 })(typeof exports === 'undefined' ? this.colonio = {} : exports);
