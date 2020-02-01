@@ -25,7 +25,7 @@ using namespace colonio;
 using namespace colonio_helper;
 using ::testing::MatchesRegex;
 
-TEST(ConnectTest, connectSingle) {
+TEST(ConnectTest, connect_single) {
   AsyncHelper helper;
   TestSeed seed;
   seed.run();
@@ -41,6 +41,56 @@ TEST(ConnectTest, connectSingle) {
       [&](Colonio& c) {
         FAIL();
         c.disconnect();
+      });
+
+  // node.run();
+  helper.run();
+  EXPECT_THAT(helper.get_route(), MatchesRegex("^a$"));
+}
+
+TEST(ConnectTest, connect_multi) {
+  const std::string URL      = "http://localhost:8080/test";
+  const std::string TOKEN    = "";
+  const std::string MAP_NAME = "map";
+  const std::string KEY_NAME = "key";
+  const std::string VALUE    = "test value";
+
+  AsyncHelper helper;
+  TestSeed seed;
+  seed.add_module_map_paxos(MAP_NAME, 256);
+  seed.run();
+
+  ColonioLibuv node1("node1", helper.get_libuv_instance());
+  ColonioLibuv node2("node2", helper.get_libuv_instance());
+
+  // connect node1
+  printf("connect node1\n");
+  node1.connect(
+      URL, TOKEN,
+      [&](Colonio& c1) {
+        // connect node2
+        printf("connect node2\n");
+        node2.connect(
+            URL, TOKEN,
+            [&](Colonio& c2) {
+              helper.mark("a");
+              EXPECT_NE(&node1, &node2);
+              EXPECT_NE(&c1, &c2);
+              EXPECT_STRNE(node1.get_local_nid(), node2.get_local_nid());
+              EXPECT_EQ(&node1, &c1);
+              EXPECT_EQ(&node2, &c2);
+              c2.disconnect();
+              c1.disconnect();
+            },
+            [&](Colonio& c2) {
+              ADD_FAILURE();
+              c2.disconnect();
+              c1.disconnect();
+            });
+      },
+      [&](Colonio& c1) {
+        ADD_FAILURE();
+        c1.disconnect();
       });
 
   // node.run();
