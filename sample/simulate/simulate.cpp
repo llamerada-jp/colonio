@@ -93,7 +93,7 @@ class MyColonio : public colonio_helper::ColonioLibuv {
 std::unique_ptr<MyColonio> my_colonio;
 
 void on_success(colonio::Colonio& colonio) {
-  redis_command("HSET inits %s %s", std::to_string(getpid()).c_str(), colonio.get_my_nid().c_str());
+  redis_command("HSET inits %s %s", std::to_string(getpid()).c_str(), colonio.get_local_nid().c_str());
   is_online = true;
   map       = &(my_colonio->access_map("map"));
 
@@ -117,7 +117,7 @@ void on_debug_event(colonio::DebugEvent::Type type, const std::string& json_str)
   static const char* DB_KEY[] = {"map_set",    "links",      "nexts",   "position",
                                  "required1d", "required2d", "known1d", "known2d"};
   assert(type <= 7);
-  redis_command("HSET %s %s %s", DB_KEY[type], my_colonio->get_my_nid().c_str(), json_str.c_str());
+  redis_command("HSET %s %s %s", DB_KEY[type], my_colonio->get_local_nid().c_str(), json_str.c_str());
 }
 
 void on_timer(uv_timer_t* handle) {
@@ -135,7 +135,7 @@ void on_timer(uv_timer_t* handle) {
   is_running = true;
   val_set1++;
   std::cout << now_str << " map set:" << val_set1 << std::endl;
-  map->set(colonio::Value(my_colonio->get_my_nid()), colonio::Value(val_set1), on_map_set, on_map_set_failure);
+  map->set(colonio::Value(my_colonio->get_local_nid()), colonio::Value(val_set1), on_map_set, on_map_set_failure);
 
   //*
   if (mt() % 100 == 0) {
@@ -160,7 +160,7 @@ void on_map_get(const colonio::Value& value) {
   /*
   val_set1 ++;
   std::cout << now_str << " map set:" << val_set1 << std::endl;
-  map->set(colonio::Value(my_colonio->get_my_nid()), colonio::Value(val_set1),
+  map->set(colonio::Value(my_colonio->get_local_nid()), colonio::Value(val_set1),
            on_map_set, on_map_set_failure);
   /*/
   is_running = false;
@@ -171,7 +171,7 @@ void on_map_set() {
   std::cout << now_str << " map set success:" << val_set1 << std::endl;
   val_set2 = val_set1;
   std::cout << now_str << " map get" << std::endl;
-  map->get(colonio::Value(my_colonio->get_my_nid()), on_map_get, on_map_get_failure);
+  map->get(colonio::Value(my_colonio->get_local_nid()), on_map_get, on_map_get_failure);
 }
 
 void on_map_get_failure(colonio::MapFailureReason reason) {

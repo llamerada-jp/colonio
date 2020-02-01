@@ -47,9 +47,9 @@ void Colonio::disconnect() {
   impl->disconnect();
 }
 
-std::string Colonio::get_my_nid() {
+std::string Colonio::get_local_nid() {
   assert(impl);
-  return impl->get_my_nid().to_str();
+  return impl->get_local_nid().to_str();
 }
 
 std::tuple<double, double> Colonio::set_position(double x, double y) {

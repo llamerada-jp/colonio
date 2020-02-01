@@ -334,9 +334,9 @@
       delete this._instanceCache;
     }
 
-    getMyNid() {
+    getLocalNid() {
       let nidPtr = allocPtr(32 + 1);
-      ccall('js_get_my_nid', 'null', ['number', 'number'], [this._colonioPtr, nidPtr]);
+      ccall('js_get_local_nid', 'null', ['number', 'number'], [this._colonioPtr, nidPtr]);
       let nid = UTF8ToString(nidPtr);
       freePtr(nidPtr);
       return nid;

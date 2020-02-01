@@ -34,7 +34,7 @@ Context::Context(LoggerDelegate& logger_delegate, SchedulerDelegate& sched_deleg
     link_status(LinkStatus::OFFLINE),
     logger(logger_delegate),
     scheduler(sched_delegate),
-    my_nid(NodeID::make_random()) {
+    local_nid(NodeID::make_random()) {
 #ifndef NDEBUG
   enable_debug_event = false;
 #endif

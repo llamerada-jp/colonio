@@ -31,7 +31,7 @@ class Context {
   Logger logger;
   Scheduler scheduler;
   std::unique_ptr<CoordSystem> coord_system;
-  const NodeID my_nid;
+  const NodeID local_nid;
 
   Context(LoggerDelegate& logger_delegate, SchedulerDelegate& sched_delegate);
 

@@ -64,7 +64,7 @@ class ColonioImpl : public LoggerDelegate,
   void connect(
       const std::string& url, const std::string& token, std::function<void()> on_success,
       std::function<void()> on_failure);
-  const NodeID& get_my_nid();
+  const NodeID& get_local_nid();
   LinkStatus::Type get_status();
   void disconnect();
   Coordinate set_position(const Coordinate& pos);

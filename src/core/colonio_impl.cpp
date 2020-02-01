@@ -75,8 +75,8 @@ void ColonioImpl::connect(
       this, [this]() { on_change_accessor_status(seed_accessor->get_status(), node_accessor->get_status()); }, 0);
 }
 
-const NodeID& ColonioImpl::get_my_nid() {
-  return context.my_nid;
+const NodeID& ColonioImpl::get_local_nid() {
+  return context.local_nid;
 }
 
 LinkStatus::Type ColonioImpl::get_status() {
@@ -404,7 +404,7 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
       }
       return;
 
-    } else if (packet->src_nid == context.my_nid) {
+    } else if (packet->src_nid == context.local_nid) {
       assert(seed_status == LinkStatus::ONLINE);
       seed_accessor->relay_packet(std::move(packet));
       return;
@@ -418,7 +418,7 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
   std::string dump = Utils::dump_packet(*packet);
 #endif
 
-  if (dst_nid == NodeID::THIS || dst_nid == context.my_nid) {
+  if (dst_nid == NodeID::THIS || dst_nid == context.local_nid) {
     logd("Recv.(packet=%s)", dump.c_str());
     // Pass a packet to the target module.
     const Packet& p = *packet;  // @todo use std::move
@@ -441,7 +441,7 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
   } else if (!dst_nid.is_special() || dst_nid == NodeID::NEXT) {
     NodeID src_nid = packet->src_nid;
     if (node_accessor->relay_packet(dst_nid, std::move(packet))) {
-      if (src_nid == context.my_nid) {
+      if (src_nid == context.local_nid) {
         logd("Send.(dst=%s packet=%s)", dst_nid.to_str().c_str(), dump.c_str());
       } else {
         logd("Relay.(dst=%s packet=%s)", dst_nid.to_str().c_str(), dump.c_str());

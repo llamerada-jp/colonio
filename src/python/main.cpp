@@ -148,7 +148,7 @@ PYBIND11_MODULE(colonio, m) {
       .def("connect", &PythonColonio::_connect)
       .def("run", &PythonColonio::_run)
       .def("disconnect", &PythonColonio::disconnect)
-      .def("getMyNid", &PythonColonio::get_my_nid);
+      .def("getLocalNid", &PythonColonio::get_local_nid);
 
   py::enum_<PythonColonio::RUN_MODE>(Colonio, "RunMode")
       .value("DEFAULT", PythonColonio::RUN_MODE::DEFAULT)

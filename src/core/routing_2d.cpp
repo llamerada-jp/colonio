@@ -88,11 +88,11 @@ bool Routing2D::on_recv_routing_info(const Packet& packet, const RoutingProtocol
   }
   cn.nexts.clear();
 
-  const NodeID& my_nid = context.my_nid;
+  const NodeID& local_nid = context.local_nid;
 
   for (auto& it : routing_info.nodes()) {
     NodeID nid = NodeID::from_str(it.first);
-    if (my_nid != nid && it.second.has_r2d_position()) {
+    if (local_nid != nid && it.second.has_r2d_position()) {
       Coordinate position = Coordinate::from_pb(it.second.r2d_position());
       cn.nexts.insert(std::make_pair(nid, position));
     }
@@ -140,7 +140,7 @@ bool Routing2D::update_routing_info(
     if (it.second.position.is_enable()) {
       nodes.insert(std::make_pair(it.first.to_str(), Convert::coordinate2json(it.second.position)));
       const NodeID& n1 = NodeID::THIS;
-      const NodeID& n2 = it.first == context.my_nid ? NodeID::THIS : it.first;
+      const NodeID& n2 = it.first == context.local_nid ? NodeID::THIS : it.first;
       link_tmp.push_back(
           n1 < n2 ? std::make_pair(std::ref(n1), std::ref(n2)) : std::make_pair(std::ref(n2), std::ref(n1)));
     }
@@ -150,8 +150,8 @@ bool Routing2D::update_routing_info(
     for (auto& it2 : it1.second.nexts) {
       if (it1.second.position.is_enable() && it2.second.is_enable()) {
         nodes.insert(std::make_pair(it2.first.to_str(), Convert::coordinate2json(it2.second)));
-        const NodeID& n1 = it1.first == context.my_nid ? NodeID::THIS : it1.first;
-        const NodeID& n2 = it2.first == context.my_nid ? NodeID::THIS : it2.first;
+        const NodeID& n1 = it1.first == context.local_nid ? NodeID::THIS : it1.first;
+        const NodeID& n2 = it2.first == context.local_nid ? NodeID::THIS : it2.first;
         link_tmp.push_back(
             n1 < n2 ? std::make_pair(std::ref(n1), std::ref(n2)) : std::make_pair(std::ref(n2), std::ref(n1)));
       }
@@ -316,14 +316,14 @@ Routing2D::Triangle Routing2D::delaunay_get_huge_triangle() {
  * List may contain duplicate coordinate NodePoint.
  */
 void Routing2D::delaunay_make_nodes(std::map<NodeID, NodePoint>& nodes) {
-  const NodeID& my_nid = context.my_nid;
-  Coordinate base      = context.get_my_position();
+  const NodeID& local_nid = context.local_nid;
+  Coordinate base         = context.get_my_position();
 
   nodes.insert(std::make_pair(NodeID::THIS, NodePoint(NodeID::THIS, base, Coordinate(0.0, 0.0))));
 
   for (auto& it_cn : connected_nodes) {
     if (nodes.find(it_cn.first) == nodes.end() && it_cn.second.position.is_enable()) {
-      assert(it_cn.first != my_nid);
+      assert(it_cn.first != local_nid);
       nodes.insert(std::make_pair(
           it_cn.first, NodePoint(
                            it_cn.first, it_cn.second.position,
@@ -336,7 +336,7 @@ void Routing2D::delaunay_make_nodes(std::map<NodeID, NodePoint>& nodes) {
 
     for (auto& it_next : it_cn.second.nexts) {
       if (nodes.find(it_next.first) == nodes.end() && it_next.second.is_enable()) {
-        assert(it_next.first != my_nid);
+        assert(it_next.first != local_nid);
         nodes.insert(std::make_pair(
             it_next.first,
             NodePoint(

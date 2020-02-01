@@ -48,7 +48,6 @@ RoutingAlgorithm2DDelegate::~RoutingAlgorithm2DDelegate() {
 /**
  * Constructor, set using reference values.
  * @param delegate_ Delegate instance (should WebrtcBundle).
- * @param my_nid_ Node-id of this node.
  */
 Routing::Routing(
     Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, ModuleChannel::Type channel,
@@ -176,7 +175,7 @@ void Routing::recv_routing_info(std::unique_ptr<const Packet> packet) {
   RoutingProtocol::RoutingInfo content;
   packet->parse_content(&content);
   NodeID seed_nid = NodeID::from_pb(content.seed_nid());
-  if (seed_nid == context.my_nid) {
+  if (seed_nid == context.local_nid) {
     if (seed_status == LinkStatus::OFFLINE && dists_from_seed.find(packet->src_nid) != dists_from_seed.end()) {
       dists_from_seed.erase(packet->src_nid);
     }
@@ -214,7 +213,7 @@ void Routing::send_routing_info() {
 
   if (seed_status == LinkStatus::ONLINE) {
     param.set_seed_distance(1);
-    context.my_nid.to_pb(param.mutable_seed_nid());
+    context.local_nid.to_pb(param.mutable_seed_nid());
 
   } else {
     NodeID seed_nid;

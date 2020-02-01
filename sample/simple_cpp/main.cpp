@@ -39,7 +39,7 @@ void on_timer(uv_timer_t* handle) {
 
 void connect_on_success(colonio::Colonio& colonio) {
   std::cout << "Connect success." << std::endl;
-  std::cout << "My id is " << colonio.get_my_nid() << std::endl;
+  std::cout << "Local nid is " << colonio.get_local_nid() << std::endl;
 
   colonio.set_position(M_PI * 139.7604131 / 180.0, M_PI * 35.6858593 / 180.0);
 

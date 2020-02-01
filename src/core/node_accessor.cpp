@@ -77,7 +77,7 @@ void NodeAccessor::connect_link(const NodeID& nid) {
 
   update_link_status();
 
-  send_offer(link, context.my_nid, nid, OFFER_TYPE_NORMAL);
+  send_offer(link, context.local_nid, nid, OFFER_TYPE_NORMAL);
 }
 
 void NodeAccessor::connect_init_link() {
@@ -85,7 +85,7 @@ void NodeAccessor::connect_init_link() {
   assert(!first_link);
   // assert(links.empty()); containing closeing links.
 
-  logd("Connect init link.(tmp_my_nid=%s)", context.my_nid.to_str().c_str());
+  logd("Connect init link.(local_nid=%s)", context.local_nid.to_str().c_str());
 
   first_link_try_count = 0;
   create_first_link();
@@ -105,7 +105,7 @@ void NodeAccessor::connect_random_link() {
   random_link->init_data->is_by_seed = true;
   random_link->init_data->is_prime   = true;
 
-  send_offer(random_link.get(), context.my_nid, context.my_nid, OFFER_TYPE_RANDOM);
+  send_offer(random_link.get(), context.local_nid, context.local_nid, OFFER_TYPE_RANDOM);
 }
 
 LinkStatus::Type NodeAccessor::get_status() {
@@ -538,7 +538,7 @@ void NodeAccessor::create_first_link() {
   first_link->init_data->is_by_seed = true;
   first_link->init_data->is_prime   = true;
 
-  send_offer(first_link.get(), context.my_nid, context.my_nid, OFFER_TYPE_FIRST);
+  send_offer(first_link.get(), context.local_nid, context.local_nid, OFFER_TYPE_FIRST);
 }
 
 WebrtcLink* NodeAccessor::create_link(bool is_create_dc) {
@@ -579,7 +579,7 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
     is_by_seed = false;
   }
 
-  if (prime_nid != context.my_nid) {
+  if (prime_nid != context.local_nid) {
     auto it = links.find(prime_nid);
     if (it != links.end()) {
       WebrtcLink* link = it->second.get();
@@ -587,11 +587,11 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
         // Already having a online connection with prime node yet.
         NodeAccessorProtocol::OfferSuccess param;
         param.set_status(OFFER_STATUS_SUCCESS_ALREADY);
-        context.my_nid.to_pb(param.mutable_second_nid());
+        context.local_nid.to_pb(param.mutable_second_nid());
 
         send_success(*packet, serialize_pb(param));
 
-      } else if (prime_nid < context.my_nid) {
+      } else if (prime_nid < context.local_nid) {
         // Already having not a online connection that will be reconnect.
         link->disconnect();
         closing_links.insert(std::move(it->second));
@@ -610,7 +610,7 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
         link->get_local_sdp([this, p](const std::string& sdp) -> void {
           NodeAccessorProtocol::OfferSuccess param;
           param.set_status(OFFER_STATUS_SUCCESS_ACCEPT);
-          context.my_nid.to_pb(param.mutable_second_nid());
+          context.local_nid.to_pb(param.mutable_second_nid());
           param.set_sdp(sdp);
 
           send_success(p, serialize_pb(param));
@@ -636,7 +636,7 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
       link->get_local_sdp([this, p](const std::string& sdp) -> void {
         NodeAccessorProtocol::OfferSuccess param;
         param.set_status(OFFER_STATUS_SUCCESS_ACCEPT);
-        context.my_nid.to_pb(param.mutable_second_nid());
+        context.local_nid.to_pb(param.mutable_second_nid());
         param.set_sdp(sdp);
 
         send_success(p, serialize_pb(param));
@@ -686,7 +686,7 @@ void NodeAccessor::recv_ice(std::unique_ptr<const Packet> packet) {
   }
   picojson::array ice_array = v.get<picojson::array>();
 
-  assert(remote_nid == context.my_nid);
+  assert(remote_nid == context.local_nid);
 
   auto it = links.find(local_nid);
   if (it != links.end()) {
@@ -730,7 +730,7 @@ void NodeAccessor::send_ice(WebrtcLink* link, const picojson::array& ice) {
   assert(link->nid != NodeID::NONE);
   assert(link->init_data);
   NodeAccessorProtocol::ICE content;
-  context.my_nid.to_pb(content.mutable_local_nid());
+  context.local_nid.to_pb(content.mutable_local_nid());
   link->nid.to_pb(content.mutable_remote_nid());
   content.set_ice(picojson::value(ice).serialize());
 

@@ -305,14 +305,14 @@ void SeedAccessor::send_auth(const std::string& token) {
   param.SerializeToString(content.get());
 
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet{
-      NodeID::SEED, context.my_nid, 0, content, PacketMode::NONE, ModuleChannel::SEED, 0, CommandID::Seed::AUTH});
+      NodeID::SEED, context.local_nid, 0, content, PacketMode::NONE, ModuleChannel::SEED, 0, CommandID::Seed::AUTH});
 
   relay_packet(std::move(packet));
 }
 
 void SeedAccessor::send_ping() {
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet{
-      NodeID::SEED, context.my_nid, 0, nullptr, PacketMode::NONE, ModuleChannel::SEED, 0, CommandID::Seed::PING});
+      NodeID::SEED, context.local_nid, 0, nullptr, PacketMode::NONE, ModuleChannel::SEED, 0, CommandID::Seed::PING});
 
   relay_packet(std::move(packet));
 }

@@ -36,7 +36,7 @@ EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_access_pubsub2d(COLONIO_PTR_T colonio_ptr,
 EMSCRIPTEN_KEEPALIVE void js_disconnect(COLONIO_PTR_T colonio_ptr);
 EMSCRIPTEN_KEEPALIVE void js_enable_output_log(COLONIO_PTR_T colonio_ptr);
 EMSCRIPTEN_KEEPALIVE void js_enable_debug_event(COLONIO_PTR_T colonio_ptr);
-EMSCRIPTEN_KEEPALIVE void js_get_my_nid(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T nid_ptr);
+EMSCRIPTEN_KEEPALIVE void js_get_local_nid(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T nid_ptr);
 EMSCRIPTEN_KEEPALIVE void js_set_position(COLONIO_PTR_T colonio_ptr, double x, double y);
 EMSCRIPTEN_KEEPALIVE unsigned int js_invoke(COLONIO_PTR_T colonio_ptr);
 
@@ -55,15 +55,15 @@ EMSCRIPTEN_KEEPALIVE void js_value_free(COLONIO_PTR_T value_ptr);
 
 EMSCRIPTEN_KEEPALIVE void js_map_init(COLONIO_PTR_T on_map_get_ptr, COLONIO_PTR_T on_map_set_ptr);
 EMSCRIPTEN_KEEPALIVE void js_map_get_value(COLONIO_PTR_T map_ptr, COLONIO_PTR_T key_ptr, COLONIO_ID_T id);
-EMSCRIPTEN_KEEPALIVE void
-js_map_set_value(COLONIO_PTR_T map_ptr, COLONIO_PTR_T key_ptr, COLONIO_PTR_T val_ptr, COLONIO_ID_T id, int opt);
+EMSCRIPTEN_KEEPALIVE void js_map_set_value(
+    COLONIO_PTR_T map_ptr, COLONIO_PTR_T key_ptr, COLONIO_PTR_T val_ptr, COLONIO_ID_T id, int opt);
 
 EMSCRIPTEN_KEEPALIVE void js_pubsub2d_init(COLONIO_PTR_T on_pubsub2d_pub_ptr, COLONIO_PTR_T on_pubsub2d_on_ptr);
 EMSCRIPTEN_KEEPALIVE void js_pubsub2d_publish(
     COLONIO_PTR_T pubsub2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz, double x, double y, double r,
     COLONIO_PTR_T val_ptr, COLONIO_ID_T id);
-EMSCRIPTEN_KEEPALIVE void
-js_pubsub2d_on(COLONIO_PTR_T pubsub2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz, COLONIO_ID_T id);
+EMSCRIPTEN_KEEPALIVE void js_pubsub2d_on(
+    COLONIO_PTR_T pubsub2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz, COLONIO_ID_T id);
 EMSCRIPTEN_KEEPALIVE void js_pubsub2d_off(COLONIO_PTR_T pubsub2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz);
 }
 
@@ -142,8 +142,8 @@ void js_enable_debug_event(COLONIO_PTR_T colonio_ptr) {
   colonio_set_on_debug_event(colonio, wrap_on_debug_event);
 }
 
-void js_get_my_nid(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T nid_ptr) {
-  colonio_get_my_nid(reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<char*>(nid_ptr));
+void js_get_local_nid(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T nid_ptr) {
+  colonio_get_local_nid(reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<char*>(nid_ptr));
 }
 
 void js_set_position(COLONIO_PTR_T colonio_ptr, double x, double y) {

@@ -147,7 +147,7 @@ COLONIO_PUBLIC void colonio_connect(
 COLONIO_PUBLIC void colonio_disconnect(colonio_t* colonio);
 COLONIO_PUBLIC colonio_map_t colonio_access_map(colonio_t* colonio, const char* name);
 COLONIO_PUBLIC colonio_pubsub2d_t colonio_access_pubsub2d(colonio_t* colonio, const char* name);
-COLONIO_PUBLIC void colonio_get_my_nid(colonio_t* colonio, char* dest);
+COLONIO_PUBLIC void colonio_get_local_nid(colonio_t* colonio, char* dest);
 COLONIO_PUBLIC void colonio_set_position(colonio_t* colonio, double x, double y);
 
 COLONIO_PUBLIC void colonio_set_on_output_log(

@@ -103,10 +103,10 @@ colonio_pubsub2d_t colonio_access_pubsub2d(colonio_t* colonio, const char* name)
   return pubsub2d;
 }
 
-void colonio_get_my_nid(colonio_t* colonio, char* dest) {
+void colonio_get_local_nid(colonio_t* colonio, char* dest) {
   colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
-  std::string my_nid               = impl->get_my_nid();
-  memcpy(dest, my_nid.c_str(), my_nid.size() + 1);
+  std::string local_nid            = impl->get_local_nid();
+  memcpy(dest, local_nid.c_str(), local_nid.size() + 1);
 }
 
 void colonio_set_position(colonio_t* colonio, double x, double y) {

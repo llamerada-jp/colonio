@@ -159,10 +159,10 @@ void Module::send_packet(
     assert(mode & PacketMode::ONE_WAY || dst_nid != NodeID::NEXT);
 
     packet = std::make_unique<const Packet>(
-        Packet{dst_nid, context.my_nid, packet_id, content, mode, channel, module_no, command_id});
+        Packet{dst_nid, context.local_nid, packet_id, content, mode, channel, module_no, command_id});
 
     containers.insert(std::make_pair(
-        packet_id, Container({dst_nid, context.my_nid, packet_id, mode, channel, module_no, command_id, content, 0,
+        packet_id, Container({dst_nid, context.local_nid, packet_id, mode, channel, module_no, command_id, content, 0,
                               Utils::get_current_msec(), std::move(command)})));
   }
   delegate.module_do_send_packet(*this, std::move(packet));
@@ -188,7 +188,7 @@ void Module::send_packet(
   }
 
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
-      Packet{dst_nid, context.my_nid, packet_id, content, static_cast<PacketMode::Type>(PacketMode::ONE_WAY | mode),
+      Packet{dst_nid, context.local_nid, packet_id, content, static_cast<PacketMode::Type>(PacketMode::ONE_WAY | mode),
              channel, module_no, command_id});
 
   delegate.module_do_send_packet(*this, std::move(packet));
@@ -209,8 +209,8 @@ void Module::send_error(const Packet& reply_for, const std::string& message) {
   }
 
   std::unique_ptr<const Packet> packet =
-      std::make_unique<const Packet>(Packet{reply_for.src_nid, context.my_nid, reply_for.id, content_bin, packet_mode,
-                                            reply_for.channel, reply_for.module_no, CommandID::ERROR});
+      std::make_unique<const Packet>(Packet{reply_for.src_nid, context.local_nid, reply_for.id, content_bin,
+                                            packet_mode, reply_for.channel, reply_for.module_no, CommandID::ERROR});
 
   delegate.module_do_send_packet(*this, std::move(packet));
 }
@@ -227,7 +227,7 @@ void Module::send_failure(const Packet& reply_for, std::shared_ptr<const std::st
   }
 
   std::unique_ptr<const Packet> packet =
-      std::make_unique<const Packet>(Packet{reply_for.src_nid, context.my_nid, reply_for.id, content, packet_mode,
+      std::make_unique<const Packet>(Packet{reply_for.src_nid, context.local_nid, reply_for.id, content, packet_mode,
                                             reply_for.channel, reply_for.module_no, CommandID::FAILURE});
 
   delegate.module_do_send_packet(*this, std::move(packet));
@@ -245,7 +245,7 @@ void Module::send_success(const Packet& reply_for, std::shared_ptr<const std::st
   }
 
   std::unique_ptr<const Packet> packet =
-      std::make_unique<const Packet>(Packet{reply_for.src_nid, context.my_nid, reply_for.id, content, packet_mode,
+      std::make_unique<const Packet>(Packet{reply_for.src_nid, context.local_nid, reply_for.id, content, packet_mode,
                                             reply_for.channel, reply_for.module_no, CommandID::SUCCESS});
 
   delegate.module_do_send_packet(*this, std::move(packet));

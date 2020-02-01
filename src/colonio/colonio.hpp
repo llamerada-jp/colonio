@@ -39,7 +39,7 @@ class Colonio {
       const std::string& url, const std::string& token, std::function<void(Colonio&)> on_success,
       std::function<void(Colonio&)> on_failure);
   void disconnect();
-  std::string get_my_nid();
+  std::string get_local_nid();
   std::tuple<double, double> set_position(double x, double y);
 
  protected:
