@@ -77,9 +77,9 @@ type Link struct {
 	group        *Group
 	nid          *proto.NodeID
 	mutex        sync.Mutex
-	timeCreate   int64
-	timeLastRecv int64
-	timeLastSend int64
+	timeCreate   time.Time
+	timeLastRecv time.Time
+	timeLastSend time.Time
 	srcIP        string
 	conn         net.Conn // WebSocket connection.
 	assigned     bool
@@ -177,14 +177,6 @@ var logger *Logger
 
 func SetLogger(l *Logger) {
 	logger = l
-}
-
-/**
- * 現在時刻(Unix time)をミリ秒単位で取得する。
- * @return ms
- */
-func getNowMs() int64 {
-	return time.Now().UTC().UnixNano() / 1000000
 }
 
 func newContext() *context {
@@ -404,7 +396,7 @@ func (seed *Seed) pollLink() {
 func (group *Group) createLink(context *context, conn net.Conn) *Link {
 	link := &Link{
 		group:      group,
-		timeCreate: getNowMs(),
+		timeCreate: time.Now(),
 		conn:       conn,
 	}
 
@@ -442,16 +434,21 @@ func (group *Group) execEachTick(context *context) {
 		defer group.unlockMutex(context)
 	}
 
-	timeNow := getNowMs()
+	timeNow := time.Now()
 
 	for link := range group.links {
-		// タイムアウトのチェック
-		if link.timeLastRecv+group.config.Timeout < timeNow {
+		base := link.timeCreate
+		if base.Before(link.timeLastRecv) {
+			base = link.timeLastRecv
+		}
+		duration := timeNow.Sub(base).Milliseconds()
+		// checking timeout
+		if duration > group.config.Timeout {
 			link.close(context)
 		}
 
-		if link.timeLastSend+group.config.PingInterval < timeNow &&
-			link.timeLastRecv+group.config.PingInterval < timeNow {
+		// checking ping interval
+		if duration > group.config.PingInterval {
 			link.sendPing(context)
 		}
 	}
@@ -535,6 +532,8 @@ func (link *Link) receive(context *context) (bool, error) {
 		if err := proto3.Unmarshal(payload, &packet); err != nil {
 			return false, err
 		}
+
+		link.timeLastRecv = time.Now()
 
 		if packet.DstNid.Type == NidTypeSeed {
 			if err := link.receivePacket(context, &packet); err != nil {
@@ -794,7 +793,7 @@ func (link *Link) sendPacket(context *context, packet *proto.SeedAccessor) error
 	if link.conn == nil {
 		return nil
 	}
-	link.timeLastSend = getNowMs()
+	link.timeLastSend = time.Now()
 	packetBin, err := proto3.Marshal(packet)
 	if err != nil {
 		logger.E.Fatalln(err)
