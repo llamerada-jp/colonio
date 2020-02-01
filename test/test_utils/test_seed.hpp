@@ -35,10 +35,10 @@ class TestSeed {
       flg_break(false),
       pid(0),
       path("/test"),
-      ping_interval(1000),
+      ping_interval(20 * 1000),
       port(8080),
       revision(0.1),
-      timeout(10000),
+      timeout(30 * 1000),
       update_period(500),
       force_update_times(20) {
   }
