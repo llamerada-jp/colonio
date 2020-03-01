@@ -17,26 +17,26 @@
 
 #include <functional>
 #include <list>
+#include <memory>
 
+#include "coord_system.hpp"
 #include "coordinate.hpp"
-#include "logger.hpp"
+#include "definition.hpp"
 #include "node_id.hpp"
-#include "scheduler.hpp"
 
 namespace colonio {
-class CoordSystem;
+class Logger;
+class Scheduler;
+
 class Context {
  public:
   LinkStatus::Type link_status;
-  Logger logger;
-  Scheduler scheduler;
+  Logger& logger;
+  Scheduler& scheduler;
   std::unique_ptr<CoordSystem> coord_system;
   const NodeID local_nid;
 
-  Context(LoggerDelegate& logger_delegate, SchedulerDelegate& sched_delegate);
-
-  static uint32_t get_rnd_32();
-  static uint64_t get_rnd_64();
+  Context(Logger& logger_, Scheduler& scheduler_);
 
   Coordinate get_my_position();
   bool has_my_position();

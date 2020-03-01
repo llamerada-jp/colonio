@@ -24,8 +24,10 @@
 
 #include "context.hpp"
 #include "convert.hpp"
+#include "packet.hpp"
 #include "routing_1d.hpp"
 #include "routing_2d.hpp"
+#include "scheduler.hpp"
 #include "utils.hpp"
 
 namespace colonio {
@@ -50,9 +52,9 @@ RoutingAlgorithm2DDelegate::~RoutingAlgorithm2DDelegate() {
  * @param delegate_ Delegate instance (should WebrtcBundle).
  */
 Routing::Routing(
-    Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, ModuleChannel::Type channel,
+    Context& context, APIModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, APIChannel::Type channel,
     const picojson::object& config) :
-    Module(context, module_delegate, channel, 0),
+    APIModule(context, module_delegate, channel, APIModuleChannel::Colonio::SYSTEM_ROUTING),
     CONFIG_UPDATE_PERIOD(Utils::get_json(config, "updatePeriod", ROUTING_UPDATE_PERIOD)),
     CONFIG_FORCE_UPDATE_TIMES(Utils::get_json(config, "forceUpdateTimes", ROUTING_FORCE_UPDATE_TIMES)),
     delegate(routing_delegate),
@@ -60,7 +62,7 @@ Routing::Routing(
     routing_2d(nullptr),
     node_status(LinkStatus::OFFLINE),
     seed_status(LinkStatus::OFFLINE),
-    RANDOM_WAIT_SEED_CONNECTION(Context::get_rnd_32() % ROUTING_SEED_RANDOM_WAIT),
+    RANDOM_WAIT_SEED_CONNECTION(Utils::get_rnd_32() % ROUTING_SEED_RANDOM_WAIT),
     passed_seed_connection(0),
     routing_countdown(CONFIG_FORCE_UPDATE_TIMES) {
   routing_1d = new Routing1D(context, *this);
@@ -86,8 +88,8 @@ const NodeID& Routing::get_relay_nid_1d(const Packet& packet) {
   return routing_1d->get_relay_nid(packet);
 }
 
-bool Routing::is_coverd_range_1d(const NodeID& nid) {
-  return routing_1d->is_coverd_range(nid);
+bool Routing::is_covered_range_1d(const NodeID& nid) {
+  return routing_1d->is_covered_range(nid);
 }
 
 const NodeID& Routing::get_relay_nid_2d(const Coordinate& dest) {

@@ -21,13 +21,14 @@ namespace colonio {
 System2DDelegate::~System2DDelegate() {
 }
 
-System2DBase::System2DBase(
-    Context& context, ModuleDelegate& module_delegate, System2DDelegate& system_delegate, ModuleChannel::Type channel, ModuleNo module_no) :
-    Module(context, module_delegate, channel, module_no),
+System2D::System2D(
+    Context& context, APIModuleDelegate& module_delegate, System2DDelegate& system_delegate, APIChannel::Type channel,
+    APIModuleChannel::Type module_channel) :
+    APIModule(context, module_delegate, channel, module_channel),
     delegate(system_delegate) {
 }
 
-const NodeID& System2DBase::get_relay_nid(const Coordinate& position) {
-  return delegate.system_2d_do_get_relay_nid(position);
+const NodeID& System2D::get_relay_nid(const Coordinate& position) {
+  return delegate.system_2d_do_get_relay_nid(*this, position);
 }
 }  // namespace colonio

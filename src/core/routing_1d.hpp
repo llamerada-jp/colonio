@@ -29,15 +29,16 @@ class Routing1D : public RoutingAlgorithm {
   void on_change_my_position(const Coordinate& position) override;
   void on_recv_packet(const NodeID& nid, const Packet& packet) override;
   void send_routing_info(RoutingProtocol::RoutingInfo* param) override;
-  bool update_routing_info(const std::set<NodeID>& online_links, bool has_update_ol,
-                           const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>,
-                           RoutingProtocol::RoutingInfo>>& routing_infos) override;
+  bool update_routing_info(
+      const std::set<NodeID>& online_links, bool has_update_ol,
+      const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>, RoutingProtocol::RoutingInfo>>& routing_infos)
+      override;
 
   bool on_change_online_links(const std::set<NodeID>& nids);
   bool on_recv_routing_info(const Packet& packet, const RoutingProtocol::RoutingInfo& routing_info);
 
   const NodeID& get_relay_nid(const Packet& packet);
-  bool is_coverd_range(const NodeID& nid);
+  bool is_covered_range(const NodeID& nid);
   bool is_orphan(unsigned int nodes_count);
 
  private:

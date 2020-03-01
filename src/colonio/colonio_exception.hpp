@@ -15,32 +15,20 @@
  */
 #pragma once
 
-#include <memory>
-
-#include "definition.hpp"
-#include "node_id.hpp"
+#include <exception>
+#include <string>
 
 namespace colonio {
-class Packet {
+class ColonioException : public std::exception {
  public:
-  static const unsigned int PACKET_HEAD_SIZE;
+  /// A message string for display or bug report.
+  const std::string message;
 
-  const NodeID dst_nid;
-  const NodeID src_nid;
-  const uint32_t id;
-  std::shared_ptr<const std::string> content;
-  const PacketMode::Type mode;
-  const APIChannel::Type channel;
-  const APIModuleChannel::Type module_channel;
-  const CommandID::Type command_id;
+  explicit ColonioException(const std::string& m);
 
-  template<typename T>
-  void parse_content(T* dst) const {
-    assert(content.get() != nullptr);
-    if (!dst->ParseFromString(*content)) {
-      /// @todo error
-      assert(false);
-    }
-  }
+  /**
+   * Pass message without line-no and file name.
+   */
+  const char* what() const noexcept override;
 };
 }  // namespace colonio

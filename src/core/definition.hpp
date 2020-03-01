@@ -26,6 +26,8 @@ typedef uint64_t vaddr_t;
 
 static const char PROTOCOL_VERSION[] = "A1";
 
+typedef uint32_t CallID;
+
 /**
  * Pipe/server connection status.
  */
@@ -47,16 +49,23 @@ static const char SEED[] = "seed";  ///< Server is a special node.
 static const char NEXT[] = "next";  ///< Next node is nodes of connecting direct from this node.
 }  // namespace NID
 
-namespace ModuleChannel {
+namespace APIChannel {
 typedef uint16_t Type;
-static const Type NONE           = 0;
-static const Type SEED           = 1;
-static const Type WEBRTC_CONNECT = 2;
-static const Type SYSTEM_ROUTING = 15;
-// static const Type SYSTEM_ROUTING_2D = 16;
-}  // namespace ModuleChannel
+static const Type NONE    = 0;
+static const Type COLONIO = 1;
+}  // namespace APIChannel
 
-typedef uint16_t ModuleNo;
+namespace APIModuleChannel {
+typedef uint16_t Type;
+static const Type NONE = 0;
+namespace Colonio {
+static const Type MAIN           = 1;
+static const Type SEED_ACCESSOR  = 2;
+static const Type NODE_ACCESSOR  = 3;
+static const Type SYSTEM_ROUTING = 4;
+// static const Type SYSTEM_ROUTING_2D = 16;
+}  // namespace Colonio
+}  // namespace APIModuleChannel
 
 namespace CommandID {
 typedef uint16_t Type;

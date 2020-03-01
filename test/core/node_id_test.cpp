@@ -18,8 +18,8 @@
 
 #include <gtest/gtest.h>
 
+#include "core/core.pb.h"
 #include "core/exception.hpp"
-#include "core/protocol.pb.h"
 
 using namespace colonio;
 
@@ -77,7 +77,7 @@ TEST(NodeIDTest, pb) {
 #define TEST00(T, V)                           \
   {                                            \
     NodeID itest00 = NodeID::T;                \
-    Protocol::NodeID ptest00;                  \
+    core::NodeID ptest00;                      \
     itest00.to_pb(&ptest00);                   \
     EXPECT_EQ(ptest00.type(), V);              \
     NodeID otest00 = NodeID::from_pb(ptest00); \
@@ -92,7 +92,7 @@ TEST(NodeIDTest, pb) {
 
   {
     NodeID itest01 = NodeID::from_str("0123456789abcdef9876543210ABCDEF");
-    Protocol::NodeID ptest01;
+    core::NodeID ptest01;
     itest01.to_pb(&ptest01);
     // EXPECT_EQ(ptest01.type(), Type::NORMAL);
     EXPECT_EQ(ptest01.id0(), 0x0123456789ABCDEF);
@@ -107,7 +107,7 @@ TEST(NodeIDTest, pb) {
 
   bool has_error = false;
   try {
-    Protocol::NodeID ptest02;
+    core::NodeID ptest02;
     ptest02.set_type(5);
     NodeID otest02 = NodeID::from_pb(ptest02);
 

@@ -19,8 +19,8 @@
 #include <mutex>
 #include <set>
 
+#include "api_module.hpp"
 #include "coordinate.hpp"
-#include "module.hpp"
 #include "node_id.hpp"
 #include "routing_protocol.pb.h"
 
@@ -75,18 +75,18 @@ class RoutingAlgorithm2DDelegate {
       RoutingAlgorithm& algorithm, const std::map<NodeID, Coordinate>& positions) = 0;
 };
 
-class Routing : public Module, public RoutingAlgorithm1DDelegate, public RoutingAlgorithm2DDelegate {
+class Routing : public APIModule, public RoutingAlgorithm1DDelegate, public RoutingAlgorithm2DDelegate {
  public:
   Routing(
-      Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, ModuleChannel::Type channel,
+      Context& context, APIModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, APIChannel::Type channel,
       const picojson::object& config);
   virtual ~Routing();
 
   const NodeID& get_relay_nid_1d(const Packet& packet);
-  bool is_coverd_range_1d(const NodeID& nid);
+  bool is_covered_range_1d(const NodeID& nid);
 
   const NodeID& get_relay_nid_2d(const Coordinate& dest);
-  bool is_coverd_range_2d(const Coordinate& position);
+  bool is_covered_range_2d(const Coordinate& position);
 
   // next, seed, steps
   std::tuple<const NodeID&, const NodeID&, uint32_t> get_route_to_seed();

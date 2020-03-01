@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include <colonio/colonio_exception.hpp>
 #include <colonio/constant.hpp>
 #include <colonio/map.hpp>
 #include <colonio/pubsub_2d.hpp>
@@ -25,9 +26,6 @@
 #include <tuple>
 
 namespace colonio {
-class Colonio;
-class ColonioImpl;
-
 class Colonio {
  public:
   Colonio();
@@ -35,23 +33,18 @@ class Colonio {
 
   Map& access_map(const std::string& name);
   PubSub2D& access_pubsub2d(const std::string& name);
-  void connect(
-      const std::string& url, const std::string& token, std::function<void(Colonio&)> on_success,
-      std::function<void(Colonio&)> on_failure);
+  void connect(const std::string& url, const std::string& token);
   void disconnect();
   std::string get_local_nid();
   std::tuple<double, double> set_position(double x, double y);
 
  protected:
-  virtual void on_require_invoke(unsigned int msec) = 0;
   virtual void on_output_log(LogLevel::Type level, const std::string& message);
   virtual void on_debug_event(DebugEvent::Type event, const std::string& json);
 
-  unsigned int invoke();
-
  private:
-  friend ColonioImpl;
-  std::unique_ptr<ColonioImpl> impl;
+  class Impl;
+  std::unique_ptr<Impl> impl;
 
   Colonio(const Colonio&);
   Colonio& operator=(const Colonio&);

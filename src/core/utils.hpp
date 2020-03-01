@@ -36,7 +36,10 @@ class Packet;
     }
 
 #else
-#  define colonio_assert(EX, FORMAT, ...) exit(-1);
+#  define colonio_assert(EX, FORMAT, ...) \
+    if (!(EX)) {                          \
+      exit(-1);                           \
+    }
 #endif
 
 /**
@@ -103,9 +106,11 @@ unsigned int
 get_json<unsigned int>(const picojson::object& obj, const std::string& key, const unsigned int& default_value);
 
 std::string dump_binary(const std::string& bin);
-std::string dump_packet(const Packet& packet, unsigned int indent = 0);
+std::string dump_packet(const Packet& packet, unsigned int indent = 2);
 int64_t get_current_msec();
 std::string get_current_thread_id();
+uint32_t get_rnd_32();
+uint64_t get_rnd_64();
 
 template<typename T>
 const T* get_json_value(const picojson::object& parent, const std::string& key) {

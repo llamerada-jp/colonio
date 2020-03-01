@@ -31,7 +31,6 @@
 #include <sstream>
 
 #include "colonio/colonio.hpp"
-#include "colonio/colonio_libuv.hpp"
 
 static const std::string SERVER_URL = "http://localdev:8080/ws/simulate";
 static const std::string REDIS_HOST = "localdev";
@@ -72,11 +71,8 @@ void on_map_set();
 void on_map_get_failure(colonio::MapFailureReason reason);
 void on_map_set_failure(colonio::MapFailureReason reason);
 
-class MyColonio : public colonio_helper::ColonioLibuv {
+class MyColonio : public colonio::Colonio {
  public:
-  MyColonio(uv_loop_t* loop) : ColonioLibuv(loop) {
-  }
-
   void on_output_log(colonio::LogLevel::Type level, const std::string& message) override {
     time_t now = time(nullptr);
     if (level == colonio::LogLevel::INFO) {
@@ -200,8 +196,9 @@ int main(int argc, char* argv[]) {
   rc = redisConnect(REDIS_HOST.c_str(), REDIS_PORT);
 
   // colonio
-  my_colonio.reset(new MyColonio(loop));
-  my_colonio->connect(SERVER_URL, "", on_success, on_failure);
+  my_colonio = std::make_unique<MyColonio>();
+  my_colonio->connect(SERVER_URL, "");
+  on_success(*my_colonio);
 
   // libuv for timer
   is_running = true;
@@ -210,7 +207,7 @@ int main(int argc, char* argv[]) {
   uv_timer_start(&timer, on_timer, 0, 1000);
 
   // loop
-  my_colonio->run();
+  uv_run(loop, UV_RUN_DEFAULT);
 
   // quit
   my_colonio.reset();

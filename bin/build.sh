@@ -64,7 +64,6 @@ setup_native() {
     req_pkg=''
     has_pkg=$(brew list)
     for p in \
-      asio\
       cmake\
       glog\
       libuv\
@@ -86,13 +85,13 @@ setup_native() {
       sudo apt-get install -y pkg-config automake cmake build-essential curl libcurl4-nss-dev libtool libx11-dev libgoogle-glog-dev
     fi
 
-    setup_asio
     setup_libuv
   fi
 
+  setup_asio
   setup_picojson
-  setup_websocketpp
   setup_protoc_native
+  setup_websocketpp
   setup_webrtc
   if [ "${WITH_TEST}" = 'true' ]; then
     setup_gtest

@@ -1,18 +1,18 @@
 syntax = "proto3";
 
-import "core/protocol.proto";
+import "core/core.proto";
 
 package colonio.RoutingProtocol;
 
 message RoutingInfoOne {
   int64 r1d_score = 1;
-  Protocol.Coordinate r2d_position = 2;
+  core.Coordinate r2d_position = 2;
 }
 
 message RoutingInfo {
   uint32 seed_distance = 1;
-  Protocol.NodeID seed_nid = 2;
-  Protocol.Coordinate r2d_position = 3;
+  core.NodeID seed_nid = 2;
+  core.Coordinate r2d_position = 3;
   // Key type of map is string from node-id.
   map<string, RoutingInfoOne> nodes = 4;
 }

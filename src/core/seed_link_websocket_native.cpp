@@ -17,6 +17,7 @@
 #include "seed_link_websocket_native.hpp"
 
 #include "context.hpp"
+#include "scheduler.hpp"
 
 namespace colonio {
 SeedLinkWebsocketNative::SeedLinkWebsocketNative(SeedLinkDelegate& delegate_, Context& context_) :

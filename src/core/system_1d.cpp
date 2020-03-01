@@ -20,14 +20,14 @@ namespace colonio {
 System1DDelegate::~System1DDelegate() {
 }
 
-System1DBase::System1DBase(
-    Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate, ModuleChannel::Type channel,
-    ModuleNo module_no) :
-    Module(context, module_delegate, channel, module_no),
+System1D::System1D(
+    Context& context, APIModuleDelegate& module_delegate, System1DDelegate& system_delegate, APIChannel::Type channel,
+    APIModuleChannel::Type module_channel) :
+    APIModule(context, module_delegate, channel, module_channel),
     delegate(system_delegate) {
 }
 
-bool System1DBase::system_1d_check_coverd_range(const NodeID& nid) {
-  return delegate.system_1d_do_check_coverd_range(nid);
+bool System1D::system_1d_check_covered_range(const NodeID& nid) {
+  return delegate.system_1d_do_check_covered_range(*this, nid);
 }
 }  // namespace colonio

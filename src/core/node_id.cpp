@@ -23,12 +23,12 @@ extern "C" {
 #include <string>
 #include <tuple>
 
-#include "context.hpp"
 #include "convert.hpp"
+#include "core.pb.h"
 #include "definition.hpp"
 #include "exception.hpp"
 #include "node_id.hpp"
-#include "protocol.pb.h"
+#include "utils.hpp"
 
 namespace colonio {
 // Node types.
@@ -171,7 +171,7 @@ NodeID NodeID::from_str(const std::string& str) {
  * @return A node-id.
  * @exception Raise when a illegal packet was selected.
  */
-NodeID NodeID::from_pb(const Protocol::NodeID& pb) {
+NodeID NodeID::from_pb(const core::NodeID& pb) {
   switch (pb.type()) {
     case Type::NONE:
       return NodeID::NONE;
@@ -223,7 +223,7 @@ NodeID NodeID::make_hash_from_str(const std::string& str) {
  * @return A node-id.
  */
 NodeID NodeID::make_random() {
-  return NodeID(Context::get_rnd_64(), Context::get_rnd_64());
+  return NodeID(Utils::get_rnd_64(), Utils::get_rnd_64());
 }
 
 NodeID& NodeID::operator=(const NodeID& src) {
@@ -477,7 +477,7 @@ std::string NodeID::to_str() const {
   }
 }
 
-void NodeID::to_pb(Protocol::NodeID* pb) const {
+void NodeID::to_pb(core::NodeID* pb) const {
   if (type == Type::NORMAL) {
     pb->set_type(Type::NORMAL);
     pb->set_id0(id[0]);

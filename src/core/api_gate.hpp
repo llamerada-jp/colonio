@@ -15,32 +15,24 @@
  */
 #pragma once
 
-#include <memory>
+#include <functional>
 
+#include "api.pb.h"
+#include "colonio/colonio_exception.hpp"
 #include "definition.hpp"
-#include "node_id.hpp"
 
 namespace colonio {
-class Packet {
+class APIGateBase {
  public:
-  static const unsigned int PACKET_HEAD_SIZE;
-
-  const NodeID dst_nid;
-  const NodeID src_nid;
-  const uint32_t id;
-  std::shared_ptr<const std::string> content;
-  const PacketMode::Type mode;
-  const APIChannel::Type channel;
-  const APIModuleChannel::Type module_channel;
-  const CommandID::Type command_id;
-
-  template<typename T>
-  void parse_content(T* dst) const {
-    assert(content.get() != nullptr);
-    if (!dst->ParseFromString(*content)) {
-      /// @todo error
-      assert(false);
-    }
-  }
+  virtual std::unique_ptr<api::Reply> call_sync(APIChannel::Type channel, const api::Call& call)           = 0;
+  virtual void init()                                                                                      = 0;
+  virtual void quit()                                                                                      = 0;
+  virtual void set_event_hook(APIChannel::Type channel, std::function<void(const api::Event& e)> on_event) = 0;
 };
 }  // namespace colonio
+
+#ifndef EMSCRIPTEN
+#  include "api_gate_mt.hpp"
+#else
+#  include "api_gate_wasm.hpp"
+#endif

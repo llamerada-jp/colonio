@@ -17,8 +17,10 @@
 
 #include <cassert>
 
+#include "core/context.hpp"
 #include "core/convert.hpp"
 #include "core/definition.hpp"
+#include "core/logger.hpp"
 #include "core/utils.hpp"
 #include "core/value_impl.hpp"
 #include "map_paxos_protocol.pb.h"
@@ -51,10 +53,11 @@ MapPaxos::ProposerInfo::ProposerInfo(PAXOS_N np_, PAXOS_N ip_, const Value& valu
 }
 
 /* class MapPaxos::CommandGet::Info */
-MapPaxos::CommandGet::Info::Info(MapPaxos& parent_, std::unique_ptr<Value> key_, int count_retry_) :
+MapPaxos::CommandGet::Info::Info(MapPaxos& parent_, CallID call_id_, std::unique_ptr<Value> key_, int count_retry_) :
+    parent(parent_),
+    call_id(call_id_),
     key(std::move(key_)),
     count_retry(count_retry_),
-    parent(parent_),
     count_ng(0),
     is_finished(false) {
 }
@@ -252,7 +255,7 @@ void MapPaxos::CommandPrepare::postprocess() {
       case CommandID::MapPaxos::SET: {
         MapPaxosProtocol::SetFailure param;
         param.set_reason(static_cast<uint32_t>(MapFailureReason::CHANGED_PROPOSER));
-        info->parent.send_failure(*info->packet_reply, Module::serialize_pb(param));
+        info->parent.send_failure(*info->packet_reply, APIModule::serialize_pb(param));
       } break;
 
       case CommandID::MapPaxos::HINT: {
@@ -379,7 +382,7 @@ void MapPaxos::CommandAccept::postprocess() {
       case CommandID::MapPaxos::SET: {
         MapPaxosProtocol::SetFailure param;
         param.set_reason(static_cast<uint32_t>(MapFailureReason::CHANGED_PROPOSER));
-        info->parent.send_failure(*info->packet_reply, Module::serialize_pb(param));
+        info->parent.send_failure(*info->packet_reply, APIModule::serialize_pb(param));
       } break;
 
       case CommandID::MapPaxos::HINT: {
@@ -450,9 +453,9 @@ void MapPaxos::CommandAccept::postprocess() {
 
 /* class KeyValueStore */
 MapPaxos::MapPaxos(
-    Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate,
-    const picojson::object& config, ModuleNo module_no) :
-    System1D(context, module_delegate, system_delegate, Utils::get_json<double>(config, "channel"), module_no),
+    Context& context, APIModuleDelegate& module_delegate, System1DDelegate& system_delegate,
+    const picojson::object& config, APIModuleChannel::Type module_channel) :
+    System1D(context, module_delegate, system_delegate, Utils::get_json<double>(config, "channel"), module_channel),
     conf_retry_max(MAP_PAXOS_RETRY_MAX) {
   Utils::check_json_optional(config, "retryMax", &conf_retry_max);
 }
@@ -544,7 +547,7 @@ bool MapPaxos::check_key_acceptor(const Value& key) {
   NodeID hash = ValueImpl::to_hash(key, solt);
   for (int i = 0; i < NUM_ACCEPTOR; i++) {
     hash += NodeID::QUARTER;
-    if (system_1d_check_coverd_range(hash)) {
+    if (system_1d_check_covered_range(hash)) {
       return true;
     }
   }
@@ -553,7 +556,7 @@ bool MapPaxos::check_key_acceptor(const Value& key) {
 
 bool MapPaxos::check_key_proposer(const Value& key) {
   NodeID hash = ValueImpl::to_hash(key, solt);
-  return system_1d_check_coverd_range(hash);
+  return system_1d_check_covered_range(hash);
 }
 
 #ifndef NDEBUG
@@ -645,12 +648,12 @@ void MapPaxos::recv_packet_hint(std::unique_ptr<const Packet> packet) {
     if (proposer.reset) {
       logd("Prepare.(id=%s)", Convert::int2str(packet->id).c_str());
       send_packet_prepare(
-          proposer, Module::copy_packet_for_reply(*packet), std::make_unique<Value>(key), MapOption::NONE);
+          proposer, APIModule::copy_packet_for_reply(*packet), std::make_unique<Value>(key), MapOption::NONE);
 
     } else {
       logd("Accept.(id=%s)", Convert::int2str(packet->id).c_str());
       send_packet_accept(
-          proposer, Module::copy_packet_for_reply(*packet), std::make_unique<Value>(key), MapOption::NONE);
+          proposer, APIModule::copy_packet_for_reply(*packet), std::make_unique<Value>(key), MapOption::NONE);
     }
 
   } else {
@@ -819,10 +822,10 @@ void MapPaxos::recv_packet_set(std::unique_ptr<const Packet> packet) {
 
     // Same logic with hint command.
     if (proposer.reset) {
-      send_packet_prepare(proposer, Module::copy_packet_for_reply(*packet), std::make_unique<Value>(key), opt);
+      send_packet_prepare(proposer, APIModule::copy_packet_for_reply(*packet), std::make_unique<Value>(key), opt);
 
     } else {
-      send_packet_accept(proposer, Module::copy_packet_for_reply(*packet), std::make_unique<Value>(key), opt);
+      send_packet_accept(proposer, APIModule::copy_packet_for_reply(*packet), std::make_unique<Value>(key), opt);
     }
   }
 }

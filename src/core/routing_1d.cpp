@@ -19,6 +19,7 @@
 
 #include "context.hpp"
 #include "convert.hpp"
+#include "packet.hpp"
 #include "utils.hpp"
 
 namespace colonio {
@@ -213,7 +214,7 @@ const NodeID& Routing1D::get_relay_nid(const Packet& packet) {
   }
 }
 
-bool Routing1D::is_coverd_range(const NodeID& nid) {
+bool Routing1D::is_covered_range(const NodeID& nid) {
   if (range_min_nid == NodeID::NONE) {
     return true;
   } else {
@@ -431,7 +432,7 @@ void Routing1D::update_required_nodes() {
     }
 
     if (need_connect && rnids.size() > 0) {
-      int idx           = context.get_rnd_32() % rnids.size();
+      int idx           = Utils::get_rnd_32() % rnids.size();
       const NodeID& nid = rnids[idx];
       required_nodes.insert(nid);
     }

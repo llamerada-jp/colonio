@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package colonio.api;
+
+import "core/colonio_api.proto";
+
+message NoParam {
+}
+
+message Call {
+  uint32 id = 1;
+  uint32 channel = 2;
+
+  oneof param {
+    colonio.Connect colonio_connect = 1001;
+    NoParam colonio_disconnect = 1002;
+    NoParam colonio_get_local_nid = 1003;
+    colonio.SetPosition colonio_set_position = 1004;
+  }
+}
+
+message Success {
+}
+
+message Failure {
+  string message = 1;
+}
+
+message Reply {
+  uint32 id = 1;
+
+  oneof param {
+    Success success = 11;
+    Failure failure = 12;
+
+    colonio.ConnectReply colonio_connect = 1001;
+    colonio.GetLocalNIDReply colonio_get_local_nid = 1003;
+    colonio.SetPositionReply colonio_set_position = 1004;
+  }
+}
+
+message Event {
+  uint32 channel = 1;
+
+  oneof param {
+    colonio.LogEvent colonio_log = 1001;
+    colonio.DebugEvent colonio_debug = 1002;
+  }
+}

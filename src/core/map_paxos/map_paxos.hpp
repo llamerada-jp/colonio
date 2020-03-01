@@ -18,24 +18,19 @@
 #include <functional>
 
 #include "colonio/map.hpp"
+#include "colonio/value.hpp"
+#include "core/command.hpp"
 #include "core/system_1d.hpp"
 
 namespace colonio {
 typedef uint32_t PAXOS_N;
 
-class MapPaxos : public System1D<Map> {
+class MapPaxos : public System1D {
  public:
   MapPaxos(
-      Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate,
-      const picojson::object& config, ModuleNo module_no);
+      Context& context, APIModuleDelegate& module_delegate, System1DDelegate& system_delegate,
+      const picojson::object& config, APIModuleChannel::Type module_channel);
   virtual ~MapPaxos();
-
-  void get(
-      const Value& key, const std::function<void(const Value&)>& on_success,
-      const std::function<void(MapFailureReason)>& on_failure) override;
-  void set(
-      const Value& key, const Value& value, const std::function<void()>& on_success,
-      const std::function<void(MapFailureReason)>& on_failure, MapOption::Type opt = 0x0) override;
 
   void system_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) override;
 
@@ -67,20 +62,20 @@ class MapPaxos : public System1D<Map> {
    public:
     class Info {
      public:
+      MapPaxos& parent;
+      CallID call_id;
       std::unique_ptr<Value> key;
       int count_retry;
+
       // (n, i), value
       std::map<std::tuple<PAXOS_N, PAXOS_N>, Value> ok_values;
       // (n, i), count
       std::map<std::tuple<PAXOS_N, PAXOS_N>, int> ok_counts;
 
-      MapPaxos& parent;
       int count_ng;
       bool is_finished;
-      std::function<void(const Value&)> cb_on_success;
-      std::function<void(MapFailureReason)> cb_on_failure;
 
-      Info(MapPaxos& parent_, std::unique_ptr<Value> key_, int count_retry_);
+      Info(MapPaxos& parent_, CallID call_id_, std::unique_ptr<Value> key_, int count_retry_);
     };
 
     std::shared_ptr<Info> info;
@@ -98,16 +93,13 @@ class MapPaxos : public System1D<Map> {
    public:
     class Info {
      public:
-      std::function<void()> cb_on_success;
-      std::function<void(MapFailureReason)> cb_on_failure;
+      MapPaxos& parent;
+      CallID call_id;
       const Value key;
       const Value value;
       const MapOption::Type opt;
-      MapPaxos& parent;
 
-      Info(
-          MapPaxos& parent_, const Value& key_, const Value& value_, const std::function<void()>& cb_on_success_,
-          const std::function<void(MapFailureReason)>& cb_on_failure_, const MapOption::Type& opt_);
+      Info(MapPaxos& parent_, CallID call_id_, const Value& key_, const Value& value_, const MapOption::Type& opt_);
     };
     std::unique_ptr<Info> info;
 

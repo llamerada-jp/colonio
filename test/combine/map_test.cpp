@@ -20,7 +20,6 @@
 #include "test_utils/all.hpp"
 
 using namespace colonio;
-using namespace colonio_helper;
 using ::testing::MatchesRegex;
 
 TEST(MapTest, set_get_single) {
@@ -35,58 +34,50 @@ TEST(MapTest, set_get_single) {
   seed.add_module_map_paxos(MAP_NAME, 256);
   seed.run();
 
-  ColonioNode node("node", helper.get_libuv_instance());
+  ColonioNode node("node");
 
   // connect node
   printf("connect node1\n");
-  node.connect(
-      URL, TOKEN,
-      [&](Colonio& c) {
-        Map& map = c.access_map(MAP_NAME);
+  node.connect(URL, TOKEN);
+  Map& map = node.access_map(MAP_NAME);
 
-        // get(key)
-        printf("get a not existed value.\n");
-        map.get(
-            Value(KEY_NAME),
-            [&](const Value& v) {
-              FAIL();
-              c.disconnect();
-            },
-            [&](MapFailureReason reason) {
-              EXPECT_EQ(reason, MapFailureReason::NOT_EXIST_KEY);
+  // get(key)
+  printf("get a not existed value.\n");
+  map.get(
+      Value(KEY_NAME),
+      [&](const Value& v) {
+        FAIL();
+        node.disconnect();
+      },
+      [&](MapFailureReason reason) {
+        EXPECT_EQ(reason, MapFailureReason::NOT_EXIST_KEY);
 
-              // set(key, val)
-              printf("set a value.\n");
-              map.set(
-                  Value(KEY_NAME), Value(VALUE),
-                  [&]() {
-                    // get(key)
-                    printf("get a existed value.\n");
-                    map.get(
-                        Value(KEY_NAME),
-                        [&](const Value& v) {
-                          helper.mark("a");
-                          EXPECT_EQ(v.get<std::string>(), VALUE);
-                          c.disconnect();
-                        },
-                        [&](MapFailureReason reason) {
-                          ADD_FAILURE();
-                          c.disconnect();
-                        });
+        // set(key, val)
+        printf("set a value.\n");
+        map.set(
+            Value(KEY_NAME), Value(VALUE),
+            [&]() {
+              // get(key)
+              printf("get a existed value.\n");
+              map.get(
+                  Value(KEY_NAME),
+                  [&](const Value& v) {
+                    helper.mark("a");
+                    EXPECT_EQ(v.get<std::string>(), VALUE);
+                    node.disconnect();
                   },
                   [&](MapFailureReason reason) {
                     ADD_FAILURE();
-                    c.disconnect();
+                    node.disconnect();
                   });
+            },
+            [&](MapFailureReason reason) {
+              ADD_FAILURE();
+              node.disconnect();
             });
-      },
-      [&](Colonio& c) {
-        ADD_FAILURE();
-        c.disconnect();
       });
 
-  // node.run();
-  helper.run();
+  node.disconnect();
   EXPECT_THAT(helper.get_route(), MatchesRegex("^a$"));
 }
 
@@ -102,75 +93,61 @@ TEST(MapTest, set_get_multi) {
   seed.add_module_map_paxos(MAP_NAME, 256);
   seed.run();
 
-  ColonioNode node1("node1", helper.get_libuv_instance());
-  ColonioNode node2("node2", helper.get_libuv_instance());
+  ColonioNode node1("node1");
+  ColonioNode node2("node2");
 
   // connect node1
   printf("connect node1\n");
-  node1.connect(
-      URL, TOKEN,
-      [&](Colonio& c1) {
-        // connect node2
-        printf("connect node2\n");
-        node2.connect(
-            URL, TOKEN,
-            [&](Colonio& c2) {
-              Map& map1 = c1.access_map(MAP_NAME);
-              Map& map2 = c2.access_map(MAP_NAME);
-              EXPECT_NE(&c1, &c2);
+  node1.connect(URL, TOKEN);
+  // connect node2
+  printf("connect node2\n");
+  node2.connect(URL, TOKEN);
 
-              // get(key) @ node1
-              printf("get a not existed value.\n");
-              map1.get(
+  Map& map1 = node1.access_map(MAP_NAME);
+  Map& map2 = node2.access_map(MAP_NAME);
+
+  // get(key) @ node1
+  printf("get a not existed value.\n");
+  map1.get(
+      Value(KEY_NAME),
+      [&](const Value& v) {
+        FAIL();
+        node1.disconnect();
+        node2.disconnect();
+      },
+      [&](MapFailureReason reason) {
+        EXPECT_EQ(reason, MapFailureReason::NOT_EXIST_KEY);
+
+        // set(key, val) @ node1
+        printf("set a value.\n");
+        map1.set(
+            Value(KEY_NAME), Value(VALUE),
+            [&]() {
+              // get(key) @ node2
+              printf("get a existed value.\n");
+              map2.get(
                   Value(KEY_NAME),
-                  [&](const Value& v) {
-                    FAIL();
-                    c1.disconnect();
-                    c2.disconnect();
+                  [&](const Value& v2) {
+                    helper.mark("a");
+                    EXPECT_EQ(v2.get<std::string>(), VALUE);
+                    node1.disconnect();
+                    node2.disconnect();
                   },
                   [&](MapFailureReason reason) {
-                    EXPECT_EQ(reason, MapFailureReason::NOT_EXIST_KEY);
-
-                    // set(key, val) @ node1
-                    printf("set a value.\n");
-                    map1.set(
-                        Value(KEY_NAME), Value(VALUE),
-                        [&]() {
-                          // get(key) @ node2
-                          printf("get a existed value.\n");
-                          map2.get(
-                              Value(KEY_NAME),
-                              [&](const Value& v2) {
-                                helper.mark("a");
-                                EXPECT_EQ(v2.get<std::string>(), VALUE);
-                                c1.disconnect();
-                                c2.disconnect();
-                              },
-                              [&](MapFailureReason reason) {
-                                ADD_FAILURE();
-                                c1.disconnect();
-                                c2.disconnect();
-                              });
-                        },
-                        [&](MapFailureReason reason) {
-                          ADD_FAILURE();
-                          c1.disconnect();
-                          c2.disconnect();
-                        });
+                    ADD_FAILURE();
+                    node1.disconnect();
+                    node2.disconnect();
                   });
             },
-            [&](Colonio& c2) {
+            [&](MapFailureReason reason) {
               ADD_FAILURE();
-              c2.disconnect();
-              c1.disconnect();
+              node1.disconnect();
+              node2.disconnect();
             });
-      },
-      [&](Colonio& c1) {
-        ADD_FAILURE();
-        c1.disconnect();
       });
 
-  // node.run();
-  helper.run();
+  node2.disconnect();
+  node1.disconnect();
+
   EXPECT_THAT(helper.get_route(), MatchesRegex("^a$"));
 }

@@ -28,8 +28,8 @@
 namespace colonio {
 PubSub2DImpl::PubSub2DImpl(
     Context& context, ModuleDelegate& module_delegate, System2DDelegate& system_delegate,
-    const picojson::object& config, ModuleNo module_no) :
-    System2D(context, module_delegate, system_delegate, Utils::get_json<double>(config, "channel"), module_no),
+    const picojson::object& config, APIModuleChannel::Type module_channel) :
+    System2D(context, module_delegate, system_delegate, Utils::get_json<double>(config, "channel"), module_channel),
     conf_cache_time(PUBSUB2D_CACHE_TIME) {
   Utils::check_json_optional(config, "cacheTime", &conf_cache_time);
 
@@ -161,9 +161,9 @@ void PubSub2DImpl::CommandPass::on_success(std::unique_ptr<const Packet> packet)
 }
 
 uint64_t PubSub2DImpl::assign_uid() {
-  uint64_t uid = context.get_rnd_64();
+  uint64_t uid = Utils::get_rnd_64();
   while (cache.find(uid) != cache.end()) {
-    uid = context.get_rnd_64();
+    uid = Utils::get_rnd_64();
   }
   return uid;
 }

@@ -27,22 +27,10 @@ TEST(ConnectTest, connect_single) {
   TestSeed seed;
   seed.run();
 
-  ColonioNode node("node", helper.get_libuv_instance());
+  ColonioNode node("node");
 
-  node.connect(
-      "http://localhost:8080/test", "",
-      [&](Colonio& c) {
-        helper.mark("a");
-        c.disconnect();
-      },
-      [&](Colonio& c) {
-        FAIL();
-        c.disconnect();
-      });
-
-  // node.run();
-  helper.run();
-  EXPECT_THAT(helper.get_route(), MatchesRegex("^a$"));
+  node.connect("http://localhost:8080/test", "");
+  node.disconnect();
 }
 
 TEST(ConnectTest, connect_multi) {
@@ -57,40 +45,20 @@ TEST(ConnectTest, connect_multi) {
   seed.add_module_map_paxos(MAP_NAME, 256);
   seed.run();
 
-  ColonioNode node1("node1", helper.get_libuv_instance());
-  ColonioNode node2("node2", helper.get_libuv_instance());
+  ColonioNode node1("node1");
+  ColonioNode node2("node2");
 
   // connect node1
   printf("connect node1\n");
-  node1.connect(
-      URL, TOKEN,
-      [&](Colonio& c1) {
-        // connect node2
-        printf("connect node2\n");
-        node2.connect(
-            URL, TOKEN,
-            [&](Colonio& c2) {
-              helper.mark("a");
-              EXPECT_NE(&node1, &node2);
-              EXPECT_NE(&c1, &c2);
-              EXPECT_STRNE(node1.get_local_nid().c_str(), node2.get_local_nid().c_str());
-              EXPECT_EQ(&node1, &c1);
-              EXPECT_EQ(&node2, &c2);
-              c2.disconnect();
-              c1.disconnect();
-            },
-            [&](Colonio& c2) {
-              ADD_FAILURE();
-              c2.disconnect();
-              c1.disconnect();
-            });
-      },
-      [&](Colonio& c1) {
-        ADD_FAILURE();
-        c1.disconnect();
-      });
+  node1.connect(URL, TOKEN);
 
-  // node.run();
-  helper.run();
-  EXPECT_THAT(helper.get_route(), MatchesRegex("^a$"));
+  // connect node2
+  printf("connect node2\n");
+  node2.connect(URL, TOKEN);
+
+  EXPECT_NE(&node1, &node2);
+  EXPECT_STRNE(node1.get_local_nid().c_str(), node2.get_local_nid().c_str());
+
+  node2.disconnect();
+  node1.disconnect();
 }

@@ -19,7 +19,6 @@
 #include <cmath>
 #include <limits>
 
-#include "context.hpp"
 #include "utils.hpp"
 
 namespace colonio {
@@ -27,8 +26,8 @@ CoordSystemSphere::CoordSystemSphere(const picojson::object& config) :
     CoordSystem(M_PI * -1.0, M_PI * -0.5, M_PI * 1.0, M_PI * 0.5, 0.0001 / 60.0),
     conf_radius(0),
     my_position(
-        (2.0 * M_PI * static_cast<double>(Context::get_rnd_32()) / static_cast<double>(UINT32_MAX)) - M_PI * 1.0,
-        (1.0 * M_PI * static_cast<double>(Context::get_rnd_32()) / static_cast<double>(UINT32_MAX)) - M_PI * 0.5) {
+        (2.0 * M_PI * static_cast<double>(Utils::get_rnd_32()) / static_cast<double>(UINT32_MAX)) - M_PI * 1.0,
+        (1.0 * M_PI * static_cast<double>(Utils::get_rnd_32()) / static_cast<double>(UINT32_MAX)) - M_PI * 0.5) {
   conf_radius = Utils::get_json<double>(config, "radius");
 }
 

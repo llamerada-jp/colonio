@@ -20,6 +20,8 @@
 
 #include "context.hpp"
 #include "convert.hpp"
+#include "logger.hpp"
+#include "scheduler.hpp"
 #include "webrtc_link.hpp"
 
 namespace colonio {
@@ -130,7 +132,7 @@ WebrtcLinkNative::~WebrtcLinkNative() {
 }
 
 void WebrtcLinkNative::disconnect() {
-  logd("Disconnect.(nid= %s)", nid.to_str().c_str());
+  logd("Disconnect.(nid=%s)", nid.to_str().c_str());
 
   init_data.reset();
   if (peer_connection != nullptr) {

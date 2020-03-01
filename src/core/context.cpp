@@ -16,38 +16,20 @@
 #include "context.hpp"
 
 #include <cassert>
-#include <mutex>
-#include <random>
 
 #include "coord_system.hpp"
+#include "logger.hpp"
 
 namespace colonio {
 
-// Random value generator.
-static std::random_device seed_gen;
-static std::mt19937 rnd32(seed_gen());
-static std::mt19937_64 rnd64(seed_gen());
-static std::mutex mutex32;
-static std::mutex mutex64;
-
-Context::Context(LoggerDelegate& logger_delegate, SchedulerDelegate& sched_delegate) :
+Context::Context(Logger& logger_, Scheduler& scheduler_) :
     link_status(LinkStatus::OFFLINE),
-    logger(logger_delegate),
-    scheduler(sched_delegate),
+    logger(logger_),
+    scheduler(scheduler_),
     local_nid(NodeID::make_random()) {
 #ifndef NDEBUG
   enable_debug_event = false;
 #endif
-}
-
-uint32_t Context::get_rnd_32() {
-  std::lock_guard<std::mutex> guard(mutex32);
-  return rnd32();
-}
-
-uint64_t Context::get_rnd_64() {
-  std::lock_guard<std::mutex> guard(mutex64);
-  return rnd64();
 }
 
 Coordinate Context::get_my_position() {

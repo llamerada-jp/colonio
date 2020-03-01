@@ -20,8 +20,8 @@
 #include <string>
 
 #include "colonio/value.hpp"
+#include "core.pb.h"
 #include "node_id.hpp"
-#include "protocol.pb.h"
 
 namespace colonio {
 class ValueImpl {
@@ -45,8 +45,8 @@ class ValueImpl {
   ValueImpl(const ValueImpl& src);
   virtual ~ValueImpl();
 
-  static void to_pb(Protocol::Value* pb, const Value& value);
-  static Value from_pb(const Protocol::Value& pb);
+  static void to_pb(core::Value* pb, const Value& value);
+  static Value from_pb(const core::Value& pb);
 
   static NodeID to_hash(const Value& value, const std::string& solt);
   static std::string to_str(const Value& value);

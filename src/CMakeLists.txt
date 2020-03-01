@@ -3,27 +3,32 @@
 ##
 file(GLOB HEADER_FILES "*.hpp")
 set(COLONIO_FILES
+  core/api.pb.cc
+  core/api_entry.cpp
+  core/api_entry_bundler.cpp
+  core/api_module.cpp
+  core/api_module_bundler.cpp
+  core/colonio_api.pb.cc
+  core/colonio_exception.cpp
   core/command.cpp
   core/context.cpp
   core/convert.cpp
   core/coord_system.cpp
   core/coord_system_sphere.cpp
   core/coordinate.cpp
+  core/core.pb.cc
   core/exception.cpp
   core/export_c.cpp
   core/logger.cpp
   core/map.cpp
-  core/map_paxos/map_paxos.cpp
-  core/map_paxos/map_paxos_protocol.pb.cc
-  core/module.cpp
-  core/module_protocol.pb.cc
+  #core/map_paxos/map_paxos.cpp
+  #core/map_paxos/map_paxos_protocol.pb.cc
   core/node_accessor.cpp
   core/node_accessor_protocol.pb.cc
   core/node_id.cpp
-  core/protocol.pb.cc
   core/pubsub_2d.cpp
-  core/pubsub_2d/pubsub_2d_impl.cpp
-  core/pubsub_2d/pubsub_2d_protocol.pb.cc
+  #core/pubsub_2d/pubsub_2d_impl.cpp
+  #core/pubsub_2d/pubsub_2d_protocol.pb.cc
   core/routing.cpp
   core/routing_protocol.pb.cc
   core/routing_1d.cpp
@@ -32,6 +37,7 @@ set(COLONIO_FILES
   core/seed_accessor_protocol.pb.cc
   core/seed_link.cpp
   core/scheduler.cpp
+  core/side_module.cpp
   core/system_1d.cpp
   core/system_2d.cpp
   core/utils.cpp
@@ -79,6 +85,7 @@ else()
   ##
   ## Native
   ##
+  list(APPEND COLONIO_FILES core/api_gate_mt.cpp)
   list(APPEND COLONIO_FILES core/webrtc_context_native.cpp)
   list(APPEND COLONIO_FILES core/webrtc_link_native.cpp)
   list(APPEND COLONIO_FILES core/seed_link_websocket_native.cpp)

@@ -2,17 +2,17 @@ syntax = "proto3";
 
 option go_package = "core";
 
-import "core/protocol.proto";
+import "core/core.proto";
 
 package colonio.SeedAccessorProtocol;
 
 message SeedAccessor {
-  Protocol.NodeID dst_nid = 1;
-  Protocol.NodeID src_nid = 2;
+  core.NodeID dst_nid = 1;
+  core.NodeID src_nid = 2;
   uint32 id = 3;
   uint32 mode = 4;
   uint32 channel = 5;
-  uint32 module_no = 6;
+  uint32 module_channel = 6;
   uint32 command_id = 7;
   bytes content = 8;
 }

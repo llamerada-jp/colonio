@@ -13,34 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
 
-#include <memory>
-
-#include "definition.hpp"
-#include "node_id.hpp"
+#include "colonio/colonio_exception.hpp"
 
 namespace colonio {
-class Packet {
- public:
-  static const unsigned int PACKET_HEAD_SIZE;
+ColonioException::ColonioException(const std::string& m) : message(m) {
+}
 
-  const NodeID dst_nid;
-  const NodeID src_nid;
-  const uint32_t id;
-  std::shared_ptr<const std::string> content;
-  const PacketMode::Type mode;
-  const APIChannel::Type channel;
-  const APIModuleChannel::Type module_channel;
-  const CommandID::Type command_id;
-
-  template<typename T>
-  void parse_content(T* dst) const {
-    assert(content.get() != nullptr);
-    if (!dst->ParseFromString(*content)) {
-      /// @todo error
-      assert(false);
-    }
-  }
-};
+const char* ColonioException::what() const noexcept {
+  return message.c_str();
+}
 }  // namespace colonio

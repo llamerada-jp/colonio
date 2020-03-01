@@ -1,29 +1,29 @@
 syntax = "proto3";
 
-import "core/protocol.proto";
+import "core/core.proto";
 
 package colonio.Pubsub2DProtocol;
 
 message Knock {
-  Protocol.Coordinate center = 1;
+  core.Coordinate center = 1;
   double r = 2;
   uint64 uid = 3;
 }
 
 message Deffuse {
-  Protocol.Coordinate center = 1;
+  core.Coordinate center = 1;
   double r = 2;
   uint64 uid = 3;
   string name = 4;
-  Protocol.Value data = 5;
+  core.Value data = 5;
 }
 
 message Pass {
-  Protocol.Coordinate center = 1;
+  core.Coordinate center = 1;
   double r = 2;
   uint64 uid = 3;
   string name = 4;
-  Protocol.Value data = 5;
+  core.Value data = 5;
 }
 
 message PassFailure {

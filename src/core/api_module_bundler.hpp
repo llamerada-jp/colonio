@@ -15,32 +15,28 @@
  */
 #pragma once
 
+#include <map>
 #include <memory>
 
 #include "definition.hpp"
-#include "node_id.hpp"
 
 namespace colonio {
-class Packet {
+class APIModule;
+class APIModuleDelegate;
+class Packet;
+
+class APIModuleBundler {
  public:
-  static const unsigned int PACKET_HEAD_SIZE;
+  APIModuleBundler(APIModuleDelegate& delegate_);
 
-  const NodeID dst_nid;
-  const NodeID src_nid;
-  const uint32_t id;
-  std::shared_ptr<const std::string> content;
-  const PacketMode::Type mode;
-  const APIChannel::Type channel;
-  const APIModuleChannel::Type module_channel;
-  const CommandID::Type command_id;
+  void clear();
+  void registrate(std::shared_ptr<APIModule> module);
+  void on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status);
+  void on_recv_packet(std::unique_ptr<Packet> packet);
 
-  template<typename T>
-  void parse_content(T* dst) const {
-    assert(content.get() != nullptr);
-    if (!dst->ParseFromString(*content)) {
-      /// @todo error
-      assert(false);
-    }
-  }
+ private:
+  APIModuleDelegate& delegate;
+
+  std::map<std::pair<APIChannel::Type, APIModuleChannel::Type>, std::shared_ptr<APIModule>> modules;
 };
 }  // namespace colonio

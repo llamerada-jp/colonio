@@ -27,6 +27,8 @@
 #include <cstring>
 #include <iomanip>
 #include <memory>
+#include <mutex>
+#include <random>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -37,6 +39,13 @@
 #include "utils.hpp"
 
 namespace colonio {
+// Random value generator.
+static std::random_device seed_gen;
+static std::mt19937 rnd32(seed_gen());
+static std::mt19937_64 rnd64(seed_gen());
+static std::mutex mutex32;
+static std::mutex mutex64;
+
 template<>
 bool Utils::check_json_optional<unsigned int>(const picojson::object& obj, const std::string& key, unsigned int* dst) {
   auto it = obj.find(key);
@@ -98,6 +107,7 @@ std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
   out << is << "id : " << Convert::int2str(packet.id) << std::endl;
   out << is << "mode : " << Convert::int2str(packet.mode) << std::endl;
   out << is << "channel : " << Convert::int2str(packet.channel) << std::endl;
+  out << is << "module_channel : " << Convert::int2str(packet.module_channel) << std::endl;
   out << is << "command_id : " << Convert::int2str(packet.command_id) << std::endl;
   out << is << "content : " << dump_binary(*packet.content);
 
@@ -185,6 +195,16 @@ std::string Utils::file_dirname(const std::string& path) {
   buffer[path.size()] = '\0';
 
   return std::string(dirname(buffer.get()));
+}
+
+uint32_t Utils::get_rnd_32() {
+  std::lock_guard<std::mutex> guard(mutex32);
+  return rnd32();
+}
+
+uint64_t Utils::get_rnd_64() {
+  std::lock_guard<std::mutex> guard(mutex64);
+  return rnd64();
 }
 
 bool Utils::is_safevalue(double v) {

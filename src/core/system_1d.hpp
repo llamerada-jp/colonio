@@ -15,40 +15,31 @@
  */
 #pragma once
 
-#include "context.hpp"
-#include "module.hpp"
+#include "api_module.hpp"
 
 namespace colonio {
+class Context;
 class NodeID;
+class System1D;
 
 class System1DDelegate {
  public:
   virtual ~System1DDelegate();
-  virtual bool system_1d_do_check_coverd_range(const NodeID& nid) = 0;
+  virtual bool system_1d_do_check_covered_range(System1D& system1d, const NodeID& nid) = 0;
 };
 
-class System1DBase : public Module {
+class System1D : public APIModule {
  public:
   virtual void system_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) = 0;
 
  protected:
-  System1DBase(
-      Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate, ModuleChannel::Type channel,
-      ModuleNo module_no);
+  System1D(
+      Context& context, APIModuleDelegate& module_delegate, System1DDelegate& system_delegate, APIChannel::Type channel,
+      APIModuleChannel::Type module_channel);
 
-  bool system_1d_check_coverd_range(const NodeID& nid);
+  bool system_1d_check_covered_range(const NodeID& nid);
 
  private:
   System1DDelegate& delegate;
-};
-
-template<class BASE>
-class System1D : public BASE, public System1DBase {
- protected:
-  System1D(
-      Context& context, ModuleDelegate& module_delegate, System1DDelegate& system_delegate, ModuleChannel::Type channel,
-      ModuleNo module_no) :
-      System1DBase(context, module_delegate, system_delegate, channel, module_no) {
-  }
 };
 }  // namespace colonio

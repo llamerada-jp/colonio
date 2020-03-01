@@ -18,32 +18,33 @@
 #include <memory>
 #include <mutex>
 
-#include "command.hpp"
 #include "definition.hpp"
+#include "node_id.hpp"
 
 namespace colonio {
+class APIModule;
+class Command;
 class Context;
-class Module;
+class Packet;
 
-class ModuleDelegate {
+class APIModuleDelegate {
  public:
-  virtual ~ModuleDelegate();
-  virtual void module_do_send_packet(Module& module, std::unique_ptr<const Packet> packet)                         = 0;
-  virtual void module_do_relay_packet(Module& module, const NodeID& dst_nid, std::unique_ptr<const Packet> packet) = 0;
+  virtual ~APIModuleDelegate();
+  virtual void module_do_send_packet(APIModule& module, std::unique_ptr<const Packet> packet) = 0;
+  virtual void module_do_relay_packet(
+      APIModule& module, const NodeID& dst_nid, std::unique_ptr<const Packet> packet) = 0;
 };
 
-class Module {
+class APIModule {
  public:
-  const ModuleChannel::Type channel;
-  const ModuleNo module_no;
+  const APIChannel::Type channel;
+  const APIModuleChannel::Type module_channel;
 
-  virtual ~Module();
+  virtual ~APIModule();
 
   static std::unique_ptr<const Packet> copy_packet_for_reply(const Packet& src);
 
   virtual void module_on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status);
-  // @todo deplicate
-  virtual void module_on_persec(LinkStatus::Type seed_status, LinkStatus::Type node_status);
 
   void on_recv_packet(std::unique_ptr<const Packet> packet);
   void reset();
@@ -51,7 +52,9 @@ class Module {
  protected:
   Context& context;
 
-  Module(Context& context_, ModuleDelegate& delegate_, ModuleChannel::Type channel_, ModuleNo module_no_);
+  APIModule(
+      Context& context_, APIModuleDelegate& delegate_, APIChannel::Type channel_,
+      APIModuleChannel::Type module_channel_);
 
   virtual void module_process_command(std::unique_ptr<const Packet> packet) = 0;
 
@@ -78,8 +81,8 @@ class Module {
     NodeID src_nid;
     uint32_t packet_id;
     PacketMode::Type mode;
-    ModuleChannel::Type channel;
-    ModuleNo module_no;
+    APIChannel::Type channel;
+    APIModuleChannel::Type module_channel;
     CommandID::Type command_id;
     std::shared_ptr<const std::string> content;
 
@@ -88,7 +91,7 @@ class Module {
     std::unique_ptr<Command> command;
   };
 
-  ModuleDelegate& delegate;
+  APIModuleDelegate& delegate;
 
   std::map<uint32_t, Container> containers;
   std::mutex mutex_containers;

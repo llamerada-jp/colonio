@@ -23,15 +23,17 @@
 
 #include "context.hpp"
 #include "convert.hpp"
+#include "logger.hpp"
 #include "node_accessor_protocol.pb.h"
+#include "scheduler.hpp"
 #include "utils.hpp"
 
 namespace colonio {
 NodeAccessorDelegate::~NodeAccessorDelegate() {
 }
 
-NodeAccessor::NodeAccessor(Context& context, ModuleDelegate& module_delegate, NodeAccessorDelegate& na_delegate) :
-    Module(context, module_delegate, ModuleChannel::WEBRTC_CONNECT, 0),
+NodeAccessor::NodeAccessor(Context& context, APIModuleDelegate& module_delegate, NodeAccessorDelegate& na_delegate) :
+    APIModule(context, module_delegate, APIChannel::COLONIO, APIModuleChannel::Colonio::NODE_ACCESSOR),
     delegate(na_delegate),
     count_seed_transrate(0) {
   context.scheduler.add_interval_task(
@@ -313,23 +315,19 @@ void NodeAccessor::CommandOffer::on_error(const std::string& message) {
 }
 
 void NodeAccessor::module_process_command(std::unique_ptr<const Packet> packet) {
-  if (packet->channel == ModuleChannel::WEBRTC_CONNECT) {
-    switch (packet->command_id) {
-      case CommandID::WebrtcConnect::OFFER:
-        recv_offer(std::move(packet));
-        break;
+  switch (packet->command_id) {
+    case CommandID::WebrtcConnect::OFFER:
+      recv_offer(std::move(packet));
+      break;
 
-      case CommandID::WebrtcConnect::ICE:
-        recv_ice(std::move(packet));
-        break;
+    case CommandID::WebrtcConnect::ICE:
+      recv_ice(std::move(packet));
+      break;
 
-      default:
-        assert(false);
-        return;
-        break;
-    }
-  } else {
-    assert(false);
+    default:
+      assert(false);
+      return;
+      break;
   }
 }
 
@@ -388,8 +386,9 @@ void NodeAccessor::webrtc_link_on_recv_data(WebrtcLink& link, const std::string&
       const NodeAccessorProtocol::Head& pb_head = pb_packet.head();
       std::unique_ptr<Packet> packet            = std::make_unique<Packet>(
           Packet{NodeID::from_pb(pb_head.dst_nid()), NodeID::from_pb(pb_head.src_nid()), pb_packet.id(), nullptr,
-                 static_cast<PacketMode::Type>(pb_head.mode()), static_cast<ModuleChannel::Type>(pb_head.channel()),
-                 static_cast<ModuleNo>(pb_head.module_no()), static_cast<CommandID::Type>(pb_head.command_id())});
+                 static_cast<PacketMode::Type>(pb_head.mode()), static_cast<APIChannel::Type>(pb_head.channel()),
+                 static_cast<APIModuleChannel::Type>(pb_head.module_channel()),
+                 static_cast<CommandID::Type>(pb_head.command_id())});
       std::shared_ptr<const std::string> content(new std::string(pb_packet.content()));
 
       if (pb_packet.index() == 0) {

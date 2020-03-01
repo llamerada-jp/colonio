@@ -17,46 +17,127 @@
 
 #include <cassert>
 
+#include "api.pb.h"
+#include "api_gate.hpp"
 #include "colonio_impl.hpp"
 
 namespace colonio {
+class Colonio::Impl {
+ public:
+  APIGate api_gate;
+};
+
+std::string get_error_message(const api::Reply& reply) {
+  if (reply.has_failure()) {
+    return reply.failure().message();
+  } else {
+    return "unknown error";
+  }
+}
+
 Colonio::Colonio() {
-  impl = std::make_unique<ColonioImpl>(*this);
+  impl = std::make_unique<Colonio::Impl>();
+  impl->api_gate.set_event_hook(APIChannel::COLONIO, [this](const api::Event& e) {
+    switch (e.param_case()) {
+      case api::Event::ParamCase::kColonioLog: {
+        const api::colonio::LogEvent& l = e.colonio_log();
+        on_output_log(static_cast<LogLevel::Type>(l.level()), l.message());
+      } break;
+
+      case api::Event::ParamCase::kColonioDebug: {
+        const api::colonio::DebugEvent& d = e.colonio_debug();
+        on_debug_event(static_cast<DebugEvent::Type>(d.event()), d.json());
+      } break;
+
+      default:
+        assert(false);
+        break;
+    }
+  });
 }
 
 Colonio::~Colonio() {
 }
 
 Map& Colonio::access_map(const std::string& name) {
-  return impl->access<Map>(name);
+  // TODO return impl->access<Map>(name);
+  assert(false);
 }
 
 PubSub2D& Colonio::access_pubsub2d(const std::string& name) {
-  return impl->access<PubSub2D>(name);
+  // TODO return impl->access<PubSub2D>(name);
+  assert(false);
 }
 
-void Colonio::connect(
-    const std::string& url, const std::string& token, std::function<void(Colonio&)> on_success,
-    std::function<void(Colonio&)> on_failure) {
+void Colonio::connect(const std::string& url, const std::string& token) {
   assert(impl);
-  impl->connect(url, token, [this, on_success]() { on_success(*this); }, [this, on_failure]() { on_failure(*this); });
+
+  impl->api_gate.init();
+
+  api::Call call;
+  api::colonio::Connect* api = call.mutable_colonio_connect();
+  api->set_url(url);
+  api->set_token(token);
+
+  std::unique_ptr<api::Reply> reply = impl->api_gate.call_sync(APIChannel::COLONIO, call);
+  if (reply) {
+    if (reply->has_colonio_connect()) {
+      // TODO
+      // assert(false);
+    } else {
+      throw ColonioException(get_error_message(*reply));
+    }
+  }
 }
 
 void Colonio::disconnect() {
   assert(impl);
-  impl->disconnect();
+
+  api::Call call;
+  call.mutable_colonio_disconnect();
+
+  std::unique_ptr<api::Reply> reply = impl->api_gate.call_sync(APIChannel::COLONIO, call);
+  if (reply) {
+    if (!reply->has_success()) {
+      throw ColonioException(get_error_message(*reply));
+    }
+  }
+
+  impl->api_gate.quit();
 }
 
 std::string Colonio::get_local_nid() {
   assert(impl);
-  return impl->get_local_nid().to_str();
+
+  api::Call call;
+  call.mutable_colonio_get_local_nid();
+
+  std::unique_ptr<api::Reply> reply = impl->api_gate.call_sync(APIChannel::COLONIO, call);
+  if (reply) {
+    if (reply->has_colonio_get_local_nid()) {
+      return NodeID::from_pb(reply->colonio_get_local_nid().local_nid()).to_str();
+    } else {
+      throw ColonioException(get_error_message(*reply));
+    }
+  } else {
+    return NodeID::NONE.to_str();
+  }
 }
 
 std::tuple<double, double> Colonio::set_position(double x, double y) {
   assert(impl);
-  Coordinate pos(x, y);
-  pos = impl->set_position(pos);
-  return std::make_tuple(pos.x, pos.y);
+
+  api::Call call;
+  api::colonio::SetPosition* api = call.mutable_colonio_set_position();
+  Coordinate(x, y).to_pb(api->mutable_position());
+
+  std::unique_ptr<api::Reply> reply = impl->api_gate.call_sync(APIChannel::COLONIO, call);
+  if (reply->has_colonio_set_position()) {
+    Coordinate position = Coordinate::from_pb(reply->colonio_set_position().position());
+    return std::make_tuple(position.x, position.y);
+  } else {
+    throw ColonioException(get_error_message(*reply));
+  }
 }
 
 void Colonio::on_output_log(LogLevel::Type level, const std::string& message) {
@@ -65,10 +146,5 @@ void Colonio::on_output_log(LogLevel::Type level, const std::string& message) {
 
 void Colonio::on_debug_event(DebugEvent::Type event, const std::string& json) {
   // Drop debug event.
-}
-
-unsigned int Colonio::invoke() {
-  assert(impl);
-  return impl->context.scheduler.invoke();
 }
 }  // namespace colonio

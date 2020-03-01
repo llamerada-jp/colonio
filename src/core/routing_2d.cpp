@@ -21,6 +21,7 @@
 #include "context.hpp"
 #include "convert.hpp"
 #include "coord_system.hpp"
+#include "packet.hpp"
 #include "utils.hpp"
 
 namespace colonio {

@@ -17,11 +17,11 @@
 
 #include <cstdio>
 
-#include "colonio/colonio_libuv.hpp"
+#include "colonio/colonio.hpp"
 
-class ColonioNode : public colonio_helper::ColonioLibuv {
+class ColonioNode : public colonio::Colonio {
  public:
-  ColonioNode(const std::string& node_name_, uv_loop_t* loop) : ColonioLibuv(loop), node_name(node_name_) {
+  ColonioNode(const std::string& node_name_) : Colonio(), node_name(node_name_) {
   }
 
  protected:

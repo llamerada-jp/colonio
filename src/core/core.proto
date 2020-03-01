@@ -2,7 +2,7 @@ syntax = "proto3";
 
 option go_package = "core";
 
-package colonio.Protocol;
+package colonio.core;
 
 message Coordinate {
   double x = 1;
@@ -22,4 +22,8 @@ message Value {
     double double_v = 3;
     bytes string_v = 4;
   }
+}
+
+message Error {
+  string message = 1;
 }

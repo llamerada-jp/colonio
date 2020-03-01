@@ -15,40 +15,21 @@
  */
 #pragma once
 
-#include <uv.h>
-
 #include <sstream>
 #include <string>
 
 class AsyncHelper {
  public:
   std::stringstream marks;
-  std::unique_ptr<uv_loop_t> loop;
 
   AsyncHelper() {
   }
 
   virtual ~AsyncHelper() {
-    if (loop) {
-      uv_loop_close(loop.get());
-    }
-  }
-
-  uv_loop_t* get_libuv_instance() {
-    if (!loop) {
-      loop.reset(new uv_loop_t());
-      uv_loop_init(loop.get());
-    }
-
-    return loop.get();
   }
 
   void mark(const std::string& m) {
     marks << m;
-  }
-
-  void run() {
-    uv_run(get_libuv_instance(), UV_RUN_DEFAULT);
   }
 
   std::string get_route() {

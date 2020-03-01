@@ -32,14 +32,16 @@ class ColonioC : public colonio::Colonio {
   }
 
   unsigned int _invoke() {
-    return invoke();
+    // return invoke();
   }
 
  protected:
-  void on_require_invoke(unsigned int msec) override {
-    assert(cb_on_require_invoke != nullptr);
-    cb_on_require_invoke(colonio, msec);
-  }
+  /*
+   void on_require_invoke(unsigned int msec) override {
+     assert(cb_on_require_invoke != nullptr);
+     cb_on_require_invoke(colonio, msec);
+   }
+   */
 
   void on_output_log(colonio::LogLevel::Type level, const std::string& message) override {
     if (cb_on_output_log != nullptr) {
@@ -71,9 +73,11 @@ void colonio_connect(
     colonio_t* colonio, const char* url, const char* token, void (*on_success)(colonio_t*),
     void (*on_failure)(colonio_t*)) {
   colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
+  /*
   impl->connect(
       url, token, [on_success, colonio](colonio::Colonio&) { on_success(colonio); },
       [on_failure, colonio](colonio::Colonio&) { on_failure(colonio); });
+      */
 }
 
 void colonio_disconnect(colonio_t* colonio) {
