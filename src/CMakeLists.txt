@@ -21,14 +21,10 @@ set(COLONIO_FILES
   core/export_c.cpp
   core/logger.cpp
   core/map.cpp
-  #core/map_paxos/map_paxos.cpp
-  #core/map_paxos/map_paxos_protocol.pb.cc
   core/node_accessor.cpp
   core/node_accessor_protocol.pb.cc
   core/node_id.cpp
   core/pubsub_2d.cpp
-  #core/pubsub_2d/pubsub_2d_impl.cpp
-  #core/pubsub_2d/pubsub_2d_protocol.pb.cc
   core/routing.cpp
   core/routing_protocol.pb.cc
   core/routing_1d.cpp
@@ -47,6 +43,13 @@ set(COLONIO_FILES
   core/colonio_impl.cpp
   core/webrtc_context.cpp
   core/webrtc_link.cpp
+
+  map_paxos/map_paxos_entry.cpp
+  # map_paxos/map_paxos.cpp
+  # map_paxos/map_paxos_protocol.pb.cc
+
+  # pubsub_2d/pubsub_2d_impl.cpp
+  # pubsub_2d/pubsub_2d_protocol.pb.cc
   )
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")

@@ -15,28 +15,26 @@
  */
 #pragma once
 
-#include <map>
-#include <memory>
+#include <picojson.h>
 
-#include "definition.hpp"
+#include "core/api_entry.hpp"
 
 namespace colonio {
-class APIModule;
-class APIModuleDelegate;
-class Packet;
+class APIEntryBundler;
+class APIEntryDelegate;
+class APIModuleBundler;
+class Context;
 
-class APIModuleBundler {
+class MapPaxosEntry : public APIEntry {
  public:
-  APIModuleBundler(APIModuleDelegate& delegate_);
-
-  void clear();
-  void registrate(std::shared_ptr<APIModule> module);
-  void on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status);
-  void on_recv_packet(std::unique_ptr<const Packet> packet);
+  static void make_entry(
+      Context& context, APIEntryBundler& api_bundler, APIModuleBundler& module_bundler,
+      APIEntryDelegate& entry_delegate, const picojson::object& config);
 
  private:
-  APIModuleDelegate& delegate;
+  MapPaxosEntry(Context& context, APIEntryDelegate& delegate, APIChannel::Type channel);
 
-  std::map<std::pair<APIChannel::Type, APIModuleChannel::Type>, std::shared_ptr<APIModule>> modules;
+  void api_entry_on_recv_call(const api::Call& call) override;
 };
+
 }  // namespace colonio

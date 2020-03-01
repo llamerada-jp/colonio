@@ -11,6 +11,7 @@ message Connect {
 
 message ConnectReply {
   enum ModuleType {
+    NONE      = 0;
     MAP       = 1;
     PUBSUB2D  = 2;
   }

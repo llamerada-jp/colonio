@@ -229,7 +229,7 @@ void Utils::output_assert(
   printf(
       "Assersion failed: (%s) func: %s, file: %s, line: %ld\n%s\n", exp.c_str(), func.c_str(), file.c_str(), line,
       mesg.c_str());
-  exit(-1);
+  exit(EXIT_FAILURE);
 }
 
 double Utils::pmod(double a, double b) {

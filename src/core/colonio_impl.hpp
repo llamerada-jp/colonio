@@ -40,12 +40,13 @@ class ColonioImpl : public APIEntry,
                     public System1DDelegate,
                     public System2DDelegate {
  public:
-  ColonioImpl(Context& context_, APIEntryDelegate& entry_delegate, APIEntryBundler& api_bundler_);
+  ColonioImpl(Context& context_, APIEntryDelegate& entry_delegate_, APIEntryBundler& api_bundler_);
   virtual ~ColonioImpl();
 
   LinkStatus::Type get_status();
 
  private:
+  APIEntryDelegate& entry_delegate;
   APIEntryBundler& api_bundler;
   APIModuleBundler module_bundler;
   picojson::object config;

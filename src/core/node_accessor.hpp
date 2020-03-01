@@ -17,6 +17,7 @@
 
 #include <picojson.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -48,7 +49,7 @@ class NodeAccessor : public APIModule, public WebrtcLinkDelegate {
   void connect_init_link();
   void connect_random_link();
   LinkStatus::Type get_status();
-  void disconnect_all();
+  void disconnect_all(std::function<void()> on_after);
   void disconnect_link(const NodeID& nid);
   void initialize(const picojson::object& config);
   bool relay_packet(const NodeID& dst, std::unique_ptr<const Packet> packet);

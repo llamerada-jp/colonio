@@ -193,7 +193,8 @@ void Routing::recv_routing_info(std::unique_ptr<const Packet> packet) {
   {
     auto it = routing_infos.find(packet->src_nid);
     if (it == routing_infos.end()) {
-      routing_infos.insert(std::make_pair(packet->src_nid, std::make_tuple(std::move(packet), content)));
+      const NodeID& src_nid = packet->src_nid;
+      routing_infos.insert(std::make_pair(src_nid, std::make_tuple(std::move(packet), content)));
     } else {
       std::get<0>(it->second).swap(packet);
       std::get<1>(it->second) = content;

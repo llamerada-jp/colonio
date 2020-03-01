@@ -38,7 +38,7 @@ class Packet;
 #else
 #  define colonio_assert(EX, FORMAT, ...) \
     if (!(EX)) {                          \
-      exit(-1);                           \
+      exit(EXIT_FAILURE);                 \
     }
 #endif
 

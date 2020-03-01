@@ -45,7 +45,7 @@ void APIModuleBundler::on_change_accessor_status(LinkStatus::Type seed_status, L
   }
 }
 
-void APIModuleBundler::on_recv_packet(std::unique_ptr<Packet> packet) {
+void APIModuleBundler::on_recv_packet(std::unique_ptr<const Packet> packet) {
   assert(packet->channel != APIChannel::NONE);
   assert(packet->module_channel != APIModuleChannel::NONE);
 
@@ -53,7 +53,7 @@ void APIModuleBundler::on_recv_packet(std::unique_ptr<Packet> packet) {
   if (module != modules.end()) {
     module->second->on_recv_packet(std::move(packet));
   } else {
-    colonio_throw("Received incorrect packet entry", Utils::dump_packet(*packet));
+    colonio_throw("Received incorrect packet entry", Utils::dump_packet(*packet).c_str());
   }
 }
 

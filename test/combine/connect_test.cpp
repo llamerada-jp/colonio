@@ -59,6 +59,11 @@ TEST(ConnectTest, connect_multi) {
   EXPECT_NE(&node1, &node2);
   EXPECT_STRNE(node1.get_local_nid().c_str(), node2.get_local_nid().c_str());
 
+  // disconnect node 2
+  printf("disconnect node2\n");
   node2.disconnect();
+
+  // disconnect node 1
+  printf("disconnect node1\n");
   node1.disconnect();
 }

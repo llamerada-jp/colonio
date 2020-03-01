@@ -21,14 +21,15 @@
 #include "convert.hpp"
 #include "coord_system_sphere.hpp"
 #include "logger.hpp"
-#include "pubsub_2d/pubsub_2d_impl.hpp"
+#include "map_paxos/map_paxos_entry.hpp"
 #include "routing_1d.hpp"
 #include "scheduler.hpp"
 #include "utils.hpp"
 
 namespace colonio {
-ColonioImpl::ColonioImpl(Context& context, APIEntryDelegate& entry_delegate, APIEntryBundler& api_bundler_) :
-    APIEntry(context, entry_delegate, APIChannel::COLONIO),
+ColonioImpl::ColonioImpl(Context& context, APIEntryDelegate& entry_delegate_, APIEntryBundler& api_bundler_) :
+    APIEntry(context, entry_delegate_, APIChannel::COLONIO),
+    entry_delegate(entry_delegate_),
     api_bundler(api_bundler_),
     module_bundler(*this),
     api_connect_id(0),
@@ -45,50 +46,25 @@ ColonioImpl::~ColonioImpl() {
 LinkStatus::Type ColonioImpl::get_status() {
   return context.link_status;
 }
-/*
-
-const NodeID& ColonioImpl::get_local_nid() {
-  return context.local_nid;
-}
-
-Coordinate ColonioImpl::set_position(const Coordinate& pos) {
-  if (context.coord_system) {
-    Coordinate old_position = context.get_my_position();
-    context.set_my_position(pos);
-    Coordinate new_position = context.get_my_position();
-    if (old_position != new_position) {
-      context.scheduler.add_timeout_task(
-          this, [this, new_position]() { this->routing->on_change_my_position(new_position); }, 0);
-      context.scheduler.add_timeout_task(
-          this,
-          [this, new_position]() {
-            for (auto& it : this->modules_2d) {
-              it->system_2d_on_change_my_position(new_position);
-            }
-          },
-          0);
-#ifndef NDEBUG
-      context.debug_event(DebugEvent::POSITION, Convert::coordinate2json(new_position));
-#endif
-    }
-    return new_position;
-
-  } else {
-    logd("coordinate system was not enabled");
-    assert(false);
-    return Coordinate();
-  }
-}
-//*/
 
 void ColonioImpl::api_entry_on_recv_call(const api::Call& call) {
   switch (call.param_case()) {
     case api::Call::ParamCase::kColonioConnect:
       api_connect(call.id(), call.colonio_connect());
       break;
+
     case api::Call::ParamCase::kColonioDisconnect:
       api_disconnect(call.id());
       break;
+
+    case api::Call::ParamCase::kColonioGetLocalNid:
+      api_get_local_nid(call.id());
+      break;
+
+    case api::Call::ParamCase::kColonioSetPosition:
+      api_set_position(call.id(), call.colonio_set_position());
+      break;
+
     default:
       colonio_fatal("Called incorrect colonio API entry : %d", call.param_case());
       break;
@@ -269,24 +245,65 @@ void ColonioImpl::api_connect(uint32_t id, const api::colonio::Connect& param) {
       this, [this]() { on_change_accessor_status(seed_accessor->get_status(), node_accessor->get_status()); }, 0);
 }
 
+void ColonioImpl::api_get_local_nid(uint32_t id) {
+  std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
+  reply->set_id(id);
+  api::colonio::GetLocalNIDReply* param = reply->mutable_colonio_get_local_nid();
+  context.local_nid.to_pb(param->mutable_local_nid());
+  api_reply(std::move(reply));
+}
+
 void ColonioImpl::api_disconnect(uint32_t id) {
   enable_retry = false;
   seed_accessor->disconnect();
-  node_accessor->disconnect_all();
+  node_accessor->disconnect_all([this, id]() {
+    on_change_accessor_status(LinkStatus::OFFLINE, LinkStatus::OFFLINE);
+    module_bundler.clear();
 
-  on_change_accessor_status(LinkStatus::OFFLINE, LinkStatus::OFFLINE);
-  module_bundler.clear();
+    node_accessor.reset();
+    routing.reset();
 
-  node_accessor.reset();
-  routing.reset();
+    modules_1d.clear();
+    modules_2d.clear();
 
-  modules_1d.clear();
-  modules_2d.clear();
+    seed_accessor.reset();
 
-  seed_accessor.reset();
+    context.scheduler.remove_task(this);
+    api_success(id);
+  });
+}
 
-  context.scheduler.remove_task(this);
-  api_success(id);
+void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition& param) {
+  if (context.coord_system) {
+    Coordinate pos          = Coordinate::from_pb(param.position());
+    Coordinate old_position = context.get_my_position();
+    context.set_my_position(pos);
+    Coordinate new_position = context.get_my_position();
+    if (old_position != new_position) {
+      context.scheduler.add_timeout_task(
+          this, [this, new_position]() { this->routing->on_change_my_position(new_position); }, 0);
+      context.scheduler.add_timeout_task(
+          this,
+          [this, new_position]() {
+            for (auto& it : this->modules_2d) {
+              it->system_2d_on_change_my_position(new_position);
+            }
+          },
+          0);
+#ifndef NDEBUG
+      context.debug_event(DebugEvent::POSITION, Convert::coordinate2json(new_position));
+#endif
+    }
+
+    std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
+    reply->set_id(id);
+    api::colonio::SetPositionReply* reply_param = reply->mutable_colonio_set_position();
+    new_position.to_pb(reply_param->mutable_position());
+    api_reply(std::move(reply));
+
+  } else {
+    api_failure(id, "coordinate system was not enabled");
+  }
 }
 
 void ColonioImpl::check_api_connect() {
@@ -306,31 +323,32 @@ void ColonioImpl::check_api_connect() {
 
 void ColonioImpl::initialize_algorithms() {
   const picojson::object& modules_config = Utils::get_json<picojson::object>(config, "modules", picojson::object());
+  api_connect_reply                      = std::make_unique<api::colonio::ConnectReply>();
+
   for (auto& it : modules_config) {
     const std::string& name               = it.first;
     const picojson::object& module_config = Utils::get_json<picojson::object>(modules_config, name);
     const std::string& type               = Utils::get_json<std::string>(module_config, "type");
-    // APIChannel::Type channel = Utils::get_json<double>(module_config, "channel");
 
-    /* TODO
+    api::colonio::ConnectReply_Module* api_module = api_connect_reply->add_modules();
+    api_module->set_channel(Utils::get_json<double>(module_config, "channel"));
+    api_module->set_name(name);
+
     if (type == "pubsub2D") {
+      assert(false);
+      /*
       PubSub2DImpl* tmp = new PubSub2DImpl(context, *this, *this, module_config, 0);
       logd("add PubSub2D module channel:%d name:%s", tmp->channel, name.c_str());
       add_module(tmp, name);
       modules_2d.insert(tmp);
-
+      */
     } else if (type == "mapPaxos") {
-      MapPaxos* tmp = new MapPaxos(context, *this, *this, module_config, 0);
-      logd("add MapPaxos module channel:%d name:%s", tmp->channel, name.c_str());
-      add_module(tmp, name);
-      modules_1d.insert(tmp);
+      MapPaxosEntry::make_entry(context, api_bundler, module_bundler, entry_delegate, module_config);
+      api_module->set_type(api::colonio::ConnectReply_ModuleType_MAP);
 
     } else {
-      // @todo warning
-      assert(false);
+      colonio_fatal("unsupported algorithm(%s)", type.c_str());
     }
-    */
-    assert(false);
   }
 
   check_api_connect();
@@ -397,6 +415,9 @@ void ColonioImpl::on_change_accessor_status(LinkStatus::Type seed_status, LinkSt
 }
 
 void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_from_seed) {
+  assert(packet->channel != APIChannel::NONE);
+  assert(packet->module_channel != APIModuleChannel::NONE);
+
   if ((packet->mode & PacketMode::RELAY_SEED) != 0x0) {
     if ((packet->mode & PacketMode::REPLY) != 0x0 && !is_from_seed) {
       if (seed_status == LinkStatus::ONLINE) {
@@ -422,12 +443,17 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
 #endif
 
   if (dst_nid == NodeID::THIS || dst_nid == context.local_nid) {
-    logd("Recv.(packet=%s)", dump.c_str());
+    // logd("Recv.(packet=%s)", dump.c_str());
     // Pass a packet to the target module.
-    const Packet& p = *packet;  // @todo use std::move
+    const Packet* p = packet.get();
     packet.release();
     context.scheduler.add_timeout_task(
-        this, [this, p]() { module_bundler.on_recv_packet(std::make_unique<Packet>(p)); }, 0);
+        this,
+        [this, p]() mutable {
+          assert(p != nullptr);
+          module_bundler.on_recv_packet(std::unique_ptr<const Packet>(p));
+        },
+        0);
     return;
 
   } else if (!dst_nid.is_special() || dst_nid == NodeID::NEXT) {

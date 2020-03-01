@@ -45,6 +45,9 @@ APIModule::APIModule(
     module_channel(module_channel_),
     context(context_),
     delegate(delegate_) {
+  assert(channel != APIChannel::NONE);
+  assert(module_channel != APIModuleChannel::NONE);
+
   context.scheduler.add_interval_task(this, std::bind(&APIModule::on_persec, this), 1000);
 }
 

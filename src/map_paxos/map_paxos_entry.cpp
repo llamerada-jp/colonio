@@ -13,30 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
+#include "map_paxos_entry.hpp"
 
-#include <map>
-#include <memory>
-
-#include "definition.hpp"
+#include "core/utils.hpp"
 
 namespace colonio {
-class APIModule;
-class APIModuleDelegate;
-class Packet;
-
-class APIModuleBundler {
- public:
-  APIModuleBundler(APIModuleDelegate& delegate_);
-
-  void clear();
-  void registrate(std::shared_ptr<APIModule> module);
-  void on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status);
-  void on_recv_packet(std::unique_ptr<const Packet> packet);
-
- private:
-  APIModuleDelegate& delegate;
-
-  std::map<std::pair<APIChannel::Type, APIModuleChannel::Type>, std::shared_ptr<APIModule>> modules;
-};
+void MapPaxosEntry::make_entry(
+    Context& context, APIEntryBundler& api_bundler, APIModuleBundler& module_bundler, APIEntryDelegate& entry_delegate,
+    const picojson::object& config) {
+  APIChannel::Type channel = static_cast<APIChannel::Type>(Utils::get_json<double>(config, "channel"));
+  unsigned int retry_max   = Utils::get_json<double>(config, "retryMax", MAP_PAXOS_RETRY_MAX);
+}
 }  // namespace colonio

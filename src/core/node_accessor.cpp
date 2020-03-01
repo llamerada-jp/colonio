@@ -131,8 +131,9 @@ LinkStatus::Type NodeAccessor::get_status() {
   }
 }
 
-void NodeAccessor::disconnect_all() {
-  while (first_link || random_link || links.size() != 0 || closing_links.size() != 0) {
+void NodeAccessor::disconnect_all(std::function<void()> on_after) {
+  cleanup_closing();
+  if (first_link || random_link || links.size() != 0 || closing_links.size() != 0) {
     disconnect_first_link();
     disconnect_random_link();
 
@@ -144,7 +145,10 @@ void NodeAccessor::disconnect_all() {
       disconnect_link(nid);
     }
 
-    cleanup_closing();
+    context.scheduler.add_timeout_task(this, [this, on_after]() { disconnect_all(on_after); }, 100);
+
+  } else {
+    on_after();
   }
 }
 
@@ -707,8 +711,12 @@ void NodeAccessor::recv_ice(std::unique_ptr<const Packet> packet) {
 }
 
 void NodeAccessor::send_all_packet() {
+  std::set<NodeID> nids;
   for (auto& it : send_buffers) {
-    send_packet_list(it.first, true);
+    nids.insert(it.first);
+  }
+  for (auto& it : nids) {
+    send_packet_list(it, true);
   }
 }
 
@@ -778,6 +786,7 @@ bool NodeAccessor::send_packet_list(const NodeID& dst_nid, bool is_all) {
         it->src_nid.to_pb(head->mutable_src_nid());
         head->set_mode(it->mode);
         head->set_channel(it->channel);
+        head->set_module_channel(it->module_channel);
         head->set_command_id(it->command_id);
         packet->set_id(it->id);
         packet->set_index(0);
@@ -818,6 +827,7 @@ bool NodeAccessor::send_packet_list(const NodeID& dst_nid, bool is_all) {
           it->src_nid.to_pb(head->mutable_src_nid());
           head->set_mode(it->mode);
           head->set_channel(it->channel);
+          head->set_module_channel(it->module_channel);
           head->set_command_id(it->command_id);
         }
         packet->set_id(it->id);

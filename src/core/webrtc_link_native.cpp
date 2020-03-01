@@ -273,9 +273,8 @@ void WebrtcLinkNative::on_change_status() {
   }
 
   LinkStatus::Type status = get_status();
-  logd("Change status.(nid=%s, %d -> %d)", nid.to_str().c_str(), prev_status, status);
-
   if (status != prev_status) {
+    logd("Change status.(nid=%s, %d -> %d)", nid.to_str().c_str(), prev_status, status);
     prev_status = status;
     delegate.webrtc_link_on_change_stateus(*this, status);
   }
