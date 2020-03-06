@@ -17,6 +17,7 @@
 
 #include <functional>
 
+#include "colonio/colonio_exception.hpp"
 #include "colonio/map.hpp"
 #include "colonio/value.hpp"
 #include "core/command.hpp"
@@ -28,9 +29,16 @@ typedef uint32_t PAXOS_N;
 class MapPaxos : public System1D {
  public:
   MapPaxos(
-      Context& context, APIModuleDelegate& module_delegate, System1DDelegate& system_delegate,
-      const picojson::object& config, APIModuleChannel::Type module_channel);
+      Context& context, APIModuleDelegate& module_delegate, System1DDelegate& system_delegate, APIChannel::Type channel,
+      APIModuleChannel::Type module_channel, unsigned int retry_max);
   virtual ~MapPaxos();
+
+  void get(
+      const Value& key, const std::function<void(const Value&)>& on_success,
+      const std::function<void(ColonioException::Code)>& on_failure);
+  void set(
+      const Value& key, const Value& value, const std::function<void()>& on_success,
+      const std::function<void(ColonioException::Code)>& on_failure, MapOption::Type opt);
 
   void system_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) override;
 
@@ -63,7 +71,6 @@ class MapPaxos : public System1D {
     class Info {
      public:
       MapPaxos& parent;
-      CallID call_id;
       std::unique_ptr<Value> key;
       int count_retry;
 
@@ -74,8 +81,10 @@ class MapPaxos : public System1D {
 
       int count_ng;
       bool is_finished;
+      std::function<void(const Value&)> cb_on_success;
+      std::function<void(ColonioException::Code)> cb_on_failure;
 
-      Info(MapPaxos& parent_, CallID call_id_, std::unique_ptr<Value> key_, int count_retry_);
+      Info(MapPaxos& parent_, std::unique_ptr<Value> key_, int count_retry_);
     };
 
     std::shared_ptr<Info> info;
@@ -94,12 +103,16 @@ class MapPaxos : public System1D {
     class Info {
      public:
       MapPaxos& parent;
-      CallID call_id;
       const Value key;
       const Value value;
       const MapOption::Type opt;
 
-      Info(MapPaxos& parent_, CallID call_id_, const Value& key_, const Value& value_, const MapOption::Type& opt_);
+      std::function<void()> cb_on_success;
+      std::function<void(ColonioException::Code)> cb_on_failure;
+
+      Info(
+          MapPaxos& parent_, const Value& key_, const Value& value_, const std::function<void()>& cb_on_success_,
+          const std::function<void(ColonioException::Code)>& cb_on_failure_, const MapOption::Type& opt_);
     };
     std::unique_ptr<Info> info;
 
@@ -187,9 +200,9 @@ class MapPaxos : public System1D {
     void postprocess();
   };
 
-  unsigned int conf_retry_max;
+  const unsigned int CONF_RETRY_MAX;
 
-  std::string solt;
+  std::string salt;
   std::map<Value, AcceptorInfo> acceptor_infos;
   std::map<Value, ProposerInfo> proposer_infos;
 
@@ -214,7 +227,7 @@ class MapPaxos : public System1D {
   void send_packet_balance_proposer(const Value& key, const ProposerInfo& proposer);
   void send_packet_get(
       std::unique_ptr<Value> key, int count_retry, const std::function<void(const Value&)>& on_success,
-      const std::function<void(MapFailureReason)>& on_failure);
+      const std::function<void(ColonioException::Code)>& on_failure);
   void send_packet_hint(const Value& key, const Value& value, PAXOS_N n, PAXOS_N i);
   void send_packet_prepare(
       ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply, std::unique_ptr<Value> key,

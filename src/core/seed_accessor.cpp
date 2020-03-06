@@ -128,8 +128,6 @@ bool SeedAccessor::is_only_one() {
 
 void SeedAccessor::relay_packet(std::unique_ptr<const Packet> packet) {
   if (link) {
-    logd("Relay to seed. %s", Utils::dump_packet(*packet).c_str());
-
     SeedAccessorProtocol::SeedAccessor packet_sa;
     packet->dst_nid.to_pb(packet_sa.mutable_dst_nid());
     packet->src_nid.to_pb(packet_sa.mutable_src_nid());
@@ -144,11 +142,11 @@ void SeedAccessor::relay_packet(std::unique_ptr<const Packet> packet) {
 
     std::string packet_bin;
     packet_sa.SerializeToString(&packet_bin);
-    logd("Binary to seed. size:%d data:%s", packet_bin.size(), Utils::dump_binary(packet_bin).c_str());
+    // logd("Binary to seed. size:%d data:%s", packet_bin.size(), Utils::dump_binary(packet_bin).c_str());
     link->send(packet_bin);
 
   } else {
-    logd("Reject relaying packet to seed. %s", Utils::dump_packet(*packet).c_str());
+    // logd("Reject relaying packet to seed. %s", Utils::dump_packet(*packet).c_str());
   }
 }
 

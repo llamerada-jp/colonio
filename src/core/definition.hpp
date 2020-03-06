@@ -58,6 +58,7 @@ static const Type COLONIO = 1;
 namespace APIModuleChannel {
 typedef uint16_t Type;
 static const Type NONE = 0;
+
 namespace Colonio {
 static const Type MAIN           = 1;
 static const Type SEED_ACCESSOR  = 2;
@@ -65,6 +66,10 @@ static const Type NODE_ACCESSOR  = 3;
 static const Type SYSTEM_ROUTING = 4;
 // static const Type SYSTEM_ROUTING_2D = 16;
 }  // namespace Colonio
+
+namespace MapPaxos {
+static const Type MAP_PAXOS = 1;
+}
 }  // namespace APIModuleChannel
 
 namespace CommandID {

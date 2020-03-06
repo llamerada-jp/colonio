@@ -68,8 +68,8 @@ void on_debug_event(colonio::DebugEvent::Type type, const std::string& json_str)
 void on_timer(uv_timer_t* handle);
 void on_map_get(const colonio::Value& value);
 void on_map_set();
-void on_map_get_failure(colonio::MapFailureReason reason);
-void on_map_set_failure(colonio::MapFailureReason reason);
+void on_map_get_failure(colonio::ColonioException::Code reason);
+void on_map_set_failure(colonio::ColonioException::Code reason);
 
 class MyColonio : public colonio::Colonio {
  public:
@@ -131,7 +131,9 @@ void on_timer(uv_timer_t* handle) {
   is_running = true;
   val_set1++;
   std::cout << now_str << " map set:" << val_set1 << std::endl;
-  map->set(colonio::Value(my_colonio->get_local_nid()), colonio::Value(val_set1), on_map_set, on_map_set_failure);
+  assert(false);
+  // TODO
+  // map->set(colonio::Value(my_colonio->get_local_nid()), colonio::Value(val_set1), on_map_set, on_map_set_failure);
 
   //*
   if (mt() % 100 == 0) {
@@ -167,16 +169,18 @@ void on_map_set() {
   std::cout << now_str << " map set success:" << val_set1 << std::endl;
   val_set2 = val_set1;
   std::cout << now_str << " map get" << std::endl;
-  map->get(colonio::Value(my_colonio->get_local_nid()), on_map_get, on_map_get_failure);
+  assert(false);
+  // TODO
+  // map->get(colonio::Value(my_colonio->get_local_nid()), on_map_get, on_map_get_failure);
 }
 
-void on_map_get_failure(colonio::MapFailureReason reason) {
+void on_map_get_failure(colonio::ColonioException::Code reason) {
   std::cout << now_str << " map get failure:" << static_cast<int>(reason) << std::endl;
   is_running = false;
   // assert(false);
 }
 
-void on_map_set_failure(colonio::MapFailureReason reason) {
+void on_map_set_failure(colonio::ColonioException::Code reason) {
   std::cout << now_str << " map set failure:" << static_cast<int>(reason) << std::endl;
   std::cout << now_str << " map set:" << val_set1 << std::endl;
   is_running = false;

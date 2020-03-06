@@ -58,6 +58,7 @@ std::unique_ptr<api::Reply> APIGateMultiThread::call_sync(APIChannel::Type chann
       map_reply.erase(r);
       return std::move(reply);
     } else {
+      // return null when disconnect.
       return nullptr;
     }
   }

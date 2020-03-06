@@ -22,8 +22,13 @@
 #include "definition.hpp"
 
 namespace colonio {
+
+// Helper method.
+ColonioException get_exception(const api::Reply& reply);
+
 class APIGateBase {
  public:
+  virtual ~APIGateBase();
   virtual std::unique_ptr<api::Reply> call_sync(APIChannel::Type channel, const api::Call& call)           = 0;
   virtual void init()                                                                                      = 0;
   virtual void quit()                                                                                      = 0;

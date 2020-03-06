@@ -31,7 +31,7 @@ ColonioImpl::ColonioImpl(Context& context, APIEntryDelegate& entry_delegate_, AP
     APIEntry(context, entry_delegate_, APIChannel::COLONIO),
     entry_delegate(entry_delegate_),
     api_bundler(api_bundler_),
-    module_bundler(*this),
+    module_bundler(*this, *this, *this),
     api_connect_id(0),
     enable_retry(true),
     node_accessor(nullptr),
@@ -135,13 +135,7 @@ void ColonioImpl::routing_do_disconnect_seed(Routing& route) {
 
 void ColonioImpl::routing_on_system_1d_change_nearby(Routing& routing, const NodeID& prev_nid, const NodeID& next_nid) {
   context.scheduler.add_timeout_task(
-      this,
-      [this, prev_nid, next_nid]() {
-        for (auto& it : modules_1d) {
-          it->system_1d_on_change_nearby(prev_nid, next_nid);
-        }
-      },
-      0);
+      this, [this, prev_nid, next_nid]() { module_bundler.system_1d_on_change_nearby(prev_nid, next_nid); }, 0);
 }
 
 const NodeID& ColonioImpl::system_2d_do_get_relay_nid(System2D& system2d, const Coordinate& position) {
@@ -149,26 +143,13 @@ const NodeID& ColonioImpl::system_2d_do_get_relay_nid(System2D& system2d, const 
 }
 
 void ColonioImpl::routing_on_system_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids) {
-  context.scheduler.add_timeout_task(
-      this,
-      [this, nids]() {
-        for (auto& it : modules_2d) {
-          it->system_2d_on_change_nearby(nids);
-        }
-      },
-      0);
+  context.scheduler.add_timeout_task(this, [this, nids]() { module_bundler.system_2d_on_change_nearby(nids); }, 0);
 }
 
 void ColonioImpl::routing_on_system_2d_change_nearby_position(
     Routing& routing, const std::map<NodeID, Coordinate>& positions) {
   context.scheduler.add_timeout_task(
-      this,
-      [this, positions]() {
-        for (auto& it : modules_2d) {
-          it->system_2d_on_change_nearby_position(positions);
-        }
-      },
-      0);
+      this, [this, positions]() { module_bundler.system_2d_on_change_nearby_position(positions); }, 0);
 }
 
 void ColonioImpl::seed_accessor_on_change_status(SeedAccessor& sa, LinkStatus::Type status) {
@@ -192,9 +173,9 @@ void ColonioImpl::seed_accessor_on_recv_config(SeedAccessor& sa, const picojson:
     }
 
     // routing
-    routing = std::make_shared<Routing>(
+    routing = std::make_unique<Routing>(
         context, *this, *this, APIChannel::COLONIO, Utils::get_json<picojson::object>(config, "routing"));
-    module_bundler.registrate(std::static_pointer_cast<APIModule>(routing));
+    module_bundler.registrate(routing.get(), false, false);
 
     // modules
     initialize_algorithms();
@@ -238,8 +219,8 @@ void ColonioImpl::api_connect(uint32_t id, const api::colonio::Connect& param) {
   enable_retry   = true;
 
   seed_accessor = std::make_unique<SeedAccessor>(context, *this, url, token);
-  node_accessor = std::make_shared<NodeAccessor>(context, *this, *this);
-  module_bundler.registrate(std::static_pointer_cast<APIModule>(node_accessor));
+  node_accessor = std::make_unique<NodeAccessor>(context, *this, *this);
+  module_bundler.registrate(node_accessor.get(), false, false);
 
   context.scheduler.add_timeout_task(
       this, [this]() { on_change_accessor_status(seed_accessor->get_status(), node_accessor->get_status()); }, 0);
@@ -263,9 +244,6 @@ void ColonioImpl::api_disconnect(uint32_t id) {
     node_accessor.reset();
     routing.reset();
 
-    modules_1d.clear();
-    modules_2d.clear();
-
     seed_accessor.reset();
 
     context.scheduler.remove_task(this);
@@ -283,13 +261,7 @@ void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition&
       context.scheduler.add_timeout_task(
           this, [this, new_position]() { this->routing->on_change_my_position(new_position); }, 0);
       context.scheduler.add_timeout_task(
-          this,
-          [this, new_position]() {
-            for (auto& it : this->modules_2d) {
-              it->system_2d_on_change_my_position(new_position);
-            }
-          },
-          0);
+          this, [this, new_position]() { module_bundler.system_2d_on_change_my_position(new_position); }, 0);
 #ifndef NDEBUG
       context.debug_event(DebugEvent::POSITION, Convert::coordinate2json(new_position));
 #endif
@@ -302,7 +274,7 @@ void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition&
     api_reply(std::move(reply));
 
   } else {
-    api_failure(id, "coordinate system was not enabled");
+    api_failure(id, ColonioException::Code::CONFLICT_WITH_SETTING, "coordinate system was not enabled");
   }
 }
 
@@ -343,7 +315,7 @@ void ColonioImpl::initialize_algorithms() {
       modules_2d.insert(tmp);
       */
     } else if (type == "mapPaxos") {
-      MapPaxosEntry::make_entry(context, api_bundler, module_bundler, entry_delegate, module_config);
+      MapPaxosEntry::make_entry(context, api_bundler, entry_delegate, module_bundler, module_config);
       api_module->set_type(api::colonio::ConnectReply_ModuleType_MAP);
 
     } else {
@@ -396,7 +368,7 @@ void ColonioImpl::on_change_accessor_status(LinkStatus::Type seed_status, LinkSt
   } else if (seed_accessor->get_auth_status() == AuthStatus::FAILURE) {
     loge(0x00010003, "Connect failure.");
     if (api_connect_id != 0) {
-      api_failure(api_connect_id, "Connect failure.");
+      api_failure(api_connect_id, ColonioException::Code::OFFLINE, "Connect failure.");
       api_connect_id = 0;
     }
     assert(false);

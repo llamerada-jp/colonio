@@ -17,7 +17,6 @@
 
 #include <colonio/value.hpp>
 #include <cstdint>
-#include <functional>
 
 namespace colonio {
 
@@ -29,24 +28,11 @@ static const Type ERROR_WITHOUT_EXIST = 0x1;  // del, unlook
 static const Type TRY_LOCK = 0x4;  // lock
 }  // namespace MapOption
 
-enum class MapFailureReason : uint32_t {
-  NONE,
-  SYSTEM_ERROR,
-  NOT_EXIST_KEY,
-  // EXIST_KEY,
-  CHANGED_PROPOSER,
-  COLLISION_LATE
-};
-
 class Map {
  public:
   virtual ~Map();
 
-  virtual void get(
-      const Value& key, const std::function<void(const Value&)>& on_success,
-      const std::function<void(MapFailureReason)>& on_failure) = 0;
-  virtual void set(
-      const Value& key, const Value& value, const std::function<void()>& on_success,
-      const std::function<void(MapFailureReason)>& on_failure, MapOption::Type opt = 0x0) = 0;
+  virtual Value get(const Value& key)                                                           = 0;
+  virtual void set(const Value& key, const Value& value, MapOption::Type opt = MapOption::NONE) = 0;
 };
 }  // namespace colonio

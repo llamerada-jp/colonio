@@ -13,14 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-#include "colonio/colonio_exception.hpp"
+#include "api_gate.hpp"
 
 namespace colonio {
-ColonioException::ColonioException(Code code_, const std::string& message_) : code(code_), message(message_) {
+
+ColonioException get_exception(const api::Reply& reply) {
+  if (reply.has_failure()) {
+    return ColonioException(static_cast<ColonioException::Code>(reply.failure().code()), reply.failure().message());
+  } else {
+    return ColonioException(ColonioException::Code::UNDEFINED, "unknown error");
+  }
 }
 
-const char* ColonioException::what() const noexcept {
-  return message.c_str();
+APIGateBase::~APIGateBase() {
 }
 }  // namespace colonio

@@ -6,6 +6,7 @@ set(COLONIO_FILES
   core/api.pb.cc
   core/api_entry.cpp
   core/api_entry_bundler.cpp
+  core/api_gate.cpp
   core/api_module.cpp
   core/api_module_bundler.cpp
   core/colonio_api.pb.cc
@@ -21,6 +22,8 @@ set(COLONIO_FILES
   core/export_c.cpp
   core/logger.cpp
   core/map.cpp
+  core/map_api.pb.cc
+  core/map_impl.cpp
   core/node_accessor.cpp
   core/node_accessor_protocol.pb.cc
   core/node_id.cpp
@@ -44,9 +47,9 @@ set(COLONIO_FILES
   core/webrtc_context.cpp
   core/webrtc_link.cpp
 
+  map_paxos/map_paxos.cpp
   map_paxos/map_paxos_entry.cpp
-  # map_paxos/map_paxos.cpp
-  # map_paxos/map_paxos_protocol.pb.cc
+  map_paxos/map_paxos_protocol.pb.cc
 
   # pubsub_2d/pubsub_2d_impl.cpp
   # pubsub_2d/pubsub_2d_protocol.pb.cc

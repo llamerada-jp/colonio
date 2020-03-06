@@ -17,6 +17,7 @@
 
 #include <picojson.h>
 
+#include "colonio/map.hpp"
 #include "core/api_entry.hpp"
 
 namespace colonio {
@@ -24,17 +25,24 @@ class APIEntryBundler;
 class APIEntryDelegate;
 class APIModuleBundler;
 class Context;
+class MapPaxos;
+class Value;
 
 class MapPaxosEntry : public APIEntry {
  public:
   static void make_entry(
-      Context& context, APIEntryBundler& api_bundler, APIModuleBundler& module_bundler,
-      APIEntryDelegate& entry_delegate, const picojson::object& config);
+      Context& context, APIEntryBundler& api_bundler, APIEntryDelegate& entry_delegate,
+      APIModuleBundler& module_bundler, const picojson::object& config);
 
  private:
-  MapPaxosEntry(Context& context, APIEntryDelegate& delegate, APIChannel::Type channel);
+  std::unique_ptr<MapPaxos> mp;
+
+  MapPaxosEntry(
+      Context& context, APIEntryDelegate& delegate, APIChannel::Type channel, std::unique_ptr<MapPaxos> module);
 
   void api_entry_on_recv_call(const api::Call& call) override;
+  void api_get(uint32_t id, const Value& key);
+  void api_set(uint32_t id, const Value& key, const Value& value, MapOption::Type opt);
 };
 
 }  // namespace colonio

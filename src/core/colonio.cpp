@@ -19,21 +19,14 @@
 
 #include "api.pb.h"
 #include "api_gate.hpp"
-#include "colonio_impl.hpp"
+#include "map_impl.hpp"
 
 namespace colonio {
 class Colonio::Impl {
  public:
   APIGate api_gate;
+  std::map<std::string, std::unique_ptr<Map>> maps;
 };
-
-std::string get_error_message(const api::Reply& reply) {
-  if (reply.has_failure()) {
-    return reply.failure().message();
-  } else {
-    return "unknown error";
-  }
-}
 
 Colonio::Colonio() {
   impl = std::make_unique<Colonio::Impl>();
@@ -60,8 +53,14 @@ Colonio::~Colonio() {
 }
 
 Map& Colonio::access_map(const std::string& name) {
-  // TODO return impl->access<Map>(name);
-  assert(false);
+  auto it = impl->maps.find(name);
+  if (it != impl->maps.end()) {
+    return *it->second;
+
+  } else {
+    throw ColonioException(
+        ColonioException::Code::CONFLICT_WITH_SETTING, Utils::format_string("map not found : ", 0, name.c_str()));
+  }
 }
 
 PubSub2D& Colonio::access_pubsub2d(const std::string& name) {
@@ -82,10 +81,22 @@ void Colonio::connect(const std::string& url, const std::string& token) {
   std::unique_ptr<api::Reply> reply = impl->api_gate.call_sync(APIChannel::COLONIO, call);
   if (reply) {
     if (reply->has_colonio_connect()) {
-      // TODO
-      // assert(false);
+      const api::colonio::ConnectReply& param = reply->colonio_connect();
+      for (auto& module_param : param.modules()) {
+        APIChannel::Type channel = static_cast<APIChannel::Type>(module_param.channel());
+        switch (module_param.type()) {
+          case api::colonio::ConnectReply_ModuleType_MAP:
+            impl->maps.insert(
+                std::make_pair(module_param.name(), std::unique_ptr<Map>(new MapImpl(impl->api_gate, channel))));
+            break;
+
+          default:
+            assert(false);
+            break;
+        }
+      }
     } else {
-      throw ColonioException(get_error_message(*reply));
+      throw get_exception(*reply);
     }
   }
 }
@@ -99,7 +110,7 @@ void Colonio::disconnect() {
   std::unique_ptr<api::Reply> reply = impl->api_gate.call_sync(APIChannel::COLONIO, call);
   if (reply) {
     if (!reply->has_success()) {
-      throw ColonioException(get_error_message(*reply));
+      throw get_exception(*reply);
     }
   }
 
@@ -117,7 +128,7 @@ std::string Colonio::get_local_nid() {
     if (reply->has_colonio_get_local_nid()) {
       return NodeID::from_pb(reply->colonio_get_local_nid().local_nid()).to_str();
     } else {
-      throw ColonioException(get_error_message(*reply));
+      throw get_exception(*reply);
     }
   } else {
     return NodeID::NONE.to_str();
@@ -136,7 +147,7 @@ std::tuple<double, double> Colonio::set_position(double x, double y) {
     Coordinate position = Coordinate::from_pb(reply->colonio_set_position().position());
     return std::make_tuple(position.x, position.y);
   } else {
-    throw ColonioException(get_error_message(*reply));
+    throw get_exception(*reply);
   }
 }
 

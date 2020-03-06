@@ -73,7 +73,8 @@ void colonio_connect(
     colonio_t* colonio, const char* url, const char* token, void (*on_success)(colonio_t*),
     void (*on_failure)(colonio_t*)) {
   colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
-  /*
+  assert(false);
+  /* TODO
   impl->connect(
       url, token, [on_success, colonio](colonio::Colonio&) { on_success(colonio); },
       [on_failure, colonio](colonio::Colonio&) { on_failure(colonio); });
@@ -209,6 +210,8 @@ void colonio_map_get(
   colonio::Map* impl = reinterpret_cast<colonio::Map*>(map->impl);
   colonio::Value cpp_key;
   convert_value_c_to_cpp(&cpp_key, key);
+  assert(false);
+  /* TODO
   impl->get(
       cpp_key,
       [map, ptr, on_success](const colonio::Value& value) {
@@ -217,9 +220,10 @@ void colonio_map_get(
         on_success(map, ptr, &c_value);
         colonio_value_free(&c_value);
       },
-      [map, ptr, on_failure](colonio::MapFailureReason reason) {
+      [map, ptr, on_failure](colonio::ColonioException::Code reason) {
         on_failure(map, ptr, static_cast<COLONIO_MAP_FAILURE_REASON>(reason));
       });
+      */
 }
 
 void colonio_map_set(
@@ -231,12 +235,16 @@ void colonio_map_set(
   colonio::Value cpp_value;
   convert_value_c_to_cpp(&cpp_key, key);
   convert_value_c_to_cpp(&cpp_value, value);
+
+  assert(false);
+  /* TODO
   impl->set(
       cpp_key, cpp_value, [map, ptr, on_success]() { on_success(map, ptr); },
-      [map, ptr, on_failure](colonio::MapFailureReason reason) {
+      [map, ptr, on_failure](colonio::ColonioException::Code reason) {
         on_failure(map, ptr, static_cast<COLONIO_MAP_FAILURE_REASON>(reason));
       },
       opt);
+      */
 }
 
 void colonio_pubsub2d_publish(

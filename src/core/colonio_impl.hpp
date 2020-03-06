@@ -55,12 +55,9 @@ class ColonioImpl : public APIEntry,
   uint32_t api_connect_id;
   std::unique_ptr<api::colonio::ConnectReply> api_connect_reply;
 
-  std::set<std::shared_ptr<System1D>> modules_1d;
-  std::set<std::shared_ptr<System2D>> modules_2d;
-
   std::unique_ptr<SeedAccessor> seed_accessor;
-  std::shared_ptr<NodeAccessor> node_accessor;
-  std::shared_ptr<Routing> routing;
+  std::unique_ptr<NodeAccessor> node_accessor;
+  std::unique_ptr<Routing> routing;
 
   LinkStatus::Type node_status;
   LinkStatus::Type seed_status;

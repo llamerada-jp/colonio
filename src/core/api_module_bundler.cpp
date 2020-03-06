@@ -20,23 +20,37 @@
 
 #include "api_module.hpp"
 #include "packet.hpp"
+#include "system_1d.hpp"
+#include "system_2d.hpp"
 #include "utils.hpp"
 
 namespace colonio {
 
-APIModuleBundler::APIModuleBundler(APIModuleDelegate& delegate_) : delegate(delegate_) {
+APIModuleBundler::APIModuleBundler(
+    APIModuleDelegate& module_delegate_, System1DDelegate& system1d_delegate_, System2DDelegate& system2d_delegate_) :
+    module_delegate(module_delegate_),
+    system1d_delegate(system1d_delegate_),
+    system2d_delegate(system2d_delegate_) {
 }
 
 void APIModuleBundler::clear() {
   modules.clear();
 }
 
-void APIModuleBundler::registrate(std::shared_ptr<APIModule> module) {
+void APIModuleBundler::registrate(APIModule* module, bool is_1d, bool is_2d) {
   assert(module->channel != APIChannel::NONE);
   assert(module->module_channel != APIModuleChannel::NONE);
   assert(modules.find(std::make_pair(module->channel, module->module_channel)) == modules.end());
 
   modules.insert(std::make_pair(std::make_pair(module->channel, module->module_channel), module));
+
+  if (is_1d) {
+    modules_1d.insert(dynamic_cast<System1D*>(module));
+  }
+
+  if (is_2d) {
+    modules_2d.insert(dynamic_cast<System2D*>(module));
+  }
 }
 
 void APIModuleBundler::on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status) {
@@ -54,6 +68,30 @@ void APIModuleBundler::on_recv_packet(std::unique_ptr<const Packet> packet) {
     module->second->on_recv_packet(std::move(packet));
   } else {
     colonio_throw("Received incorrect packet entry", Utils::dump_packet(*packet).c_str());
+  }
+}
+
+void APIModuleBundler::system_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) {
+  for (auto& it : modules_1d) {
+    it->system_1d_on_change_nearby(prev_nid, next_nid);
+  }
+}
+
+void APIModuleBundler::system_2d_on_change_my_position(const Coordinate& position) {
+  for (auto& it : modules_2d) {
+    it->system_2d_on_change_my_position(position);
+  }
+}
+
+void APIModuleBundler::system_2d_on_change_nearby(const std::set<NodeID>& nids) {
+  for (auto& it : modules_2d) {
+    it->system_2d_on_change_nearby(nids);
+  }
+}
+
+void APIModuleBundler::system_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) {
+  for (auto& it : modules_2d) {
+    it->system_2d_on_change_nearby_position(positions);
   }
 }
 

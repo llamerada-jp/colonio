@@ -18,25 +18,43 @@
 #include <map>
 #include <memory>
 
+#include "coordinate.hpp"
 #include "definition.hpp"
+#include "node_id.hpp"
 
 namespace colonio {
 class APIModule;
 class APIModuleDelegate;
 class Packet;
+class System1D;
+class System1DDelegate;
+class System2D;
+class System2DDelegate;
 
 class APIModuleBundler {
  public:
-  APIModuleBundler(APIModuleDelegate& delegate_);
+  APIModuleDelegate& module_delegate;
+  System1DDelegate& system1d_delegate;
+  System2DDelegate& system2d_delegate;
+
+  APIModuleBundler(
+      APIModuleDelegate& module_delegate_, System1DDelegate& system1d_delegate_, System2DDelegate& system2d_delegate_);
 
   void clear();
-  void registrate(std::shared_ptr<APIModule> module);
+  void registrate(APIModule* module, bool is_1d, bool is_2d);
+
   void on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status);
   void on_recv_packet(std::unique_ptr<const Packet> packet);
 
- private:
-  APIModuleDelegate& delegate;
+  void system_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid);
 
-  std::map<std::pair<APIChannel::Type, APIModuleChannel::Type>, std::shared_ptr<APIModule>> modules;
+  void system_2d_on_change_my_position(const Coordinate& position);
+  void system_2d_on_change_nearby(const std::set<NodeID>& nids);
+  void system_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions);
+
+ private:
+  std::map<std::pair<APIChannel::Type, APIModuleChannel::Type>, APIModule*> modules;
+  std::set<System1D*> modules_1d;
+  std::set<System2D*> modules_2d;
 };
 }  // namespace colonio

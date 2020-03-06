@@ -37,11 +37,12 @@ void APIEntry::api_event(std::unique_ptr<api::Event> event) {
   delegate.api_entry_send_event(*this, std::move(event));
 }
 
-void APIEntry::api_failure(uint32_t id, const std::string message) {
+void APIEntry::api_failure(uint32_t id, ColonioException::Code code, const std::string message) {
   std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
   reply->set_id(id);
 
   api::Failure* param = reply->mutable_failure();
+  param->set_code(static_cast<uint32_t>(code));
   param->set_message(message);
 
   delegate.api_entry_send_reply(*this, std::move(reply));

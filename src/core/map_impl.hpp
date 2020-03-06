@@ -13,14 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#pragma once
 
-#include "colonio/colonio_exception.hpp"
+#include "api_gate.hpp"
+#include "colonio/map.hpp"
 
 namespace colonio {
-ColonioException::ColonioException(Code code_, const std::string& message_) : code(code_), message(message_) {
-}
+class MapImpl : public Map {
+ public:
+  MapImpl(APIGate& api_gate_, APIChannel::Type channel_);
 
-const char* ColonioException::what() const noexcept {
-  return message.c_str();
-}
+  Value get(const Value& key) override;
+  void set(const Value& key, const Value& value, MapOption::Type opt = MapOption::NONE) override;
+
+ private:
+  APIGate& api_gate;
+  APIChannel::Type channel;
+};
 }  // namespace colonio
