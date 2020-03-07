@@ -50,8 +50,11 @@ type ConfigRouting struct {
 }
 
 type ConfigModule struct {
-	Type    string `json:"type"`
-	Channel uint32 `json:"channel"`
+	Type             string `json:"type"`
+	Channel          uint32 `json:"channel"`
+	RetryMax         uint32 `json:"retryMax,omitempty"`         // for map
+	RetryIntervalMin uint32 `json:"retryIntervalMin,omitempty"` // for map
+	RetryIntervalMax uint32 `json:"retryIntervalMax,omitempty"` // for map
 }
 
 type ConfigNode struct {
