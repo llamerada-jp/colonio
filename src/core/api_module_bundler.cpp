@@ -35,6 +35,8 @@ APIModuleBundler::APIModuleBundler(
 
 void APIModuleBundler::clear() {
   modules.clear();
+  modules_1d.clear();
+  modules_2d.clear();
 }
 
 void APIModuleBundler::registrate(APIModule* module, bool is_1d, bool is_2d) {
