@@ -136,9 +136,11 @@ const (
 	ModeRelaySeed = 0x0008
 	ModeNoRetry   = 0x0010
 
-	ChannelNone          = 0
-	ChannelSeed          = 1
-	ChannelWebrtcConnect = 2
+	ChannelNone    = 0
+	ChannelColonio = 1
+
+	ModuleChannelColonioSeedAccessor = 2
+	ModuleChannelColonioNodeAccessor = 3
 
 	// Commonly packet method.
 	MethodError   = 0xffff
@@ -559,7 +561,7 @@ func (link *Link) receive(context *context) (bool, error) {
 }
 
 func (link *Link) receivePacket(context *context, packet *proto.SeedAccessor) error {
-	if packet.Channel == ChannelSeed {
+	if packet.Channel == ChannelColonio && packet.ModuleChannel == ModuleChannelColonioSeedAccessor {
 		switch packet.CommandId {
 		case MethodSeedAuth:
 			logger.D.Println("receive packet auth")
@@ -634,7 +636,7 @@ func (link *Link) relayPacket(context *context, packet *proto.SeedAccessor) erro
 		defer link.unlockMutex(context)
 	}
 	// IDの確認用にWEBRTC_CONNECT::OFFERパケットとその返事を利用する
-	if packet.Channel == ChannelWebrtcConnect {
+	if packet.Channel == ChannelColonio && packet.ModuleChannel == ModuleChannelColonioNodeAccessor {
 		switch packet.CommandId {
 		case MethodWebrtcConnectOffer:
 			var content proto.Offer
@@ -701,13 +703,14 @@ func (link *Link) sendHint(context *context) error {
 	}
 
 	packet := &proto.SeedAccessor{
-		DstNid:    link.nid,
-		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
-		Id:        0,
-		Mode:      ModeExplicit | ModeOneWay,
-		Channel:   1, // seed
-		CommandId: MethodSeedHint,
-		Content:   contentByte,
+		DstNid:        link.nid,
+		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
+		Id:            0,
+		Mode:          ModeExplicit | ModeOneWay,
+		Channel:       ChannelColonio,
+		ModuleChannel: ModuleChannelColonioSeedAccessor,
+		CommandId:     MethodSeedHint,
+		Content:       contentByte,
 	}
 
 	logger.D.Printf("Send hint.(%d)\n", len(contentByte))
@@ -716,12 +719,13 @@ func (link *Link) sendHint(context *context) error {
 
 func (link *Link) sendPing(context *context) error {
 	packet := &proto.SeedAccessor{
-		DstNid:    link.nid,
-		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
-		Id:        0,
-		Mode:      ModeExplicit | ModeOneWay,
-		Channel:   1, //seed
-		CommandId: MethodSeedPing,
+		DstNid:        link.nid,
+		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
+		Id:            0,
+		Mode:          ModeExplicit | ModeOneWay,
+		Channel:       ChannelColonio,
+		ModuleChannel: ModuleChannelColonioSeedAccessor,
+		CommandId:     MethodSeedPing,
 	}
 
 	logger.D.Println("Send ping.")
@@ -730,12 +734,13 @@ func (link *Link) sendPing(context *context) error {
 
 func (link *Link) sendRequireRandom(context *context) error {
 	packet := &proto.SeedAccessor{
-		DstNid:    link.nid,
-		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
-		Id:        0,
-		Mode:      ModeExplicit | ModeOneWay,
-		Channel:   1, //seed
-		CommandId: MethodSeedRequireRandom,
+		DstNid:        link.nid,
+		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
+		Id:            0,
+		Mode:          ModeExplicit | ModeOneWay,
+		Channel:       ChannelColonio,
+		ModuleChannel: ModuleChannelColonioSeedAccessor,
+		CommandId:     MethodSeedRequireRandom,
 	}
 
 	logger.D.Println("Send require random.")
@@ -749,13 +754,14 @@ func (link *Link) sendSuccess(context *context, replyFor *proto.SeedAccessor, co
 	}
 
 	packet := &proto.SeedAccessor{
-		DstNid:    replyFor.SrcNid,
-		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
-		Id:        replyFor.Id,
-		Mode:      ModeExplicit | ModeOneWay,
-		Channel:   replyFor.Channel,
-		CommandId: MethodSuccess,
-		Content:   contentByte,
+		DstNid:        replyFor.SrcNid,
+		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
+		Id:            replyFor.Id,
+		Mode:          ModeExplicit | ModeOneWay,
+		Channel:       replyFor.Channel,
+		ModuleChannel: replyFor.ModuleChannel,
+		CommandId:     MethodSuccess,
+		Content:       contentByte,
 	}
 
 	logger.D.Println("Send success.")
@@ -773,13 +779,14 @@ func (link *Link) sendFailure(context *context, replyFor *proto.SeedAccessor, co
 	}
 
 	packet := &proto.SeedAccessor{
-		DstNid:    replyFor.SrcNid,
-		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
-		Id:        replyFor.Id,
-		Mode:      ModeExplicit | ModeOneWay,
-		Channel:   replyFor.Channel,
-		CommandId: MethodFailure,
-		Content:   contentByte,
+		DstNid:        replyFor.SrcNid,
+		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
+		Id:            replyFor.Id,
+		Mode:          ModeExplicit | ModeOneWay,
+		Channel:       replyFor.Channel,
+		ModuleChannel: replyFor.ModuleChannel,
+		CommandId:     MethodFailure,
+		Content:       contentByte,
 	}
 
 	logger.D.Println("Send failure.")

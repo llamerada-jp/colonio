@@ -120,8 +120,8 @@ setup_protobuf() {
 
 build() {
   for f in \
+    core/core.proto\
     core/node_accessor_protocol.proto\
-    core/protocol.proto\
     core/seed_accessor_protocol.proto
   do
     protoc -I${ROOT_PATH}/api --go_out=${ROOT_PATH}/pkg/seed ${ROOT_PATH}/api/${f}
