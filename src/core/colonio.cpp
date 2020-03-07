@@ -29,27 +29,12 @@ class Colonio::Impl {
 };
 
 Colonio::Colonio() {
-  impl = std::make_unique<Colonio::Impl>();
-  impl->api_gate.set_event_hook(APIChannel::COLONIO, [this](const api::Event& e) {
-    switch (e.param_case()) {
-      case api::Event::ParamCase::kColonioLog: {
-        const api::colonio::LogEvent& l = e.colonio_log();
-        on_output_log(static_cast<LogLevel::Type>(l.level()), l.message());
-      } break;
-
-      case api::Event::ParamCase::kColonioDebug: {
-        const api::colonio::DebugEvent& d = e.colonio_debug();
-        on_debug_event(static_cast<DebugEvent::Type>(d.event()), d.json());
-      } break;
-
-      default:
-        assert(false);
-        break;
-    }
-  });
 }
 
 Colonio::~Colonio() {
+  if (impl) {
+    disconnect();
+  }
 }
 
 Map& Colonio::access_map(const std::string& name) {
@@ -69,7 +54,26 @@ PubSub2D& Colonio::access_pubsub2d(const std::string& name) {
 }
 
 void Colonio::connect(const std::string& url, const std::string& token) {
-  assert(impl);
+  assert(!impl);
+
+  impl = std::make_unique<Colonio::Impl>();
+  impl->api_gate.set_event_hook(APIChannel::COLONIO, [this](const api::Event& e) {
+    switch (e.param_case()) {
+      case api::Event::ParamCase::kColonioLog: {
+        const api::colonio::LogEvent& l = e.colonio_log();
+        on_output_log(static_cast<LogLevel::Type>(l.level()), l.message());
+      } break;
+
+      case api::Event::ParamCase::kColonioDebug: {
+        const api::colonio::DebugEvent& d = e.colonio_debug();
+        on_debug_event(static_cast<DebugEvent::Type>(d.event()), d.json());
+      } break;
+
+      default:
+        assert(false);
+        break;
+    }
+  });
 
   impl->api_gate.init();
 
@@ -115,6 +119,7 @@ void Colonio::disconnect() {
   }
 
   impl->api_gate.quit();
+  impl.reset();
 }
 
 std::string Colonio::get_local_nid() {
