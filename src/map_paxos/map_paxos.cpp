@@ -21,6 +21,7 @@
 #include "core/convert.hpp"
 #include "core/definition.hpp"
 #include "core/logger.hpp"
+#include "core/scheduler.hpp"
 #include "core/utils.hpp"
 #include "core/value_impl.hpp"
 #include "map_paxos_protocol.pb.h"
@@ -57,6 +58,7 @@ MapPaxos::CommandGet::Info::Info(MapPaxos& parent_, std::unique_ptr<Value> key_,
     parent(parent_),
     key(std::move(key_)),
     count_retry(count_retry_),
+    time_send(0),
     count_ng(0),
     is_finished(false) {
 }
@@ -115,8 +117,12 @@ void MapPaxos::CommandGet::postprocess() {
 
     if (ok_sum == 0) {
       if (info->count_retry < info->parent.CONF_RETRY_MAX) {
+        int64_t interval =
+            info->time_send +
+            Utils::get_rnd_32(info->parent.CONF_RETRY_INTERVAL_MIN, info->parent.CONF_RETRY_INTERVAL_MAX) -
+            Utils::get_current_msec();
         info->parent.send_packet_get(
-            std::move(info->key), info->count_retry + 1, info->cb_on_success, info->cb_on_failure);
+            std::move(info->key), info->count_retry + 1, interval, info->cb_on_success, info->cb_on_failure);
       } else {
         info->cb_on_failure(ColonioException::Code::NOT_EXIST_KEY);
       }
@@ -135,9 +141,11 @@ void MapPaxos::CommandGet::postprocess() {
       }
 
       info->parent.send_packet_hint(*info->key, *value, n, i);
-      // @todo Set interval before retry to get command.
+      int64_t interval = info->time_send +
+                         Utils::get_rnd_32(info->parent.CONF_RETRY_INTERVAL_MIN, info->parent.CONF_RETRY_INTERVAL_MAX) -
+                         Utils::get_current_msec();
       info->parent.send_packet_get(
-          std::move(info->key), info->count_retry + 1, info->cb_on_success, info->cb_on_failure);
+          std::move(info->key), info->count_retry + 1, interval, info->cb_on_success, info->cb_on_failure);
     }
   }
 }
@@ -452,9 +460,12 @@ void MapPaxos::CommandAccept::postprocess() {
 
 MapPaxos::MapPaxos(
     Context& context, APIModuleDelegate& module_delegate, System1DDelegate& system_delegate, APIChannel::Type channel,
-    APIModuleChannel::Type module_channel, unsigned int retry_max) :
+    APIModuleChannel::Type module_channel, unsigned int retry_max, uint32_t retry_interval_min,
+    uint32_t retry_interval_max) :
     System1D(context, module_delegate, system_delegate, channel, module_channel),
-    CONF_RETRY_MAX(retry_max) {
+    CONF_RETRY_MAX(retry_max),
+    CONF_RETRY_INTERVAL_MIN(retry_interval_min),
+    CONF_RETRY_INTERVAL_MAX(retry_interval_max) {
 }
 
 MapPaxos::~MapPaxos() {
@@ -463,7 +474,7 @@ MapPaxos::~MapPaxos() {
 void MapPaxos::get(
     const Value& key, const std::function<void(const Value&)>& on_success,
     const std::function<void(ColonioException::Code)>& on_failure) {
-  send_packet_get(std::make_unique<Value>(key), 0, on_success, on_failure);
+  send_packet_get(std::make_unique<Value>(key), 0, 0, on_success, on_failure);
 }
 
 void MapPaxos::set(
@@ -876,24 +887,34 @@ void MapPaxos::send_packet_balance_proposer(const Value& key, const ProposerInfo
 }
 
 void MapPaxos::send_packet_get(
-    std::unique_ptr<Value> key, int count_retry, const std::function<void(const Value&)>& on_success,
+    std::unique_ptr<Value> key, int count_retry, int64_t interval, const std::function<void(const Value&)>& on_success,
     const std::function<void(ColonioException::Code)>& on_failure) {
   std::shared_ptr<CommandGet::Info> info = std::make_unique<CommandGet::Info>(*this, std::move(key), count_retry);
   info->cb_on_success                    = on_success;
   info->cb_on_failure                    = on_failure;
 
-  MapPaxosProtocol::Get param;
-  ValueImpl::to_pb(param.mutable_key(), *info->key);
-  std::shared_ptr<const std::string> param_bin = serialize_pb(param);
-
-  NodeID acceptor_nid = ValueImpl::to_hash(*info->key, salt);
-
-  for (int i = 0; i < NUM_ACCEPTOR; i++) {
-    acceptor_nid += NodeID::QUARTER;
-    std::unique_ptr<Command> command = std::make_unique<CommandGet>(info);
-
-    send_packet(std::move(command), acceptor_nid, param_bin);
+  if (interval < 0) {
+    interval = 0;
   }
+  context.scheduler.add_timeout_task(
+      this,
+      [this, info]() {
+        MapPaxosProtocol::Get param;
+        ValueImpl::to_pb(param.mutable_key(), *info->key);
+        std::shared_ptr<const std::string> param_bin = serialize_pb(param);
+
+        info->time_send = Utils::get_current_msec();
+
+        NodeID acceptor_nid = ValueImpl::to_hash(*info->key, salt);
+
+        for (int i = 0; i < NUM_ACCEPTOR; i++) {
+          acceptor_nid += NodeID::QUARTER;
+          std::unique_ptr<Command> command = std::make_unique<CommandGet>(info);
+
+          send_packet(std::move(command), acceptor_nid, param_bin);
+        }
+      },
+      interval);
 }
 
 void MapPaxos::send_packet_hint(const Value& key, const Value& value, PAXOS_N n, PAXOS_N i) {

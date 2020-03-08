@@ -118,10 +118,16 @@ TEST(MapTest, set_get_multi) {
   map1.set(Value(KEY_NAME), Value(VALUE));
 
   // get(key) @ node2
-  Value v = map2.get(Value(KEY_NAME));
+  printf("get a existed value.\n");
+  Value v1 = map2.get(Value(KEY_NAME));
+  EXPECT_EQ(v1.get<std::string>(), VALUE);
 
-  EXPECT_EQ(v.get<std::string>(), VALUE);
+  // get(key) @ node1
+  printf("get a existed value.\n");
+  Value v2 = map1.get(Value(KEY_NAME));
+  EXPECT_EQ(v2.get<std::string>(), VALUE);
 
+  printf("disconnect.\n");
   node2.disconnect();
   node1.disconnect();
 

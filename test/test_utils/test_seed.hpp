@@ -96,10 +96,14 @@ class TestSeed {
     coord_system.insert(std::make_pair("radius", picojson::value(r)));
   }
 
-  void add_module_map_paxos(const std::string& name, unsigned int channel) {
+  void add_module_map_paxos(
+      const std::string& name, unsigned int channel, unsigned int retry_interval_min = 200,
+      unsigned int retry_interval_max = 300) {
     picojson::object m;
     m.insert(std::make_pair("type", picojson::value("mapPaxos")));
     m.insert(std::make_pair("channel", picojson::value(static_cast<double>(channel))));
+    m.insert(std::make_pair("retryIntervalMin", picojson::value(static_cast<double>(retry_interval_min))));
+    m.insert(std::make_pair("retryIntervalMax", picojson::value(static_cast<double>(retry_interval_max))));
     modules.insert(std::make_pair(name, picojson::value(m)));
   }
 

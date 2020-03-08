@@ -202,6 +202,12 @@ uint32_t Utils::get_rnd_32() {
   return rnd32();
 }
 
+uint32_t Utils::get_rnd_32(uint32_t min, uint32_t max) {
+  std::lock_guard<std::mutex> guard(mutex32);
+  std::uniform_int_distribution<uint32_t> dist(min, max);
+  return dist(rnd32);
+}
+
 uint64_t Utils::get_rnd_64() {
   std::lock_guard<std::mutex> guard(mutex64);
   return rnd64();

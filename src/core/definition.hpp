@@ -43,7 +43,7 @@ static const Type CLOSING    = 3;
  * Specified node-id.
  */
 namespace NID {
-static const char NONE[] = "";      ///< Set none if destination node-id is't yet determined.
+static const char NONE[] = "";      ///< Set none if destination node-id isn't yet determined.
 static const char THIS[] = ".";     ///< Send command to this(local) node.
 static const char SEED[] = "seed";  ///< Server is a special node.
 static const char NEXT[] = "next";  ///< Next node is nodes of connecting direct from this node.
@@ -135,7 +135,10 @@ static const Type NO_RETRY   = 0x0010;
 static const uint32_t ESTIMATED_HEAD_SIZE = 64;
 
 // default values.
-static const unsigned int MAP_PAXOS_RETRY_MAX = 5;
+static const unsigned int MAP_PAXOS_RETRY_MAX          = 5;
+static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MIN = 200;  // [msec]
+static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MAX = 300;  // [msec]
+
 static const unsigned int PUBSUB2D_CACHE_TIME = 30000;  // [msec]
 
 static const uint32_t ORPHAN_NODES_MAX                  = 32;

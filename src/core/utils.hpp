@@ -110,6 +110,7 @@ std::string dump_packet(const Packet& packet, unsigned int indent = 2);
 int64_t get_current_msec();
 std::string get_current_thread_id();
 uint32_t get_rnd_32();
+uint32_t get_rnd_32(uint32_t min, uint32_t max);
 uint64_t get_rnd_64();
 
 template<typename T>

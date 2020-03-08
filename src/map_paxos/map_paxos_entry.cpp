@@ -25,13 +25,16 @@ namespace colonio {
 void MapPaxosEntry::make_entry(
     Context& context, APIEntryBundler& api_bundler, APIEntryDelegate& entry_delegate, APIModuleBundler& module_bundler,
     const picojson::object& config) {
-  APIChannel::Type channel = static_cast<APIChannel::Type>(Utils::get_json<double>(config, "channel"));
-  unsigned int retry_max   = Utils::get_json<double>(config, "retryMax", MAP_PAXOS_RETRY_MAX);
+  APIChannel::Type channel    = static_cast<APIChannel::Type>(Utils::get_json<double>(config, "channel"));
+  unsigned int retry_max      = Utils::get_json<double>(config, "retryMax", MAP_PAXOS_RETRY_MAX);
+  uint32_t retry_interval_min = Utils::get_json<double>(config, "retryIntervalMin", MAP_PAXOS_RETRY_INTERVAL_MIN);
+  uint32_t retry_interval_max = Utils::get_json<double>(config, "retryIntervalMax", MAP_PAXOS_RETRY_INTERVAL_MAX);
+  assert(retry_interval_min <= retry_interval_max);
 
   // create a module instance.
   std::unique_ptr<MapPaxos> module = std::make_unique<MapPaxos>(
       context, module_bundler.module_delegate, module_bundler.system1d_delegate, channel,
-      APIModuleChannel::MapPaxos::MAP_PAXOS, retry_max);
+      APIModuleChannel::MapPaxos::MAP_PAXOS, retry_max, retry_interval_min, retry_interval_max);
   module_bundler.registrate(module.get(), true, false);
 
   // create a entry instance.

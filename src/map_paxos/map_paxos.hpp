@@ -30,7 +30,8 @@ class MapPaxos : public System1D {
  public:
   MapPaxos(
       Context& context, APIModuleDelegate& module_delegate, System1DDelegate& system_delegate, APIChannel::Type channel,
-      APIModuleChannel::Type module_channel, unsigned int retry_max);
+      APIModuleChannel::Type module_channel, unsigned int retry_max, uint32_t retry_interval_min,
+      uint32_t retry_interval_max);
   virtual ~MapPaxos();
 
   void get(
@@ -73,6 +74,7 @@ class MapPaxos : public System1D {
       MapPaxos& parent;
       std::unique_ptr<Value> key;
       int count_retry;
+      int64_t time_send;
 
       // (n, i), value
       std::map<std::tuple<PAXOS_N, PAXOS_N>, Value> ok_values;
@@ -201,6 +203,8 @@ class MapPaxos : public System1D {
   };
 
   const unsigned int CONF_RETRY_MAX;
+  const uint32_t CONF_RETRY_INTERVAL_MIN;
+  const uint32_t CONF_RETRY_INTERVAL_MAX;
 
   std::string salt;
   std::map<Value, AcceptorInfo> acceptor_infos;
@@ -226,7 +230,8 @@ class MapPaxos : public System1D {
   void send_packet_balance_acceptor(const Value& key, const AcceptorInfo& acceptor);
   void send_packet_balance_proposer(const Value& key, const ProposerInfo& proposer);
   void send_packet_get(
-      std::unique_ptr<Value> key, int count_retry, const std::function<void(const Value&)>& on_success,
+      std::unique_ptr<Value> key, int count_retry, int64_t interval,
+      const std::function<void(const Value&)>& on_success,
       const std::function<void(ColonioException::Code)>& on_failure);
   void send_packet_hint(const Value& key, const Value& value, PAXOS_N n, PAXOS_N i);
   void send_packet_prepare(
