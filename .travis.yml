@@ -19,7 +19,7 @@ install:
 
 script:
   - cd $TRAVIS_BUILD_DIR
-  - ./bin/build.sh -c
+  - sh bin/build.sh -c
   - make -C build/ubuntu_18.04_x86_64 test ARGS='--output-on-failure --timeout 60'
 
 after_success:
