@@ -15,32 +15,31 @@
  */
 #pragma once
 
-#include <memory>
-
-#include "definition.hpp"
-#include "node_id.hpp"
+#include "module_base.hpp"
 
 namespace colonio {
-class Packet {
+class Context;
+class NodeID;
+class Module1D;
+
+class Module1DDelegate {
  public:
-  static const unsigned int PACKET_HEAD_SIZE;
+  virtual ~Module1DDelegate();
+  virtual bool module_1d_do_check_covered_range(Module1D& module_1d, const NodeID& nid) = 0;
+};
 
-  const NodeID dst_nid;
-  const NodeID src_nid;
-  const uint32_t id;
-  std::shared_ptr<const std::string> content;
-  const PacketMode::Type mode;
-  const APIChannel::Type channel;
-  const ModuleChannel::Type module_channel;
-  const CommandID::Type command_id;
+class Module1D : public ModuleBase {
+ public:
+  virtual void module_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) = 0;
 
-  template<typename T>
-  void parse_content(T* dst) const {
-    assert(content.get() != nullptr);
-    if (!dst->ParseFromString(*content)) {
-      /// @todo error
-      assert(false);
-    }
-  }
+ protected:
+  Module1D(
+      Context& context, ModuleDelegate& module_delegate, Module1DDelegate& module_1d_delegate, APIChannel::Type channel,
+      ModuleChannel::Type module_channel);
+
+  bool module_1d_check_covered_range(const NodeID& nid);
+
+ private:
+  Module1DDelegate& delegate;
 };
 }  // namespace colonio

@@ -14,21 +14,21 @@
  * limitations under the License.
  */
 
-#include "system_2d.hpp"
+#include "module_2d.hpp"
 
 namespace colonio {
 
-System2DDelegate::~System2DDelegate() {
+Module2DDelegate::~Module2DDelegate() {
 }
 
-System2D::System2D(
-    Context& context, APIModuleDelegate& module_delegate, System2DDelegate& system_delegate, APIChannel::Type channel,
-    APIModuleChannel::Type module_channel) :
-    APIModule(context, module_delegate, channel, module_channel),
-    delegate(system_delegate) {
+Module2D::Module2D(
+    Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate, APIChannel::Type channel,
+    ModuleChannel::Type module_channel) :
+    ModuleBase(context, module_delegate, channel, module_channel),
+    delegate(module_2d_delegate) {
 }
 
-const NodeID& System2D::get_relay_nid(const Coordinate& position) {
-  return delegate.system_2d_do_get_relay_nid(*this, position);
+const NodeID& Module2D::get_relay_nid(const Coordinate& position) {
+  return delegate.module_2d_do_get_relay_nid(*this, position);
 }
 }  // namespace colonio

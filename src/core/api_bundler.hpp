@@ -15,31 +15,21 @@
  */
 #pragma once
 
-#include "api_module.hpp"
+#include <map>
+#include <memory>
+
+#include "api.pb.h"
+#include "definition.hpp"
 
 namespace colonio {
-class Context;
-class NodeID;
-class System1D;
+class APIBase;
 
-class System1DDelegate {
+class APIBundler {
  public:
-  virtual ~System1DDelegate();
-  virtual bool system_1d_do_check_covered_range(System1D& system1d, const NodeID& nid) = 0;
-};
-
-class System1D : public APIModule {
- public:
-  virtual void system_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) = 0;
-
- protected:
-  System1D(
-      Context& context, APIModuleDelegate& module_delegate, System1DDelegate& system_delegate, APIChannel::Type channel,
-      APIModuleChannel::Type module_channel);
-
-  bool system_1d_check_covered_range(const NodeID& nid);
+  void call(const api::Call& call);
+  void registrate(std::shared_ptr<APIBase> api_base);
 
  private:
-  System1DDelegate& delegate;
+  std::map<APIChannel::Type, std::shared_ptr<APIBase>> apis;
 };
 }  // namespace colonio

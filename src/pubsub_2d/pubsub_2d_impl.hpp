@@ -16,15 +16,15 @@
 #pragma once
 
 #include "core/coordinate.hpp"
-#include "core/system_2d.hpp"
+#include "core/module_2d.hpp"
 #include "core/value_impl.hpp"
 
 namespace colonio {
-class PubSub2DImpl : public System2D {
+class PubSub2DImpl : public Module2D {
  public:
   PubSub2DImpl(
-      Context& context, APIModuleDelegate& module_delegate, System2DDelegate& system_delegate,
-      const picojson::object& config, APIModuleChannel::Type module_channel);
+      Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate,
+      const picojson::object& config, ModuleChannel::Type module_channel);
   virtual ~PubSub2DImpl();
 
   /*
@@ -38,9 +38,9 @@ class PubSub2DImpl : public System2D {
 
   void module_process_command(std::unique_ptr<const Packet> packet) override;
 
-  void system_2d_on_change_my_position(const Coordinate& position) override;
-  void system_2d_on_change_nearby(const std::set<NodeID>& nids) override;
-  void system_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) override;
+  void module_2d_on_change_my_position(const Coordinate& position) override;
+  void module_2d_on_change_nearby(const std::set<NodeID>& nids) override;
+  void module_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) override;
 
  private:
   unsigned int conf_cache_time;

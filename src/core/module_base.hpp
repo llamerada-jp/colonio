@@ -22,25 +22,25 @@
 #include "node_id.hpp"
 
 namespace colonio {
-class APIModule;
+class ModuleBase;
 class Command;
 class Context;
 class Packet;
 
-class APIModuleDelegate {
+class ModuleDelegate {
  public:
-  virtual ~APIModuleDelegate();
-  virtual void module_do_send_packet(APIModule& module, std::unique_ptr<const Packet> packet) = 0;
+  virtual ~ModuleDelegate();
+  virtual void module_do_send_packet(ModuleBase& module, std::unique_ptr<const Packet> packet) = 0;
   virtual void module_do_relay_packet(
-      APIModule& module, const NodeID& dst_nid, std::unique_ptr<const Packet> packet) = 0;
+      ModuleBase& module, const NodeID& dst_nid, std::unique_ptr<const Packet> packet) = 0;
 };
 
-class APIModule {
+class ModuleBase {
  public:
   const APIChannel::Type channel;
-  const APIModuleChannel::Type module_channel;
+  const ModuleChannel::Type module_channel;
 
-  virtual ~APIModule();
+  virtual ~ModuleBase();
 
   static std::unique_ptr<const Packet> copy_packet_for_reply(const Packet& src);
 
@@ -52,9 +52,8 @@ class APIModule {
  protected:
   Context& context;
 
-  APIModule(
-      Context& context_, APIModuleDelegate& delegate_, APIChannel::Type channel_,
-      APIModuleChannel::Type module_channel_);
+  ModuleBase(
+      Context& context_, ModuleDelegate& delegate_, APIChannel::Type channel_, ModuleChannel::Type module_channel_);
 
   virtual void module_process_command(std::unique_ptr<const Packet> packet) = 0;
 
@@ -82,7 +81,7 @@ class APIModule {
     uint32_t packet_id;
     PacketMode::Type mode;
     APIChannel::Type channel;
-    APIModuleChannel::Type module_channel;
+    ModuleChannel::Type module_channel;
     CommandID::Type command_id;
     std::shared_ptr<const std::string> content;
 
@@ -91,7 +90,7 @@ class APIModule {
     std::unique_ptr<Command> command;
   };
 
-  APIModuleDelegate& delegate;
+  ModuleDelegate& delegate;
 
   std::map<uint32_t, Container> containers;
   std::mutex mutex_containers;

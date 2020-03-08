@@ -27,9 +27,9 @@
 
 namespace colonio {
 PubSub2DImpl::PubSub2DImpl(
-    Context& context, ModuleDelegate& module_delegate, System2DDelegate& system_delegate,
-    const picojson::object& config, APIModuleChannel::Type module_channel) :
-    System2D(context, module_delegate, system_delegate, Utils::get_json<double>(config, "channel"), module_channel),
+    Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate,
+    const picojson::object& config, ModuleChannel::Type module_channel) :
+    Module2D(context, module_delegate, module_2d_delegate, Utils::get_json<double>(config, "channel"), module_channel),
     conf_cache_time(PUBSUB2D_CACHE_TIME) {
   Utils::check_json_optional(config, "cacheTime", &conf_cache_time);
 
@@ -100,15 +100,15 @@ void PubSub2DImpl::module_process_command(std::unique_ptr<const Packet> packet) 
   }
 }
 
-void PubSub2DImpl::system_2d_on_change_my_position(const Coordinate& position) {
+void PubSub2DImpl::module_2d_on_change_my_position(const Coordinate& position) {
   // Ignore.
 }
 
-void PubSub2DImpl::system_2d_on_change_nearby(const std::set<NodeID>& nids) {
+void PubSub2DImpl::module_2d_on_change_nearby(const std::set<NodeID>& nids) {
   // Ignore.
 }
 
-void PubSub2DImpl::system_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) {
+void PubSub2DImpl::module_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) {
   next_positions = positions;
 }
 

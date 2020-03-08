@@ -1,4 +1,6 @@
 /*
+const &
+const &
  * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,18 +23,18 @@
 #include "colonio/map.hpp"
 #include "colonio/value.hpp"
 #include "core/command.hpp"
-#include "core/system_1d.hpp"
+#include "core/module_1d.hpp"
 
 namespace colonio {
 typedef uint32_t PAXOS_N;
 
-class MapPaxos : public System1D {
+class MapPaxosModule : public Module1D {
  public:
-  MapPaxos(
-      Context& context, APIModuleDelegate& module_delegate, System1DDelegate& system_delegate, APIChannel::Type channel,
-      APIModuleChannel::Type module_channel, unsigned int retry_max, uint32_t retry_interval_min,
+  MapPaxosModule(
+      Context& context, ModuleDelegate& module_delegate, Module1DDelegate& module_1d_delegate, APIChannel::Type channel,
+      ModuleChannel::Type module_channel, unsigned int retry_max, uint32_t retry_interval_min,
       uint32_t retry_interval_max);
-  virtual ~MapPaxos();
+  virtual ~MapPaxosModule();
 
   void get(
       const Value& key, const std::function<void(const Value&)>& on_success,
@@ -41,7 +43,7 @@ class MapPaxos : public System1D {
       const Value& key, const Value& value, const std::function<void()>& on_success,
       const std::function<void(ColonioException::Code)>& on_failure, MapOption::Type opt);
 
-  void system_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) override;
+  void module_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) override;
 
  private:
   class AcceptorInfo {
@@ -71,7 +73,7 @@ class MapPaxos : public System1D {
    public:
     class Info {
      public:
-      MapPaxos& parent;
+      MapPaxosModule& parent;
       std::unique_ptr<Value> key;
       int count_retry;
       int64_t time_send;
@@ -86,7 +88,7 @@ class MapPaxos : public System1D {
       std::function<void(const Value&)> cb_on_success;
       std::function<void(ColonioException::Code)> cb_on_failure;
 
-      Info(MapPaxos& parent_, std::unique_ptr<Value> key_, int count_retry_);
+      Info(MapPaxosModule& parent_, std::unique_ptr<Value> key_, int count_retry_);
     };
 
     std::shared_ptr<Info> info;
@@ -104,7 +106,7 @@ class MapPaxos : public System1D {
    public:
     class Info {
      public:
-      MapPaxos& parent;
+      MapPaxosModule& parent;
       const Value key;
       const Value value;
       const MapOption::Type opt;
@@ -113,8 +115,8 @@ class MapPaxos : public System1D {
       std::function<void(ColonioException::Code)> cb_on_failure;
 
       Info(
-          MapPaxos& parent_, const Value& key_, const Value& value_, const std::function<void()>& cb_on_success_,
-          const std::function<void(ColonioException::Code)>& cb_on_failure_, const MapOption::Type& opt_);
+          MapPaxosModule& parent_, const Value& key_, const Value& value_,
+          const std::function<void()>& cb_on_success_,const std::function<void(ColonioException::Code)>& cb_on_failure_, const MapOption::Type& opt_);
     };
     std::unique_ptr<Info> info;
 
@@ -144,11 +146,11 @@ class MapPaxos : public System1D {
       PAXOS_N n_max;
       PAXOS_N i_max;
       MapOption::Type opt;
-      MapPaxos& parent;
+      MapPaxosModule& parent;
       std::vector<Reply> replys;
       bool is_finished;
       Info(
-          MapPaxos& parent_, std::unique_ptr<const Packet> packet_reply_, std::unique_ptr<Value> key_,
+          MapPaxosModule& parent_, std::unique_ptr<const Packet> packet_reply_, std::unique_ptr<Value> key_,
           MapOption::Type opt_);
       virtual ~Info();
     };
@@ -182,12 +184,12 @@ class MapPaxos : public System1D {
       PAXOS_N n_max;
       PAXOS_N i_max;
       MapOption::Type opt;
-      MapPaxos& parent;
+      MapPaxosModule& parent;
       std::vector<Reply> replys;
       bool is_finished;
 
       Info(
-          MapPaxos& parent_, std::unique_ptr<const Packet> packet_reply_, std::unique_ptr<Value> key_,
+          MapPaxosModule& parent_, std::unique_ptr<const Packet> packet_reply_, std::unique_ptr<Value> key_,
           MapOption::Type opt_);
       virtual ~Info();
     };
@@ -210,8 +212,8 @@ class MapPaxos : public System1D {
   std::map<Value, AcceptorInfo> acceptor_infos;
   std::map<Value, ProposerInfo> proposer_infos;
 
-  MapPaxos(const MapPaxos&);
-  MapPaxos& operator=(const MapPaxos&);
+  MapPaxosModule(const MapPaxosModule&);
+  MapPaxosModule& operator=(const MapPaxosModule&);
 
   void module_process_command(std::unique_ptr<const Packet> packet) override;
 

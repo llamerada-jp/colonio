@@ -14,20 +14,27 @@
  * limitations under the License.
  */
 
-#include "system_1d.hpp"
+#include "api_bundler.hpp"
+
+#include "api_base.hpp"
+#include "utils.hpp"
 
 namespace colonio {
-System1DDelegate::~System1DDelegate() {
+void APIBundler::call(const api::Call& call) {
+  assert(call.id() != 0);
+
+  auto api_base = apis.find(call.channel());
+  if (api_base != apis.end()) {
+    api_base->second->api_on_recv_call(call);
+  } else {
+    colonio_fatal("Called incorrect API entry : %d", call.channel());
+  }
 }
 
-System1D::System1D(
-    Context& context, APIModuleDelegate& module_delegate, System1DDelegate& system_delegate, APIChannel::Type channel,
-    APIModuleChannel::Type module_channel) :
-    APIModule(context, module_delegate, channel, module_channel),
-    delegate(system_delegate) {
-}
+void APIBundler::registrate(std::shared_ptr<APIBase> api_base) {
+  assert(api_base->channel != APIChannel::NONE);
+  assert(apis.find(api_base->channel) == apis.end());
 
-bool System1D::system_1d_check_covered_range(const NodeID& nid) {
-  return delegate.system_1d_do_check_covered_range(*this, nid);
+  apis.insert(std::make_pair(api_base->channel, api_base));
 }
 }  // namespace colonio

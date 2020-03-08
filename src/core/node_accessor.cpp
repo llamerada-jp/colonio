@@ -32,8 +32,8 @@ namespace colonio {
 NodeAccessorDelegate::~NodeAccessorDelegate() {
 }
 
-NodeAccessor::NodeAccessor(Context& context, APIModuleDelegate& module_delegate, NodeAccessorDelegate& na_delegate) :
-    APIModule(context, module_delegate, APIChannel::COLONIO, APIModuleChannel::Colonio::NODE_ACCESSOR),
+NodeAccessor::NodeAccessor(Context& context, ModuleDelegate& module_delegate, NodeAccessorDelegate& na_delegate) :
+    ModuleBase(context, module_delegate, APIChannel::COLONIO, ModuleChannel::Colonio::NODE_ACCESSOR),
     delegate(na_delegate),
     count_seed_transrate(0) {
   context.scheduler.add_interval_task(
@@ -391,7 +391,7 @@ void NodeAccessor::webrtc_link_on_recv_data(WebrtcLink& link, const std::string&
       std::unique_ptr<Packet> packet            = std::make_unique<Packet>(
           Packet{NodeID::from_pb(pb_head.dst_nid()), NodeID::from_pb(pb_head.src_nid()), pb_packet.id(), nullptr,
                  static_cast<PacketMode::Type>(pb_head.mode()), static_cast<APIChannel::Type>(pb_head.channel()),
-                 static_cast<APIModuleChannel::Type>(pb_head.module_channel()),
+                 static_cast<ModuleChannel::Type>(pb_head.module_channel()),
                  static_cast<CommandID::Type>(pb_head.command_id())});
       std::shared_ptr<const std::string> content(new std::string(pb_packet.content()));
 

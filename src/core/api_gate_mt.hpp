@@ -21,10 +21,10 @@
 #include <thread>
 
 #include "api_gate.hpp"
-#include "side_module.hpp"
+#include "controller.hpp"
 
 namespace colonio {
-class APIGateMultiThread : public APIGateBase, public SideModuleDelegate {
+class APIGateMultiThread : public APIGateBase, public ControllerDelegate {
  public:
   APIGateMultiThread();
 
@@ -35,11 +35,11 @@ class APIGateMultiThread : public APIGateBase, public SideModuleDelegate {
 
  private:
   std::unique_ptr<std::thread> th_event;
-  std::unique_ptr<std::thread> th_side_module;
+  std::unique_ptr<std::thread> th_controller;
   bool flg_end;
   std::mutex mtx_end;
 
-  SideModule side_module;
+  Controller controller;
 
   std::queue<std::unique_ptr<api::Call>> que_call;
   std::map<uint32_t, std::unique_ptr<api::Reply>> map_reply;
@@ -50,16 +50,16 @@ class APIGateMultiThread : public APIGateBase, public SideModuleDelegate {
   std::mutex mtx_reply;
   std::condition_variable cond_reply;
   std::condition_variable cond_event;
-  std::condition_variable cond_side_module;
+  std::condition_variable cond_controller;
 
   std::chrono::steady_clock::time_point tp;
 
-  void side_module_on_event(SideModule& sm, std::unique_ptr<api::Event> event) override;
-  void side_module_on_reply(SideModule& sm, std::unique_ptr<api::Reply> reply) override;
-  void side_module_on_require_invoke(SideModule& sm, unsigned int msec) override;
+  void controller_on_event(Controller& sm, std::unique_ptr<api::Event> event) override;
+  void controller_on_reply(Controller& sm, std::unique_ptr<api::Reply> reply) override;
+  void controller_on_require_invoke(Controller& sm, unsigned int msec) override;
 
   void loop_event();
-  void loop_side_module();
+  void loop_controller();
   bool has_end();
 };
 

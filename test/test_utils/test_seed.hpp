@@ -171,7 +171,7 @@ class TestSeed {
     node.insert(std::make_pair("iceServers", picojson::value(ice_servers)));
     node.insert(std::make_pair("routing", picojson::value(routing)));
     if (!coord_system.empty()) {
-      node.insert(std::make_pair("coordSystem2D", picojson::value(coord_system)));
+      node.insert(std::make_pair("coordModule2D", picojson::value(coord_system)));
     }
     if (!modules.empty()) {
       node.insert(std::make_pair("modules", picojson::value(modules)));

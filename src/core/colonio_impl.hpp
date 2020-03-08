@@ -18,37 +18,37 @@
 #include <functional>
 #include <string>
 
-#include "api_entry.hpp"
-#include "api_module_bundler.hpp"
+#include "api_base.hpp"
+#include "module_bundler.hpp"
 #include "definition.hpp"
 #include "node_accessor.hpp"
 #include "node_id.hpp"
 #include "routing.hpp"
 #include "seed_accessor.hpp"
-#include "system_1d.hpp"
-#include "system_2d.hpp"
+#include "module_1d.hpp"
+#include "module_2d.hpp"
 
 namespace colonio {
-class APIEntryBundler;
+class APIBundler;
 class Context;
 
-class ColonioImpl : public APIEntry,
-                    public APIModuleDelegate,
+class ColonioImpl : public APIBase,
+                    public ModuleDelegate,
                     public NodeAccessorDelegate,
                     public RoutingDelegate,
                     public SeedAccessorDelegate,
-                    public System1DDelegate,
-                    public System2DDelegate {
+                    public Module1DDelegate,
+                    public Module2DDelegate {
  public:
-  ColonioImpl(Context& context_, APIEntryDelegate& entry_delegate_, APIEntryBundler& api_bundler_);
+  ColonioImpl(Context& context_, APIDelegate& api_delegate_, APIBundler& api_bundler_);
   virtual ~ColonioImpl();
 
   LinkStatus::Type get_status();
 
  private:
-  APIEntryDelegate& entry_delegate;
-  APIEntryBundler& api_bundler;
-  APIModuleBundler module_bundler;
+  APIDelegate& api_delegate;
+  APIBundler& api_bundler;
+  ModuleBundler module_bundler;
   picojson::object config;
   bool enable_retry;
 
@@ -62,10 +62,10 @@ class ColonioImpl : public APIEntry,
   LinkStatus::Type node_status;
   LinkStatus::Type seed_status;
 
-  void api_entry_on_recv_call(const api::Call& call) override;
+  void api_on_recv_call(const api::Call& call) override;
 
-  void module_do_send_packet(APIModule& module, std::unique_ptr<const Packet> packet) override;
-  void module_do_relay_packet(APIModule& module, const NodeID& dst_nid, std::unique_ptr<const Packet> packet) override;
+  void module_do_send_packet(ModuleBase& module, std::unique_ptr<const Packet> packet) override;
+  void module_do_relay_packet(ModuleBase& module, const NodeID& dst_nid, std::unique_ptr<const Packet> packet) override;
 
   void node_accessor_on_change_online_links(NodeAccessor& na, const std::set<NodeID> nids) override;
   void node_accessor_on_change_status(NodeAccessor& na, LinkStatus::Type status) override;
@@ -75,9 +75,9 @@ class ColonioImpl : public APIEntry,
   void routing_do_disconnect_node(Routing& routing, const NodeID& nid) override;
   void routing_do_connect_seed(Routing& route) override;
   void routing_do_disconnect_seed(Routing& route) override;
-  void routing_on_system_1d_change_nearby(Routing& routing, const NodeID& prev_nid, const NodeID& next_nid) override;
-  void routing_on_system_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids) override;
-  void routing_on_system_2d_change_nearby_position(
+  void routing_on_module_1d_change_nearby(Routing& routing, const NodeID& prev_nid, const NodeID& next_nid) override;
+  void routing_on_module_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids) override;
+  void routing_on_module_2d_change_nearby_position(
       Routing& routing, const std::map<NodeID, Coordinate>& positions) override;
 
   void seed_accessor_on_change_status(SeedAccessor& sa, LinkStatus::Type status) override;
@@ -85,9 +85,9 @@ class ColonioImpl : public APIEntry,
   void seed_accessor_on_recv_packet(SeedAccessor& sa, std::unique_ptr<const Packet> packet) override;
   void seed_accessor_on_recv_require_random(SeedAccessor& sa) override;
 
-  bool system_1d_do_check_covered_range(System1D& system1d, const NodeID& nid) override;
+  bool module_1d_do_check_covered_range(Module1D& module_1d, const NodeID& nid) override;
 
-  const NodeID& system_2d_do_get_relay_nid(System2D& system2d, const Coordinate& position) override;
+  const NodeID& module_2d_do_get_relay_nid(Module2D& module_2d, const Coordinate& position) override;
 
   void api_connect(uint32_t id, const api::colonio::Connect& param);
   void api_get_local_nid(uint32_t id);

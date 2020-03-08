@@ -13,23 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
 
-#include <map>
-#include <memory>
-
-#include "api.pb.h"
-#include "definition.hpp"
+#include "module_1d.hpp"
 
 namespace colonio {
-class APIEntry;
+Module1DDelegate::~Module1DDelegate() {
+}
 
-class APIEntryBundler {
- public:
-  void call(const api::Call& call);
-  void registrate(std::shared_ptr<APIEntry> entry);
+Module1D::Module1D(
+    Context& context, ModuleDelegate& module_delegate, Module1DDelegate& module_1d_delegate, APIChannel::Type channel,
+    ModuleChannel::Type module_channel) :
+    ModuleBase(context, module_delegate, channel, module_channel),
+    delegate(module_1d_delegate) {
+}
 
- private:
-  std::map<APIChannel::Type, std::shared_ptr<APIEntry>> entries;
-};
+bool Module1D::module_1d_check_covered_range(const NodeID& nid) {
+  return delegate.module_1d_do_check_covered_range(*this, nid);
+}
 }  // namespace colonio

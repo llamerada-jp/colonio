@@ -23,27 +23,27 @@
 #include "definition.hpp"
 
 namespace colonio {
-class APIEntry;
+class APIBase;
 class Context;
 
-class APIEntryDelegate {
+class APIDelegate {
  public:
-  virtual ~APIEntryDelegate();
-  virtual void api_entry_send_event(APIEntry& entry, std::unique_ptr<api::Event> event) = 0;
-  virtual void api_entry_send_reply(APIEntry& entry, std::unique_ptr<api::Reply> reply) = 0;
+  virtual ~APIDelegate();
+  virtual void api_send_event(APIBase& api_base, std::unique_ptr<api::Event> event) = 0;
+  virtual void api_send_reply(APIBase& api_base, std::unique_ptr<api::Reply> reply) = 0;
 };
 
-class APIEntry {
+class APIBase {
  public:
   const APIChannel::Type channel;
 
-  virtual ~APIEntry();
-  virtual void api_entry_on_recv_call(const api::Call& call) = 0;
+  virtual ~APIBase();
+  virtual void api_on_recv_call(const api::Call& call) = 0;
 
  protected:
   Context& context;
 
-  APIEntry(Context& context_, APIEntryDelegate& delegate_, APIChannel::Type channel_);
+  APIBase(Context& context_, APIDelegate& delegate_, APIChannel::Type channel_);
 
   void api_event(std::unique_ptr<api::Event> event);
   void api_failure(uint32_t id, ColonioException::Code code, const std::string message);
@@ -51,6 +51,6 @@ class APIEntry {
   void api_success(uint32_t id);
 
  private:
-  APIEntryDelegate& delegate;
+  APIDelegate& delegate;
 };
 }  // namespace colonio

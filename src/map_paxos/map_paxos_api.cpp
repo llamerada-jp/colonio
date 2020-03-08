@@ -13,17 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "map_paxos_entry.hpp"
+#include "map_paxos_api.hpp"
 
-#include "core/api_entry_bundler.hpp"
-#include "core/api_module_bundler.hpp"
+#include "core/api_bundler.hpp"
+#include "core/module_bundler.hpp"
 #include "core/utils.hpp"
 #include "core/value_impl.hpp"
-#include "map_paxos.hpp"
+#include "map_paxos_module.hpp"
 
 namespace colonio {
-void MapPaxosEntry::make_entry(
-    Context& context, APIEntryBundler& api_bundler, APIEntryDelegate& entry_delegate, APIModuleBundler& module_bundler,
+void MapPaxosAPI::make_entry(
+    Context& context, APIBundler& api_bundler, APIDelegate& api_delegate, ModuleBundler& module_bundler,
     const picojson::object& config) {
   APIChannel::Type channel    = static_cast<APIChannel::Type>(Utils::get_json<double>(config, "channel"));
   unsigned int retry_max      = Utils::get_json<double>(config, "retryMax", MAP_PAXOS_RETRY_MAX);
@@ -32,23 +32,23 @@ void MapPaxosEntry::make_entry(
   assert(retry_interval_min <= retry_interval_max);
 
   // create a module instance.
-  std::unique_ptr<MapPaxos> module = std::make_unique<MapPaxos>(
-      context, module_bundler.module_delegate, module_bundler.system1d_delegate, channel,
-      APIModuleChannel::MapPaxos::MAP_PAXOS, retry_max, retry_interval_min, retry_interval_max);
+  std::unique_ptr<MapPaxosModule> module = std::make_unique<MapPaxosModule>(
+      context, module_bundler.module_delegate, module_bundler.module_1d_delegate, channel,
+      ModuleChannel::MapPaxos::MAP_PAXOS, retry_max, retry_interval_min, retry_interval_max);
   module_bundler.registrate(module.get(), true, false);
 
   // create a entry instance.
-  std::shared_ptr<MapPaxosEntry> entry(new MapPaxosEntry(context, entry_delegate, channel, std::move(module)));
+  std::shared_ptr<MapPaxosAPI> entry(new MapPaxosAPI(context, api_delegate, channel, std::move(module)));
   api_bundler.registrate(entry);
 }
 
-MapPaxosEntry::MapPaxosEntry(
-    Context& context, APIEntryDelegate& delegate, APIChannel::Type channel, std::unique_ptr<MapPaxos> module) :
-    APIEntry(context, delegate, channel),
-    mp(std::move(module)) {
+MapPaxosAPI::MapPaxosAPI(
+    Context& context, APIDelegate& delegate, APIChannel::Type channel, std::unique_ptr<MapPaxosModule> module_) :
+    APIBase(context, delegate, channel),
+    module(std::move(module_)) {
 }
 
-void MapPaxosEntry::api_entry_on_recv_call(const api::Call& call) {
+void MapPaxosAPI::api_on_recv_call(const api::Call& call) {
   switch (call.param_case()) {
     case api::Call::ParamCase::kMapGet:
       api_get(call.id(), ValueImpl::from_pb(call.map_get().key()));
@@ -66,8 +66,8 @@ void MapPaxosEntry::api_entry_on_recv_call(const api::Call& call) {
   }
 }
 
-void MapPaxosEntry::api_get(uint32_t id, const Value& key) {
-  mp->get(
+void MapPaxosAPI::api_get(uint32_t id, const Value& key) {
+  module->get(
       key,
       [this, id](const Value& value) {
         std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
@@ -82,8 +82,8 @@ void MapPaxosEntry::api_get(uint32_t id, const Value& key) {
       });
 }
 
-void MapPaxosEntry::api_set(uint32_t id, const Value& key, const Value& value, MapOption::Type opt) {
-  mp->set(
+void MapPaxosAPI::api_set(uint32_t id, const Value& key, const Value& value, MapOption::Type opt) {
+  module->set(
       key, value, [this, id]() { api_success(id); },
       [this, id](ColonioException::Code code) {
         // TODO error message

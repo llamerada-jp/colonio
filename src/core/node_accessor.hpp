@@ -21,7 +21,7 @@
 #include <memory>
 #include <string>
 
-#include "api_module.hpp"
+#include "module_base.hpp"
 #include "command.hpp"
 #include "node_id.hpp"
 #include "webrtc_context.hpp"
@@ -40,9 +40,9 @@ class NodeAccessorDelegate {
       NodeAccessor& na, const NodeID& nid, std::unique_ptr<const Packet> packet) = 0;
 };
 
-class NodeAccessor : public APIModule, public WebrtcLinkDelegate {
+class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
  public:
-  NodeAccessor(Context& context, APIModuleDelegate& module_delegate, NodeAccessorDelegate& na_delegate);
+  NodeAccessor(Context& context, ModuleDelegate& module_delegate, NodeAccessorDelegate& na_delegate);
   virtual ~NodeAccessor();
 
   void connect_link(const NodeID& nid);

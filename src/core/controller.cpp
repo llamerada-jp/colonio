@@ -14,13 +14,17 @@
  * limitations under the License.
  */
 
-#include "side_module.hpp"
+#include "controller.hpp"
 
 namespace colonio {
-SideModuleDelegate::~SideModuleDelegate() {
+ControllerDelegate::~ControllerDelegate() {
 }
 
-SideModule::SideModule(SideModuleDelegate& delegate_) : delegate(delegate_), logger(*this), scheduler(*this), context(logger, scheduler) {
+Controller::Controller(ControllerDelegate& delegate_) :
+    delegate(delegate_),
+    logger(*this),
+    scheduler(*this),
+    context(logger, scheduler) {
   colonio_impl = std::make_shared<ColonioImpl>(context, *this, bundler);
   bundler.registrate(colonio_impl);
 #ifndef NDEBUG
@@ -31,30 +35,30 @@ SideModule::SideModule(SideModuleDelegate& delegate_) : delegate(delegate_), log
     debug_event->set_event(static_cast<uint32_t>(event));
     debug_event->set_json(json.serialize());
 
-    delegate.side_module_on_event(*this, std::move(ev));
+    delegate.controller_on_event(*this, std::move(ev));
   });
 #endif
 }
 
-SideModule::~SideModule() {
+Controller::~Controller() {
 }
 
-void SideModule::call(const api::Call& call) {
+void Controller::call(const api::Call& call) {
   bundler.call(call);
 }
 
-unsigned int SideModule::invoke() {
+unsigned int Controller::invoke() {
   return context.scheduler.invoke();
 }
 
-void SideModule::api_entry_send_event(APIEntry& entry, std::unique_ptr<api::Event> event) {
-  delegate.side_module_on_event(*this, std::move(event));
+void Controller::api_send_event(APIBase& api_base, std::unique_ptr<api::Event> event) {
+  delegate.controller_on_event(*this, std::move(event));
 }
-void SideModule::api_entry_send_reply(APIEntry& entry, std::unique_ptr<api::Reply> reply) {
-  delegate.side_module_on_reply(*this, std::move(reply));
+void Controller::api_send_reply(APIBase& api_base, std::unique_ptr<api::Reply> reply) {
+  delegate.controller_on_reply(*this, std::move(reply));
 }
 
-void SideModule::logger_on_output(Logger& logger, LogLevel::Type level, const std::string& message) {
+void Controller::logger_on_output(Logger& logger, LogLevel::Type level, const std::string& message) {
   // Send log message as event.
   std::unique_ptr<api::Event> event = std::make_unique<api::Event>();
   event->set_channel(APIChannel::COLONIO);
@@ -62,11 +66,11 @@ void SideModule::logger_on_output(Logger& logger, LogLevel::Type level, const st
   log_event->set_level(static_cast<uint32_t>(level));
   log_event->set_message(message);
 
-  delegate.side_module_on_event(*this, std::move(event));
+  delegate.controller_on_event(*this, std::move(event));
 }
 
-void SideModule::scheduler_on_require_invoke(Scheduler& sched, unsigned int msec) {
-  delegate.side_module_on_require_invoke(*this, msec);
+void Controller::scheduler_on_require_invoke(Scheduler& sched, unsigned int msec) {
+  delegate.controller_on_require_invoke(*this, msec);
 }
 
 }  // namespace colonio

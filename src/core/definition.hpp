@@ -55,7 +55,7 @@ static const Type NONE    = 0;
 static const Type COLONIO = 1;
 }  // namespace APIChannel
 
-namespace APIModuleChannel {
+namespace ModuleChannel {
 typedef uint16_t Type;
 static const Type NONE = 0;
 
@@ -70,7 +70,7 @@ static const Type SYSTEM_ROUTING = 4;
 namespace MapPaxos {
 static const Type MAP_PAXOS = 1;
 }
-}  // namespace APIModuleChannel
+}  // namespace ModuleChannel
 
 namespace CommandID {
 typedef uint16_t Type;
@@ -136,8 +136,8 @@ static const uint32_t ESTIMATED_HEAD_SIZE = 64;
 
 // default values.
 static const unsigned int MAP_PAXOS_RETRY_MAX          = 5;
-static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MIN = 200;  // [msec]
-static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MAX = 300;  // [msec]
+static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MIN = 1000;  // [msec]
+static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MAX = 2000;  // [msec]
 
 static const unsigned int PUBSUB2D_CACHE_TIME = 30000;  // [msec]
 

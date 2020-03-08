@@ -17,32 +17,32 @@
 
 #include <set>
 
-#include "api_module.hpp"
+#include "module_base.hpp"
 
 namespace colonio {
 class Coordinate;
-class System2D;
+class Module2D;
 
-class System2DDelegate {
+class Module2DDelegate {
  public:
-  virtual ~System2DDelegate();
-  virtual const NodeID& system_2d_do_get_relay_nid(System2D& system2d, const Coordinate& position) = 0;
+  virtual ~Module2DDelegate();
+  virtual const NodeID& module_2d_do_get_relay_nid(Module2D& module_2d, const Coordinate& position) = 0;
 };
 
-class System2D : public APIModule {
+class Module2D : public ModuleBase {
  public:
-  virtual void system_2d_on_change_my_position(const Coordinate& position)                        = 0;
-  virtual void system_2d_on_change_nearby(const std::set<NodeID>& nids)                           = 0;
-  virtual void system_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) = 0;
+  virtual void module_2d_on_change_my_position(const Coordinate& position)                        = 0;
+  virtual void module_2d_on_change_nearby(const std::set<NodeID>& nids)                           = 0;
+  virtual void module_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) = 0;
 
  protected:
-  System2D(
-      Context& context, APIModuleDelegate& module_delegate, System2DDelegate& system_delegate, APIChannel::Type channel,
-      APIModuleChannel::Type module_channel);
+  Module2D(
+      Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate, APIChannel::Type channel,
+      ModuleChannel::Type module_channel);
 
   const NodeID& get_relay_nid(const Coordinate& position);
 
  private:
-  System2DDelegate& delegate;
+  Module2DDelegate& delegate;
 };
 }  // namespace colonio

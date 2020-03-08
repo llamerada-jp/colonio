@@ -210,11 +210,11 @@ void SeedAccessor::seed_link_on_recv(SeedLinkBase& link, const std::string& data
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
       Packet{NodeID::from_pb(packet_pb.dst_nid()), NodeID::from_pb(packet_pb.src_nid()), packet_pb.id(), content,
              static_cast<PacketMode::Type>(packet_pb.mode()), static_cast<APIChannel::Type>(packet_pb.channel()),
-             static_cast<APIModuleChannel::Type>(packet_pb.module_channel()),
+             static_cast<ModuleChannel::Type>(packet_pb.module_channel()),
              static_cast<CommandID::Type>(packet_pb.command_id())});
 
   if (packet->src_nid == NodeID::SEED && packet->channel == APIChannel::COLONIO &&
-      packet->module_channel == APIModuleChannel::Colonio::SEED_ACCESSOR && packet->id == 0) {
+      packet->module_channel == ModuleChannel::Colonio::SEED_ACCESSOR && packet->id == 0) {
     switch (packet->command_id) {
       case CommandID::SUCCESS: {
         recv_auth_success(*packet);
@@ -308,7 +308,7 @@ void SeedAccessor::send_auth(const std::string& token) {
 
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
       Packet{NodeID::SEED, context.local_nid, 0, content, PacketMode::NONE, APIChannel::COLONIO,
-             APIModuleChannel::Colonio::SEED_ACCESSOR, CommandID::Seed::AUTH});
+             ModuleChannel::Colonio::SEED_ACCESSOR, CommandID::Seed::AUTH});
 
   relay_packet(std::move(packet));
 }
@@ -316,7 +316,7 @@ void SeedAccessor::send_auth(const std::string& token) {
 void SeedAccessor::send_ping() {
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
       Packet{NodeID::SEED, context.local_nid, 0, nullptr, PacketMode::NONE, APIChannel::COLONIO,
-             APIModuleChannel::Colonio::SEED_ACCESSOR, CommandID::Seed::PING});
+             ModuleChannel::Colonio::SEED_ACCESSOR, CommandID::Seed::PING});
 
   relay_packet(std::move(packet));
 }

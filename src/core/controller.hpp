@@ -15,42 +15,42 @@
  */
 #pragma once
 
-#include "api_entry_bundler.hpp"
+#include "api_bundler.hpp"
 #include "colonio_impl.hpp"
 #include "context.hpp"
 #include "logger.hpp"
 #include "scheduler.hpp"
 
 namespace colonio {
-class SideModule;
+class Controller;
 
-class SideModuleDelegate {
+class ControllerDelegate {
  public:
-  virtual ~SideModuleDelegate();
-  virtual void side_module_on_event(SideModule& sm, std::unique_ptr<api::Event> event) = 0;
-  virtual void side_module_on_reply(SideModule& sm, std::unique_ptr<api::Reply> reply) = 0;
-  virtual void side_module_on_require_invoke(SideModule& sm, unsigned int msec)        = 0;
+  virtual ~ControllerDelegate();
+  virtual void controller_on_event(Controller& sm, std::unique_ptr<api::Event> event) = 0;
+  virtual void controller_on_reply(Controller& sm, std::unique_ptr<api::Reply> reply) = 0;
+  virtual void controller_on_require_invoke(Controller& sm, unsigned int msec)        = 0;
 };
 
-class SideModule : public LoggerDelegate, public SchedulerDelegate, public APIEntryDelegate {
+class Controller : public LoggerDelegate, public SchedulerDelegate, public APIDelegate {
  public:
   Logger logger;
 
-  SideModule(SideModuleDelegate& delegate_);
-  virtual ~SideModule();
+  Controller(ControllerDelegate& delegate_);
+  virtual ~Controller();
 
   void call(const api::Call& call);
   unsigned int invoke();
 
  private:
-  SideModuleDelegate& delegate;
+  ControllerDelegate& delegate;
   Scheduler scheduler;
   Context context;
-  APIEntryBundler bundler;
+  APIBundler bundler;
   std::shared_ptr<ColonioImpl> colonio_impl;
 
-  void api_entry_send_event(APIEntry& entry, std::unique_ptr<api::Event> event) override;
-  void api_entry_send_reply(APIEntry& entry, std::unique_ptr<api::Reply> reply) override;
+  void api_send_event(APIBase& api_base, std::unique_ptr<api::Event> event) override;
+  void api_send_reply(APIBase& api_base, std::unique_ptr<api::Reply> reply) override;
 
   void logger_on_output(Logger& logger, LogLevel::Type level, const std::string& message) override;
 

@@ -4,15 +4,14 @@
 file(GLOB HEADER_FILES "*.hpp")
 set(COLONIO_FILES
   core/api.pb.cc
-  core/api_entry.cpp
-  core/api_entry_bundler.cpp
+  core/api_base.cpp
+  core/api_bundler.cpp
   core/api_gate.cpp
-  core/api_module.cpp
-  core/api_module_bundler.cpp
   core/colonio_api.pb.cc
   core/colonio_exception.cpp
   core/command.cpp
   core/context.cpp
+  core/controller.cpp
   core/convert.cpp
   core/coord_system.cpp
   core/coord_system_sphere.cpp
@@ -24,6 +23,10 @@ set(COLONIO_FILES
   core/map.cpp
   core/map_api.pb.cc
   core/map_impl.cpp
+  core/module_1d.cpp
+  core/module_2d.cpp
+  core/module_base.cpp
+  core/module_bundler.cpp
   core/node_accessor.cpp
   core/node_accessor_protocol.pb.cc
   core/node_id.cpp
@@ -36,9 +39,6 @@ set(COLONIO_FILES
   core/seed_accessor_protocol.pb.cc
   core/seed_link.cpp
   core/scheduler.cpp
-  core/side_module.cpp
-  core/system_1d.cpp
-  core/system_2d.cpp
   core/utils.cpp
   core/value.cpp
   core/value_impl.cpp
@@ -47,8 +47,8 @@ set(COLONIO_FILES
   core/webrtc_context.cpp
   core/webrtc_link.cpp
 
-  map_paxos/map_paxos.cpp
-  map_paxos/map_paxos_entry.cpp
+  map_paxos/map_paxos_api.cpp
+  map_paxos/map_paxos_module.cpp
   map_paxos/map_paxos_protocol.pb.cc
 
   # pubsub_2d/pubsub_2d_impl.cpp

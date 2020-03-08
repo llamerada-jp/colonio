@@ -21,15 +21,15 @@
 #include "convert.hpp"
 #include "coord_system_sphere.hpp"
 #include "logger.hpp"
-#include "map_paxos/map_paxos_entry.hpp"
+#include "map_paxos/map_paxos_api.hpp"
 #include "routing_1d.hpp"
 #include "scheduler.hpp"
 #include "utils.hpp"
 
 namespace colonio {
-ColonioImpl::ColonioImpl(Context& context, APIEntryDelegate& entry_delegate_, APIEntryBundler& api_bundler_) :
-    APIEntry(context, entry_delegate_, APIChannel::COLONIO),
-    entry_delegate(entry_delegate_),
+ColonioImpl::ColonioImpl(Context& context, APIDelegate& api_delegate_, APIBundler& api_bundler_) :
+    APIBase(context, api_delegate_, APIChannel::COLONIO),
+    api_delegate(api_delegate_),
     api_bundler(api_bundler_),
     module_bundler(*this, *this, *this),
     api_connect_id(0),
@@ -47,7 +47,7 @@ LinkStatus::Type ColonioImpl::get_status() {
   return context.link_status;
 }
 
-void ColonioImpl::api_entry_on_recv_call(const api::Call& call) {
+void ColonioImpl::api_on_recv_call(const api::Call& call) {
   switch (call.param_case()) {
     case api::Call::ParamCase::kColonioConnect:
       api_connect(call.id(), call.colonio_connect());
@@ -71,12 +71,12 @@ void ColonioImpl::api_entry_on_recv_call(const api::Call& call) {
   }
 }
 
-void ColonioImpl::module_do_send_packet(APIModule& module, std::unique_ptr<const Packet> packet) {
+void ColonioImpl::module_do_send_packet(ModuleBase& module, std::unique_ptr<const Packet> packet) {
   relay_packet(std::move(packet), false);
 }
 
 void ColonioImpl::module_do_relay_packet(
-    APIModule& module, const NodeID& dst_nid, std::unique_ptr<const Packet> packet) {
+    ModuleBase& module, const NodeID& dst_nid, std::unique_ptr<const Packet> packet) {
   assert(!dst_nid.is_special() || dst_nid == NodeID::NEXT);
 
   node_accessor->relay_packet(dst_nid, std::move(packet));
@@ -133,23 +133,23 @@ void ColonioImpl::routing_do_disconnect_seed(Routing& route) {
   seed_accessor->disconnect();
 }
 
-void ColonioImpl::routing_on_system_1d_change_nearby(Routing& routing, const NodeID& prev_nid, const NodeID& next_nid) {
+void ColonioImpl::routing_on_module_1d_change_nearby(Routing& routing, const NodeID& prev_nid, const NodeID& next_nid) {
   context.scheduler.add_timeout_task(
-      this, [this, prev_nid, next_nid]() { module_bundler.system_1d_on_change_nearby(prev_nid, next_nid); }, 0);
+      this, [this, prev_nid, next_nid]() { module_bundler.module_1d_on_change_nearby(prev_nid, next_nid); }, 0);
 }
 
-const NodeID& ColonioImpl::system_2d_do_get_relay_nid(System2D& system2d, const Coordinate& position) {
+const NodeID& ColonioImpl::module_2d_do_get_relay_nid(Module2D& module_2d, const Coordinate& position) {
   return routing->get_relay_nid_2d(position);
 }
 
-void ColonioImpl::routing_on_system_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids) {
-  context.scheduler.add_timeout_task(this, [this, nids]() { module_bundler.system_2d_on_change_nearby(nids); }, 0);
+void ColonioImpl::routing_on_module_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids) {
+  context.scheduler.add_timeout_task(this, [this, nids]() { module_bundler.module_2d_on_change_nearby(nids); }, 0);
 }
 
-void ColonioImpl::routing_on_system_2d_change_nearby_position(
+void ColonioImpl::routing_on_module_2d_change_nearby_position(
     Routing& routing, const std::map<NodeID, Coordinate>& positions) {
   context.scheduler.add_timeout_task(
-      this, [this, positions]() { module_bundler.system_2d_on_change_nearby_position(positions); }, 0);
+      this, [this, positions]() { module_bundler.module_2d_on_change_nearby_position(positions); }, 0);
 }
 
 void ColonioImpl::seed_accessor_on_change_status(SeedAccessor& sa, LinkStatus::Type status) {
@@ -165,7 +165,7 @@ void ColonioImpl::seed_accessor_on_recv_config(SeedAccessor& sa, const picojson:
 
     // coord_system
     picojson::object cs2d_config;
-    if (Utils::check_json_optional(config, "coordSystem2D", &cs2d_config)) {
+    if (Utils::check_json_optional(config, "coordModule2D", &cs2d_config)) {
       const std::string& type = Utils::get_json<std::string>(cs2d_config, "type");
       if (type == "sphere") {
         context.coord_system = std::make_unique<CoordSystemSphere>(cs2d_config);
@@ -198,7 +198,7 @@ void ColonioImpl::seed_accessor_on_recv_require_random(SeedAccessor& sa) {
   }
 }
 
-bool ColonioImpl::system_1d_do_check_covered_range(System1D& system1d, const NodeID& nid) {
+bool ColonioImpl::module_1d_do_check_covered_range(Module1D& module_1d, const NodeID& nid) {
   assert(routing);
   return routing->is_covered_range_1d(nid);
 }
@@ -261,7 +261,7 @@ void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition&
       context.scheduler.add_timeout_task(
           this, [this, new_position]() { this->routing->on_change_my_position(new_position); }, 0);
       context.scheduler.add_timeout_task(
-          this, [this, new_position]() { module_bundler.system_2d_on_change_my_position(new_position); }, 0);
+          this, [this, new_position]() { module_bundler.module_2d_on_change_my_position(new_position); }, 0);
 #ifndef NDEBUG
       context.debug_event(DebugEvent::POSITION, Convert::coordinate2json(new_position));
 #endif
@@ -302,9 +302,9 @@ void ColonioImpl::initialize_algorithms() {
     const picojson::object& module_config = Utils::get_json<picojson::object>(modules_config, name);
     const std::string& type               = Utils::get_json<std::string>(module_config, "type");
 
-    api::colonio::ConnectReply_Module* api_module = api_connect_reply->add_modules();
-    api_module->set_channel(Utils::get_json<double>(module_config, "channel"));
-    api_module->set_name(name);
+    api::colonio::ConnectReply_Module* module = api_connect_reply->add_modules();
+    module->set_channel(Utils::get_json<double>(module_config, "channel"));
+    module->set_name(name);
 
     if (type == "pubsub2D") {
       assert(false);
@@ -315,8 +315,8 @@ void ColonioImpl::initialize_algorithms() {
       modules_2d.insert(tmp);
       */
     } else if (type == "mapPaxos") {
-      MapPaxosEntry::make_entry(context, api_bundler, entry_delegate, module_bundler, module_config);
-      api_module->set_type(api::colonio::ConnectReply_ModuleType_MAP);
+      MapPaxosAPI::make_entry(context, api_bundler, api_delegate, module_bundler, module_config);
+      module->set_type(api::colonio::ConnectReply_ModuleType_MAP);
 
     } else {
       colonio_fatal("unsupported algorithm(%s)", type.c_str());
@@ -388,7 +388,7 @@ void ColonioImpl::on_change_accessor_status(LinkStatus::Type seed_status, LinkSt
 
 void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_from_seed) {
   assert(packet->channel != APIChannel::NONE);
-  assert(packet->module_channel != APIModuleChannel::NONE);
+  assert(packet->module_channel != ModuleChannel::NONE);
 
   if ((packet->mode & PacketMode::RELAY_SEED) != 0x0) {
     if ((packet->mode & PacketMode::REPLY) != 0x0 && !is_from_seed) {

@@ -14,30 +14,30 @@
  * limitations under the License.
  */
 
-#include "api_entry.hpp"
+#include "api_base.hpp"
 
 namespace colonio {
-APIEntryDelegate::~APIEntryDelegate() {
+APIDelegate::~APIDelegate() {
 }
 
-APIEntry::APIEntry(Context& context_, APIEntryDelegate& delegate_, APIChannel::Type channel_) :
+APIBase::APIBase(Context& context_, APIDelegate& delegate_, APIChannel::Type channel_) :
     channel(channel_),
     context(context_),
     delegate(delegate_) {
 }
 
-APIEntry::~APIEntry() {
+APIBase::~APIBase() {
 }
 
-void APIEntry::api_event(std::unique_ptr<api::Event> event) {
+void APIBase::api_event(std::unique_ptr<api::Event> event) {
   assert(event->channel() == APIChannel::NONE);
   assert(event->param_case() != api::Event::ParamCase::PARAM_NOT_SET);
 
   event->set_channel(channel);
-  delegate.api_entry_send_event(*this, std::move(event));
+  delegate.api_send_event(*this, std::move(event));
 }
 
-void APIEntry::api_failure(uint32_t id, ColonioException::Code code, const std::string message) {
+void APIBase::api_failure(uint32_t id, ColonioException::Code code, const std::string message) {
   std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
   reply->set_id(id);
 
@@ -45,22 +45,22 @@ void APIEntry::api_failure(uint32_t id, ColonioException::Code code, const std::
   param->set_code(static_cast<uint32_t>(code));
   param->set_message(message);
 
-  delegate.api_entry_send_reply(*this, std::move(reply));
+  delegate.api_send_reply(*this, std::move(reply));
 }
 
-void APIEntry::api_reply(std::unique_ptr<api::Reply> reply) {
+void APIBase::api_reply(std::unique_ptr<api::Reply> reply) {
   assert(reply->id() != 0);
   assert(reply->param_case() != api::Reply::ParamCase::PARAM_NOT_SET);
 
-  delegate.api_entry_send_reply(*this, std::move(reply));
+  delegate.api_send_reply(*this, std::move(reply));
 }
 
-void APIEntry::api_success(uint32_t id) {
+void APIBase::api_success(uint32_t id) {
   std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
   reply->set_id(id);
 
   reply->mutable_success();
 
-  delegate.api_entry_send_reply(*this, std::move(reply));
+  delegate.api_send_reply(*this, std::move(reply));
 }
 }  // namespace colonio

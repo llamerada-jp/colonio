@@ -19,7 +19,7 @@
 #include <mutex>
 #include <set>
 
-#include "api_module.hpp"
+#include "module_base.hpp"
 #include "coordinate.hpp"
 #include "node_id.hpp"
 #include "routing_protocol.pb.h"
@@ -38,9 +38,9 @@ class RoutingDelegate {
   virtual void routing_do_disconnect_node(Routing& routing, const NodeID& nid)                                      = 0;
   virtual void routing_do_connect_seed(Routing& route)                                                              = 0;
   virtual void routing_do_disconnect_seed(Routing& route)                                                           = 0;
-  virtual void routing_on_system_1d_change_nearby(Routing& routing, const NodeID& prev_nid, const NodeID& next_nid) = 0;
-  virtual void routing_on_system_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids)                   = 0;
-  virtual void routing_on_system_2d_change_nearby_position(
+  virtual void routing_on_module_1d_change_nearby(Routing& routing, const NodeID& prev_nid, const NodeID& next_nid) = 0;
+  virtual void routing_on_module_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids)                   = 0;
+  virtual void routing_on_module_2d_change_nearby_position(
       Routing& routing, const std::map<NodeID, Coordinate>& positions) = 0;
 };
 
@@ -75,10 +75,10 @@ class RoutingAlgorithm2DDelegate {
       RoutingAlgorithm& algorithm, const std::map<NodeID, Coordinate>& positions) = 0;
 };
 
-class Routing : public APIModule, public RoutingAlgorithm1DDelegate, public RoutingAlgorithm2DDelegate {
+class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public RoutingAlgorithm2DDelegate {
  public:
   Routing(
-      Context& context, APIModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, APIChannel::Type channel,
+      Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, APIChannel::Type channel,
       const picojson::object& config);
   virtual ~Routing();
 

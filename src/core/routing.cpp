@@ -52,9 +52,9 @@ RoutingAlgorithm2DDelegate::~RoutingAlgorithm2DDelegate() {
  * @param delegate_ Delegate instance (should WebrtcBundle).
  */
 Routing::Routing(
-    Context& context, APIModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, APIChannel::Type channel,
+    Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, APIChannel::Type channel,
     const picojson::object& config) :
-    APIModule(context, module_delegate, channel, APIModuleChannel::Colonio::SYSTEM_ROUTING),
+    ModuleBase(context, module_delegate, channel, ModuleChannel::Colonio::SYSTEM_ROUTING),
     CONFIG_UPDATE_PERIOD(Utils::get_json(config, "updatePeriod", ROUTING_UPDATE_PERIOD)),
     CONFIG_FORCE_UPDATE_TIMES(Utils::get_json(config, "forceUpdateTimes", ROUTING_FORCE_UPDATE_TIMES)),
     delegate(routing_delegate),
@@ -142,16 +142,16 @@ void Routing::on_recv_packet(const NodeID& nid, const Packet& packet) {
 
 void Routing::algorithm_1d_on_change_nearby(
     RoutingAlgorithm& algorithm, const NodeID& prev_nid, const NodeID& next_nid) {
-  delegate.routing_on_system_1d_change_nearby(*this, prev_nid, next_nid);
+  delegate.routing_on_module_1d_change_nearby(*this, prev_nid, next_nid);
 }
 
 void Routing::algorithm_2d_on_change_nearby(RoutingAlgorithm& algorithm, const std::set<NodeID>& nids) {
-  delegate.routing_on_system_2d_change_nearby(*this, nids);
+  delegate.routing_on_module_2d_change_nearby(*this, nids);
 }
 
 void Routing::algorithm_2d_on_change_nearby_position(
     RoutingAlgorithm& algorithm, const std::map<NodeID, Coordinate>& positions) {
-  delegate.routing_on_system_2d_change_nearby_position(*this, positions);
+  delegate.routing_on_module_2d_change_nearby_position(*this, positions);
 }
 
 void Routing::module_on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status) {

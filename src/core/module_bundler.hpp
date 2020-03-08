@@ -23,38 +23,38 @@
 #include "node_id.hpp"
 
 namespace colonio {
-class APIModule;
-class APIModuleDelegate;
+class ModuleBase;
+class ModuleDelegate;
 class Packet;
-class System1D;
-class System1DDelegate;
-class System2D;
-class System2DDelegate;
+class Module1D;
+class Module1DDelegate;
+class Module2D;
+class Module2DDelegate;
 
-class APIModuleBundler {
+class ModuleBundler {
  public:
-  APIModuleDelegate& module_delegate;
-  System1DDelegate& system1d_delegate;
-  System2DDelegate& system2d_delegate;
+  ModuleDelegate& module_delegate;
+  Module1DDelegate& module_1d_delegate;
+  Module2DDelegate& module_2d_delegate;
 
-  APIModuleBundler(
-      APIModuleDelegate& module_delegate_, System1DDelegate& system1d_delegate_, System2DDelegate& system2d_delegate_);
+  ModuleBundler(
+      ModuleDelegate& module_delegate_, Module1DDelegate& module_1d_delegate_, Module2DDelegate& module_2d_delegate_);
 
   void clear();
-  void registrate(APIModule* module, bool is_1d, bool is_2d);
+  void registrate(ModuleBase* module, bool is_1d, bool is_2d);
 
   void on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status);
   void on_recv_packet(std::unique_ptr<const Packet> packet);
 
-  void system_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid);
+  void module_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid);
 
-  void system_2d_on_change_my_position(const Coordinate& position);
-  void system_2d_on_change_nearby(const std::set<NodeID>& nids);
-  void system_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions);
+  void module_2d_on_change_my_position(const Coordinate& position);
+  void module_2d_on_change_nearby(const std::set<NodeID>& nids);
+  void module_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions);
 
  private:
-  std::map<std::pair<APIChannel::Type, APIModuleChannel::Type>, APIModule*> modules;
-  std::set<System1D*> modules_1d;
-  std::set<System2D*> modules_2d;
+  std::map<std::pair<APIChannel::Type, ModuleChannel::Type>, ModuleBase*> modules;
+  std::set<Module1D*> modules_1d;
+  std::set<Module2D*> modules_2d;
 };
 }  // namespace colonio
