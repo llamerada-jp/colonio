@@ -18,21 +18,26 @@
 #include <exception>
 #include <string>
 
+#include "colonio/exception.hpp"
+
 namespace colonio {
 /**
  * Exception class is for throwing when error and exception on processing in any module.
  * It containing line no, file name and a message string for display or bug report.
  */
-class Exception : public std::exception {
+class InternalException : public std::exception {
  public:
   /// The line number where the exception was thrown.
   const unsigned long line;
   /// The file name where the exception was thrown.
   const std::string file;
+
+  /// Error code.
+  const Exception::Code code;
   /// A message string for display or bug report.
   const std::string message;
 
-  Exception(int l, const std::string& f, const std::string& m);
+  InternalException(int l, const std::string& f, Exception::Code c, const std::string& m);
 
   /**
    * Pass message without line-no and file name.
@@ -44,9 +49,8 @@ class Exception : public std::exception {
  * FatalException class is for throwing when fatal error.
  * It containing the same information for Exception class.
  */
-class FatalException : public Exception {
+class FatalException : public InternalException {
  public:
-  FatalException(int l, const std::string& f, const std::string& m) : Exception(l, f, m) {
-  }
+  FatalException(int l, const std::string& f, const std::string& m);
 };
 }  // namespace colonio

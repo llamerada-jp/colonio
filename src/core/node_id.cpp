@@ -26,7 +26,7 @@ extern "C" {
 #include "convert.hpp"
 #include "core.pb.h"
 #include "definition.hpp"
-#include "exception.hpp"
+#include "internal_exception.hpp"
 #include "node_id.hpp"
 #include "utils.hpp"
 
@@ -160,7 +160,7 @@ NodeID NodeID::from_str(const std::string& str) {
       return NEXT;
 
     } else {
-      colonio_throw("Illegal node-id string. (string : %s)", str.c_str());
+      colonio_throw(Exception::Code::INCORRECT_DATA_FORMAT, "Illegal node-id string. (string : %s)", str.c_str());
     }
   }
 }
@@ -189,7 +189,8 @@ NodeID NodeID::from_pb(const core::NodeID& pb) {
       return NodeID::NEXT;
 
     default:
-      colonio_throw("Illegal node-id type in Protocol Buffers. (type : %d)", pb.type());
+      colonio_throw(
+          Exception::Code::INCORRECT_DATA_FORMAT, "Illegal node-id type in Protocol Buffers. (type : %d)", pb.type());
   }
 }
 

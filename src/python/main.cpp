@@ -68,7 +68,7 @@ class PythonMap {
 
   void get(
       const py::object key, const std::function<void(py::object&)>& on_success,
-      const std::function<void(colonio::ColonioException::Code)>& on_failure) {
+      const std::function<void(colonio::Exception::Code)>& on_failure) {
     colonio::Value key_value = convertValue(key);
     map.get(
         key_value,
@@ -81,7 +81,7 @@ class PythonMap {
 
   void set(
       const py::object key, const py::object val, const std::function<void()>& on_success,
-      const std::function<void(colonio::ColonioException::Code)>& on_failure) {
+      const std::function<void(colonio::Exception::Code)>& on_failure) {
     colonio::Value key_value = convertValue(key);
     colonio::Value val_value = convertValue(val);
     map.set(key_value, val_value, on_success, on_failure);
@@ -134,11 +134,11 @@ PYBIND11_MODULE(colonio, m) {
   py::class_<PythonMap> Map(m, "Map");
   Map.def("get", &PythonMap::get).def("set", &PythonMap::set);
 
-  py::enum_<colonio::ColonioException::Code>(Map, "FailureReason")
-      .value("NONE", colonio::ColonioException::Code::NONE)
-      .value("SYSTEM_ERROR", colonio::ColonioException::Code::SYSTEM_ERROR)
-      .value("NOT_EXIST_KEY", colonio::ColonioException::Code::NOT_EXIST_KEY)
-      .value("CHANGED_PROPOSER", colonio::ColonioException::Code::CHANGED_PROPOSER)
+  py::enum_<colonio::Exception::Code>(Map, "FailureReason")
+      .value("NONE", colonio::Exception::Code::NONE)
+      .value("SYSTEM_ERROR", colonio::Exception::Code::SYSTEM_ERROR)
+      .value("NOT_EXIST_KEY", colonio::Exception::Code::NOT_EXIST_KEY)
+      .value("CHANGED_PROPOSER", colonio::Exception::Code::CHANGED_PROPOSER)
       .export_values();
 
   // Colonio

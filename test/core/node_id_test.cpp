@@ -19,7 +19,7 @@
 #include <gtest/gtest.h>
 
 #include "core/core.pb.h"
-#include "core/exception.hpp"
+#include "core/internal_exception.hpp"
 
 using namespace colonio;
 
@@ -57,7 +57,7 @@ TEST(NodeIDTest, str) {
   bool has_error = false;
   try {
     const NodeID out02 = NodeID::from_str("0123456789abcdef0123456789ABCDEZ");
-  } catch (Exception& e) {
+  } catch (InternalException& e) {
     has_error = true;
     EXPECT_STREQ(e.what(), "Illegal node-id string. (string : 0123456789abcdef0123456789ABCDEZ)");
   }
@@ -66,7 +66,7 @@ TEST(NodeIDTest, str) {
   has_error = false;
   try {
     const NodeID out02 = NodeID::from_str("Z123456789abcdef0123456789ABCDE");
-  } catch (Exception& e) {
+  } catch (InternalException& e) {
     has_error = true;
     EXPECT_STREQ(e.what(), "Illegal node-id string. (string : Z123456789abcdef0123456789ABCDE)");
   }
@@ -111,7 +111,7 @@ TEST(NodeIDTest, pb) {
     ptest02.set_type(5);
     NodeID otest02 = NodeID::from_pb(ptest02);
 
-  } catch (Exception& e) {
+  } catch (InternalException& e) {
     has_error = true;
     EXPECT_STREQ(e.what(), "Illegal node-id type in Protocol Buffers. (type : 5)");
   }

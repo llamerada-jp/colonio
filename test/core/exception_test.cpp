@@ -14,24 +14,24 @@
  * limitations under the License.
  */
 
-#include "core/exception.hpp"
-
 #include <gtest/gtest.h>
 
+#include "core/internal_exception.hpp"
 #include "core/utils.hpp"
 
 using namespace colonio;
 
 TEST(UtilsTest, Exception) {
   try {
-    colonio_throw("test");
+    colonio_throw(Exception::Code::SYSTEM_ERROR, "test");
 
   } catch (FatalException& e) {
     FAIL();
 
-  } catch (Exception& e) {
+  } catch (InternalException& e) {
     EXPECT_EQ(e.line, 27);
     EXPECT_STREQ(e.file.c_str(), "exception_test");
+    EXPECT_EQ(e.code, Exception::Code::SYSTEM_ERROR);
     EXPECT_EQ(e.message, "test");
     EXPECT_STREQ(e.what(), "test");
   }
@@ -42,10 +42,11 @@ TEST(UtilsTest, Exception) {
   } catch (FatalException& e) {
     EXPECT_EQ(e.line, 40);
     EXPECT_STREQ(e.file.c_str(), "exception_test");
+    EXPECT_EQ(e.code, Exception::Code::UNDEFINED);
     EXPECT_EQ(e.message, "test");
     EXPECT_STREQ(e.what(), "test");
 
-  } catch (Exception& e) {
+  } catch (InternalException& e) {
     FAIL();
   }
 }

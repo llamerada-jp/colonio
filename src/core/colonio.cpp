@@ -43,8 +43,8 @@ Map& Colonio::access_map(const std::string& name) {
     return *it->second;
 
   } else {
-    throw ColonioException(
-        ColonioException::Code::CONFLICT_WITH_SETTING, Utils::format_string("map not found : ", 0, name.c_str()));
+    throw Exception(
+        Exception::Code::CONFLICT_WITH_SETTING, Utils::format_string("map not found : ", 0, name.c_str()));
   }
 }
 

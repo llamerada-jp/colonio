@@ -18,10 +18,10 @@
 
 #include <cassert>
 
-#include "module_base.hpp"
-#include "packet.hpp"
 #include "module_1d.hpp"
 #include "module_2d.hpp"
+#include "module_base.hpp"
+#include "packet.hpp"
 #include "utils.hpp"
 
 namespace colonio {
@@ -69,7 +69,8 @@ void ModuleBundler::on_recv_packet(std::unique_ptr<const Packet> packet) {
   if (module != modules.end()) {
     module->second->on_recv_packet(std::move(packet));
   } else {
-    colonio_throw("Received incorrect packet entry", Utils::dump_packet(*packet).c_str());
+    colonio_throw(
+        Exception::Code::INCORRECT_DATA_FORMAT, "Received incorrect packet entry", Utils::dump_packet(*packet).c_str());
   }
 }
 

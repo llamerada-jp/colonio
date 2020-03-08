@@ -14,13 +14,24 @@
  * limitations under the License.
  */
 
-#include "colonio/colonio_exception.hpp"
+#include "internal_exception.hpp"
+
+#include "utils.hpp"
 
 namespace colonio {
-ColonioException::ColonioException(Code code_, const std::string& message_) : code(code_), message(message_) {
+InternalException::InternalException(int l, const std::string& f, Exception::Code c, const std::string& m) :
+    line(l),
+    file(Utils::file_basename(f, true)),
+    code(c),
+    message(m) {
 }
 
-const char* ColonioException::what() const noexcept {
+const char* InternalException::what() const noexcept {
+  // Pass message without line-no and file name.
   return message.c_str();
+}
+
+FatalException::FatalException(int l, const std::string& f, const std::string& m) :
+    InternalException(l, f, Exception::Code::UNDEFINED, m) {
 }
 }  // namespace colonio

@@ -183,7 +183,7 @@ void APIGateMultiThread::loop_controller() {
       logE(controller, "fatal %s@%d %s", ex.file.c_str(), ex.line, ex.message.c_str());
       exit(EXIT_FAILURE);
 
-    } catch (const Exception& ex) {
+    } catch (const InternalException& ex) {
       logE(controller, "error %s@%d %s", ex.file.c_str(), ex.line, ex.message.c_str());
 
     } catch (const std::exception& ex) {

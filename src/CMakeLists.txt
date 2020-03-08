@@ -8,7 +8,6 @@ set(COLONIO_FILES
   core/api_bundler.cpp
   core/api_gate.cpp
   core/colonio_api.pb.cc
-  core/colonio_exception.cpp
   core/command.cpp
   core/context.cpp
   core/controller.cpp
@@ -19,6 +18,7 @@ set(COLONIO_FILES
   core/core.pb.cc
   core/exception.cpp
   core/export_c.cpp
+  core/internal_exception.cpp
   core/logger.cpp
   core/map.cpp
   core/map_api.pb.cc

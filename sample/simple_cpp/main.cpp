@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
 
     uv_run(loop, UV_RUN_DEFAULT);
 
-  } catch (colonio::ColonioException& e) {
+  } catch (colonio::Exception& e) {
     std::cout << e.what() << std::endl;
   }
   return EXIT_SUCCESS;

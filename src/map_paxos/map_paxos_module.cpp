@@ -124,7 +124,7 @@ void MapPaxosModule::CommandGet::postprocess() {
         info->parent.send_packet_get(
             std::move(info->key), info->count_retry + 1, interval, info->cb_on_success, info->cb_on_failure);
       } else {
-        info->cb_on_failure(ColonioException::Code::NOT_EXIST_KEY);
+        info->cb_on_failure(Exception::Code::NOT_EXIST_KEY);
       }
 
     } else {
@@ -153,7 +153,7 @@ void MapPaxosModule::CommandGet::postprocess() {
 /* class MapPaxosModule::CommandSet::Info */
 MapPaxosModule::CommandSet::Info::Info(
     MapPaxosModule& parent_, const Value& key_, const Value& value_, const std::function<void()>& cb_on_success_,
-    const std::function<void(ColonioException::Code)>& cb_on_failure_, const MapOption::Type& opt_) :
+    const std::function<void(Exception::Code)>& cb_on_failure_, const MapOption::Type& opt_) :
     cb_on_success(cb_on_success_),
     cb_on_failure(cb_on_failure_),
     key(key_),
@@ -170,15 +170,15 @@ MapPaxosModule::CommandSet::CommandSet(std::unique_ptr<MapPaxosModule::CommandSe
 
 void MapPaxosModule::CommandSet::on_error(const std::string& message) {
   logD(info->parent.context, "Error on packet of 'set'.(message=%s)", message.c_str());
-  info->cb_on_failure(ColonioException::Code::SYSTEM_ERROR);
+  info->cb_on_failure(Exception::Code::SYSTEM_ERROR);
 }
 
 void MapPaxosModule::CommandSet::on_failure(std::unique_ptr<const Packet> packet) {
   MapPaxosProtocol::SetFailure content;
   packet->parse_content(&content);
-  const ColonioException::Code reason = static_cast<ColonioException::Code>(content.reason());
+  const Exception::Code reason = static_cast<Exception::Code>(content.reason());
 
-  if (reason == ColonioException::Code::CHANGED_PROPOSER) {
+  if (reason == Exception::Code::CHANGED_PROPOSER) {
     info->parent.send_packet_set(std::move(info));
 
   } else {
@@ -262,7 +262,7 @@ void MapPaxosModule::CommandPrepare::postprocess() {
     switch (info->packet_reply->command_id) {
       case CommandID::MapPaxos::SET: {
         MapPaxosProtocol::SetFailure param;
-        param.set_reason(static_cast<uint32_t>(ColonioException::Code::CHANGED_PROPOSER));
+        param.set_reason(static_cast<uint32_t>(Exception::Code::CHANGED_PROPOSER));
         info->parent.send_failure(*info->packet_reply, ModuleBase::serialize_pb(param));
       } break;
 
@@ -390,7 +390,7 @@ void MapPaxosModule::CommandAccept::postprocess() {
     switch (info->packet_reply->command_id) {
       case CommandID::MapPaxos::SET: {
         MapPaxosProtocol::SetFailure param;
-        param.set_reason(static_cast<uint32_t>(ColonioException::Code::CHANGED_PROPOSER));
+        param.set_reason(static_cast<uint32_t>(Exception::Code::CHANGED_PROPOSER));
         info->parent.send_failure(*info->packet_reply, ModuleBase::serialize_pb(param));
       } break;
 
@@ -475,13 +475,13 @@ MapPaxosModule::~MapPaxosModule() {
 
 void MapPaxosModule::get(
     const Value& key, const std::function<void(const Value&)>& on_success,
-    const std::function<void(ColonioException::Code)>& on_failure) {
+    const std::function<void(Exception::Code)>& on_failure) {
   send_packet_get(std::make_unique<Value>(key), 0, 0, on_success, on_failure);
 }
 
 void MapPaxosModule::set(
     const Value& key, const Value& value, const std::function<void()>& on_success,
-    const std::function<void(ColonioException::Code)>& on_failure, MapOption::Type opt) {
+    const std::function<void(Exception::Code)>& on_failure, MapOption::Type opt) {
   std::unique_ptr<CommandSet::Info> info =
       std::make_unique<CommandSet::Info>(*this, key, value, on_success, on_failure, opt);
   send_packet_set(std::move(info));
@@ -824,7 +824,7 @@ void MapPaxosModule::recv_packet_set(std::unique_ptr<const Packet> packet) {
   if (proposer.processing_packet_id != PACKET_ID_NONE) {
     // @todo switch by flag
     MapPaxosProtocol::SetFailure param;
-    param.set_reason(static_cast<uint32_t>(ColonioException::Code::COLLISION_LATE));
+    param.set_reason(static_cast<uint32_t>(Exception::Code::COLLISION_LATE));
     send_failure(*packet, serialize_pb(param));
 
   } else {
@@ -890,7 +890,7 @@ void MapPaxosModule::send_packet_balance_proposer(const Value& key, const Propos
 
 void MapPaxosModule::send_packet_get(
     std::unique_ptr<Value> key, int count_retry, int64_t interval, const std::function<void(const Value&)>& on_success,
-    const std::function<void(ColonioException::Code)>& on_failure) {
+    const std::function<void(Exception::Code)>& on_failure) {
   std::shared_ptr<CommandGet::Info> info = std::make_unique<CommandGet::Info>(*this, std::move(key), count_retry);
   info->cb_on_success                    = on_success;
   info->cb_on_failure                    = on_failure;

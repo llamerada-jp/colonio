@@ -14,19 +14,13 @@
  * limitations under the License.
  */
 
-#include "exception.hpp"
-
-#include "utils.hpp"
+#include "colonio/exception.hpp"
 
 namespace colonio {
-Exception::Exception(int l, const std::string& f, const std::string& m) :
-    line(l),
-    file(Utils::file_basename(f, true)),
-    message(m) {
+Exception::Exception(Code code_, const std::string& message_) : code(code_), message(message_) {
 }
 
 const char* Exception::what() const noexcept {
-  // Pass message without line-no and file name.
   return message.c_str();
 }
 }  // namespace colonio

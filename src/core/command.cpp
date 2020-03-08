@@ -41,7 +41,7 @@ std::tuple<CommandID::Type, PacketMode::Type> Command::get_define() {
  * @param packet Received error packet.
  */
 void Command::on_error(const std::string& message) {
-  colonio_throw(message);
+  colonio_throw(Exception::Code::UNDEFINED, message);
 }
 
 /**

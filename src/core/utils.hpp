@@ -20,7 +20,7 @@
 #include <cassert>
 #include <string>
 
-#include "exception.hpp"
+#include "internal_exception.hpp"
 
 namespace colonio {
 class Packet;
@@ -46,7 +46,8 @@ class Packet;
  * THROW macro is helper function to throw exception with line number and file name.
  * @param FORMAT Format string of an exception message that similar to printf.
  */
-#define colonio_throw(FORMAT, ...) throw Exception(__LINE__, __FILE__, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+#define colonio_throw(CODE, FORMAT, ...) \
+  throw InternalException(__LINE__, __FILE__, CODE, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 /**
  * FATAL macro is helper function to throw fatal exception.

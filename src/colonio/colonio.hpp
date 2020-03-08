@@ -15,8 +15,8 @@
  */
 #pragma once
 
-#include <colonio/colonio_exception.hpp>
 #include <colonio/constant.hpp>
+#include <colonio/exception.hpp>
 #include <colonio/map.hpp>
 #include <colonio/pubsub_2d.hpp>
 #include <colonio/value.hpp>

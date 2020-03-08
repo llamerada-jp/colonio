@@ -18,13 +18,13 @@
 #include <functional>
 
 #include "api.pb.h"
-#include "colonio/colonio_exception.hpp"
+#include "colonio/exception.hpp"
 #include "definition.hpp"
 
 namespace colonio {
 
 // Helper method.
-ColonioException get_exception(const api::Reply& reply);
+Exception get_exception(const api::Reply& reply);
 
 class APIGateBase {
  public:

@@ -19,12 +19,13 @@
 #include <string>
 
 namespace colonio {
-class ColonioException : public std::exception {
+class Exception : public std::exception {
  public:
   enum class Code : uint32_t {
     UNDEFINED,
     SYSTEM_ERROR,
     OFFLINE,
+    INCORRECT_DATA_FORMAT,
     CONFLICT_WITH_SETTING,
     NOT_EXIST_KEY,
     // EXIST_KEY,
@@ -36,7 +37,7 @@ class ColonioException : public std::exception {
   /// A message string for display or bug report.
   const std::string message;
 
-  explicit ColonioException(Code code_, const std::string& message_);
+  explicit Exception(Code code_, const std::string& message_);
 
   /**
    * Pass message without line-no and file name.

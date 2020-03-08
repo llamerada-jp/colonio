@@ -47,8 +47,8 @@ TEST(MapTest, set_get_single) {
     map.get(Value(KEY_NAME));
     ADD_FAILURE();
 
-  } catch (const ColonioException& e) {
-    EXPECT_EQ(e.code, ColonioException::Code::NOT_EXIST_KEY);
+  } catch (const Exception& e) {
+    EXPECT_EQ(e.code, Exception::Code::NOT_EXIST_KEY);
     helper.mark("a");
   }
 
@@ -97,8 +97,8 @@ TEST(MapTest, set_get_multi) {
     map1.get(Value(KEY_NAME));
     ADD_FAILURE();
 
-  } catch (const ColonioException& e) {
-    EXPECT_EQ(e.code, ColonioException::Code::NOT_EXIST_KEY);
+  } catch (const Exception& e) {
+    EXPECT_EQ(e.code, Exception::Code::NOT_EXIST_KEY);
     helper.mark("a");
   }
 
@@ -108,8 +108,8 @@ TEST(MapTest, set_get_multi) {
     map2.get(Value(KEY_NAME));
     ADD_FAILURE();
 
-  } catch (const ColonioException& e) {
-    EXPECT_EQ(e.code, ColonioException::Code::NOT_EXIST_KEY);
+  } catch (const Exception& e) {
+    EXPECT_EQ(e.code, Exception::Code::NOT_EXIST_KEY);
     helper.mark("b");
   }
 
