@@ -141,7 +141,7 @@ void APIGateMultiThread::loop_event() {
         }
       }
     } catch (const std::exception& ex) {
-      logE(controller, 0, "exception what():%s", ex.what());
+      logE(controller, "exception what():%s", ex.what());
       exit(EXIT_FAILURE);
     }
   }
@@ -180,14 +180,14 @@ void APIGateMultiThread::loop_controller() {
       }
 
     } catch (const FatalException& ex) {
-      logE(controller, 0, "fatal %s@%d %s", ex.file.c_str(), ex.line, ex.message.c_str());
+      logE(controller, "fatal %s@%d %s", ex.file.c_str(), ex.line, ex.message.c_str());
       exit(EXIT_FAILURE);
 
     } catch (const Exception& ex) {
-      logE(controller, 0, "error %s@%d %s", ex.file.c_str(), ex.line, ex.message.c_str());
+      logE(controller, "error %s@%d %s", ex.file.c_str(), ex.line, ex.message.c_str());
 
     } catch (const std::exception& ex) {
-      logE(controller, 0, "exception what():%s", ex.what());
+      logE(controller, "exception what():%s", ex.what());
       exit(EXIT_FAILURE);
     }
   }

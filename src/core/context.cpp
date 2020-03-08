@@ -56,7 +56,7 @@ void Context::set_my_position(const Coordinate& pos) {
   Coordinate new_my_position = coord_system->get_my_position();
 
   if (prev_my_position.x != new_my_position.x || prev_my_position.y != new_my_position.y) {
-    logI((*this), 0x00020002, "Change my position.(x=%f, y=%f)", new_my_position.x, new_my_position.y);
+    logI((*this), "Change my position.(x=%f, y=%f)", new_my_position.x, new_my_position.y);
 
     for (auto& it : funcs_on_change_my_position) {
       it(new_my_position);

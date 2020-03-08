@@ -17,8 +17,10 @@
 #include "core/logger.hpp"
 
 #include <gtest/gtest.h>
+#include <gmock/gmock.h>
 
 using namespace colonio;
+using ::testing::MatchesRegex;
 
 class DummyContext : public LoggerDelegate {
  public:
@@ -45,34 +47,52 @@ class LoggerTest : public ::testing::Test {
 
   void test_output() {
     // 異なるインスタンスは互いに独立していること
-    logI(context, 0, "test0");
-    logE(context2, 1, "test1");
+    logI(context, "test0");
+    logE(context2, "test1");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_EQ(LogLevel::INFO, context.last_level);
-    EXPECT_STREQ("[I] 48@logger_test 00000000 : test0", context.last_message.c_str());
+    EXPECT_THAT(
+        context.last_message,
+        MatchesRegex(
+            "^\\[I] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} logger_test\\.cpp:50: test0$"));
     EXPECT_EQ(&context2.logger, context2.last_logger);
     EXPECT_EQ(LogLevel::ERROR, context2.last_level);
-    EXPECT_STREQ("[E] 49@logger_test 00000001 : test1", context2.last_message.c_str());
+    EXPECT_THAT(
+        context2.last_message,
+        MatchesRegex(
+            "^\\[E] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} logger_test\\.cpp:51: test1$"));
 
-    logi(2, "test2");
+    logi("test2");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_EQ(LogLevel::INFO, context.last_level);
-    EXPECT_STREQ("[I] 57@logger_test 00000002 : test2", context.last_message.c_str());
+    EXPECT_THAT(
+        context.last_message,
+        MatchesRegex(
+            "^\\[I] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} logger_test\\.cpp:65: test2$"));
 
-    loge(3, "test3");
+    loge("test3");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_EQ(LogLevel::ERROR, context.last_level);
-    EXPECT_STREQ("[E] 62@logger_test 00000003 : test3", context.last_message.c_str());
+    EXPECT_THAT(
+        context.last_message,
+        MatchesRegex(
+            "^\\[E] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} logger_test\\.cpp:73: test3$"));
 
     logD(context, "test4");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_EQ(LogLevel::DEBUG, context.last_level);
-    EXPECT_STREQ("[D] 67@logger_test : test4", context.last_message.c_str());
+    EXPECT_THAT(
+        context.last_message,
+        MatchesRegex(
+            "^\\[D] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} logger_test\\.cpp:81: test4$"));
 
     logd("test5");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_EQ(LogLevel::DEBUG, context.last_level);
-    EXPECT_STREQ("[D] 72@logger_test : test5", context.last_message.c_str());
+    EXPECT_THAT(
+        context.last_message,
+        MatchesRegex(
+            "^\\[D] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} logger_test\\.cpp:89: test5$"));
   }
 };
 

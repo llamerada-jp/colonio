@@ -16,6 +16,7 @@
 #include "logger.hpp"
 
 #include <cassert>
+#include <chrono>
 #include <cstdarg>
 #include <iomanip>
 #include <sstream>
@@ -34,8 +35,7 @@ Logger::Logger(LoggerDelegate& delegate_) : delegate(delegate_) {
 Logger::~Logger() {
 }
 
-void Logger::output(
-    const std::string& file, unsigned long line, LogLevel::Type level, unsigned long mid, const std::string& message) {
+void Logger::output(const std::string& file, unsigned long line, LogLevel::Type level, const std::string& message) {
   std::stringstream stream;
   switch (level) {
     case LogLevel::INFO:
@@ -52,15 +52,10 @@ void Logger::output(
       break;
   }
 
-#ifndef NDEBUG
-  stream << " " << line << "@" << Utils::file_basename(file, true);
-#endif
-
-  if (level != LogLevel::DEBUG) {
-    stream << " " << std::setw(8) << std::setfill('0') << std::hex << mid;
-  }
-
-  stream << " : " << message;
+  std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+  std::time_t t                             = std::chrono::system_clock::to_time_t(now);
+  const std::tm* lt                         = std::localtime(&t);
+  stream << " " << std::put_time(lt, "%FT%T%z") << " " << Utils::file_basename(file) << ":" << line << ": " << message;
 
   delegate.logger_on_output(*this, level, stream.str());
 }

@@ -208,11 +208,11 @@ void ColonioImpl::api_connect(uint32_t id, const api::colonio::Connect& param) {
   const std::string& token = param.token();
 
   if (context.link_status != LinkStatus::OFFLINE && context.link_status != LinkStatus::CLOSING) {
-    loge(0x00010004, "Duplicate connection.");
+    loge("Duplicate connection.");
     return;
 
   } else {
-    logi(0x00010001, "Connect start.(url=%s)", url.c_str());
+    logi("Connect start.(url=%s)", url.c_str());
   }
 
   api_connect_id = id;
@@ -281,7 +281,7 @@ void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition&
 void ColonioImpl::check_api_connect() {
   if (api_connect_id != 0 && context.link_status == LinkStatus::ONLINE && api_connect_reply) {
     assert(seed_accessor->get_auth_status() == AuthStatus::SUCCESS);
-    logi(0x00010002, "Connect success.");
+    logi("Connect success.");
 
     std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
     reply->set_id(api_connect_id);
@@ -366,7 +366,7 @@ void ColonioImpl::on_change_accessor_status(LinkStatus::Type seed_status, LinkSt
     status = LinkStatus::OFFLINE;
 
   } else if (seed_accessor->get_auth_status() == AuthStatus::FAILURE) {
-    loge(0x00010003, "Connect failure.");
+    loge("Connect failure.");
     if (api_connect_id != 0) {
       api_failure(api_connect_id, ColonioException::Code::OFFLINE, "Connect failure.");
       api_connect_id = 0;
