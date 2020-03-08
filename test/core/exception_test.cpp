@@ -29,7 +29,7 @@ TEST(UtilsTest, Exception) {
     FAIL();
 
   } catch (InternalException& e) {
-    EXPECT_EQ(e.line, 27);
+    EXPECT_EQ(e.line, 26);
     EXPECT_STREQ(e.file.c_str(), "exception_test");
     EXPECT_EQ(e.code, Exception::Code::SYSTEM_ERROR);
     EXPECT_EQ(e.message, "test");
