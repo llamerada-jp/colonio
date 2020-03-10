@@ -4,6 +4,7 @@ package colonio.api;
 
 import "core/colonio_api.proto";
 import "core/map_api.proto";
+import "core/pubsub2d_api.proto";
 
 message NoParam {
 }
@@ -17,8 +18,11 @@ message Call {
     NoParam colonio_disconnect = 1002;
     NoParam colonio_get_local_nid = 1003;
     colonio.SetPosition colonio_set_position = 1004;
+
     map_api.Get map_get = 2001;
     map_api.Set map_set = 2002;
+
+    pubsub2d.Publish pubsub2d_publish = 3001;
   }
 }
 
@@ -51,5 +55,7 @@ message Event {
   oneof param {
     colonio.LogEvent colonio_log = 1001;
     colonio.DebugEvent colonio_debug = 1002;
+
+    pubsub2d.OnEvent pubsub2d_on = 3001;
   }
 }

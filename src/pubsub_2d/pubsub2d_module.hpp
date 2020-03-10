@@ -15,26 +15,35 @@
  */
 #pragma once
 
+#include <functional>
+
+#include "colonio/exception.hpp"
+#include "colonio/value.hpp"
+#include "core/command.hpp"
 #include "core/coordinate.hpp"
 #include "core/module_2d.hpp"
-#include "core/value_impl.hpp"
 
 namespace colonio {
-class PubSub2DImpl : public Module2D {
- public:
-  PubSub2DImpl(
-      Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate,
-      const picojson::object& config, ModuleChannel::Type module_channel);
-  virtual ~PubSub2DImpl();
+class PubSub2DModule;
 
-  /*
-  TODO
-    void publish(
-        const std::string& name, double x, double y, double r, const Value& value,
-        const std::function<void()>& on_success, const std::function<void(PubSub2DFailureReason)>& on_failure) override;
-    void on(const std::string& name, const std::function<void(const Value&)>& subscriber) override;
-    void off(const std::string& name) override;
-  */
+class PubSub2DModuleDelegate {
+ public:
+  virtual ~PubSub2DModuleDelegate();
+
+  virtual void pubsub2d_module_on_on(PubSub2DModule& ps2_module, const std::string& name, const Value& value) = 0;
+};
+
+class PubSub2DModule : public Module2D {
+ public:
+  PubSub2DModule(
+      Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate,
+      PubSub2DModuleDelegate& delegate_, APIChannel::Type channel, ModuleChannel::Type module_channel,
+      uint32_t cache_time);
+  virtual ~PubSub2DModule();
+
+  void publish(
+      const std::string& name, double x, double y, double r, const Value& value,
+      const std::function<void()>& on_success, const std::function<void(Exception::Code)>& on_failure);
 
   void module_process_command(std::unique_ptr<const Packet> packet) override;
 
@@ -43,9 +52,10 @@ class PubSub2DImpl : public Module2D {
   void module_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) override;
 
  private:
-  unsigned int conf_cache_time;
+  unsigned int CONF_CACHE_TIME;
 
-  std::map<std::string, std::function<void(const Value&)>> funcs_subscriber;
+  PubSub2DModuleDelegate& delegate;
+
   std::map<NodeID, Coordinate> next_positions;
 
   struct Cache {
@@ -61,29 +71,32 @@ class PubSub2DImpl : public Module2D {
 
   class CommandKnock : public Command {
    public:
-    CommandKnock(PubSub2DImpl& parent_, uint64_t uid_);
+    CommandKnock(PubSub2DModule& parent_, uint64_t uid_);
 
     void on_error(const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
     void on_success(std::unique_ptr<const Packet> packet) override;
 
    private:
-    PubSub2DImpl& parent;
+    PubSub2DModule& parent;
     const uint64_t uid;
   };
 
   class CommandPass : public Command {
    public:
-    CommandPass(PubSub2DImpl& parent_, CallID call_id, uint64_t uid_);
+    CommandPass(
+        PubSub2DModule& parent_, uint64_t uid_, const std::function<void()>& cb_on_success_,
+        const std::function<void(Exception::Code)>& cb_on_failure_);
 
     void on_error(const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
     void on_success(std::unique_ptr<const Packet> packet) override;
 
    private:
-    PubSub2DImpl& parent;
-    CallID call_id;
+    PubSub2DModule& parent;
     const uint64_t uid;
+    const std::function<void()> cb_on_success;
+    const std::function<void(Exception::Code)> cb_on_failure;
   };
 
   uint64_t assign_uid();
@@ -95,6 +108,8 @@ class PubSub2DImpl : public Module2D {
 
   void send_packet_knock(const NodeID& exclude, const Cache& cache);
   void send_packet_deffuse(const NodeID& dst_nid, const Cache& cache);
-  void send_packet_pass(const Cache& cache, CallID call_id);
+  void send_packet_pass(
+      const Cache& cache, const std::function<void()>& on_success,
+      const std::function<void(Exception::Code)>& on_failure);
 };
 }  // namespace colonio

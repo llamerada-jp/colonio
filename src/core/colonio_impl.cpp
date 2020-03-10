@@ -22,6 +22,7 @@
 #include "coord_system_sphere.hpp"
 #include "logger.hpp"
 #include "map_paxos/map_paxos_api.hpp"
+#include "pubsub_2d/pubsub2d_api.hpp"
 #include "routing_1d.hpp"
 #include "scheduler.hpp"
 #include "utils.hpp"
@@ -165,7 +166,7 @@ void ColonioImpl::seed_accessor_on_recv_config(SeedAccessor& sa, const picojson:
 
     // coord_system
     picojson::object cs2d_config;
-    if (Utils::check_json_optional(config, "coordModule2D", &cs2d_config)) {
+    if (Utils::check_json_optional(config, "coordSystem2D", &cs2d_config)) {
       const std::string& type = Utils::get_json<std::string>(cs2d_config, "type");
       if (type == "sphere") {
         context.coord_system = std::make_unique<CoordSystemSphere>(cs2d_config);
@@ -307,13 +308,9 @@ void ColonioImpl::initialize_algorithms() {
     module->set_name(name);
 
     if (type == "pubsub2D") {
-      assert(false);
-      /*
-      PubSub2DImpl* tmp = new PubSub2DImpl(context, *this, *this, module_config, 0);
-      logd("add PubSub2D module channel:%d name:%s", tmp->channel, name.c_str());
-      add_module(tmp, name);
-      modules_2d.insert(tmp);
-      */
+      PubSub2DAPI::make_entry(context, api_bundler, api_delegate, module_bundler, module_config);
+      module->set_type(api::colonio::ConnectReply_ModuleType_PUBSUB2D);
+
     } else if (type == "mapPaxos") {
       MapPaxosAPI::make_entry(context, api_bundler, api_delegate, module_bundler, module_config);
       module->set_type(api::colonio::ConnectReply_ModuleType_MAP);

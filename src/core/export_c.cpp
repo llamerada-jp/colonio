@@ -254,11 +254,13 @@ void colonio_pubsub2d_publish(
   colonio::PubSub2D* impl = reinterpret_cast<colonio::PubSub2D*>(pubsub2d->impl);
   colonio::Value cpp_value;
   convert_value_c_to_cpp(&cpp_value, value);
+  /* TODO
   impl->publish(
       std::string(name, name_siz), x, y, r, cpp_value, [pubsub2d, ptr, on_success]() { on_success(pubsub2d, ptr); },
-      [pubsub2d, ptr, on_failure](colonio::PubSub2DFailureReason reason) {
+      [pubsub2d, ptr, on_failure](colonio::Exception::Code reason) {
         on_failure(pubsub2d, ptr, static_cast<COLONIO_PUBSUB2D_FAILURE_REASON>(reason));
       });
+      */
 }
 
 void colonio_pubsub2d_on(

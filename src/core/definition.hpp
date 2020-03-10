@@ -70,6 +70,10 @@ static const Type SYSTEM_ROUTING = 4;
 namespace MapPaxos {
 static const Type MAP_PAXOS = 1;
 }
+
+namespace PubSub2D {
+static const Type PUBSUB2D = 1;
+}
 }  // namespace ModuleChannel
 
 namespace CommandID {

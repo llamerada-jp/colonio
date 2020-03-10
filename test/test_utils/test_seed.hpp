@@ -91,7 +91,7 @@ class TestSeed {
     port = p;
   }
 
-  void set_coord_system_sphere(double r) {
+  void set_coord_system_sphere(double r = 6378137.0) {
     coord_system.insert(std::make_pair("type", picojson::value("sphere")));
     coord_system.insert(std::make_pair("radius", picojson::value(r)));
   }
@@ -104,6 +104,14 @@ class TestSeed {
     m.insert(std::make_pair("channel", picojson::value(static_cast<double>(channel))));
     m.insert(std::make_pair("retryIntervalMin", picojson::value(static_cast<double>(retry_interval_min))));
     m.insert(std::make_pair("retryIntervalMax", picojson::value(static_cast<double>(retry_interval_max))));
+    modules.insert(std::make_pair(name, picojson::value(m)));
+  }
+
+  void add_module_pubsub_2d(const std::string& name, unsigned int channel, unsigned int cache_time = 100) {
+    picojson::object m;
+    m.insert(std::make_pair("type", picojson::value("pubsub2D")));
+    m.insert(std::make_pair("channel", picojson::value(static_cast<double>(channel))));
+    m.insert(std::make_pair("cacheTime", picojson::value(static_cast<double>(cache_time))));
     modules.insert(std::make_pair(name, picojson::value(m)));
   }
 
@@ -171,7 +179,7 @@ class TestSeed {
     node.insert(std::make_pair("iceServers", picojson::value(ice_servers)));
     node.insert(std::make_pair("routing", picojson::value(routing)));
     if (!coord_system.empty()) {
-      node.insert(std::make_pair("coordModule2D", picojson::value(coord_system)));
+      node.insert(std::make_pair("coordSystem2D", picojson::value(coord_system)));
     }
     if (!modules.empty()) {
       node.insert(std::make_pair("modules", picojson::value(modules)));

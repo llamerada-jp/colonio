@@ -31,6 +31,8 @@ set(COLONIO_FILES
   core/node_accessor_protocol.pb.cc
   core/node_id.cpp
   core/pubsub_2d.cpp
+  core/pubsub2d_api.pb.cc
+  core/pubsub2d_impl.cpp
   core/routing.cpp
   core/routing_protocol.pb.cc
   core/routing_1d.cpp
@@ -51,8 +53,9 @@ set(COLONIO_FILES
   map_paxos/map_paxos_module.cpp
   map_paxos/map_paxos_protocol.pb.cc
 
-  # pubsub_2d/pubsub_2d_impl.cpp
-  # pubsub_2d/pubsub_2d_protocol.pb.cc
+  pubsub_2d/pubsub2d_api.cpp
+  pubsub_2d/pubsub2d_module.cpp
+  pubsub_2d/pubsub_2d_protocol.pb.cc
   )
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")

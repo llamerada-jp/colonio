@@ -32,6 +32,7 @@ add_library(colonio_test STATIC
 set(test_targets_combine
   connect
   map
+  pubsub_2d
   )
 
 foreach(test_target IN LISTS test_targets_combine)

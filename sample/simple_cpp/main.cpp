@@ -34,9 +34,7 @@ colonio::PubSub2D* db;
 uv_timer_t timer_handler;
 
 void on_timer(uv_timer_t* handle) {
-  db->publish(
-      "me", M_PI * 139.7604131 / 180.0, M_PI * 35.6858593 / 180.0, R_1M * 100, colonio::Value("hello"), []() {},
-      [](colonio::PubSub2DFailureReason) {});
+  db->publish("me", M_PI * 139.7604131 / 180.0, M_PI * 35.6858593 / 180.0, R_1M * 100, colonio::Value("hello"));
 }
 
 int main(int argc, char* argv[]) {

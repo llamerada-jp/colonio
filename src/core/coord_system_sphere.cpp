@@ -45,8 +45,16 @@ Coordinate CoordSystemSphere::get_my_position() {
 }
 
 void CoordSystemSphere::set_my_position(const Coordinate& position) {
-  assert(MIN_X <= position.x && position.x < MAX_X);
-  assert(MIN_Y <= position.y && position.y < MAX_Y);
+  if (position.x < MIN_X || MAX_X <= position.x) {
+    colonio_throw(
+        Exception::Code::CONFLICT_WITH_SETTING, "The specified X coordinate is out of range (x:%f, min:%f, max:%f)",
+        position.x, MIN_X, MAX_X);
+  }
+  if (position.y < MIN_Y || MAX_Y <= position.y) {
+    colonio_throw(
+        Exception::Code::CONFLICT_WITH_SETTING, "The specified Y coordinate is out of range (y:%f, min:%f, max:%f)",
+        position.y, MIN_Y, MAX_Y);
+  }
   my_position = position;
 }
 

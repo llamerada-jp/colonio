@@ -20,12 +20,14 @@
 #include "api.pb.h"
 #include "api_gate.hpp"
 #include "map_impl.hpp"
+#include "pubsub2d_impl.hpp"
 
 namespace colonio {
 class Colonio::Impl {
  public:
   APIGate api_gate;
   std::map<std::string, std::unique_ptr<Map>> maps;
+  std::map<std::string, std::unique_ptr<PubSub2D>> pubsub2ds;
 };
 
 Colonio::Colonio() {
@@ -43,14 +45,19 @@ Map& Colonio::access_map(const std::string& name) {
     return *it->second;
 
   } else {
-    throw Exception(
-        Exception::Code::CONFLICT_WITH_SETTING, Utils::format_string("map not found : ", 0, name.c_str()));
+    throw Exception(Exception::Code::CONFLICT_WITH_SETTING, Utils::format_string("map not found : ", 0, name.c_str()));
   }
 }
 
 PubSub2D& Colonio::access_pubsub2d(const std::string& name) {
-  // TODO return impl->access<PubSub2D>(name);
-  assert(false);
+  auto it = impl->pubsub2ds.find(name);
+  if (it != impl->pubsub2ds.end()) {
+    return *it->second;
+
+  } else {
+    throw Exception(
+        Exception::Code::CONFLICT_WITH_SETTING, Utils::format_string("pubsub2d not found : ", 0, name.c_str()));
+  }
 }
 
 void Colonio::connect(const std::string& url, const std::string& token) {
@@ -92,6 +99,11 @@ void Colonio::connect(const std::string& url, const std::string& token) {
           case api::colonio::ConnectReply_ModuleType_MAP:
             impl->maps.insert(
                 std::make_pair(module_param.name(), std::unique_ptr<Map>(new MapImpl(impl->api_gate, channel))));
+            break;
+
+          case api::colonio::ConnectReply_ModuleType_PUBSUB2D:
+            impl->pubsub2ds.insert(std::make_pair(
+                module_param.name(), std::unique_ptr<PubSub2D>(new PubSub2DImpl(impl->api_gate, channel))));
             break;
 
           default:

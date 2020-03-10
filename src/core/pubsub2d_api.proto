@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package colonio.api.pubsub2d;
+
+import "core/core.proto";
+
+message Publish {
+  string name = 1;
+  double x = 2;
+  double y = 3;
+  double r = 4;
+  core.Value value = 5;
+}
+
+message OnEvent {
+  string name = 1;
+  core.Value value = 2;
+}

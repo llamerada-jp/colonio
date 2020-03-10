@@ -30,7 +30,8 @@ class Exception : public std::exception {
     NOT_EXIST_KEY,
     // EXIST_KEY,
     CHANGED_PROPOSER,
-    COLLISION_LATE
+    COLLISION_LATE,
+    NO_ONE_RECV,
   };
 
   Code code;

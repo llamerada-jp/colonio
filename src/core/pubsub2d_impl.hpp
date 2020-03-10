@@ -15,17 +15,21 @@
  */
 #pragma once
 
-#include <colonio/value.hpp>
-#include <functional>
+#include "api_gate.hpp"
+#include "colonio/pubsub_2d.hpp"
 
 namespace colonio {
-
-class PubSub2D {
+class PubSub2DImpl : public PubSub2D {
  public:
-  virtual ~PubSub2D();
+  PubSub2DImpl(APIGate& api_gate_, APIChannel::Type channel_);
 
-  virtual void publish(const std::string& name, double x, double y, double r, const Value& value) = 0;
-  virtual void on(const std::string& name, const std::function<void(const Value&)>& subscriber)   = 0;
-  virtual void off(const std::string& name)                                                       = 0;
+  void publish(const std::string& name, double x, double y, double r, const Value& value) override;
+  void on(const std::string& name, const std::function<void(const Value&)>& subscriber) override;
+  void off(const std::string& name) override;
+
+ private:
+  APIGate& api_gate;
+  APIChannel::Type channel;
+  std::map<std::string, std::function<void(const Value&)>> subscribers;
 };
 }  // namespace colonio
