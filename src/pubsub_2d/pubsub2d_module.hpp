@@ -42,7 +42,7 @@ class PubSub2DModule : public Module2D {
   virtual ~PubSub2DModule();
 
   void publish(
-      const std::string& name, double x, double y, double r, const Value& value,
+      const std::string& name, double x, double y, double r, const Value& value, uint32_t opt,
       const std::function<void()>& on_success, const std::function<void(Exception::Code)>& on_failure);
 
   void module_process_command(std::unique_ptr<const Packet> packet) override;
@@ -65,6 +65,7 @@ class PubSub2DModule : public Module2D {
     uint64_t uid;
     int64_t create_time;
     Value data;
+    uint32_t opt;
   };
   // Pair of uid and cache data.
   std::map<uint64_t, Cache> cache;

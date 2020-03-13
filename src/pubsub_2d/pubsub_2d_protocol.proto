@@ -16,6 +16,7 @@ message Deffuse {
   uint64 uid = 3;
   string name = 4;
   core.Value data = 5;
+  uint32 opt = 6;
 }
 
 message Pass {
@@ -24,6 +25,7 @@ message Pass {
   uint64 uid = 3;
   string name = 4;
   core.Value data = 5;
+  uint32 opt = 6;
 }
 
 message PassFailure {

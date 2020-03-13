@@ -149,29 +149,46 @@ void APIGateMultiThread::loop_event() {
 
 void APIGateMultiThread::loop_controller() {
   while (!has_end()) {
-    try {
-      // call
-      while (true) {
-        std::unique_ptr<api::Call> call;
-        std::unique_lock<std::mutex> lock(mtx_call);
-        if (que_call.empty()) {
-          if (cond_controller.wait_until(lock, tp) == std::cv_status::timeout) {
-            break;
-          } else if (!que_call.empty()) {
-            call = std::move(que_call.front());
-            que_call.pop();
-          }
-
-        } else {
+    // call
+    while (true) {
+      std::unique_ptr<api::Call> call;
+      std::unique_lock<std::mutex> lock(mtx_call);
+      if (que_call.empty()) {
+        if (cond_controller.wait_until(lock, tp) == std::cv_status::timeout) {
+          break;
+        } else if (!que_call.empty()) {
           call = std::move(que_call.front());
           que_call.pop();
         }
-        lock.unlock();
-        if (call) {
+
+      } else {
+        call = std::move(que_call.front());
+        que_call.pop();
+      }
+      lock.unlock();
+      if (call) {
+        try {
           controller.call(*call);
+        } catch (const FatalException& ex) {
+          logE(controller, "fatal exception %s:%d: %s", ex.file.c_str(), ex.line, ex.message.c_str());
+          reply_failure(call->id(), ex.code, ex.message);
+          // TODO stop
+          return;
+
+        } catch (const InternalException& ex) {
+          logE(controller, "internal exception %s:%d: %s", ex.file.c_str(), ex.line, ex.message.c_str());
+          reply_failure(call->id(), ex.code, ex.message);
+
+        } catch (const std::exception& ex) {
+          logE(controller, "exception what():%s", ex.what());
+          reply_failure(call->id(), Exception::Code::UNDEFINED, ex.what());
+          // TODO stop
+          return;
         }
       }
+    }
 
+    try {
       // invoke
       unsigned int tp_add = controller.invoke();
       {
@@ -180,15 +197,17 @@ void APIGateMultiThread::loop_controller() {
       }
 
     } catch (const FatalException& ex) {
-      logE(controller, "fatal %s@%d %s", ex.file.c_str(), ex.line, ex.message.c_str());
-      exit(EXIT_FAILURE);
+      logE(controller, "fatal exception %s:%d: %s", ex.file.c_str(), ex.line, ex.message.c_str());
+      // TODO stop
+      return;
 
     } catch (const InternalException& ex) {
-      logE(controller, "error %s@%d %s", ex.file.c_str(), ex.line, ex.message.c_str());
+      logE(controller, "internal exception %s:%d: %s", ex.file.c_str(), ex.line, ex.message.c_str());
 
     } catch (const std::exception& ex) {
       logE(controller, "exception what():%s", ex.what());
-      exit(EXIT_FAILURE);
+      // TODO stop
+      return;
     }
   }
 }
@@ -196,5 +215,19 @@ void APIGateMultiThread::loop_controller() {
 bool APIGateMultiThread::has_end() {
   std::lock_guard<std::mutex> guard(mtx_end);
   return flg_end;
+}
+
+void APIGateMultiThread::reply_failure(uint32_t id, Exception::Code code, const std::string& message) {
+  std::lock_guard<std::mutex> lock(mtx_reply);
+
+  std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
+  reply->set_id(id);
+
+  api::Failure* param = reply->mutable_failure();
+  param->set_code(static_cast<uint32_t>(code));
+  param->set_message(message);
+
+  map_reply.at(id) = std::move(reply);
+  cond_reply.notify_all();
 }
 }  // namespace colonio

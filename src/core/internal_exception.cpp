@@ -21,7 +21,7 @@
 namespace colonio {
 InternalException::InternalException(int l, const std::string& f, Exception::Code c, const std::string& m) :
     line(l),
-    file(Utils::file_basename(f, true)),
+    file(Utils::file_basename(f)),
     code(c),
     message(m) {
 }

@@ -10,6 +10,7 @@ message Publish {
   double y = 3;
   double r = 4;
   core.Value value = 5;
+  uint32 opt = 6;
 }
 
 message OnEvent {

@@ -24,13 +24,14 @@ APIBase::APIBase(Context& context_, APIDelegate& delegate_, APIChannel::Type cha
     channel(channel_),
     context(context_),
     delegate(delegate_) {
+  assert(channel != APIChannel::NONE);
 }
 
 APIBase::~APIBase() {
 }
 
 void APIBase::api_event(std::unique_ptr<api::Event> event) {
-  assert(event->channel() == APIChannel::NONE);
+  assert(event->channel() != APIChannel::NONE);
   assert(event->param_case() != api::Event::ParamCase::PARAM_NOT_SET);
 
   event->set_channel(channel);

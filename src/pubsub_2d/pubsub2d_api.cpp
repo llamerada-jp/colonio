@@ -58,7 +58,8 @@ void PubSub2DAPI::api_on_recv_call(const api::Call& call) {
   switch (call.param_case()) {
     case api::Call::ParamCase::kPubsub2DPublish: {
       const api::pubsub2d::Publish& param = call.pubsub2d_publish();
-      api_publish(call.id(), param.name(), param.x(), param.y(), param.r(), ValueImpl::from_pb(param.value()));
+      api_publish(
+          call.id(), param.name(), param.x(), param.y(), param.r(), ValueImpl::from_pb(param.value()), param.opt());
     } break;
 
     default:
@@ -67,9 +68,10 @@ void PubSub2DAPI::api_on_recv_call(const api::Call& call) {
   }
 }
 
-void PubSub2DAPI::api_publish(uint32_t id, const std::string& name, double x, double y, double r, const Value& value) {
+void PubSub2DAPI::api_publish(
+    uint32_t id, const std::string& name, double x, double y, double r, const Value& value, uint32_t opt) {
   module->publish(
-      name, x, y, r, value,
+      name, x, y, r, value, opt,
       [this, id]() {
         //
         api_success(id);

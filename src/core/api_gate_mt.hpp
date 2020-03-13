@@ -61,6 +61,7 @@ class APIGateMultiThread : public APIGateBase, public ControllerDelegate {
   void loop_event();
   void loop_controller();
   bool has_end();
+  void reply_failure(uint32_t id, Exception::Code code, const std::string& message);
 };
 
 typedef APIGateMultiThread APIGate;

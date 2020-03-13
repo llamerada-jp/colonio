@@ -43,7 +43,8 @@ class PubSub2DAPI : public APIBase, public PubSub2DModuleDelegate {
   void pubsub2d_module_on_on(PubSub2DModule& ps2_module, const std::string& name, const Value& value) override;
 
   void api_on_recv_call(const api::Call& call) override;
-  void api_publish(uint32_t id, const std::string& name, double x, double y, double r, const Value& value);
+  void api_publish(
+      uint32_t id, const std::string& name, double x, double y, double r, const Value& value, uint32_t opt);
 };
 
 }  // namespace colonio

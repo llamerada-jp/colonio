@@ -36,7 +36,7 @@ PubSub2DImpl::PubSub2DImpl(APIGate& api_gate_, APIChannel::Type channel_) : api_
   });
 }
 
-void PubSub2DImpl::publish(const std::string& name, double x, double y, double r, const Value& value) {
+void PubSub2DImpl::publish(const std::string& name, double x, double y, double r, const Value& value, uint32_t opt) {
   api::Call call;
   api::pubsub2d::Publish* api = call.mutable_pubsub2d_publish();
   api->set_name(name);
@@ -44,6 +44,7 @@ void PubSub2DImpl::publish(const std::string& name, double x, double y, double r
   api->set_y(y);
   api->set_r(r);
   ValueImpl::to_pb(api->mutable_value(), value);
+  api->set_opt(opt);
 
   std::unique_ptr<api::Reply> reply = api_gate.call_sync(channel, call);
   if (!reply->has_success()) {

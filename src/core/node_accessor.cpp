@@ -145,7 +145,7 @@ void NodeAccessor::disconnect_all(std::function<void()> on_after) {
       disconnect_link(nid);
     }
 
-    context.scheduler.add_timeout_task(this, [this, on_after]() { disconnect_all(on_after); }, 100);
+    context.scheduler.add_timeout_task(this, [this, on_after]() { disconnect_all(on_after); }, 500);
 
   } else {
     on_after();

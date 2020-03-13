@@ -22,10 +22,14 @@ namespace colonio {
 
 class PubSub2D {
  public:
+  // options
+  static const uint32_t RAISE_NO_ONE_RECV = 0x01;
+
   virtual ~PubSub2D();
 
-  virtual void publish(const std::string& name, double x, double y, double r, const Value& value) = 0;
-  virtual void on(const std::string& name, const std::function<void(const Value&)>& subscriber)   = 0;
-  virtual void off(const std::string& name)                                                       = 0;
+  virtual void publish(
+      const std::string& name, double x, double y, double r, const Value& value, uint32_t opt = 0x00) = 0;
+  virtual void on(const std::string& name, const std::function<void(const Value&)>& subscriber)       = 0;
+  virtual void off(const std::string& name)                                                           = 0;
 };
 }  // namespace colonio

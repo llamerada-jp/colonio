@@ -18,6 +18,7 @@
 
 #include <cassert>
 
+#include "colonio/pubsub_2d.hpp"
 #include "core/context.hpp"
 #include "core/convert.hpp"
 #include "core/coord_system.hpp"
@@ -47,8 +48,8 @@ PubSub2DModule::~PubSub2DModule() {
 }
 
 void PubSub2DModule::publish(
-    const std::string& name, double x, double y, double r, const Value& value, const std::function<void()>& on_success,
-    const std::function<void(Exception::Code)>& on_failure) {
+    const std::string& name, double x, double y, double r, const Value& value, uint32_t opt,
+    const std::function<void()>& on_success, const std::function<void(Exception::Code)>& on_failure) {
   uint64_t uid  = assign_uid();
   Cache& c      = cache[uid];
   c.name        = name;
@@ -57,6 +58,7 @@ void PubSub2DModule::publish(
   c.uid         = uid;
   c.create_time = Utils::get_current_msec();
   c.data        = value;
+  c.opt         = opt;
 
   if (context.coord_system->get_distance(c.center, context.get_my_position()) < r) {
     if (c.data.get_type() == Value::STRING_T) {
@@ -227,39 +229,51 @@ void PubSub2DModule::recv_packet_pass(std::unique_ptr<const Packet> packet) {
   Pubsub2DProtocol::Pass content;
   packet->parse_content(&content);
   Coordinate center = Coordinate::from_pb(content.center());
-  double r          = content.r();
+  uint64_t uid      = content.uid();
+  uint32_t opt      = content.opt();
 
-  if (context.coord_system->get_distance(center, context.get_my_position()) < r) {
-    uint64_t uid  = content.uid();
-    Cache& c      = cache[uid];
-    c.name        = content.name();
-    c.center      = center;
-    c.r           = r;
-    c.uid         = uid;
-    c.create_time = Utils::get_current_msec();
-    c.data        = ValueImpl::from_pb(content.data());
+  if (cache.find(uid) == cache.end()) {
+    const Cache& c = cache
+                         .insert(std::make_pair(
+                             uid, Cache{content.name(), center, content.r(), uid, Utils::get_current_msec(),
+                                        ValueImpl::from_pb(content.data()), opt}))
+                         .first->second;
+    if (context.coord_system->get_distance(center, context.get_my_position()) < c.r) {
+      if (c.data.get_type() == Value::STRING_T) {
+        // @todo send_success after check the result.
+        send_packet_knock(NodeID::NONE, c);
 
-    if (c.data.get_type() == Value::STRING_T) {
-      // @todo send_success after check the result.
-      send_packet_knock(NodeID::NONE, c);
-
-    } else {
-      for (auto& it : next_positions) {
-        if (context.coord_system->get_distance(c.center, it.second) < r) {
-          send_packet_deffuse(it.first, c);
+      } else {
+        for (auto& it : next_positions) {
+          if (context.coord_system->get_distance(c.center, it.second) < c.r) {
+            send_packet_deffuse(it.first, c);
+          }
         }
       }
-    }
-    send_success(*packet, nullptr);
+      send_success(*packet, nullptr);
+      delegate.pubsub2d_module_on_on(*this, c.name, c.data);
 
+    } else {
+      const NodeID& dest = get_relay_nid(center);
+      if (dest == NodeID::THIS) {
+        if (opt & PubSub2D::RAISE_NO_ONE_RECV) {
+          Pubsub2DProtocol::PassFailure param;
+          param.set_reason(static_cast<uint32_t>(Exception::Code::NO_ONE_RECV));
+          send_failure(*packet, serialize_pb(param));
+        } else {
+          send_success(*packet, nullptr);
+        }
+      } else {
+        relay_packet(dest, std::move(packet));
+      }
+    }
   } else {
-    const NodeID& dest = get_relay_nid(center);
-    if (dest == NodeID::THIS) {
+    if (opt & PubSub2D::RAISE_NO_ONE_RECV) {
       Pubsub2DProtocol::PassFailure param;
       param.set_reason(static_cast<uint32_t>(Exception::Code::NO_ONE_RECV));
       send_failure(*packet, serialize_pb(param));
     } else {
-      relay_packet(dest, std::move(packet));
+      send_success(*packet, nullptr);
     }
   }
 }
@@ -302,6 +316,7 @@ void PubSub2DModule::send_packet_pass(
   param.set_uid(cache.uid);
   param.set_name(cache.name);
   ValueImpl::to_pb(param.mutable_data(), cache.data);
+  param.set_opt(cache.opt);
 
   std::unique_ptr<Command> command = std::make_unique<CommandPass>(*this, cache.uid, on_success, on_failure);
   const NodeID& nid                = get_relay_nid(cache.center);

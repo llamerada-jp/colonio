@@ -35,6 +35,9 @@ Value::Value(double v) : impl(std::make_unique<ValueImpl>(v)) {
 Value::Value(const std::string& v) : impl(std::make_unique<ValueImpl>(v)) {
 }
 
+Value::Value(const char* v) : impl(std::make_unique<ValueImpl>(std::string(v))) {
+}
+
 Value::Value(const Value& src) : impl(std::make_unique<ValueImpl>(*src.impl)) {
 }
 

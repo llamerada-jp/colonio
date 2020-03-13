@@ -27,6 +27,7 @@ class Value {
   explicit Value(bool v);
   explicit Value(int64_t v);
   explicit Value(double v);
+  explicit Value(const char* v);
   explicit Value(const std::string& v);
   virtual ~Value();
 
