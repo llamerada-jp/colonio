@@ -30,7 +30,7 @@ TEST(UtilsTest, Exception) {
 
   } catch (InternalException& e) {
     EXPECT_EQ(e.line, 26);
-    EXPECT_STREQ(e.file.c_str(), "exception_test");
+    EXPECT_STREQ(e.file.c_str(), "exception_test.cpp");
     EXPECT_EQ(e.code, Exception::Code::SYSTEM_ERROR);
     EXPECT_EQ(e.message, "test");
     EXPECT_STREQ(e.what(), "test");
@@ -41,7 +41,7 @@ TEST(UtilsTest, Exception) {
 
   } catch (FatalException& e) {
     EXPECT_EQ(e.line, 40);
-    EXPECT_STREQ(e.file.c_str(), "exception_test");
+    EXPECT_STREQ(e.file.c_str(), "exception_test.cpp");
     EXPECT_EQ(e.code, Exception::Code::UNDEFINED);
     EXPECT_EQ(e.message, "test");
     EXPECT_STREQ(e.what(), "test");
