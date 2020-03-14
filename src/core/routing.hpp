@@ -51,7 +51,7 @@ class RoutingAlgorithm {
   RoutingAlgorithm(const std::string& name_);
   virtual ~RoutingAlgorithm();
   virtual const std::set<NodeID>& get_required_nodes()                 = 0;
-  virtual void on_change_my_position(const Coordinate& position)       = 0;
+  virtual void on_change_local_position(const Coordinate& position)    = 0;
   virtual void on_recv_packet(const NodeID& nid, const Packet& packet) = 0;
   virtual void send_routing_info(RoutingProtocol::RoutingInfo* param)  = 0;
   virtual bool update_routing_info(
@@ -91,7 +91,7 @@ class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public Rou
   // next, seed, steps
   std::tuple<const NodeID&, const NodeID&, uint32_t> get_route_to_seed();
   bool is_direct_connect(const NodeID& nid);
-  void on_change_my_position(const Coordinate& position);
+  void on_change_local_position(const Coordinate& position);
   void on_change_online_links(const std::set<NodeID>& nids);
   void on_recv_packet(const NodeID& nid, const Packet& packet);
 

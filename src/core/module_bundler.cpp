@@ -80,9 +80,9 @@ void ModuleBundler::module_1d_on_change_nearby(const NodeID& prev_nid, const Nod
   }
 }
 
-void ModuleBundler::module_2d_on_change_my_position(const Coordinate& position) {
+void ModuleBundler::module_2d_on_change_local_position(const Coordinate& position) {
   for (auto& it : modules_2d) {
-    it->module_2d_on_change_my_position(position);
+    it->module_2d_on_change_local_position(position);
   }
 }
 

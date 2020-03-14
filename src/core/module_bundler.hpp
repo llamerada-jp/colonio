@@ -48,7 +48,7 @@ class ModuleBundler {
 
   void module_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid);
 
-  void module_2d_on_change_my_position(const Coordinate& position);
+  void module_2d_on_change_local_position(const Coordinate& position);
   void module_2d_on_change_nearby(const std::set<NodeID>& nids);
   void module_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions);
 

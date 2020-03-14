@@ -26,13 +26,13 @@ class CoordSystemSphere : public CoordSystem {
 
   // CoordSystem
   double get_distance(const Coordinate& p1, const Coordinate& p2) override;
-  Coordinate get_my_position() override;
-  void set_my_position(const Coordinate& position) override;
+  Coordinate get_local_position() override;
+  void set_local_position(const Coordinate& position) override;
   Coordinate shift_for_routing_2d(const Coordinate& base, const Coordinate& position) override;
 
  private:
   double conf_radius;
 
-  Coordinate my_position;
+  Coordinate local_position;
 };
 }  // namespace colonio

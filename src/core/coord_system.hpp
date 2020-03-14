@@ -29,8 +29,8 @@ class CoordSystem {
   virtual ~CoordSystem();
   // for use delaunay triangle.
   virtual double get_distance(const Coordinate& p1, const Coordinate& p2)                     = 0;
-  virtual Coordinate get_my_position()                                                        = 0;
-  virtual void set_my_position(const Coordinate& position)                                    = 0;
+  virtual Coordinate get_local_position()                                                     = 0;
+  virtual void set_local_position(const Coordinate& position)                                 = 0;
   virtual Coordinate shift_for_routing_2d(const Coordinate& base, const Coordinate& position) = 0;
 
  protected:

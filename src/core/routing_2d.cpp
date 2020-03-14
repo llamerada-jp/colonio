@@ -36,7 +36,7 @@ const std::set<NodeID>& Routing2D::get_required_nodes() {
   return required_nodes;
 }
 
-void Routing2D::on_change_my_position(const Coordinate& position) {
+void Routing2D::on_change_local_position(const Coordinate& position) {
   update_required_nodes();
 }
 
@@ -103,8 +103,8 @@ bool Routing2D::on_recv_routing_info(const Packet& packet, const RoutingProtocol
 }
 
 void Routing2D::send_routing_info(RoutingProtocol::RoutingInfo* param) {
-  if (context.has_my_position()) {
-    context.get_my_position().to_pb(param->mutable_r2d_position());
+  if (context.has_local_position()) {
+    context.get_local_position().to_pb(param->mutable_r2d_position());
 
     for (auto& it_cn : connected_nodes) {
       if (it_cn.second.position.is_enable()) {
@@ -182,7 +182,7 @@ const NodeID& Routing2D::get_relay_nid(const Coordinate& position) {
   double min_distance    = std::numeric_limits<double>::max();
 
   for (auto& node : connected_nodes) {
-    double distance = context.coord_system->get_distance(context.get_my_position(), node.second.position);
+    double distance = context.coord_system->get_distance(context.get_local_position(), node.second.position);
     if (distance < min_distance) {
       min_distance = distance;
       near_nid     = &node.first;
@@ -318,7 +318,7 @@ Routing2D::Triangle Routing2D::delaunay_get_huge_triangle() {
  */
 void Routing2D::delaunay_make_nodes(std::map<NodeID, NodePoint>& nodes) {
   const NodeID& local_nid = context.local_nid;
-  Coordinate base         = context.get_my_position();
+  Coordinate base         = context.get_local_position();
 
   nodes.insert(std::make_pair(NodeID::THIS, NodePoint(NodeID::THIS, base, Coordinate(0.0, 0.0))));
 

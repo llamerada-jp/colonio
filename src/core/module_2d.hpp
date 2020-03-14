@@ -31,7 +31,7 @@ class Module2DDelegate {
 
 class Module2D : public ModuleBase {
  public:
-  virtual void module_2d_on_change_my_position(const Coordinate& position)                        = 0;
+  virtual void module_2d_on_change_local_position(const Coordinate& position)                     = 0;
   virtual void module_2d_on_change_nearby(const std::set<NodeID>& nids)                           = 0;
   virtual void module_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) = 0;
 

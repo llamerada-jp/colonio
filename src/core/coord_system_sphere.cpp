@@ -25,7 +25,7 @@ namespace colonio {
 CoordSystemSphere::CoordSystemSphere(const picojson::object& config) :
     CoordSystem(M_PI * -1.0, M_PI * -0.5, M_PI * 1.0, M_PI * 0.5, 0.0001 / 60.0),
     conf_radius(0),
-    my_position(
+    local_position(
         (2.0 * M_PI * static_cast<double>(Utils::get_rnd_32()) / static_cast<double>(UINT32_MAX)) - M_PI * 1.0,
         (1.0 * M_PI * static_cast<double>(Utils::get_rnd_32()) / static_cast<double>(UINT32_MAX)) - M_PI * 0.5) {
   conf_radius = Utils::get_json<double>(config, "radius");
@@ -40,11 +40,11 @@ double CoordSystemSphere::get_distance(const Coordinate& p1, const Coordinate& p
              std::sqrt(std::pow(std::sin(avr_y), 2) + std::cos(p1.y) * std::cos(p2.y) * std::pow(std::sin(avr_x), 2)));
 }
 
-Coordinate CoordSystemSphere::get_my_position() {
-  return my_position;
+Coordinate CoordSystemSphere::get_local_position() {
+  return local_position;
 }
 
-void CoordSystemSphere::set_my_position(const Coordinate& position) {
+void CoordSystemSphere::set_local_position(const Coordinate& position) {
   if (position.x < MIN_X || MAX_X <= position.x) {
     colonio_throw(
         Exception::Code::CONFLICT_WITH_SETTING, "The specified X coordinate is out of range (x:%f, min:%f, max:%f)",
@@ -55,7 +55,7 @@ void CoordSystemSphere::set_my_position(const Coordinate& position) {
         Exception::Code::CONFLICT_WITH_SETTING, "The specified Y coordinate is out of range (y:%f, min:%f, max:%f)",
         position.y, MIN_Y, MAX_Y);
   }
-  my_position = position;
+  local_position = position;
 }
 
 Coordinate CoordSystemSphere::shift_for_routing_2d(const Coordinate& base, const Coordinate& position) {

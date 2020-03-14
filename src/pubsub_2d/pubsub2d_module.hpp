@@ -47,7 +47,7 @@ class PubSub2DModule : public Module2D {
 
   void module_process_command(std::unique_ptr<const Packet> packet) override;
 
-  void module_2d_on_change_my_position(const Coordinate& position) override;
+  void module_2d_on_change_local_position(const Coordinate& position) override;
   void module_2d_on_change_nearby(const std::set<NodeID>& nids) override;
   void module_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) override;
 

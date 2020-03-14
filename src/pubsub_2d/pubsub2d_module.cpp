@@ -60,7 +60,7 @@ void PubSub2DModule::publish(
   c.data        = value;
   c.opt         = opt;
 
-  if (context.coord_system->get_distance(c.center, context.get_my_position()) < r) {
+  if (context.coord_system->get_distance(c.center, context.get_local_position()) < r) {
     if (c.data.get_type() == Value::STRING_T) {
       send_packet_knock(NodeID::NONE, c);
 
@@ -98,7 +98,7 @@ void PubSub2DModule::module_process_command(std::unique_ptr<const Packet> packet
   }
 }
 
-void PubSub2DModule::module_2d_on_change_my_position(const Coordinate& position) {
+void PubSub2DModule::module_2d_on_change_local_position(const Coordinate& position) {
   // Ignore.
 }
 
@@ -185,7 +185,7 @@ void PubSub2DModule::recv_packet_knock(std::unique_ptr<const Packet> packet) {
   double r          = content.r();
   uint64_t uid      = content.uid();
 
-  if (cache.find(uid) == cache.end() && context.coord_system->get_distance(context.get_my_position(), center) < r) {
+  if (cache.find(uid) == cache.end() && context.coord_system->get_distance(context.get_local_position(), center) < r) {
     send_success(*packet, nullptr);
   } else {
     send_failure(*packet, nullptr);
@@ -199,7 +199,7 @@ void PubSub2DModule::recv_packet_deffuse(std::unique_ptr<const Packet> packet) {
   double r          = content.r();
   uint64_t uid      = content.uid();
 
-  if (cache.find(uid) == cache.end() && context.coord_system->get_distance(context.get_my_position(), center) < r) {
+  if (cache.find(uid) == cache.end() && context.coord_system->get_distance(context.get_local_position(), center) < r) {
     const std::string& name = content.name();
     const Value data        = ValueImpl::from_pb(content.data());
     Cache& c                = cache[uid];
@@ -238,7 +238,7 @@ void PubSub2DModule::recv_packet_pass(std::unique_ptr<const Packet> packet) {
                              uid, Cache{content.name(), center, content.r(), uid, Utils::get_current_msec(),
                                         ValueImpl::from_pb(content.data()), opt}))
                          .first->second;
-    if (context.coord_system->get_distance(center, context.get_my_position()) < c.r) {
+    if (context.coord_system->get_distance(center, context.get_local_position()) < c.r) {
       if (c.data.get_type() == Value::STRING_T) {
         // @todo send_success after check the result.
         send_packet_knock(NodeID::NONE, c);

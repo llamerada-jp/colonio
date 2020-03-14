@@ -107,9 +107,9 @@ bool Routing::is_direct_connect(const NodeID& nid) {
   return online_links.find(nid) != online_links.end();
 }
 
-void Routing::on_change_my_position(const Coordinate& position) {
+void Routing::on_change_local_position(const Coordinate& position) {
   for (auto& algorithm : algorithms) {
-    algorithm->on_change_my_position(position);
+    algorithm->on_change_local_position(position);
   }
 }
 

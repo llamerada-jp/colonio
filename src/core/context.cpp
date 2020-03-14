@@ -32,34 +32,34 @@ Context::Context(Logger& logger_, Scheduler& scheduler_) :
 #endif
 }
 
-Coordinate Context::get_my_position() {
+Coordinate Context::get_local_position() {
   assert(coord_system);
 
-  return coord_system->get_my_position();
+  return coord_system->get_local_position();
 }
 
-bool Context::has_my_position() {
+bool Context::has_local_position() {
   assert(coord_system);
 
-  return coord_system->get_my_position().is_enable();
+  return coord_system->get_local_position().is_enable();
 }
 
-void Context::hook_on_change_my_position(std::function<void(const Coordinate&)> func) {
-  funcs_on_change_my_position.push_back(func);
+void Context::hook_on_change_local_position(std::function<void(const Coordinate&)> func) {
+  funcs_on_change_local_position.push_back(func);
 }
 
-void Context::set_my_position(const Coordinate& pos) {
+void Context::set_local_position(const Coordinate& pos) {
   assert(coord_system);
 
-  Coordinate prev_my_position = coord_system->get_my_position();
-  coord_system->set_my_position(pos);
-  Coordinate new_my_position = coord_system->get_my_position();
+  Coordinate prev_local_position = coord_system->get_local_position();
+  coord_system->set_local_position(pos);
+  Coordinate new_local_position = coord_system->get_local_position();
 
-  if (prev_my_position.x != new_my_position.x || prev_my_position.y != new_my_position.y) {
-    logI((*this), "Change my position.(x=%f, y=%f)", new_my_position.x, new_my_position.y);
+  if (prev_local_position.x != new_local_position.x || prev_local_position.y != new_local_position.y) {
+    logI((*this), "Change my position.(x=%f, y=%f)", new_local_position.x, new_local_position.y);
 
-    for (auto& it : funcs_on_change_my_position) {
-      it(new_my_position);
+    for (auto& it : funcs_on_change_local_position) {
+      it(new_local_position);
     }
   }
 }

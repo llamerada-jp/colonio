@@ -255,14 +255,14 @@ void ColonioImpl::api_disconnect(uint32_t id) {
 void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition& param) {
   if (context.coord_system) {
     Coordinate pos          = Coordinate::from_pb(param.position());
-    Coordinate old_position = context.get_my_position();
-    context.set_my_position(pos);
-    Coordinate new_position = context.get_my_position();
+    Coordinate old_position = context.get_local_position();
+    context.set_local_position(pos);
+    Coordinate new_position = context.get_local_position();
     if (old_position != new_position) {
       context.scheduler.add_timeout_task(
-          this, [this, new_position]() { this->routing->on_change_my_position(new_position); }, 0);
+          this, [this, new_position]() { this->routing->on_change_local_position(new_position); }, 0);
       context.scheduler.add_timeout_task(
-          this, [this, new_position]() { module_bundler.module_2d_on_change_my_position(new_position); }, 0);
+          this, [this, new_position]() { module_bundler.module_2d_on_change_local_position(new_position); }, 0);
 #ifndef NDEBUG
       context.debug_event(DebugEvent::POSITION, Convert::coordinate2json(new_position));
 #endif

@@ -25,7 +25,7 @@ class Routing2D : public RoutingAlgorithm {
   Routing2D(Context& context_, RoutingAlgorithm2DDelegate& delegate_);
 
   const std::set<NodeID>& get_required_nodes() override;
-  void on_change_my_position(const Coordinate& position) override;
+  void on_change_local_position(const Coordinate& position) override;
   void on_recv_packet(const NodeID& nid, const Packet& packet) override;
   void send_routing_info(RoutingProtocol::RoutingInfo* param) override;
   bool update_routing_info(

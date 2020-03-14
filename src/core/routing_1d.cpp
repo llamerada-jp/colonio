@@ -51,7 +51,7 @@ const std::set<NodeID>& Routing1D::get_required_nodes() {
   return required_nodes;
 }
 
-void Routing1D::on_change_my_position(const Coordinate& position) {
+void Routing1D::on_change_local_position(const Coordinate& position) {
   // Do nothing.
 }
 

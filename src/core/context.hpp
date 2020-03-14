@@ -38,10 +38,10 @@ class Context {
 
   Context(Logger& logger_, Scheduler& scheduler_);
 
-  Coordinate get_my_position();
-  bool has_my_position();
-  void hook_on_change_my_position(std::function<void(const Coordinate&)> func);
-  void set_my_position(const Coordinate& pos);
+  Coordinate get_local_position();
+  bool has_local_position();
+  void hook_on_change_local_position(std::function<void(const Coordinate&)> func);
+  void set_local_position(const Coordinate& pos);
 
 #ifndef NDEBUG
   void hook_on_debug_event(std::function<void(DebugEvent::Type type, const picojson::value& data)> cb);
@@ -49,7 +49,7 @@ class Context {
 #endif
 
  private:
-  std::list<std::function<void(const Coordinate&)>> funcs_on_change_my_position;
+  std::list<std::function<void(const Coordinate&)>> funcs_on_change_local_position;
 
 #ifndef NDEBUG
   bool enable_debug_event;
