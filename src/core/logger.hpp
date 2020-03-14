@@ -57,18 +57,18 @@ class Logger {
 #define logi(FORMAT, ...) \
   this->context.logger.output(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 #define logI(INSTANCE, FORMAT, ...) \
-  INSTANCE.logger.output(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+  (INSTANCE).logger.output(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 #define loge(FORMAT, ...) \
   this->context.logger.output(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 #define logE(INSTANCE, FORMAT, ...) \
-  INSTANCE.logger.output(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+  (INSTANCE).logger.output(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 #ifndef NDEBUG
 #  define logd(FORMAT, ...) \
     this->context.logger.output(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 #  define logD(INSTANCE, FORMAT, ...) \
-    INSTANCE.logger.output(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+    (INSTANCE).logger.output(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 #else
 inline void do_nothing() {

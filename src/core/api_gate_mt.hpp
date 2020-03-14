@@ -17,7 +17,7 @@
 
 #include <condition_variable>
 #include <memory>
-#include <queue>
+#include <deque>
 #include <thread>
 
 #include "api_gate.hpp"
@@ -41,9 +41,9 @@ class APIGateMultiThread : public APIGateBase, public ControllerDelegate {
 
   Controller controller;
 
-  std::queue<std::unique_ptr<api::Call>> que_call;
+  std::deque<std::unique_ptr<api::Call>> que_call;
   std::map<uint32_t, std::unique_ptr<api::Reply>> map_reply;
-  std::queue<std::unique_ptr<api::Event>> que_event;
+  std::unique_ptr<std::deque<std::unique_ptr<api::Event>>> que_event;
   std::map<APIChannel::Type, std::function<void(const api::Event&)>> map_event;
   std::mutex mtx_call;
   std::mutex mtx_event;
@@ -58,9 +58,12 @@ class APIGateMultiThread : public APIGateBase, public ControllerDelegate {
   void controller_on_reply(Controller& sm, std::unique_ptr<api::Reply> reply) override;
   void controller_on_require_invoke(Controller& sm, unsigned int msec) override;
 
+  void logger_on_output(Logger& logger, LogLevel::Type level, const std::string& message) override;
+
   void loop_event();
   void loop_controller();
   bool has_end();
+  void push_event(std::unique_ptr<api::Event> event);
   void reply_failure(uint32_t id, Exception::Code code, const std::string& message);
 };
 

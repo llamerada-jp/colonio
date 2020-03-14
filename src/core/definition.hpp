@@ -145,6 +145,7 @@ static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MAX = 2000;  // [msec]
 
 static const unsigned int PUBSUB_2D_CACHE_TIME = 30000;  // [msec]
 
+// fixed parameters
 static const uint32_t ORPHAN_NODES_MAX                  = 32;
 static const unsigned int PACKET_RETRY_COUNT_MAX        = 5;
 static const int64_t PACKET_RETRY_INTERVAL              = 10000;
@@ -162,6 +163,7 @@ static const unsigned int ROUTING_SEED_CONNECT_STEP     = 10;
 static const unsigned int ROUTING_SEED_DISCONNECT_STEP  = 8;
 static const int64_t SEED_CONNECT_INTERVAL              = 10000;
 static const uint32_t PACKET_ID_NONE                    = 0x0;
+static const unsigned int EVENT_QUEUE_LIMIT             = 100;
 
 // debug parameter
 static const int DEBUG_PRINT_PACKET_SIZE = 32;

@@ -25,6 +25,9 @@ Exception get_exception(const api::Reply& reply) {
   }
 }
 
+APIGateBase::APIGateBase() : logger(*this) {
+}
+
 APIGateBase::~APIGateBase() {
 }
 }  // namespace colonio

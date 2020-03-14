@@ -20,14 +20,18 @@
 #include "api.pb.h"
 #include "colonio/exception.hpp"
 #include "definition.hpp"
+#include "logger.hpp"
 
 namespace colonio {
 
 // Helper method.
 Exception get_exception(const api::Reply& reply);
 
-class APIGateBase {
+class APIGateBase : public LoggerDelegate {
  public:
+  Logger logger;
+
+  APIGateBase();
   virtual ~APIGateBase();
   virtual std::unique_ptr<api::Reply> call_sync(APIChannel::Type channel, const api::Call& call)           = 0;
   virtual void init()                                                                                      = 0;

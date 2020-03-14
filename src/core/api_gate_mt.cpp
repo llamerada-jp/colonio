@@ -20,11 +20,16 @@
 #include <chrono>
 #include <random>
 
+#include "logger.hpp"
 #include "utils.hpp"
 
 namespace colonio {
 
-APIGateMultiThread::APIGateMultiThread() : controller(*this), tp(std::chrono::steady_clock::now()) {
+APIGateMultiThread::APIGateMultiThread() :
+    APIGateBase(*this),
+    controller(*this),
+    que_event(std::make_unique<std::deque<std::unique_ptr<api::Event>>>()),
+    tp(std::chrono::steady_clock::now()) {
 }
 
 std::unique_ptr<api::Reply> APIGateMultiThread::call_sync(APIChannel::Type channel, const api::Call& c) {
@@ -44,7 +49,7 @@ std::unique_ptr<api::Reply> APIGateMultiThread::call_sync(APIChannel::Type chann
 
   {
     std::lock_guard<std::mutex> lock(mtx_call);
-    que_call.push(std::move(call));
+    que_call.push_back(std::move(call));
     cond_controller.notify_all();
   }
 
@@ -99,9 +104,7 @@ void APIGateMultiThread::set_event_hook(APIChannel::Type channel, std::function<
 }
 
 void APIGateMultiThread::controller_on_event(Controller& sm, std::unique_ptr<api::Event> event) {
-  std::lock_guard<std::mutex> lock(mtx_event);
-  que_event.push(std::move(event));
-  cond_event.notify_all();
+  push_event(std::move(event));
 }
 
 void APIGateMultiThread::controller_on_reply(Controller& sm, std::unique_ptr<api::Reply> reply) {
@@ -118,30 +121,55 @@ void APIGateMultiThread::controller_on_require_invoke(Controller& sm, unsigned i
   }
 }
 
+void APIGateMultiThread::logger_on_output(Logger& logger, LogLevel::Type level, const std::string& message) {
+  std::unique_ptr<api::Event> event = std::make_unique<api::Event>();
+  event->set_channel(APIChannel::COLONIO);
+  api::colonio::LogEvent* log_event = event->mutable_colonio_log();
+  log_event->set_level(static_cast<uint32_t>(level));
+  log_event->set_message(message);
+
+  push_event(std::move(event));
+}
+
 void APIGateMultiThread::loop_event() {
+  std::unique_ptr<std::deque<std::unique_ptr<api::Event>>> events =
+      std::make_unique<std::deque<std::unique_ptr<api::Event>>>();
+
   while (true) {
     try {
-      std::unique_lock<std::mutex> lock(mtx_event);
-      cond_event.wait(lock, [this]() { return !que_event.empty() || has_end(); });
+      if (events->empty()) {
+        std::unique_lock<std::mutex> lock(mtx_event);
+        cond_event.wait(lock, [this]() { return !que_event->empty() || has_end(); });
 
-      // Get event and execute.
-      if (has_end()) {
-        break;
+        // Get event and execute.
+        if (has_end()) {
+          break;
 
-      } else if (!que_event.empty()) {
-        std::unique_ptr<api::Event> event = std::move(que_event.front());
-        que_event.pop();
-        auto it = map_event.find(event->channel());
-        if (it != map_event.end()) {
-          auto func = it->second;
-          lock.unlock();
-          func(*event);
+        } else if (!que_event->empty()) {
+          que_event.swap(events);
+        }
+      }
+
+      if (events->size() > EVENT_QUEUE_LIMIT) {
+        logI(*this, "the event queue is stuck");
+      }
+
+      auto it_event = events->begin();
+      while (it_event != events->end()) {
+        std::unique_ptr<api::Event> event = std::move(*it_event);
+        it_event                          = events->erase(it_event);
+
+        auto it_map = map_event.find(event->channel());
+        if (it_map != map_event.end()) {
+          it_map->second(*event);
         } else {
+          logE(*this, "send event for channel not set:%d", event->channel());
           assert(false);
         }
       }
+
     } catch (const std::exception& ex) {
-      logE(controller, "exception what():%s", ex.what());
+      logE(*this, "exception what():%s", ex.what());
       exit(EXIT_FAILURE);
     }
   }
@@ -158,12 +186,12 @@ void APIGateMultiThread::loop_controller() {
           break;
         } else if (!que_call.empty()) {
           call = std::move(que_call.front());
-          que_call.pop();
+          que_call.pop_front();
         }
 
       } else {
         call = std::move(que_call.front());
-        que_call.pop();
+        que_call.pop_front();
       }
       lock.unlock();
       if (call) {
@@ -215,6 +243,12 @@ void APIGateMultiThread::loop_controller() {
 bool APIGateMultiThread::has_end() {
   std::lock_guard<std::mutex> guard(mtx_end);
   return flg_end;
+}
+
+void APIGateMultiThread::push_event(std::unique_ptr<api::Event> event) {
+  std::lock_guard<std::mutex> lock(mtx_event);
+  que_event->push_back(std::move(event));
+  cond_event.notify_all();
 }
 
 void APIGateMultiThread::reply_failure(uint32_t id, Exception::Code code, const std::string& message) {
