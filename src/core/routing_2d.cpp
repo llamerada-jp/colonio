@@ -171,7 +171,7 @@ bool Routing2D::update_routing_info(
 
   o.insert(std::make_pair("nodes", picojson::value(nodes)));
   o.insert(std::make_pair("links", picojson::value(links)));
-  context.debug_event(DebugEvent::KNOWN2D, picojson::value(o));
+  context.debug_event(DebugEvent::KNOWN_2D, picojson::value(o));
 #endif
 
   return is_changed;
@@ -446,7 +446,7 @@ void Routing2D::update_required_nodes() {
     for (auto& nid : required_nodes) {
       o.insert(std::make_pair(nid.to_str(), Convert::coordinate2json(nodes.at(nid).position)));
     }
-    context.debug_event(DebugEvent::REQUIRED2D, picojson::value(o));
+    context.debug_event(DebugEvent::REQUIRED_2D, picojson::value(o));
   }
 #endif
 }

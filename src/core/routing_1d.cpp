@@ -443,7 +443,7 @@ void Routing1D::update_required_nodes() {
     for (auto& nid : required_nodes) {
       a.push_back(nid.to_json());
     }
-    context.debug_event(DebugEvent::REQUIRED1D, picojson::value(a));
+    context.debug_event(DebugEvent::REQUIRED_1D, picojson::value(a));
   }
 #endif
 }
@@ -534,7 +534,7 @@ void Routing1D::update_route_infos() {
     for (auto& it : known_nids) {
       a.push_back(it.first.to_json());
     }
-    context.debug_event(DebugEvent::KNOWN1D, picojson::value(a));
+    context.debug_event(DebugEvent::KNOWN_1D, picojson::value(a));
   }
   {
     picojson::array a;

@@ -85,10 +85,10 @@ typedef enum COLONIO_DEBUG_EVENT {
   COLONIO_DEBUG_EVENT_LINKS,
   COLONIO_DEBUG_EVENT_NEXTS,
   COLONIO_DEBUG_EVENT_POSITION,
-  COLONIO_DEBUG_EVENT_REQUIRED1D,
-  COLONIO_DEBUG_EVENT_REQUIRED2D,
-  COLONIO_DEBUG_EVENT_KNOWN1D,
-  COLONIO_DEBUG_EVENT_KNOWN2D
+  COLONIO_DEBUG_EVENT_REQUIRED_1D,
+  COLONIO_DEBUG_EVENT_REQUIRED_2D,
+  COLONIO_DEBUG_EVENT_KNOWN_1D,
+  COLONIO_DEBUG_EVENT_KNOWN_2D
 } COLONIO_DEBUG_EVENT;
 
 /* ATTENTION: Use same value with another languages. */
@@ -101,11 +101,11 @@ typedef enum COLONIO_MAP_FAILURE_REASON {
 } COLONIO_MAP_FAILURE_REASON;
 
 /* ATTENTION: Use same value with another languages. */
-typedef enum COLONIO_PUBSUB2D_FAILURE_REASON {
-  COLONIO_PUBSUB2D_FAILURE_REASON_NONE,
-  COLONIO_PUBSUB2D_FAILURE_REASON_SYSTEM_ERROR,
-  COLONIO_PUBSUB2D_FAILURE_REASON_NOONE_RECV
-} COLONIO_PUBSUB2D_FAILURE_REASON;
+typedef enum COLONIO_PUBSUB_2D_FAILURE_REASON {
+  COLONIO_PUBSUB_2D_FAILURE_REASON_NONE,
+  COLONIO_PUBSUB_2D_FAILURE_REASON_SYSTEM_ERROR,
+  COLONIO_PUBSUB_2D_FAILURE_REASON_NOONE_RECV
+} COLONIO_PUBSUB_2D_FAILURE_REASON;
 
 #define COLONIO_MAP_OPTION_ERROR_WITHOUT_EXIST 0x1
 
@@ -121,11 +121,11 @@ typedef struct colonio_map_s {
   void* impl;
 } colonio_map_t;
 
-typedef struct colonio_pubsub2d_s {
+typedef struct colonio_pubsub_2d_s {
   COLONIO_HANDLE_FIELDS
   /* private */
   void* impl;
-} colonio_pubsub2d_t;
+} colonio_pubsub_2d_t;
 
 typedef struct colonio_value_s {
   COLONIO_VALUE_TYPE type;
@@ -146,7 +146,7 @@ COLONIO_PUBLIC void colonio_connect(
     void (*on_failure)(colonio_t*));
 COLONIO_PUBLIC void colonio_disconnect(colonio_t* colonio);
 COLONIO_PUBLIC colonio_map_t colonio_access_map(colonio_t* colonio, const char* name);
-COLONIO_PUBLIC colonio_pubsub2d_t colonio_access_pubsub2d(colonio_t* colonio, const char* name);
+COLONIO_PUBLIC colonio_pubsub_2d_t colonio_access_pubsub_2d(colonio_t* colonio, const char* name);
 COLONIO_PUBLIC void colonio_get_local_nid(colonio_t* colonio, char* dest);
 COLONIO_PUBLIC void colonio_set_position(colonio_t* colonio, double x, double y);
 
@@ -178,14 +178,14 @@ COLONIO_PUBLIC void colonio_map_set(
     void (*on_success)(colonio_map_t* map, void* ptr),
     void (*on_failure)(colonio_map_t* map, void* ptr, COLONIO_MAP_FAILURE_REASON reason), int opt);
 
-COLONIO_PUBLIC void colonio_pubsub2d_publish(
-    colonio_pubsub2d_t* pubsub2d, const char* name, unsigned int name_siz, double x, double y, double r,
-    const colonio_value_t* value, void* ptr, void (*on_success)(colonio_pubsub2d_t* pubsub2d, void* ptr),
-    void (*on_failure)(colonio_pubsub2d_t* pubsub2d, void* ptr, COLONIO_PUBSUB2D_FAILURE_REASON reason));
-COLONIO_PUBLIC void colonio_pubsub2d_on(
-    colonio_pubsub2d_t* pubsub2d, const char* name, unsigned int name_siz, void* ptr,
-    void (*subscriber)(colonio_pubsub2d_t* pubsub2d, void* ptr, const colonio_value_t* value));
-COLONIO_PUBLIC void colonio_pubsub2d_off(colonio_pubsub2d_t* pubsub2d, const char* name, unsigned int name_siz);
+COLONIO_PUBLIC void colonio_pubsub_2d_publish(
+    colonio_pubsub_2d_t* pubsub_2d, const char* name, unsigned int name_siz, double x, double y, double r,
+    const colonio_value_t* value, void* ptr, void (*on_success)(colonio_pubsub_2d_t* pubsub_2d, void* ptr),
+    void (*on_failure)(colonio_pubsub_2d_t* pubsub_2d, void* ptr, COLONIO_PUBSUB_2D_FAILURE_REASON reason));
+COLONIO_PUBLIC void colonio_pubsub_2d_on(
+    colonio_pubsub_2d_t* pubsub_2d, const char* name, unsigned int name_siz, void* ptr,
+    void (*subscriber)(colonio_pubsub_2d_t* pubsub_2d, void* ptr, const colonio_value_t* value));
+COLONIO_PUBLIC void colonio_pubsub_2d_off(colonio_pubsub_2d_t* pubsub_2d, const char* name, unsigned int name_siz);
 
 /* Undefine macros */
 #undef COLONIO_HANDLE_FIELDS

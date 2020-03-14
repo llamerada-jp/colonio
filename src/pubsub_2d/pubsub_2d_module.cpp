@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "pubsub2d_module.hpp"
+#include "pubsub_2d_module.hpp"
 
 #include <cassert>
 
@@ -30,24 +30,24 @@
 
 namespace colonio {
 
-PubSub2DModuleDelegate ::~PubSub2DModuleDelegate() {
+Pubsub2DModuleDelegate ::~Pubsub2DModuleDelegate() {
 }
 
-PubSub2DModule::PubSub2DModule(
+Pubsub2DModule::Pubsub2DModule(
     Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate,
-    PubSub2DModuleDelegate& delegate_, APIChannel::Type channel, ModuleChannel::Type module_channel,
+    Pubsub2DModuleDelegate& delegate_, APIChannel::Type channel, ModuleChannel::Type module_channel,
     uint32_t cache_time) :
     Module2D(context, module_delegate, module_2d_delegate, channel, module_channel),
     delegate(delegate_),
     CONF_CACHE_TIME(cache_time) {
-  context.scheduler.add_interval_task(this, std::bind(&PubSub2DModule::clear_cache, this), 1000);
+  context.scheduler.add_interval_task(this, std::bind(&Pubsub2DModule::clear_cache, this), 1000);
 }
 
-PubSub2DModule::~PubSub2DModule() {
+Pubsub2DModule::~Pubsub2DModule() {
   context.scheduler.remove_task(this);
 }
 
-void PubSub2DModule::publish(
+void Pubsub2DModule::publish(
     const std::string& name, double x, double y, double r, const Value& value, uint32_t opt,
     const std::function<void()>& on_success, const std::function<void(Exception::Code)>& on_failure) {
   uint64_t uid  = assign_uid();
@@ -78,17 +78,17 @@ void PubSub2DModule::publish(
   }
 }
 
-void PubSub2DModule::module_process_command(std::unique_ptr<const Packet> packet) {
+void Pubsub2DModule::module_process_command(std::unique_ptr<const Packet> packet) {
   switch (packet->command_id) {
-    case CommandID::PubSub2D::PASS:
+    case CommandID::Pubsub2D::PASS:
       recv_packet_pass(std::move(packet));
       break;
 
-    case CommandID::PubSub2D::KNOCK:
+    case CommandID::Pubsub2D::KNOCK:
       recv_packet_knock(std::move(packet));
       break;
 
-    case CommandID::PubSub2D::DEFFUSE:
+    case CommandID::Pubsub2D::DEFFUSE:
       recv_packet_deffuse(std::move(packet));
       break;
 
@@ -98,67 +98,67 @@ void PubSub2DModule::module_process_command(std::unique_ptr<const Packet> packet
   }
 }
 
-void PubSub2DModule::module_2d_on_change_local_position(const Coordinate& position) {
+void Pubsub2DModule::module_2d_on_change_local_position(const Coordinate& position) {
   // Ignore.
 }
 
-void PubSub2DModule::module_2d_on_change_nearby(const std::set<NodeID>& nids) {
+void Pubsub2DModule::module_2d_on_change_nearby(const std::set<NodeID>& nids) {
   // Ignore.
 }
 
-void PubSub2DModule::module_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) {
+void Pubsub2DModule::module_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) {
   next_positions = positions;
 }
 
-PubSub2DModule::CommandKnock::CommandKnock(PubSub2DModule& parent_, uint64_t uid_) :
-    Command(CommandID::PubSub2D::KNOCK, PacketMode::NONE),
+Pubsub2DModule::CommandKnock::CommandKnock(Pubsub2DModule& parent_, uint64_t uid_) :
+    Command(CommandID::Pubsub2D::KNOCK, PacketMode::NONE),
     parent(parent_),
     uid(uid_) {
 }
 
-void PubSub2DModule::CommandKnock::on_error(const std::string& message) {
+void Pubsub2DModule::CommandKnock::on_error(const std::string& message) {
   // @todo fixme
   assert(false);
 }
 
-void PubSub2DModule::CommandKnock::on_failure(std::unique_ptr<const Packet> packet) {
+void Pubsub2DModule::CommandKnock::on_failure(std::unique_ptr<const Packet> packet) {
   // Ingore.
 }
 
-void PubSub2DModule::CommandKnock::on_success(std::unique_ptr<const Packet> packet) {
+void Pubsub2DModule::CommandKnock::on_success(std::unique_ptr<const Packet> packet) {
   auto it_c = parent.cache.find(uid);
   if (it_c != parent.cache.end()) {
     parent.send_packet_deffuse(packet->src_nid, it_c->second);
   }
 }
 
-PubSub2DModule::CommandPass::CommandPass(
-    PubSub2DModule& parent_, uint64_t uid_, const std::function<void()>& cb_on_success_,
+Pubsub2DModule::CommandPass::CommandPass(
+    Pubsub2DModule& parent_, uint64_t uid_, const std::function<void()>& cb_on_success_,
     const std::function<void(Exception::Code)>& cb_on_failure_) :
-    Command(CommandID::PubSub2D::PASS, PacketMode::NONE),
+    Command(CommandID::Pubsub2D::PASS, PacketMode::NONE),
     parent(parent_),
     uid(uid_),
     cb_on_success(cb_on_success_),
     cb_on_failure(cb_on_failure_) {
 }
 
-void PubSub2DModule::CommandPass::on_error(const std::string& message) {
+void Pubsub2DModule::CommandPass::on_error(const std::string& message) {
   // @todo output log.
   cb_on_failure(Exception::Code::SYSTEM_ERROR);
 }
 
-void PubSub2DModule::CommandPass::on_failure(std::unique_ptr<const Packet> packet) {
+void Pubsub2DModule::CommandPass::on_failure(std::unique_ptr<const Packet> packet) {
   Pubsub2DProtocol::PassFailure content;
   packet->parse_content(&content);
   Exception::Code reason = static_cast<Exception::Code>(content.reason());
   cb_on_failure(reason);
 }
 
-void PubSub2DModule::CommandPass::on_success(std::unique_ptr<const Packet> packet) {
+void Pubsub2DModule::CommandPass::on_success(std::unique_ptr<const Packet> packet) {
   cb_on_success();
 }
 
-uint64_t PubSub2DModule::assign_uid() {
+uint64_t Pubsub2DModule::assign_uid() {
   uint64_t uid = Utils::get_rnd_64();
   while (cache.find(uid) != cache.end()) {
     uid = Utils::get_rnd_64();
@@ -166,7 +166,7 @@ uint64_t PubSub2DModule::assign_uid() {
   return uid;
 }
 
-void PubSub2DModule::clear_cache() {
+void Pubsub2DModule::clear_cache() {
   auto it_c = cache.begin();
   while (it_c != cache.end()) {
     if (it_c->second.create_time + CONF_CACHE_TIME < Utils::get_current_msec()) {
@@ -178,7 +178,7 @@ void PubSub2DModule::clear_cache() {
   }
 }
 
-void PubSub2DModule::recv_packet_knock(std::unique_ptr<const Packet> packet) {
+void Pubsub2DModule::recv_packet_knock(std::unique_ptr<const Packet> packet) {
   Pubsub2DProtocol::Knock content;
   packet->parse_content(&content);
   Coordinate center = Coordinate::from_pb(content.center());
@@ -192,7 +192,7 @@ void PubSub2DModule::recv_packet_knock(std::unique_ptr<const Packet> packet) {
   }
 }
 
-void PubSub2DModule::recv_packet_deffuse(std::unique_ptr<const Packet> packet) {
+void Pubsub2DModule::recv_packet_deffuse(std::unique_ptr<const Packet> packet) {
   Pubsub2DProtocol::Deffuse content;
   packet->parse_content(&content);
   Coordinate center = Coordinate::from_pb(content.center());
@@ -221,11 +221,11 @@ void PubSub2DModule::recv_packet_deffuse(std::unique_ptr<const Packet> packet) {
       }
     }
 
-    delegate.pubsub2d_module_on_on(*this, name, data);
+    delegate.pubsub_2d_module_on_on(*this, name, data);
   }
 }
 
-void PubSub2DModule::recv_packet_pass(std::unique_ptr<const Packet> packet) {
+void Pubsub2DModule::recv_packet_pass(std::unique_ptr<const Packet> packet) {
   Pubsub2DProtocol::Pass content;
   packet->parse_content(&content);
   Coordinate center = Coordinate::from_pb(content.center());
@@ -251,12 +251,12 @@ void PubSub2DModule::recv_packet_pass(std::unique_ptr<const Packet> packet) {
         }
       }
       send_success(*packet, nullptr);
-      delegate.pubsub2d_module_on_on(*this, c.name, c.data);
+      delegate.pubsub_2d_module_on_on(*this, c.name, c.data);
 
     } else {
       const NodeID& dest = get_relay_nid(center);
       if (dest == NodeID::THIS) {
-        if (opt & PubSub2D::RAISE_NO_ONE_RECV) {
+        if (opt & Pubsub2D::RAISE_NO_ONE_RECV) {
           Pubsub2DProtocol::PassFailure param;
           param.set_reason(static_cast<uint32_t>(Exception::Code::NO_ONE_RECV));
           send_failure(*packet, serialize_pb(param));
@@ -268,7 +268,7 @@ void PubSub2DModule::recv_packet_pass(std::unique_ptr<const Packet> packet) {
       }
     }
   } else {
-    if (opt & PubSub2D::RAISE_NO_ONE_RECV) {
+    if (opt & Pubsub2D::RAISE_NO_ONE_RECV) {
       Pubsub2DProtocol::PassFailure param;
       param.set_reason(static_cast<uint32_t>(Exception::Code::NO_ONE_RECV));
       send_failure(*packet, serialize_pb(param));
@@ -278,7 +278,7 @@ void PubSub2DModule::recv_packet_pass(std::unique_ptr<const Packet> packet) {
   }
 }
 
-void PubSub2DModule::send_packet_knock(const NodeID& exclude, const Cache& cache) {
+void Pubsub2DModule::send_packet_knock(const NodeID& exclude, const Cache& cache) {
   Pubsub2DProtocol::Knock param;
   cache.center.to_pb(param.mutable_center());
   param.set_r(cache.r);
@@ -296,7 +296,7 @@ void PubSub2DModule::send_packet_knock(const NodeID& exclude, const Cache& cache
   }
 }
 
-void PubSub2DModule::send_packet_deffuse(const NodeID& dst_nid, const Cache& cache) {
+void Pubsub2DModule::send_packet_deffuse(const NodeID& dst_nid, const Cache& cache) {
   Pubsub2DProtocol::Deffuse param;
   cache.center.to_pb(param.mutable_center());
   param.set_r(cache.r);
@@ -304,10 +304,10 @@ void PubSub2DModule::send_packet_deffuse(const NodeID& dst_nid, const Cache& cac
   param.set_name(cache.name);
   ValueImpl::to_pb(param.mutable_data(), cache.data);
 
-  send_packet(dst_nid, PacketMode::ONE_WAY, CommandID::PubSub2D::DEFFUSE, serialize_pb(param));
+  send_packet(dst_nid, PacketMode::ONE_WAY, CommandID::Pubsub2D::DEFFUSE, serialize_pb(param));
 }
 
-void PubSub2DModule::send_packet_pass(
+void Pubsub2DModule::send_packet_pass(
     const Cache& cache, const std::function<void()>& on_success,
     const std::function<void(Exception::Code)>& on_failure) {
   Pubsub2DProtocol::Pass param;

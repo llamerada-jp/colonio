@@ -14,50 +14,50 @@
  * limitations under the License.
  */
 
-#include "pubsub2d_api.hpp"
+#include "pubsub_2d_api.hpp"
 
 #include "core/api_bundler.hpp"
 #include "core/module_bundler.hpp"
 #include "core/utils.hpp"
 #include "core/value_impl.hpp"
-#include "pubsub2d_module.hpp"
+#include "pubsub_2d_module.hpp"
 
 namespace colonio {
 
-void PubSub2DAPI::make_entry(
+void Pubsub2DAPI::make_entry(
     Context& context, APIBundler& api_bundler, APIDelegate& api_delegate, ModuleBundler& module_bundler,
     const picojson::object& config) {
   APIChannel::Type channel = static_cast<APIChannel::Type>(Utils::get_json<double>(config, "channel"));
-  uint32_t cache_time      = Utils::get_json<double>(config, "cacheTime", PUBSUB2D_CACHE_TIME);
+  uint32_t cache_time      = Utils::get_json<double>(config, "cacheTime", PUBSUB_2D_CACHE_TIME);
 
-  std::shared_ptr<PubSub2DAPI> entry(new PubSub2DAPI(context, api_delegate, channel));
-  std::unique_ptr<PubSub2DModule> module = std::make_unique<PubSub2DModule>(
+  std::shared_ptr<Pubsub2DAPI> entry(new Pubsub2DAPI(context, api_delegate, channel));
+  std::unique_ptr<Pubsub2DModule> module = std::make_unique<Pubsub2DModule>(
       context, module_bundler.module_delegate, module_bundler.module_2d_delegate, *entry, channel,
-      ModuleChannel::PubSub2D::PUBSUB2D, cache_time);
+      ModuleChannel::Pubsub2D::PUBSUB_2D, cache_time);
 
   module_bundler.registrate(module.get(), false, true);
   entry->module = std::move(module);
   api_bundler.registrate(entry);
 }
 
-PubSub2DAPI::PubSub2DAPI(Context& context, APIDelegate& delegate, APIChannel::Type channel) :
+Pubsub2DAPI::Pubsub2DAPI(Context& context, APIDelegate& delegate, APIChannel::Type channel) :
     APIBase(context, delegate, channel) {
 }
 
-void PubSub2DAPI::pubsub2d_module_on_on(PubSub2DModule& ps2_module, const std::string& name, const Value& value) {
+void Pubsub2DAPI::pubsub_2d_module_on_on(Pubsub2DModule& ps2_module, const std::string& name, const Value& value) {
   std::unique_ptr<api::Event> ev = std::make_unique<api::Event>();
   ev->set_channel(channel);
-  api::pubsub2d::OnEvent* on_event = ev->mutable_pubsub2d_on();
+  api::pubsub_2d::OnEvent* on_event = ev->mutable_pubsub_2d_on();
   on_event->set_name(name);
   ValueImpl::to_pb(on_event->mutable_value(), value);
 
   api_event(std::move(ev));
 }
 
-void PubSub2DAPI::api_on_recv_call(const api::Call& call) {
+void Pubsub2DAPI::api_on_recv_call(const api::Call& call) {
   switch (call.param_case()) {
     case api::Call::ParamCase::kPubsub2DPublish: {
-      const api::pubsub2d::Publish& param = call.pubsub2d_publish();
+      const api::pubsub_2d::Publish& param = call.pubsub_2d_publish();
       api_publish(
           call.id(), param.name(), param.x(), param.y(), param.r(), ValueImpl::from_pb(param.value()), param.opt());
     } break;
@@ -68,7 +68,7 @@ void PubSub2DAPI::api_on_recv_call(const api::Call& call) {
   }
 }
 
-void PubSub2DAPI::api_publish(
+void Pubsub2DAPI::api_publish(
     uint32_t id, const std::string& name, double x, double y, double r, const Value& value, uint32_t opt) {
   module->publish(
       name, x, y, r, value, opt,

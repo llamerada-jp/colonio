@@ -18,7 +18,7 @@
 
 namespace colonio {
 
-PubSub2D::~PubSub2D() {
+Pubsub2D::~Pubsub2D() {
 }
 
 }  // namespace colonio

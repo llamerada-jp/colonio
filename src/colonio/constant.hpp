@@ -26,10 +26,10 @@ enum Type {
   LINKS,
   NEXTS,
   POSITION,
-  REQUIRED1D,
-  REQUIRED2D,
-  KNOWN1D,
-  KNOWN2D,
+  REQUIRED_1D,
+  REQUIRED_2D,
+  KNOWN_1D,
+  KNOWN_2D,
 };
 }  // namespace DebugEvent
 }  // namespace colonio

@@ -71,8 +71,8 @@ namespace MapPaxos {
 static const Type MAP_PAXOS = 1;
 }
 
-namespace PubSub2D {
-static const Type PUBSUB2D = 1;
+namespace Pubsub2D {
+static const Type PUBSUB_2D = 1;
 }
 }  // namespace ModuleChannel
 
@@ -108,11 +108,11 @@ static const Type BALANCE_ACCEPTOR = 6;
 static const Type BALANCE_PROPOSER = 7;
 }  // namespace MapPaxos
 
-namespace PubSub2D {
+namespace Pubsub2D {
 static const Type PASS    = 1;
 static const Type KNOCK   = 2;
 static const Type DEFFUSE = 3;
-}  // namespace PubSub2D
+}  // namespace Pubsub2D
 }  // namespace CommandID
 
 namespace SeedHint {
@@ -143,7 +143,7 @@ static const unsigned int MAP_PAXOS_RETRY_MAX          = 5;
 static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MIN = 1000;  // [msec]
 static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MAX = 2000;  // [msec]
 
-static const unsigned int PUBSUB2D_CACHE_TIME = 30000;  // [msec]
+static const unsigned int PUBSUB_2D_CACHE_TIME = 30000;  // [msec]
 
 static const uint32_t ORPHAN_NODES_MAX                  = 32;
 static const unsigned int PACKET_RETRY_COUNT_MAX        = 5;

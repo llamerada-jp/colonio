@@ -28,15 +28,15 @@ double d2r(double d) {
   return M_PI * d / 180.0;
 }
 
-TEST(PubSub2DTest, multi_node) {
-  const std::string URL           = "http://localhost:8080/test";
-  const std::string TOKEN         = "";
-  const std::string PUBSUB2D_NAME = "ps2";
+TEST(Pubsub2DTest, multi_node) {
+  const std::string URL            = "http://localhost:8080/test";
+  const std::string TOKEN          = "";
+  const std::string PUBSUB_2D_NAME = "ps2";
 
   AsyncHelper helper;
   TestSeed seed;
   seed.set_coord_system_sphere();
-  seed.add_module_pubsub_2d(PUBSUB2D_NAME, 256);
+  seed.add_module_pubsub_2d(PUBSUB_2D_NAME, 256);
   seed.run();
 
   ColonioNode node1("node1");
@@ -46,7 +46,7 @@ TEST(PubSub2DTest, multi_node) {
     // connect node1;
     printf("connect node1\n");
     node1.connect(URL, TOKEN);
-    PubSub2D& ps1 = node1.access_pubsub2d(PUBSUB2D_NAME);
+    Pubsub2D& ps1 = node1.access_pubsub_2d(PUBSUB_2D_NAME);
     ps1.on("key1", [&helper](const Value& v) {
       helper.mark("11");
       helper.mark(v.get<std::string>());
@@ -59,7 +59,7 @@ TEST(PubSub2DTest, multi_node) {
     // connect node2;
     printf("connect node2\n");
     node2.connect(URL, TOKEN);
-    PubSub2D& ps2 = node2.access_pubsub2d(PUBSUB2D_NAME);
+    Pubsub2D& ps2 = node2.access_pubsub_2d(PUBSUB_2D_NAME);
     ps2.on("key1", [&helper](const Value& v) {
       helper.mark("21");
       helper.mark(v.get<std::string>());

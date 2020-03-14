@@ -98,14 +98,14 @@ colonio_map_t colonio_access_map(colonio_t* colonio, const char* name) {
   return map;
 }
 
-colonio_pubsub2d_t colonio_access_pubsub2d(colonio_t* colonio, const char* name) {
+colonio_pubsub_2d_t colonio_access_pubsub_2d(colonio_t* colonio, const char* name) {
   colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
 
-  colonio_pubsub2d_t pubsub2d;
-  pubsub2d.data = colonio->data;
-  pubsub2d.impl = &impl->access_pubsub2d(name);
+  colonio_pubsub_2d_t pubsub_2d;
+  pubsub_2d.data = colonio->data;
+  pubsub_2d.impl = &impl->access_pubsub_2d(name);
 
-  return pubsub2d;
+  return pubsub_2d;
 }
 
 void colonio_get_local_nid(colonio_t* colonio, char* dest) {
@@ -247,36 +247,36 @@ void colonio_map_set(
       */
 }
 
-void colonio_pubsub2d_publish(
-    colonio_pubsub2d_t* pubsub2d, const char* name, unsigned int name_siz, double x, double y, double r,
-    const colonio_value_t* value, void* ptr, void (*on_success)(colonio_pubsub2d_t* pubsub2d, void* ptr),
-    void (*on_failure)(colonio_pubsub2d_t* pubsub2d, void* ptr, COLONIO_PUBSUB2D_FAILURE_REASON reason)) {
-  colonio::PubSub2D* impl = reinterpret_cast<colonio::PubSub2D*>(pubsub2d->impl);
+void colonio_pubsub_2d_publish(
+    colonio_pubsub_2d_t* pubsub_2d, const char* name, unsigned int name_siz, double x, double y, double r,
+    const colonio_value_t* value, void* ptr, void (*on_success)(colonio_pubsub_2d_t* pubsub_2d, void* ptr),
+    void (*on_failure)(colonio_pubsub_2d_t* pubsub_2d, void* ptr, COLONIO_PUBSUB_2D_FAILURE_REASON reason)) {
+  colonio::Pubsub2D* impl = reinterpret_cast<colonio::Pubsub2D*>(pubsub_2d->impl);
   colonio::Value cpp_value;
   convert_value_c_to_cpp(&cpp_value, value);
   /* TODO
   impl->publish(
-      std::string(name, name_siz), x, y, r, cpp_value, [pubsub2d, ptr, on_success]() { on_success(pubsub2d, ptr); },
-      [pubsub2d, ptr, on_failure](colonio::Exception::Code reason) {
-        on_failure(pubsub2d, ptr, static_cast<COLONIO_PUBSUB2D_FAILURE_REASON>(reason));
+      std::string(name, name_siz), x, y, r, cpp_value, [pubsub_2d, ptr, on_success]() { on_success(pubsub_2d, ptr); },
+      [pubsub_2d, ptr, on_failure](colonio::Exception::Code reason) {
+        on_failure(pubsub_2d, ptr, static_cast<COLONIO_PUBSUB_2D_FAILURE_REASON>(reason));
       });
       */
 }
 
-void colonio_pubsub2d_on(
-    colonio_pubsub2d_t* pubsub2d, const char* name, unsigned int name_siz, void* ptr,
-    void (*subscriber)(colonio_pubsub2d_t* pubsub2d, void* ptr, const colonio_value_t* value)) {
-  colonio::PubSub2D* impl = reinterpret_cast<colonio::PubSub2D*>(pubsub2d->impl);
-  impl->on(std::string(name, name_siz), [pubsub2d, ptr, subscriber](const colonio::Value& value) {
+void colonio_pubsub_2d_on(
+    colonio_pubsub_2d_t* pubsub_2d, const char* name, unsigned int name_siz, void* ptr,
+    void (*subscriber)(colonio_pubsub_2d_t* pubsub_2d, void* ptr, const colonio_value_t* value)) {
+  colonio::Pubsub2D* impl = reinterpret_cast<colonio::Pubsub2D*>(pubsub_2d->impl);
+  impl->on(std::string(name, name_siz), [pubsub_2d, ptr, subscriber](const colonio::Value& value) {
     colonio_value_t c_value;
     convert_value_cpp_to_c(&c_value, &value);
-    subscriber(pubsub2d, ptr, &c_value);
+    subscriber(pubsub_2d, ptr, &c_value);
     colonio_value_free(&c_value);
   });
 }
 
-void colonio_pubsub2d_off(colonio_pubsub2d_t* pubsub2d, const char* name, unsigned int name_siz) {
-  colonio::PubSub2D* impl = reinterpret_cast<colonio::PubSub2D*>(pubsub2d->impl);
+void colonio_pubsub_2d_off(colonio_pubsub_2d_t* pubsub_2d, const char* name, unsigned int name_siz) {
+  colonio::Pubsub2D* impl = reinterpret_cast<colonio::Pubsub2D*>(pubsub_2d->impl);
   impl->off(std::string(name, name_siz));
 }
 

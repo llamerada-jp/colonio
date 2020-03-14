@@ -222,10 +222,10 @@
     static get DEBUG_EVENT_LINKS() { return 1; }
     static get DEBUG_EVENT_NEXTS() { return 2; }
     static get DEBUG_EVENT_POSITION() { return 3; }
-    static get DEBUG_EVENT_REQUIRED1D() { return 4; }
-    static get DEBUG_EVENT_REQUIRED2D() { return 5; }
-    static get DEBUG_EVENT_KNOWN1D() { return 6; }
-    static get DEBUG_EVENT_KNOWN2D() { return 7; }
+    static get DEBUG_EVENT_REQUIRED_1D() { return 4; }
+    static get DEBUG_EVENT_REQUIRED_2D() { return 5; }
+    static get DEBUG_EVENT_KNOWN_1D() { return 6; }
+    static get DEBUG_EVENT_KNOWN_2D() { return 7; }
 
     // ATTENTION: Use same value with another languages.
     static get MAP_FAILURE_REASON_NONE() { return 0; }
@@ -234,9 +234,9 @@
     // static get MAP_FAILURE_REASON_EXIST_KEY() { return 3; }
     static get MAP_FAILURE_REASON_CHANGED_PROPOSER() { return 3; }
 
-    static get PUBSUB2D_FAILURE_REASON_NONE() { return 0; }
-    static get PUBSUB2D_FAILURE_REASON_SYSTEM_ERROR() { return 1; }
-    static get PUBSUB2D_FAILURE_REASON_NOONE_RECV() { return 2; }
+    static get PUBSUB_2D_FAILURE_REASON_NONE() { return 0; }
+    static get PUBSUB_2D_FAILURE_REASON_SYSTEM_ERROR() { return 1; }
+    static get PUBSUB_2D_FAILURE_REASON_NOONE_RECV() { return 2; }
 
     static get NID_THIS() { return '.'; }
 
@@ -315,7 +315,7 @@
     accessPubsub2D(name) {
       if (!(name in this._instanceCache)) {
         let [namePtr] = allocPtrString(name);
-        this._instanceCache[name] = new Pubsub2D(ccall('js_access_pubsub2d', 'number',
+        this._instanceCache[name] = new Pubsub2D(ccall('js_access_pubsub_2d', 'number',
           ['number', 'number'],
           [this._colonioPtr, namePtr]));
         freePtr(namePtr);
@@ -590,7 +590,7 @@
       getObject(id)(valuePtr);
     }, 'vii');
 
-    ccall('js_pubsub2d_init', 'null', ['number', 'number'], [onPublish, onOn]);
+    ccall('js_pubsub_2d_init', 'null', ['number', 'number'], [onPublish, onOn]);
   }
 
   class Pubsub2D {
@@ -604,14 +604,14 @@
         const value = convertValue(val);
 
         let id = pushObject((reason) => {
-          if (reason === Colonio.PUBSUB2D_FAILURE_REASON_NONE) {
+          if (reason === Colonio.PUBSUB_2D_FAILURE_REASON_NONE) {
             resolve();
           } else {
             reject(reason);
           }
         });
 
-        ccall('js_pubsub2d_publish', 'null',
+        ccall('js_pubsub_2d_publish', 'null',
           ['number', 'number', 'number', 'number', 'number', 'number', 'number', 'number'],
           [this._pubsub2DPtr, namePtr, nameSiz, x, y, r, value._valuePtr, id]);
 
@@ -630,7 +630,7 @@
 
       let [namePtr, nameSiz] = allocPtrString(name);
 
-      ccall('js_pubsub2d_on', 'null',
+      ccall('js_pubsub_2d_on', 'null',
         ['number', 'number', 'number', 'number'],
         [this._pubsub2DPtr, namePtr, nameSiz, id]);
 
@@ -640,7 +640,7 @@
     off(name) {
       let [namePtr, nameSiz] = allocPtrString(name);
 
-      ccall('js_pubsub2d_off', 'null',
+      ccall('js_pubsub_2d_off', 'null',
         ['number', 'number', 'number'],
         [this._pubsub2DPtr, namePtr, nameSiz]);
 

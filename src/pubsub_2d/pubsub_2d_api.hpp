@@ -19,28 +19,28 @@
 
 #include "colonio/pubsub_2d.hpp"
 #include "core/api_base.hpp"
-#include "pubsub2d_module.hpp"
+#include "pubsub_2d_module.hpp"
 
 namespace colonio {
 class APIBundler;
 class APIDelegate;
 class ModuleBundler;
 class Context;
-class PubSub2DModule;
+class Pubsub2DModule;
 class Value;
 
-class PubSub2DAPI : public APIBase, public PubSub2DModuleDelegate {
+class Pubsub2DAPI : public APIBase, public Pubsub2DModuleDelegate {
  public:
   static void make_entry(
       Context& context, APIBundler& api_bundler, APIDelegate& api_delegate, ModuleBundler& module_bundler,
       const picojson::object& config);
 
  private:
-  std::unique_ptr<PubSub2DModule> module;
+  std::unique_ptr<Pubsub2DModule> module;
 
-  PubSub2DAPI(Context& context, APIDelegate& delegate, APIChannel::Type channel);
+  Pubsub2DAPI(Context& context, APIDelegate& delegate, APIChannel::Type channel);
 
-  void pubsub2d_module_on_on(PubSub2DModule& ps2_module, const std::string& name, const Value& value) override;
+  void pubsub_2d_module_on_on(Pubsub2DModule& ps2_module, const std::string& name, const Value& value) override;
 
   void api_on_recv_call(const api::Call& call) override;
   void api_publish(

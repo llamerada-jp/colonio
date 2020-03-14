@@ -20,12 +20,12 @@
 
 namespace colonio {
 
-class PubSub2D {
+class Pubsub2D {
  public:
   // options
   static const uint32_t RAISE_NO_ONE_RECV = 0x01;
 
-  virtual ~PubSub2D();
+  virtual ~Pubsub2D();
 
   virtual void publish(
       const std::string& name, double x, double y, double r, const Value& value, uint32_t opt = 0x00) = 0;

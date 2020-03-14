@@ -29,7 +29,7 @@ class MyColonio : public colonio::Colonio {
 };
 
 MyColonio my_colonio;
-colonio::PubSub2D* db;
+colonio::Pubsub2D* db;
 
 uv_timer_t timer_handler;
 
@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
 
     my_colonio.set_position(M_PI * 139.7604131 / 180.0, M_PI * 35.6858593 / 180.0);
 
-    db = &my_colonio.access_pubsub2d("");
+    db = &my_colonio.access_pubsub_2d("");
     db->on("me", [](const colonio::Value& value) { std::cout << value.get<std::string>() << std::endl; });
 
     uv_timer_init(loop, &timer_handler);

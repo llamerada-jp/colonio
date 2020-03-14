@@ -32,7 +32,7 @@ EMSCRIPTEN_KEEPALIVE void js_connect(
     COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T url, COLONIO_PTR_T token, COLONIO_PTR_T on_success,
     COLONIO_PTR_T on_failure);
 EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_access_map(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name);
-EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_access_pubsub2d(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name);
+EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_access_pubsub_2d(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name);
 EMSCRIPTEN_KEEPALIVE void js_disconnect(COLONIO_PTR_T colonio_ptr);
 EMSCRIPTEN_KEEPALIVE void js_enable_output_log(COLONIO_PTR_T colonio_ptr);
 EMSCRIPTEN_KEEPALIVE void js_enable_debug_event(COLONIO_PTR_T colonio_ptr);
@@ -58,17 +58,17 @@ EMSCRIPTEN_KEEPALIVE void js_map_get_value(COLONIO_PTR_T map_ptr, COLONIO_PTR_T 
 EMSCRIPTEN_KEEPALIVE void js_map_set_value(
     COLONIO_PTR_T map_ptr, COLONIO_PTR_T key_ptr, COLONIO_PTR_T val_ptr, COLONIO_ID_T id, int opt);
 
-EMSCRIPTEN_KEEPALIVE void js_pubsub2d_init(COLONIO_PTR_T on_pubsub2d_pub_ptr, COLONIO_PTR_T on_pubsub2d_on_ptr);
-EMSCRIPTEN_KEEPALIVE void js_pubsub2d_publish(
-    COLONIO_PTR_T pubsub2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz, double x, double y, double r,
+EMSCRIPTEN_KEEPALIVE void js_pubsub_2d_init(COLONIO_PTR_T on_pubsub_2d_pub_ptr, COLONIO_PTR_T on_pubsub_2d_on_ptr);
+EMSCRIPTEN_KEEPALIVE void js_pubsub_2d_publish(
+    COLONIO_PTR_T pubsub_2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz, double x, double y, double r,
     COLONIO_PTR_T val_ptr, COLONIO_ID_T id);
-EMSCRIPTEN_KEEPALIVE void js_pubsub2d_on(
-    COLONIO_PTR_T pubsub2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz, COLONIO_ID_T id);
-EMSCRIPTEN_KEEPALIVE void js_pubsub2d_off(COLONIO_PTR_T pubsub2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz);
+EMSCRIPTEN_KEEPALIVE void js_pubsub_2d_on(
+    COLONIO_PTR_T pubsub_2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz, COLONIO_ID_T id);
+EMSCRIPTEN_KEEPALIVE void js_pubsub_2d_off(COLONIO_PTR_T pubsub_2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz);
 }
 
 static std::map<std::string, colonio_map_t> map_cache;
-static std::map<std::string, colonio_pubsub2d_t> pubsub2d_cache;
+static std::map<std::string, colonio_pubsub_2d_t> pubsub_2d_cache;
 
 COLONIO_PTR_T js_init(COLONIO_PTR_T on_require_invoke) {
   colonio_t* colonio = new colonio_t();
@@ -100,15 +100,15 @@ COLONIO_PTR_T js_access_map(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name) {
   return reinterpret_cast<COLONIO_PTR_T>(&map_cache.at(name_str));
 }
 
-COLONIO_PTR_T js_access_pubsub2d(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name) {
+COLONIO_PTR_T js_access_pubsub_2d(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name) {
   std::string name_str(reinterpret_cast<const char*>(name));
 
-  if (pubsub2d_cache.find(name_str) == pubsub2d_cache.end()) {
-    colonio_pubsub2d_t handler =
-        colonio_access_pubsub2d(reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<const char*>(name));
-    pubsub2d_cache.insert(std::make_pair(name_str, handler));
+  if (pubsub_2d_cache.find(name_str) == pubsub_2d_cache.end()) {
+    colonio_pubsub_2d_t handler =
+        colonio_access_pubsub_2d(reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<const char*>(name));
+    pubsub_2d_cache.insert(std::make_pair(name_str, handler));
   }
-  return reinterpret_cast<COLONIO_PTR_T>(&pubsub2d_cache.at(name_str));
+  return reinterpret_cast<COLONIO_PTR_T>(&pubsub_2d_cache.at(name_str));
 }
 
 void js_disconnect(COLONIO_PTR_T colonio_ptr) {
@@ -257,42 +257,43 @@ void js_map_set_value(COLONIO_PTR_T map_ptr, COLONIO_PTR_T key_ptr, COLONIO_PTR_
       map, key, val, reinterpret_cast<void*>(id), wrap_map_set_value_success, wrap_map_set_value_failure, opt);
 }
 
-std::function<void(COLONIO_ID_T, int)> on_pubsub2d_pub;
-std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> on_pubsub2d_on;
+std::function<void(COLONIO_ID_T, int)> on_pubsub_2d_pub;
+std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> on_pubsub_2d_on;
 
-void js_pubsub2d_init(COLONIO_PTR_T on_pubsub2d_pub_ptr, COLONIO_PTR_T on_pubsub2d_on_ptr) {
-  on_pubsub2d_pub = reinterpret_cast<void (*)(COLONIO_ID_T, int)>(on_pubsub2d_pub_ptr);
-  on_pubsub2d_on  = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(on_pubsub2d_on_ptr);
+void js_pubsub_2d_init(COLONIO_PTR_T on_pubsub_2d_pub_ptr, COLONIO_PTR_T on_pubsub_2d_on_ptr) {
+  on_pubsub_2d_pub = reinterpret_cast<void (*)(COLONIO_ID_T, int)>(on_pubsub_2d_pub_ptr);
+  on_pubsub_2d_on  = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(on_pubsub_2d_on_ptr);
 }
 
-void wrap_pubsub2d_publish_success(colonio_pubsub2d_t* pubsub2d, void* ptr) {
-  on_pubsub2d_pub(reinterpret_cast<COLONIO_ID_T>(ptr), COLONIO_PUBSUB2D_FAILURE_REASON_NONE);
+void wrap_pubsub_2d_publish_success(colonio_pubsub_2d_t* pubsub_2d, void* ptr) {
+  on_pubsub_2d_pub(reinterpret_cast<COLONIO_ID_T>(ptr), COLONIO_PUBSUB_2D_FAILURE_REASON_NONE);
 }
 
-void wrap_pubsub2d_publish_failure(colonio_pubsub2d_t* pubsub2d, void* ptr, COLONIO_PUBSUB2D_FAILURE_REASON reason) {
-  on_pubsub2d_pub(reinterpret_cast<COLONIO_ID_T>(ptr), reason);
+void wrap_pubsub_2d_publish_failure(
+    colonio_pubsub_2d_t* pubsub_2d, void* ptr, COLONIO_PUBSUB_2D_FAILURE_REASON reason) {
+  on_pubsub_2d_pub(reinterpret_cast<COLONIO_ID_T>(ptr), reason);
 }
 
-void js_pubsub2d_publish(
-    COLONIO_PTR_T pubsub2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz, double x, double y, double r,
+void js_pubsub_2d_publish(
+    COLONIO_PTR_T pubsub_2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz, double x, double y, double r,
     COLONIO_PTR_T val_ptr, COLONIO_ID_T id) {
-  colonio_pubsub2d_publish(
-      reinterpret_cast<colonio_pubsub2d_t*>(pubsub2d_ptr), reinterpret_cast<char*>(name_ptr), name_siz, x, y, r,
-      reinterpret_cast<colonio_value_t*>(val_ptr), reinterpret_cast<void*>(id), wrap_pubsub2d_publish_success,
-      wrap_pubsub2d_publish_failure);
+  colonio_pubsub_2d_publish(
+      reinterpret_cast<colonio_pubsub_2d_t*>(pubsub_2d_ptr), reinterpret_cast<char*>(name_ptr), name_siz, x, y, r,
+      reinterpret_cast<colonio_value_t*>(val_ptr), reinterpret_cast<void*>(id), wrap_pubsub_2d_publish_success,
+      wrap_pubsub_2d_publish_failure);
 }
 
-void wrap_pubsub2d_on_subscriber(colonio_pubsub2d_t* pubsub2d, void* ptr, const colonio_value_t* value) {
-  on_pubsub2d_on(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(value));
+void wrap_pubsub_2d_on_subscriber(colonio_pubsub_2d_t* pubsub_2d, void* ptr, const colonio_value_t* value) {
+  on_pubsub_2d_on(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(value));
 }
 
-void js_pubsub2d_on(COLONIO_PTR_T pubsub2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz, COLONIO_ID_T id) {
-  colonio_pubsub2d_on(
-      reinterpret_cast<colonio_pubsub2d_t*>(pubsub2d_ptr), reinterpret_cast<char*>(name_ptr), name_siz,
-      reinterpret_cast<void*>(id), wrap_pubsub2d_on_subscriber);
+void js_pubsub_2d_on(COLONIO_PTR_T pubsub_2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz, COLONIO_ID_T id) {
+  colonio_pubsub_2d_on(
+      reinterpret_cast<colonio_pubsub_2d_t*>(pubsub_2d_ptr), reinterpret_cast<char*>(name_ptr), name_siz,
+      reinterpret_cast<void*>(id), wrap_pubsub_2d_on_subscriber);
 }
 
-void js_pubsub2d_off(COLONIO_PTR_T pubsub2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz) {
-  colonio_pubsub2d_off(
-      reinterpret_cast<colonio_pubsub2d_t*>(pubsub2d_ptr), reinterpret_cast<char*>(name_ptr), name_siz);
+void js_pubsub_2d_off(COLONIO_PTR_T pubsub_2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz) {
+  colonio_pubsub_2d_off(
+      reinterpret_cast<colonio_pubsub_2d_t*>(pubsub_2d_ptr), reinterpret_cast<char*>(name_ptr), name_siz);
 }

@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package colonio.api.pubsub2d;
+package colonio.api.pubsub_2d;
 
 import "core/core.proto";
 

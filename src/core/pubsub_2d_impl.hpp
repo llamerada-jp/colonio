@@ -19,9 +19,9 @@
 #include "colonio/pubsub_2d.hpp"
 
 namespace colonio {
-class PubSub2DImpl : public PubSub2D {
+class Pubsub2DImpl : public Pubsub2D {
  public:
-  PubSub2DImpl(APIGate& api_gate_, APIChannel::Type channel_);
+  Pubsub2DImpl(APIGate& api_gate_, APIChannel::Type channel_);
 
   void publish(const std::string& name, double x, double y, double r, const Value& value, uint32_t opt) override;
   void on(const std::string& name, const std::function<void(const Value&)>& subscriber) override;

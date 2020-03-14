@@ -24,22 +24,22 @@
 #include "core/module_2d.hpp"
 
 namespace colonio {
-class PubSub2DModule;
+class Pubsub2DModule;
 
-class PubSub2DModuleDelegate {
+class Pubsub2DModuleDelegate {
  public:
-  virtual ~PubSub2DModuleDelegate();
+  virtual ~Pubsub2DModuleDelegate();
 
-  virtual void pubsub2d_module_on_on(PubSub2DModule& ps2_module, const std::string& name, const Value& value) = 0;
+  virtual void pubsub_2d_module_on_on(Pubsub2DModule& ps2_module, const std::string& name, const Value& value) = 0;
 };
 
-class PubSub2DModule : public Module2D {
+class Pubsub2DModule : public Module2D {
  public:
-  PubSub2DModule(
+  Pubsub2DModule(
       Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate,
-      PubSub2DModuleDelegate& delegate_, APIChannel::Type channel, ModuleChannel::Type module_channel,
+      Pubsub2DModuleDelegate& delegate_, APIChannel::Type channel, ModuleChannel::Type module_channel,
       uint32_t cache_time);
-  virtual ~PubSub2DModule();
+  virtual ~Pubsub2DModule();
 
   void publish(
       const std::string& name, double x, double y, double r, const Value& value, uint32_t opt,
@@ -54,7 +54,7 @@ class PubSub2DModule : public Module2D {
  private:
   unsigned int CONF_CACHE_TIME;
 
-  PubSub2DModuleDelegate& delegate;
+  Pubsub2DModuleDelegate& delegate;
 
   std::map<NodeID, Coordinate> next_positions;
 
@@ -72,21 +72,21 @@ class PubSub2DModule : public Module2D {
 
   class CommandKnock : public Command {
    public:
-    CommandKnock(PubSub2DModule& parent_, uint64_t uid_);
+    CommandKnock(Pubsub2DModule& parent_, uint64_t uid_);
 
     void on_error(const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
     void on_success(std::unique_ptr<const Packet> packet) override;
 
    private:
-    PubSub2DModule& parent;
+    Pubsub2DModule& parent;
     const uint64_t uid;
   };
 
   class CommandPass : public Command {
    public:
     CommandPass(
-        PubSub2DModule& parent_, uint64_t uid_, const std::function<void()>& cb_on_success_,
+        Pubsub2DModule& parent_, uint64_t uid_, const std::function<void()>& cb_on_success_,
         const std::function<void(Exception::Code)>& cb_on_failure_);
 
     void on_error(const std::string& message) override;
@@ -94,7 +94,7 @@ class PubSub2DModule : public Module2D {
     void on_success(std::unique_ptr<const Packet> packet) override;
 
    private:
-    PubSub2DModule& parent;
+    Pubsub2DModule& parent;
     const uint64_t uid;
     const std::function<void()> cb_on_success;
     const std::function<void(Exception::Code)> cb_on_failure;

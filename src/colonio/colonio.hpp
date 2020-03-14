@@ -32,7 +32,7 @@ class Colonio {
   virtual ~Colonio();
 
   Map& access_map(const std::string& name);
-  PubSub2D& access_pubsub2d(const std::string& name);
+  Pubsub2D& access_pubsub_2d(const std::string& name);
   void connect(const std::string& url, const std::string& token);
   void disconnect();
   std::string get_local_nid();

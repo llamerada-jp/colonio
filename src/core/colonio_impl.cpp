@@ -22,7 +22,7 @@
 #include "coord_system_sphere.hpp"
 #include "logger.hpp"
 #include "map_paxos/map_paxos_api.hpp"
-#include "pubsub_2d/pubsub2d_api.hpp"
+#include "pubsub_2d/pubsub_2d_api.hpp"
 #include "routing_1d.hpp"
 #include "scheduler.hpp"
 #include "utils.hpp"
@@ -308,8 +308,8 @@ void ColonioImpl::initialize_algorithms() {
     module->set_name(name);
 
     if (type == "pubsub2D") {
-      PubSub2DAPI::make_entry(context, api_bundler, api_delegate, module_bundler, module_config);
-      module->set_type(api::colonio::ConnectReply_ModuleType_PUBSUB2D);
+      Pubsub2DAPI::make_entry(context, api_bundler, api_delegate, module_bundler, module_config);
+      module->set_type(api::colonio::ConnectReply_ModuleType_PUBSUB_2D);
 
     } else if (type == "mapPaxos") {
       MapPaxosAPI::make_entry(context, api_bundler, api_delegate, module_bundler, module_config);

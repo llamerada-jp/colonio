@@ -13,17 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "pubsub2d_impl.hpp"
+#include "pubsub_2d_impl.hpp"
 
 #include "value_impl.hpp"
 
 namespace colonio {
-PubSub2DImpl::PubSub2DImpl(APIGate& api_gate_, APIChannel::Type channel_) : api_gate(api_gate_), channel(channel_) {
+Pubsub2DImpl::Pubsub2DImpl(APIGate& api_gate_, APIChannel::Type channel_) : api_gate(api_gate_), channel(channel_) {
   api_gate.set_event_hook(channel, [this](const api::Event& e) {
     switch (e.param_case()) {
       case api::Event::ParamCase::kPubsub2DOn: {
-        const api::pubsub2d::OnEvent& o = e.pubsub2d_on();
-        auto it                         = subscribers.find(o.name());
+        const api::pubsub_2d::OnEvent& o = e.pubsub_2d_on();
+        auto it                          = subscribers.find(o.name());
         if (it != subscribers.end()) {
           it->second(ValueImpl::from_pb(o.value()));
         }
@@ -36,9 +36,9 @@ PubSub2DImpl::PubSub2DImpl(APIGate& api_gate_, APIChannel::Type channel_) : api_
   });
 }
 
-void PubSub2DImpl::publish(const std::string& name, double x, double y, double r, const Value& value, uint32_t opt) {
+void Pubsub2DImpl::publish(const std::string& name, double x, double y, double r, const Value& value, uint32_t opt) {
   api::Call call;
-  api::pubsub2d::Publish* api = call.mutable_pubsub2d_publish();
+  api::pubsub_2d::Publish* api = call.mutable_pubsub_2d_publish();
   api->set_name(name);
   api->set_x(x);
   api->set_y(y);
@@ -52,11 +52,11 @@ void PubSub2DImpl::publish(const std::string& name, double x, double y, double r
   }
 }
 
-void PubSub2DImpl::on(const std::string& name, const std::function<void(const Value&)>& subscriber) {
+void Pubsub2DImpl::on(const std::string& name, const std::function<void(const Value&)>& subscriber) {
   subscribers.insert(std::make_pair(name, subscriber));
 }
 
-void PubSub2DImpl::off(const std::string& name) {
+void Pubsub2DImpl::off(const std::string& name) {
   auto it = subscribers.find(name);
   if (it != subscribers.end()) {
     subscribers.erase(it);
