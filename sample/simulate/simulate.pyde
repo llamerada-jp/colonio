@@ -20,7 +20,7 @@ NODES_NUM = 30
 MAP_CIRCLE_R  = 350
 NODE_RECT_W = 10
 VALUE_CIRCLE_R = 350
-COMMAND = '/Users/llamerada/develop/colonio/build/vscode/sample/simulate'
+COMMAND = '/Users/llamerada/develop/colonio/build/Darwin/sample/simulate'
 RANDOM_KILL_RATE = 0
 # COMMAND = ['valgrind', '--leak-check=full', COMMAND]
 
@@ -134,7 +134,7 @@ def drawSelectedProp():
             else:
                 fill(255, 0, 0)
             text(nid_text, WINDOW_WIDTH - 320 + 10, 48 + 16 * i)
-    
+
 def drawNodes1D():
     if selected_nid == None or not selected_nid in node_infos:
         for nid, info in node_infos.items():
@@ -305,7 +305,7 @@ def outputNode(proc):
             outputLog(str(proc.pid) + ":" + line)
         else:
             break
-    
+
 def createNode():
     global create_count
     proc = subprocess.Popen(COMMAND,

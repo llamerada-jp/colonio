@@ -1,0 +1,37 @@
+{
+    "revision": 20181215.1,
+    "host": "",
+    "port": 8080,
+    "path": "/ws/simulate",
+    "pingInterval": 10000,
+    "timeout": 30000,
+    "node": {
+        "nodeAccessor": {
+            "packetSize": 8192,
+            "bufferInterval": 200
+        },
+        "iceServers": [
+            {
+                "urls": [
+                    "stun:ik1-306-13451.vs.sakura.ne.jp:3478"
+                ],
+                "username": "cat",
+                "credential": "mewmew"
+            }
+        ],
+        "routing": {
+            "updatePeriod": 500,
+            "forceUpdateTimes": 20
+        },
+        "coordSystem2D": {
+            "type": "sphere",
+            "radius": 6378137
+        },
+        "modules": {
+            "map": {
+                "type": "mapPaxos",
+                "channel": 256
+            }
+        }
+    }
+}

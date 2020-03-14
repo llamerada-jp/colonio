@@ -29,6 +29,8 @@
 #include <ctime>
 #include <random>
 #include <sstream>
+#include <map>
+#include <mutex>
 
 #include "colonio/colonio.hpp"
 
@@ -53,6 +55,9 @@ bool is_running  = true;
 int64_t val_set1 = 0;
 int64_t val_set2 = 0;
 
+std::mutex mtx_debug;
+std::map<std::string, std::string> debug_infos;
+
 #define redis_command(cmd, ...)                                                        \
   {                                                                                    \
     redisReply* r = reinterpret_cast<redisReply*>(redisCommand(rc, cmd, __VA_ARGS__)); \
@@ -61,24 +66,19 @@ int64_t val_set2 = 0;
     }                                                                                  \
   }
 
-void on_success(colonio::Colonio& colonio);
-void on_failure(colonio::Colonio& colonio);
 void on_debug_event(colonio::DebugEvent::Type type, const std::string& json_str);
 
 void on_timer(uv_timer_t* handle);
-void on_map_get(const colonio::Value& value);
 void on_map_set();
-void on_map_get_failure(colonio::Exception::Code reason);
-void on_map_set_failure(colonio::Exception::Code reason);
+void on_map_set_failure(const colonio::Exception& reason);
 
 class MyColonio : public colonio::Colonio {
  public:
   void on_output_log(colonio::LogLevel::Type level, const std::string& message) override {
-    time_t now = time(nullptr);
     if (level == colonio::LogLevel::INFO) {
-      std::cout << ctime(&now) << " - " << message << std::endl;
+      std::cout << message << std::endl;
     } else {
-      std::cerr << ctime(&now) << " - " << message << std::endl;
+      std::cerr << message << std::endl;
     }
   }
 
@@ -88,35 +88,25 @@ class MyColonio : public colonio::Colonio {
 };
 std::unique_ptr<MyColonio> my_colonio;
 
-void on_success(colonio::Colonio& colonio) {
-  redis_command("HSET inits %s %s", std::to_string(getpid()).c_str(), colonio.get_local_nid().c_str());
-  is_online = true;
-  map       = &(my_colonio->access_map("map"));
-
-  is_running = false;
-
-  //*
-  lon        = rand_lon(mt);
-  lat        = rand_lat(mt);
-  target_lon = rand_lon(mt);
-  target_lat = rand_lat(mt);
-  my_colonio->set_position(M_PI * lon / 180.0, M_PI * lat / 180.0);
-  //*/
-}
-
-void on_failure(colonio::Colonio& colonio) {
-  my_colonio->disconnect();
-  is_online = false;
-}
+static const char* DB_KEY[] = {"map_set",    "links",      "nexts",   "position",
+                               "required1d", "required2d", "known1d", "known2d"};
 
 void on_debug_event(colonio::DebugEvent::Type type, const std::string& json_str) {
-  static const char* DB_KEY[] = {"map_set",    "links",      "nexts",   "position",
-                                 "required1d", "required2d", "known1d", "known2d"};
   assert(type <= 7);
-  redis_command("HSET %s %s %s", DB_KEY[type], my_colonio->get_local_nid().c_str(), json_str.c_str());
+  std::lock_guard<std::mutex> lock(mtx_debug);
+  debug_infos[DB_KEY[type]] = json_str;
 }
 
 void on_timer(uv_timer_t* handle) {
+  std::string local_nid = my_colonio->get_local_nid();
+  {
+    std::lock_guard<std::mutex> lock(mtx_debug);
+    for (auto& it : debug_infos) {
+      redis_command("HSET %s %s %s", it.first.c_str(), local_nid.c_str(), it.second.c_str());
+    }
+    debug_infos.clear();
+  }
+
   time_t rawtime = time(nullptr);
   tm* timeinfo   = localtime(&rawtime);
   char buffer[80];
@@ -132,8 +122,13 @@ void on_timer(uv_timer_t* handle) {
   val_set1++;
   std::cout << now_str << " map set:" << val_set1 << std::endl;
   assert(false);
-  // TODO
-  // map->set(colonio::Value(my_colonio->get_local_nid()), colonio::Value(val_set1), on_map_set, on_map_set_failure);
+
+  try {
+    map->set(colonio::Value(my_colonio->get_local_nid()), colonio::Value(val_set1));
+    on_map_set();
+  } catch (const colonio::Exception& ex) {
+    on_map_set_failure(ex);
+  }
 
   //*
   if (mt() % 100 == 0) {
@@ -148,40 +143,30 @@ void on_timer(uv_timer_t* handle) {
   //*/
 }
 
-void on_map_get(const colonio::Value& value) {
-  int64_t val = value.get<int64_t>();
-  if (val == val_set2) {
-    std::cout << now_str << " map get success:" << val << std::endl;
-  } else {
-    std::cout << now_str << " map get wrong:" << val << " != " << val_set2 << std::endl;
-  }
-  /*
-  val_set1 ++;
-  std::cout << now_str << " map set:" << val_set1 << std::endl;
-  map->set(colonio::Value(my_colonio->get_local_nid()), colonio::Value(val_set1),
-           on_map_set, on_map_set_failure);
-  /*/
-  is_running = false;
-  //*/
-}
-
 void on_map_set() {
   std::cout << now_str << " map set success:" << val_set1 << std::endl;
   val_set2 = val_set1;
   std::cout << now_str << " map get" << std::endl;
   assert(false);
-  // TODO
-  // map->get(colonio::Value(my_colonio->get_local_nid()), on_map_get, on_map_get_failure);
+  try {
+    colonio::Value value = map->get(colonio::Value(my_colonio->get_local_nid()));
+    int64_t val          = value.get<int64_t>();
+
+    if (val == val_set2) {
+      std::cout << now_str << " map get success:" << val << std::endl;
+    } else {
+      std::cout << now_str << " map get wrong:" << val << " != " << val_set2 << std::endl;
+    }
+
+    is_running = false;
+  } catch (const colonio::Exception& ex) {
+    std::cout << now_str << " map get failure:" << ex.message << " : " << static_cast<int>(ex.code) << std::endl;
+    is_running = false;
+  }
 }
 
-void on_map_get_failure(colonio::Exception::Code reason) {
-  std::cout << now_str << " map get failure:" << static_cast<int>(reason) << std::endl;
-  is_running = false;
-  // assert(false);
-}
-
-void on_map_set_failure(colonio::Exception::Code reason) {
-  std::cout << now_str << " map set failure:" << static_cast<int>(reason) << std::endl;
+void on_map_set_failure(const colonio::Exception& ex) {
+  std::cout << now_str << " map set failure:" << static_cast<int>(ex.code) << std::endl;
   std::cout << now_str << " map set:" << val_set1 << std::endl;
   is_running = false;
   // assert(false);
@@ -200,9 +185,25 @@ int main(int argc, char* argv[]) {
   rc = redisConnect(REDIS_HOST.c_str(), REDIS_PORT);
 
   // colonio
-  my_colonio = std::make_unique<MyColonio>();
-  my_colonio->connect(SERVER_URL, "");
-  on_success(*my_colonio);
+  try {
+    my_colonio = std::make_unique<MyColonio>();
+    my_colonio->connect(SERVER_URL, "");
+    redis_command("HSET inits %s %s", std::to_string(getpid()).c_str(), my_colonio->get_local_nid().c_str());
+    is_online = true;
+    map       = &(my_colonio->access_map("map"));
+
+    is_running = false;
+
+    lon        = rand_lon(mt);
+    lat        = rand_lat(mt);
+    target_lon = rand_lon(mt);
+    target_lat = rand_lat(mt);
+    my_colonio->set_position(M_PI * lon / 180.0, M_PI * lat / 180.0);
+
+  } catch (const colonio::Exception& ex) {
+    my_colonio->disconnect();
+    is_online = false;
+  }
 
   // libuv for timer
   is_running = true;
