@@ -70,7 +70,8 @@ void ModuleBundler::on_recv_packet(std::unique_ptr<const Packet> packet) {
     module->second->on_recv_packet(std::move(packet));
   } else {
     colonio_throw(
-        Exception::Code::INCORRECT_DATA_FORMAT, "Received incorrect packet entry", Utils::dump_packet(*packet).c_str());
+#warning dump-packet
+        Exception::Code::INCORRECT_DATA_FORMAT, "received incorrect packet entry", Utils::dump_packet(*packet).c_str());
   }
 }
 

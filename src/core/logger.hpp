@@ -15,12 +15,17 @@
  */
 #pragma once
 
+#include <memory>
 #include <string>
 
 #include "definition.hpp"
 #include "utils.hpp"
 
 namespace colonio {
+class NodeID;
+class Packet;
+class Value;
+
 class Logger;
 /**
  * LoggerDelegate is a delegate for Logger.
@@ -45,30 +50,55 @@ class LoggerDelegate {
  */
 class Logger {
  public:
+  class L {
+   public:
+    L(Logger& logger_, const std::string file_, unsigned long line_, LogLevel::Type level_,
+      const std::string& message_);
+    virtual ~L();
+    L& map(const std::string& name, const std::string& value);
+    L& map(const std::string& name, const NodeID& value);
+    L& map(const std::string& name, const Packet& value);
+    L& map(const std::string& name, const Value& value);
+    L& map_bool(const std::string& name, bool value);
+    L& map_dump(const std::string& name, const std::string& value);
+    L& map_float(const std::string& name, double value);
+    L& map_int(const std::string& name, int64_t value);
+    L& map_u32(const std::string& name, uint32_t value);
+    L& map_u64(const std::string& name, uint64_t value);
+
+   private:
+    Logger& logger;
+    std::string file;
+    unsigned long line;
+    LogLevel::Type level;
+    const std::string message;
+    picojson::object params;
+  };
+
   Logger(LoggerDelegate& delegate_);
   virtual ~Logger();
 
-  void output(const std::string& file, unsigned long line, LogLevel::Type level, const std::string& message);
+  L create(const std::string& file, unsigned long line, LogLevel::Type level, const std::string& message);
 
  private:
   LoggerDelegate& delegate;
 };
 
 #define logi(FORMAT, ...) \
-  this->context.logger.output(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+  this->context.logger.create(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 #define logI(INSTANCE, FORMAT, ...) \
-  (INSTANCE).logger.output(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+  (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 #define loge(FORMAT, ...) \
-  this->context.logger.output(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+  this->context.logger.create(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 #define logE(INSTANCE, FORMAT, ...) \
-  (INSTANCE).logger.output(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+  (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 #ifndef NDEBUG
 #  define logd(FORMAT, ...) \
-    this->context.logger.output(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+    this->context.logger.create(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 #  define logD(INSTANCE, FORMAT, ...) \
-    (INSTANCE).logger.output(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+    (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 #else
 inline void do_nothing() {

@@ -163,13 +163,13 @@ void APIGateMultiThread::loop_event() {
         if (it_map != map_event.end()) {
           it_map->second(*event);
         } else {
-          logE(*this, "send event for channel not set:%d", event->channel());
+          logE(*this, "send event for channel not set").map_u32("channel", event->channel());
           assert(false);
         }
       }
 
     } catch (const std::exception& ex) {
-      logE(*this, "exception what():%s", ex.what());
+      logE(*this, "exception").map("message", ex.what());
       exit(EXIT_FAILURE);
     }
   }
@@ -198,17 +198,23 @@ void APIGateMultiThread::loop_controller() {
         try {
           controller.call(*call);
         } catch (const FatalException& ex) {
-          logE(controller, "fatal exception %s:%d: %s", ex.file.c_str(), ex.line, ex.message.c_str());
+          logE(controller, "fatal exception")
+              .map("file", ex.file.c_str())
+              .map_int("line", ex.line)
+              .map("message", ex.message.c_str());
           reply_failure(call->id(), ex.code, ex.message);
           // TODO stop
           return;
 
         } catch (const InternalException& ex) {
-          logE(controller, "internal exception %s:%d: %s", ex.file.c_str(), ex.line, ex.message.c_str());
+          logE(controller, "internal exception")
+              .map("file", ex.file.c_str())
+              .map_int("line", ex.line)
+              .map("message", ex.message.c_str());
           reply_failure(call->id(), ex.code, ex.message);
 
         } catch (const std::exception& ex) {
-          logE(controller, "exception what():%s", ex.what());
+          logE(controller, "exception").map("message", ex.what());
           reply_failure(call->id(), Exception::Code::UNDEFINED, ex.what());
           // TODO stop
           return;
@@ -225,15 +231,21 @@ void APIGateMultiThread::loop_controller() {
       }
 
     } catch (const FatalException& ex) {
-      logE(controller, "fatal exception %s:%d: %s", ex.file.c_str(), ex.line, ex.message.c_str());
+      logE(controller, "fatal exception")
+          .map("file", ex.file.c_str())
+          .map_int("line", ex.line)
+          .map("message", ex.message.c_str());
       // TODO stop
       return;
 
     } catch (const InternalException& ex) {
-      logE(controller, "internal exception %s:%d: %s", ex.file.c_str(), ex.line, ex.message.c_str());
+      logE(controller, "internal exception")
+          .map("file", ex.file.c_str())
+          .map_int("line", ex.line)
+          .map("message", ex.message.c_str());
 
     } catch (const std::exception& ex) {
-      logE(controller, "exception what():%s", ex.what());
+      logE(controller, "exception").map("message", ex.what());
       // TODO stop
       return;
     }

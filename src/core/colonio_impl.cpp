@@ -209,11 +209,11 @@ void ColonioImpl::api_connect(uint32_t id, const api::colonio::Connect& param) {
   const std::string& token = param.token();
 
   if (context.link_status != LinkStatus::OFFLINE && context.link_status != LinkStatus::CLOSING) {
-    loge("Duplicate connection.");
+    loge("duplicate connection.");
     return;
 
   } else {
-    logi("Connect start.(url=%s)", url.c_str());
+    logi("connect start").map("url", url.c_str());
   }
 
   api_connect_id = id;
@@ -282,7 +282,6 @@ void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition&
 void ColonioImpl::check_api_connect() {
   if (api_connect_id != 0 && context.link_status == LinkStatus::ONLINE && api_connect_reply) {
     assert(seed_accessor->get_auth_status() == AuthStatus::SUCCESS);
-    logi("Connect success.");
 
     std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
     reply->set_id(api_connect_id);
@@ -324,9 +323,11 @@ void ColonioImpl::initialize_algorithms() {
 }
 
 void ColonioImpl::on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status) {
-  logd(
-      "seed(%d) node(%d) auth(%d) onlyone(%d)", seed_status, node_status, seed_accessor->get_auth_status(),
-      seed_accessor->is_only_one());
+  logd("")
+      .map_int("seed", seed_status)
+      .map_int("node", node_status)
+      .map_int("auth", seed_accessor->get_auth_status())
+      .map_bool("onlyone", seed_accessor->is_only_one());
 
   assert(seed_status != LinkStatus::CLOSING);
   assert(node_status != LinkStatus::CLOSING);
@@ -363,7 +364,7 @@ void ColonioImpl::on_change_accessor_status(LinkStatus::Type seed_status, LinkSt
     status = LinkStatus::OFFLINE;
 
   } else if (seed_accessor->get_auth_status() == AuthStatus::FAILURE) {
-    loge("Connect failure.");
+    loge("connect failure");
     if (api_connect_id != 0) {
       api_failure(api_connect_id, Exception::Code::OFFLINE, "Connect failure.");
       api_connect_id = 0;
@@ -407,12 +408,8 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
   assert(routing);
   NodeID dst_nid = routing->get_relay_nid_1d(*packet);
 
-#ifndef NDEBUG
-  std::string dump = Utils::dump_packet(*packet);
-#endif
-
   if (dst_nid == NodeID::THIS || dst_nid == context.local_nid) {
-    // logd("Recv.(packet=%s)", dump.c_str());
+    logd("receive packet").map("packet", *packet);
     // Pass a packet to the target module.
     const Packet* p = packet.get();
     packet.release();
@@ -427,18 +424,25 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
 
   } else if (!dst_nid.is_special() || dst_nid == NodeID::NEXT) {
     NodeID src_nid = packet->src_nid;
+#ifndef NDEBUG
+    const Packet copy = *packet;
+#endif
     if (node_accessor->relay_packet(dst_nid, std::move(packet))) {
+#ifndef NDEBUG
       if (src_nid == context.local_nid) {
-        logd("Send.(dst=%s packet=%s)", dst_nid.to_str().c_str(), dump.c_str());
+        logd("send packet").map("dst", dst_nid).map("packet", copy);
       } else {
-        logd("Relay.(dst=%s packet=%s)", dst_nid.to_str().c_str(), dump.c_str());
+        logd("relay packet").map("dst", dst_nid).map("packet", copy);
       }
+#endif
       return;
     }
   }
 
   node_accessor->update_link_status();
 
-  logd("drop packet %s\n", dump.c_str());
+  if (packet) {
+    logd("drop packet").map("packet", *packet);
+  }
 }
 }  // namespace colonio

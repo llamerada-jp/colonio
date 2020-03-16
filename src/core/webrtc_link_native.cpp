@@ -132,7 +132,7 @@ WebrtcLinkNative::~WebrtcLinkNative() {
 }
 
 void WebrtcLinkNative::disconnect() {
-  logd("Disconnect.(nid=%s)", nid.to_str().c_str());
+  logd("disconnect").map("nid", nid);
 
   init_data.reset();
   if (peer_connection != nullptr) {
@@ -274,7 +274,7 @@ void WebrtcLinkNative::on_change_status() {
 
   LinkStatus::Type status = get_status();
   if (status != prev_status) {
-    logd("Change status.(nid=%s, %d -> %d)", nid.to_str().c_str(), prev_status, status);
+    logd("change status").map("nid", nid).map_int("before", prev_status).map_int("after", status);
     prev_status = status;
     delegate.webrtc_link_on_change_stateus(*this, status);
   }

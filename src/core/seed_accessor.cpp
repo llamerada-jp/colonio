@@ -142,11 +142,11 @@ void SeedAccessor::relay_packet(std::unique_ptr<const Packet> packet) {
 
     std::string packet_bin;
     packet_sa.SerializeToString(&packet_bin);
-    // logd("Binary to seed. size:%d data:%s", packet_bin.size(), Utils::dump_binary(packet_bin).c_str());
+    logd("binary to seed").map_int("size", packet_bin.size()).map_dump("data", packet_bin);
     link->send(packet_bin);
 
   } else {
-    // logd("Reject relaying packet to seed. %s", Utils::dump_packet(*packet).c_str());
+    logd("reject relaying packet to seed").map("packet", *packet);
   }
 }
 
@@ -206,7 +206,7 @@ void SeedAccessor::seed_link_on_recv(SeedLinkBase& link, const std::string& data
   }
 
   std::shared_ptr<const std::string> content(new std::string(packet_pb.content()));
-  logd("packet size ? :%d", packet_pb.content().size());
+  logd("packet size").map_int("size", packet_pb.content().size());
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
       Packet{NodeID::from_pb(packet_pb.dst_nid()), NodeID::from_pb(packet_pb.src_nid()), packet_pb.id(), content,
              static_cast<PacketMode::Type>(packet_pb.mode()), static_cast<APIChannel::Type>(packet_pb.channel()),

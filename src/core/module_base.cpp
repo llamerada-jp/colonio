@@ -268,7 +268,7 @@ void ModuleBase::on_persec() {
       if (Utils::get_current_msec() - container.send_time > PACKET_RETRY_INTERVAL) {
         if (container.retry_count > PACKET_RETRY_COUNT_MAX) {
           // error
-          logd("Command timeout. (id=%s)", Convert::int2str(container.packet_id).c_str());
+          logd("command timeout").map_u32("id", container.packet_id);
           on_errors.insert(std::move(container.command));
           it = containers.erase(it);
           continue;

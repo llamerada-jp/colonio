@@ -69,7 +69,7 @@ void NodeAccessor::connect_link(const NodeID& nid) {
     }
   }
 
-  logd("Connect a link.(nid=%s)", nid.to_str().c_str());
+  logd("connect a link").map("nid", nid);
 
   WebrtcLink* link          = create_link(true);
   link->nid                 = nid;
@@ -87,7 +87,7 @@ void NodeAccessor::connect_init_link() {
   assert(!first_link);
   // assert(links.empty()); containing closeing links.
 
-  logd("Connect init link.(local_nid=%s)", context.local_nid.to_str().c_str());
+  logd("connect init link").map("local_nid", context.local_nid);
 
   first_link_try_count = 0;
   create_first_link();
@@ -96,11 +96,11 @@ void NodeAccessor::connect_init_link() {
 void NodeAccessor::connect_random_link() {
   // If connecting random link yet, do nothing.
   if (random_link || first_link) {
-    logd("Connect random (ignore).");
+    logd("connect random (ignore)");
     return;
 
   } else {
-    logd("Connect random (start).");
+    logd("connect random (start)");
   }
 
   random_link.reset(create_link(true));
@@ -159,7 +159,7 @@ void NodeAccessor::disconnect_link(const NodeID& nid) {
     return;
   }
 
-  logd("Disconnect link.(nid=%s)", nid.to_str().c_str());
+  logd("disconnect link").map("nid", nid);
 
   WebrtcLink* link = it->second.get();
   link->disconnect();
@@ -181,7 +181,7 @@ bool NodeAccessor::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Pac
   assert(dst_nid != NodeID::SEED);
   assert(dst_nid != NodeID::THIS);
   if (get_status() != LinkStatus::ONLINE) {
-    logd("drop packet:%s", Utils::dump_packet(*packet).c_str());
+    logd("drop packet").map("packet", *packet);
     return false;
   }
 
@@ -199,7 +199,7 @@ bool NodeAccessor::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Pac
 
   } else {
     if (links.find(dst_nid) == links.end()) {
-      logd("drop packet:%s", Utils::dump_packet(*packet).c_str());
+      logd("drop packet").map("packet", *packet);
       return false;
 
     } else {
@@ -307,7 +307,7 @@ void NodeAccessor::CommandOffer::on_error(const std::string& message) {
 
     } else {
       // Maybe timeouted.
-      logD(accessor.context, "Timeout?");
+      logD(accessor.context, "timeout?");
       return;
     }
   }
@@ -336,7 +336,7 @@ void NodeAccessor::module_process_command(std::unique_ptr<const Packet> packet) 
 }
 
 void NodeAccessor::webrtc_link_on_change_stateus(WebrtcLink& link, LinkStatus::Type link_status) {
-  logd("Change status. (status=%d)", link_status);
+  logd("change status").map_int("status", link_status);
 
   update_link_status();
   delegate.node_accessor_on_change_status(*this, get_status());

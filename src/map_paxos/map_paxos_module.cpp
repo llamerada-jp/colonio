@@ -70,7 +70,7 @@ MapPaxosModule::CommandGet::CommandGet(std::shared_ptr<Info> info_) :
 }
 
 void MapPaxosModule::CommandGet::on_error(const std::string& message) {
-  logD(info->parent.context, "Error on packet of 'get'.(message=%s)", message.c_str());
+  logD(info->parent.context, "error on packet of 'get'").map("message", message);
   info->count_ng += 1;
 
   postprocess();
@@ -112,7 +112,7 @@ void MapPaxosModule::CommandGet::postprocess() {
   }
 
   if (ok_sum + info->count_ng == NUM_ACCEPTOR) {
-    logD(info->parent.context, "map get retry(%d/%d, sum:%d)", info->count_retry, info->parent.CONF_RETRY_MAX, ok_sum);
+    logD(info->parent.context, "map get retry").map_int("count", info->count_retry).map_int("sum", ok_sum);
     info->is_finished = true;
 
     if (ok_sum == 0) {
@@ -169,7 +169,7 @@ MapPaxosModule::CommandSet::CommandSet(std::unique_ptr<MapPaxosModule::CommandSe
 }
 
 void MapPaxosModule::CommandSet::on_error(const std::string& message) {
-  logD(info->parent.context, "Error on packet of 'set'.(message=%s)", message.c_str());
+  logD(info->parent.context, "error on packet of 'set'").map("message", message);
   info->cb_on_failure(Exception::Code::SYSTEM_ERROR);
 }
 
@@ -228,7 +228,7 @@ MapPaxosModule::CommandPrepare::CommandPrepare(std::shared_ptr<MapPaxosModule::C
 }
 
 void MapPaxosModule::CommandPrepare::on_error(const std::string& message) {
-  logD(info->parent.context, "Error on packet of 'prepare'.(message=%s)", message.c_str());
+  logD(info->parent.context, "error on packet of 'prepare'").map("message", message);
   info->replys.push_back(Reply(NodeID::NONE, 0, 0, false));
 
   postprocess();
@@ -356,7 +356,7 @@ MapPaxosModule::CommandAccept::CommandAccept(std::shared_ptr<MapPaxosModule::Com
 }
 
 void MapPaxosModule::CommandAccept::on_error(const std::string& message) {
-  logD(info->parent.context, "Error on packet of 'accept'.(message=%s)", message.c_str());
+  logD(info->parent.context, "error on packet of 'accept'").map("message", message);
   info->replys.push_back(Reply(NodeID::NONE, 0, 0, false));
 
   postprocess();
@@ -603,7 +603,7 @@ void MapPaxosModule::recv_packet_accept(std::unique_ptr<const Packet> packet) {
 
     } else {
       // ignore
-      logd("Receive 'accept' packet at wrong node.(key=%s)", ValueImpl::to_str(key).c_str());
+      logd("receive 'accept' packet at wrong node").map("key", key);
       return;
     }
   }
@@ -656,19 +656,19 @@ void MapPaxosModule::recv_packet_hint(std::unique_ptr<const Packet> packet) {
     }
     // Same logic with set command.
     if (proposer.reset) {
-      logd("Prepare.(id=%s)", Convert::int2str(packet->id).c_str());
+      logd("prepare").map_u32("id", packet->id);
       send_packet_prepare(
           proposer, ModuleBase::copy_packet_for_reply(*packet), std::make_unique<Value>(key), MapOption::NONE);
 
     } else {
-      logd("Accept.(id=%s)", Convert::int2str(packet->id).c_str());
+      logd("accept").map_u32("id", packet->id);
       send_packet_accept(
           proposer, ModuleBase::copy_packet_for_reply(*packet), std::make_unique<Value>(key), MapOption::NONE);
     }
 
   } else {
     // ignore
-    logd("Receive 'hint' packet at wrong node.(key=%s)", ValueImpl::to_str(key).c_str());
+    logd("receive 'hint' packet at wrong node").map("key", key);
     return;
   }
 }
@@ -764,7 +764,7 @@ void MapPaxosModule::recv_packet_prepare(std::unique_ptr<const Packet> packet) {
 
     } else {
       // ignore
-      logd("Receive 'prepare' packet at wrong node.(key=%s)", ValueImpl::to_str(key).c_str());
+      logd("receive 'prepare' packet at wrong node").map("key", key);
       return;
     }
   }
@@ -812,7 +812,7 @@ void MapPaxosModule::recv_packet_set(std::unique_ptr<const Packet> packet) {
 
     } else {
       // ignore
-      logd("Receive 'set' packet at wrong node.(key=%s)", ValueImpl::to_str(key).c_str());
+      logd("receive 'set' packet at wrong node").map("key", key);
       return;
     }
   }

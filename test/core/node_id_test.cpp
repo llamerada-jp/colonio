@@ -59,7 +59,7 @@ TEST(NodeIDTest, str) {
     const NodeID out02 = NodeID::from_str("0123456789abcdef0123456789ABCDEZ");
   } catch (InternalException& e) {
     has_error = true;
-    EXPECT_STREQ(e.what(), "Illegal node-id string. (string : 0123456789abcdef0123456789ABCDEZ)");
+    EXPECT_STREQ(e.what(), "illegal node-id string. (string : 0123456789abcdef0123456789ABCDEZ)");
   }
   EXPECT_EQ(has_error, true);
 
@@ -68,7 +68,7 @@ TEST(NodeIDTest, str) {
     const NodeID out02 = NodeID::from_str("Z123456789abcdef0123456789ABCDE");
   } catch (InternalException& e) {
     has_error = true;
-    EXPECT_STREQ(e.what(), "Illegal node-id string. (string : Z123456789abcdef0123456789ABCDE)");
+    EXPECT_STREQ(e.what(), "illegal node-id string. (string : Z123456789abcdef0123456789ABCDE)");
   }
   EXPECT_EQ(has_error, true);
 }
@@ -113,7 +113,7 @@ TEST(NodeIDTest, pb) {
 
   } catch (InternalException& e) {
     has_error = true;
-    EXPECT_STREQ(e.what(), "Illegal node-id type in Protocol Buffers. (type : 5)");
+    EXPECT_STREQ(e.what(), "illegal node-id type in Protocol Buffers. (type : 5)");
   }
   EXPECT_EQ(has_error, true);
 }

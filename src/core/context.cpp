@@ -56,7 +56,7 @@ void Context::set_local_position(const Coordinate& pos) {
   Coordinate new_local_position = coord_system->get_local_position();
 
   if (prev_local_position.x != new_local_position.x || prev_local_position.y != new_local_position.y) {
-    logI((*this), "Change my position.(x=%f, y=%f)", new_local_position.x, new_local_position.y);
+    logI((*this), "change local position").map_float("x", new_local_position.x).map_float("y", new_local_position.y);
 
     for (auto& it : funcs_on_change_local_position) {
       it(new_local_position);
