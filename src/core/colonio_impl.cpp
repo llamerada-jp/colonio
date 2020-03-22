@@ -399,8 +399,11 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
       return;
 
     } else if (packet->src_nid == context.local_nid) {
-      assert(seed_status == LinkStatus::ONLINE);
-      seed_accessor->relay_packet(std::move(packet));
+      if (seed_status == LinkStatus::ONLINE) {
+        seed_accessor->relay_packet(std::move(packet));
+      } else {
+        logi("drop packet").map("packet", *packet);
+      }
       return;
     }
   }

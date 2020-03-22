@@ -16,8 +16,8 @@
 #pragma once
 
 #include <condition_variable>
-#include <memory>
 #include <deque>
+#include <memory>
 #include <thread>
 
 #include "api_gate.hpp"

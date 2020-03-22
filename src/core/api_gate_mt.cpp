@@ -26,7 +26,6 @@
 namespace colonio {
 
 APIGateMultiThread::APIGateMultiThread() :
-    APIGateBase(*this),
     controller(*this),
     que_event(std::make_unique<std::deque<std::unique_ptr<api::Event>>>()),
     tp(std::chrono::steady_clock::now()) {
@@ -135,6 +134,7 @@ void APIGateMultiThread::loop_event() {
   std::unique_ptr<std::deque<std::unique_ptr<api::Event>>> events =
       std::make_unique<std::deque<std::unique_ptr<api::Event>>>();
 
+  logI(*this, "start event loop");
   while (true) {
     try {
       if (events->empty()) {
