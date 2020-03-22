@@ -75,6 +75,49 @@ class Logger {
     picojson::object params;
   };
 
+  class D {
+   public:
+    D& map(const std::string& name, const std::string& value) {
+      return *this;
+    }
+
+    D& map(const std::string& name, const NodeID& value) {
+      return *this;
+    }
+
+    D& map(const std::string& name, const Packet& value) {
+      return *this;
+    }
+
+    D& map(const std::string& name, const Value& value) {
+      return *this;
+    }
+
+    D& map_bool(const std::string& name, bool value) {
+      return *this;
+    }
+
+    D& map_dump(const std::string& name, const std::string& value) {
+      return *this;
+    }
+
+    D& map_float(const std::string& name, double value) {
+      return *this;
+    }
+
+    D& map_int(const std::string& name, int64_t value) {
+      return *this;
+    }
+
+    D& map_u32(const std::string& name, uint32_t value) {
+      return *this;
+    }
+
+    D& map_u64(const std::string& name, uint64_t value) {
+      return *this;
+    }
+  };
+
   Logger(LoggerDelegate& delegate_);
   virtual ~Logger();
 
@@ -101,9 +144,7 @@ class Logger {
     (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 #else
-inline void do_nothing() {
-}
-#  define logd(...) do_nothing()
-#  define logD(...) do_nothing()
+#  define logd(...) Logger::D()
+#  define logD(...) Logger::D()
 #endif
 }  // namespace colonio
