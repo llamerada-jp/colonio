@@ -35,6 +35,7 @@ import (
 
 type ConfigNodeAccessor struct {
 	BufferInterval *uint32 `json:"bufferInterval,omitempty"`
+	HopCountMax    *uint32 `json:"hopCountMax,omitempty"`
 	PacketSize     *uint32 `json:"packetSize,omitempty"`
 }
 
@@ -717,6 +718,7 @@ func (link *Link) sendHint(context *context) error {
 	packet := &proto.SeedAccessor{
 		DstNid:        link.nid,
 		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
+		HopCount:      0,
 		Id:            0,
 		Mode:          ModeExplicit | ModeOneWay,
 		Channel:       ChannelColonio,
@@ -733,6 +735,7 @@ func (link *Link) sendPing(context *context) error {
 	packet := &proto.SeedAccessor{
 		DstNid:        link.nid,
 		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
+		HopCount:      0,
 		Id:            0,
 		Mode:          ModeExplicit | ModeOneWay,
 		Channel:       ChannelColonio,
@@ -748,6 +751,7 @@ func (link *Link) sendRequireRandom(context *context) error {
 	packet := &proto.SeedAccessor{
 		DstNid:        link.nid,
 		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
+		HopCount:      0,
 		Id:            0,
 		Mode:          ModeExplicit | ModeOneWay,
 		Channel:       ChannelColonio,
@@ -768,6 +772,7 @@ func (link *Link) sendSuccess(context *context, replyFor *proto.SeedAccessor, co
 	packet := &proto.SeedAccessor{
 		DstNid:        replyFor.SrcNid,
 		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
+		HopCount:      0,
 		Id:            replyFor.Id,
 		Mode:          ModeExplicit | ModeOneWay,
 		Channel:       replyFor.Channel,
@@ -793,6 +798,7 @@ func (link *Link) sendFailure(context *context, replyFor *proto.SeedAccessor, co
 	packet := &proto.SeedAccessor{
 		DstNid:        replyFor.SrcNid,
 		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
+		HopCount:      0,
 		Id:            replyFor.Id,
 		Mode:          ModeExplicit | ModeOneWay,
 		Channel:       replyFor.Channel,
