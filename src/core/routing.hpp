@@ -19,8 +19,8 @@
 #include <mutex>
 #include <set>
 
-#include "module_base.hpp"
 #include "coordinate.hpp"
+#include "module_base.hpp"
 #include "node_id.hpp"
 #include "routing_protocol.pb.h"
 
@@ -133,7 +133,9 @@ class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public Rou
   void send_routing_info();
   void update();
   void update_node_connection();
-  void update_route_to_seed();
   void update_seed_connection();
+  void update_seed_route_by_info(const NodeID& src_nid, const RoutingProtocol::RoutingInfo& info);
+  void update_seed_route_by_links();
+  void update_seed_route_by_status();
 };
 }  // namespace colonio
