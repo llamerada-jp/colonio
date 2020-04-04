@@ -186,7 +186,7 @@ bool NodeAccessor::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Pac
   assert(dst_nid != NodeID::SEED);
   assert(dst_nid != NodeID::THIS);
   if (get_status() != LinkStatus::ONLINE) {
-    logd("drop packet").map("packet", *packet);
+    logw("drop packet").map("packet", *packet);
     return false;
   }
 
@@ -204,7 +204,7 @@ bool NodeAccessor::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Pac
 
   } else {
     if (links.find(dst_nid) == links.end()) {
-      logd("drop packet").map("packet", *packet);
+      logw("drop packet").map("packet", *packet);
       return false;
 
     } else {

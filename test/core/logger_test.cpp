@@ -16,8 +16,8 @@
 
 #include "core/logger.hpp"
 
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 using namespace colonio;
 using ::testing::MatchesRegex;
@@ -62,37 +62,61 @@ class LoggerTest : public ::testing::Test {
         MatchesRegex(
             "^\\[E] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} logger_test\\.cpp:51: test1$"));
 
-    logi("test2");
+    logi("test info 1");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_EQ(LogLevel::INFO, context.last_level);
     EXPECT_THAT(
-        context.last_message,
-        MatchesRegex(
-            "^\\[I] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} logger_test\\.cpp:65: test2$"));
+        context.last_message, MatchesRegex("^\\[I] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} "
+                                           "logger_test\\.cpp:65: test info 1$"));
 
-    loge("test3");
+    logI(context, "test info 2");
+    EXPECT_EQ(&context.logger, context.last_logger);
+    EXPECT_EQ(LogLevel::INFO, context.last_level);
+    EXPECT_THAT(
+        context.last_message, MatchesRegex("^\\[I] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} "
+                                           "logger_test\\.cpp:72: test info 2$"));
+
+    logw("test warn 1");
+    EXPECT_EQ(&context.logger, context.last_logger);
+    EXPECT_EQ(LogLevel::WARN, context.last_level);
+    EXPECT_THAT(
+        context.last_message, MatchesRegex("^\\[W] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} "
+                                           "logger_test\\.cpp:79: test warn 1$"));
+
+    logW(context, "test warn 2");
+    EXPECT_EQ(&context.logger, context.last_logger);
+    EXPECT_EQ(LogLevel::WARN, context.last_level);
+    EXPECT_THAT(
+        context.last_message, MatchesRegex("^\\[W] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} "
+                                           "logger_test\\.cpp:86: test warn 2$"));
+
+    loge("test error 1");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_EQ(LogLevel::ERROR, context.last_level);
     EXPECT_THAT(
-        context.last_message,
-        MatchesRegex(
-            "^\\[E] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} logger_test\\.cpp:73: test3$"));
+        context.last_message, MatchesRegex("^\\[E] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} "
+                                           "logger_test\\.cpp:93: test error 1$"));
 
-    logD(context, "test4");
+    logE(context, "test error 2");
+    EXPECT_EQ(&context.logger, context.last_logger);
+    EXPECT_EQ(LogLevel::ERROR, context.last_level);
+    EXPECT_THAT(
+        context.last_message, MatchesRegex("^\\[E] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} "
+                                           "logger_test\\.cpp:100: test error 2$"));
+
+    logd("test debug 1");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_EQ(LogLevel::DEBUG, context.last_level);
     EXPECT_THAT(
-        context.last_message,
-        MatchesRegex(
-            "^\\[D] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} logger_test\\.cpp:81: test4$"));
+        context.last_message, MatchesRegex("^\\[D] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} "
+                                           "logger_test\\.cpp:107: test debug 1$"));
 
-    logd("test5");
+    logD(context, "test debug 2");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_EQ(LogLevel::DEBUG, context.last_level);
     EXPECT_THAT(
-        context.last_message,
-        MatchesRegex(
-            "^\\[D] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} logger_test\\.cpp:89: test5$"));
+        context.last_message, MatchesRegex("^\\[D] [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4} "
+                                           "logger_test\\.cpp:114: test debug 2$"));
   }
 };
 

@@ -144,7 +144,8 @@ const NodeID& ColonioImpl::module_2d_do_get_relay_nid(Module2D& module_2d, const
 }
 
 void ColonioImpl::routing_on_module_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids) {
-  context.scheduler.add_timeout_task(this, [this, nids]() { module_bundler.module_2d_on_change_nearby(nids); }, 0);
+  context.scheduler.add_timeout_task(
+      this, [this, nids]() { module_bundler.module_2d_on_change_nearby(nids); }, 0);
 }
 
 void ColonioImpl::routing_on_module_2d_change_nearby_position(
@@ -370,7 +371,8 @@ void ColonioImpl::on_change_accessor_status(LinkStatus::Type seed_status, LinkSt
       api_connect_id = 0;
     }
     assert(false);
-    context.scheduler.add_timeout_task(this, [this]() { api_disconnect(0); }, 0);
+    context.scheduler.add_timeout_task(
+        this, [this]() { api_disconnect(0); }, 0);
     status = LinkStatus::OFFLINE;
 
   } else if (enable_retry) {
@@ -402,7 +404,7 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
       if (seed_status == LinkStatus::ONLINE) {
         seed_accessor->relay_packet(std::move(packet));
       } else {
-        logi("drop packet").map("packet", *packet);
+        logw("drop packet").map("packet", *packet);
       }
       return;
     }
@@ -445,7 +447,7 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
   node_accessor->update_link_status();
 
   if (packet) {
-    logd("drop packet").map("packet", *packet);
+    logw("drop packet").map("packet", *packet);
   }
 }
 }  // namespace colonio

@@ -35,11 +35,7 @@ LoggerDelegate::~LoggerDelegate() {
 
 Logger::L::L(
     Logger& logger_, const std::string file_, unsigned long line_, LogLevel::Type level_, const std::string& message_) :
-    logger(logger_),
-    file(file_),
-    line(line_),
-    level(level_),
-    message(message_) {
+    logger(logger_), file(file_), line(line_), level(level_), message(message_) {
 }
 
 Logger::L::~L() {
@@ -47,6 +43,9 @@ Logger::L::~L() {
   switch (level) {
     case LogLevel::INFO:
       stream << "[I]";
+      break;
+    case LogLevel::WARN:
+      stream << "[W]";
       break;
     case LogLevel::ERROR:
       stream << "[E]";

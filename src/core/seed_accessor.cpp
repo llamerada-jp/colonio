@@ -147,7 +147,7 @@ void SeedAccessor::relay_packet(std::unique_ptr<const Packet> packet) {
     link->send(packet_bin);
 
   } else {
-    logd("reject relaying packet to seed").map("packet", *packet);
+    logw("reject relaying packet to seed").map("packet", *packet);
   }
 }
 

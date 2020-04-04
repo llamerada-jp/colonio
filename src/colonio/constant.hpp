@@ -17,7 +17,7 @@
 
 namespace colonio {
 namespace LogLevel {
-enum Type { INFO, ERROR, DEBUG };
+enum Type { INFO, WARN, ERROR, DEBUG };
 }  // namespace LogLevel
 
 namespace DebugEvent {

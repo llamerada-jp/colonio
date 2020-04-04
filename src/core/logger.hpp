@@ -132,6 +132,11 @@ class Logger {
 #define logI(INSTANCE, FORMAT, ...) \
   (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
+#define logw(FORMAT, ...) \
+  this->context.logger.create(__FILE__, __LINE__, LogLevel::WARN, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+#define logW(INSTANCE, FORMAT, ...) \
+  (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::WARN, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+
 #define loge(FORMAT, ...) \
   this->context.logger.create(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 #define logE(INSTANCE, FORMAT, ...) \
