@@ -13,10 +13,11 @@ message Carrier {
 message Head {
   core.NodeID dst_nid = 1;
   core.NodeID src_nid = 2;
-  uint32 mode = 3;
-  uint32 channel = 4;
+  uint32 hop_count = 3;
+  uint32 mode = 4;
+  uint32 channel = 5;
   uint32 module_channel = 6;
-  uint32 command_id = 5;
+  uint32 command_id = 7;
 }
 
 message Packet {

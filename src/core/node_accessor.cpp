@@ -65,7 +65,9 @@ void NodeAccessor::connect_link(const NodeID& nid) {
         links.erase(it);
       } break;
 
-      default: { assert(false); } break;
+      default: {
+        assert(false);
+      } break;
     }
   }
 
@@ -145,7 +147,8 @@ void NodeAccessor::disconnect_all(std::function<void()> on_after) {
       disconnect_link(nid);
     }
 
-    context.scheduler.add_timeout_task(this, [this, on_after]() { disconnect_all(on_after); }, 500);
+    context.scheduler.add_timeout_task(
+        this, [this, on_after]() { disconnect_all(on_after); }, 500);
 
   } else {
     on_after();
@@ -166,11 +169,13 @@ void NodeAccessor::disconnect_link(const NodeID& nid) {
 }
 
 void NodeAccessor::initialize(const picojson::object& config) {
-  CONFIG_PACKET_SIZE     = Utils::get_json(config, "packetSize", NODE_ACCESSOR_PACKET_SIZE);
   CONFIG_BUFFER_INTERVAL = Utils::get_json(config, "bufferInterval", NODE_ACCESSOR_BUFFER_INTERVAL);
+  CONFIG_HOP_COUNT_MAX   = Utils::get_json(config, "hopCountMax", NODE_ACCESSOR_HOP_COUNT_MAX);
+  CONFIG_PACKET_SIZE     = Utils::get_json(config, "packetSize", NODE_ACCESSOR_PACKET_SIZE);
 
   if (CONFIG_PACKET_SIZE != 0 && CONFIG_BUFFER_INTERVAL != 0) {
-    context.scheduler.add_interval_task(this, [this]() { send_all_packet(); }, CONFIG_BUFFER_INTERVAL);
+    context.scheduler.add_interval_task(
+        this, [this]() { send_all_packet(); }, CONFIG_BUFFER_INTERVAL);
   }
 
   webrtc_context.initialize(Utils::get_json<picojson::array>(config, "iceServers"));
@@ -388,11 +393,11 @@ void NodeAccessor::webrtc_link_on_recv_data(WebrtcLink& link, const std::string&
     const NodeAccessorProtocol::Packet& pb_packet = ca.packet(i);
     if (pb_packet.has_head()) {
       const NodeAccessorProtocol::Head& pb_head = pb_packet.head();
-      std::unique_ptr<Packet> packet            = std::make_unique<Packet>(
-          Packet{NodeID::from_pb(pb_head.dst_nid()), NodeID::from_pb(pb_head.src_nid()), pb_packet.id(), nullptr,
-                 static_cast<PacketMode::Type>(pb_head.mode()), static_cast<APIChannel::Type>(pb_head.channel()),
-                 static_cast<ModuleChannel::Type>(pb_head.module_channel()),
-                 static_cast<CommandID::Type>(pb_head.command_id())});
+      std::unique_ptr<Packet> packet            = std::make_unique<Packet>(Packet{
+          NodeID::from_pb(pb_head.dst_nid()), NodeID::from_pb(pb_head.src_nid()), pb_head.hop_count() + 1,
+          pb_packet.id(), nullptr, static_cast<PacketMode::Type>(pb_head.mode()),
+          static_cast<APIChannel::Type>(pb_head.channel()), static_cast<ModuleChannel::Type>(pb_head.module_channel()),
+          static_cast<CommandID::Type>(pb_head.command_id())});
       std::shared_ptr<const std::string> content(new std::string(pb_packet.content()));
 
       if (pb_packet.index() == 0) {
@@ -770,6 +775,10 @@ bool NodeAccessor::send_packet_list(const NodeID& dst_nid, bool is_all) {
       NodeAccessorProtocol::Carrier ca;
       unsigned int size_sum = 0;
       while (it != sb.end()) {
+        if (it->hop_count > CONFIG_HOP_COUNT_MAX) {
+          it = sb.erase(it);
+          continue;
+        }
         const int content_size = it->content ? it->content->size() : 0;
         if (size_sum + ESTIMATED_HEAD_SIZE + content_size > CONFIG_PACKET_SIZE) {
           break;
@@ -784,6 +793,7 @@ bool NodeAccessor::send_packet_list(const NodeID& dst_nid, bool is_all) {
           it->dst_nid.to_pb(head->mutable_dst_nid());
         }
         it->src_nid.to_pb(head->mutable_src_nid());
+        head->set_hop_count(it->hop_count);
         head->set_mode(it->mode);
         head->set_channel(it->channel);
         head->set_module_channel(it->module_channel);
@@ -807,6 +817,10 @@ bool NodeAccessor::send_packet_list(const NodeID& dst_nid, bool is_all) {
     }
 
     while (it != sb.end() && it->content && ESTIMATED_HEAD_SIZE + it->content->size() >= CONFIG_PACKET_SIZE) {
+      if (it->hop_count > CONFIG_HOP_COUNT_MAX) {
+        it = sb.erase(it);
+        continue;
+      }
       const int content_size = it->content ? it->content->size() : 0;
       // Split large packet to send it.
       const int num = (ESTIMATED_HEAD_SIZE + content_size) / CONFIG_PACKET_SIZE +
@@ -825,6 +839,7 @@ bool NodeAccessor::send_packet_list(const NodeID& dst_nid, bool is_all) {
             it->dst_nid.to_pb(head->mutable_dst_nid());
           }
           it->src_nid.to_pb(head->mutable_src_nid());
+          head->set_hop_count(it->hop_count);
           head->set_mode(it->mode);
           head->set_channel(it->channel);
           head->set_module_channel(it->module_channel);

@@ -27,6 +27,7 @@ class Packet {
 
   const NodeID dst_nid;
   const NodeID src_nid;
+  const uint32_t hop_count;
   const uint32_t id;
   std::shared_ptr<const std::string> content;
   const PacketMode::Type mode;

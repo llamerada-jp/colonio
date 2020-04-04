@@ -21,8 +21,8 @@
 #include <memory>
 #include <string>
 
-#include "module_base.hpp"
 #include "command.hpp"
+#include "module_base.hpp"
 #include "node_id.hpp"
 #include "webrtc_context.hpp"
 #include "webrtc_link.hpp"
@@ -85,8 +85,9 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
     OFFER_TYPE type;
   };
 
-  unsigned int CONFIG_PACKET_SIZE;
   unsigned int CONFIG_BUFFER_INTERVAL;
+  unsigned int CONFIG_HOP_COUNT_MAX;
+  unsigned int CONFIG_PACKET_SIZE;
 
   NodeAccessorDelegate& delegate;
   WebrtcContext webrtc_context;

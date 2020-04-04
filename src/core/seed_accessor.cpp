@@ -131,6 +131,7 @@ void SeedAccessor::relay_packet(std::unique_ptr<const Packet> packet) {
     SeedAccessorProtocol::SeedAccessor packet_sa;
     packet->dst_nid.to_pb(packet_sa.mutable_dst_nid());
     packet->src_nid.to_pb(packet_sa.mutable_src_nid());
+    packet_sa.set_hop_count(packet->hop_count);
     packet_sa.set_id(packet->id);
     packet_sa.set_mode(packet->mode);
     packet_sa.set_channel(packet->channel);
@@ -177,28 +178,6 @@ void SeedAccessor::seed_link_on_error(SeedLinkBase& l) {
 }
 
 void SeedAccessor::seed_link_on_recv(SeedLinkBase& link, const std::string& data) {
-  /*
-  std::istringstream is(data);
-  picojson::value v;
-  std::string err = picojson::parse(v, is);
-  if (!err.empty()) {
-    /// @todo error
-    assert(false);
-  }
-
-  picojson::object& json = v.get<picojson::object>();
-
-  picojson::value content;
-  std::string content_str = json.at("content").get<std::string>();
-  if (content_str.size() != 0) {
-    std::istringstream is(content_str);
-    std::string err = picojson::parse(content, is);
-    if (!err.empty()) {
-      // TODO(llamerada.jp@gmail.com): Output warning log.
-      assert(false);
-    }
-  }
-  */
   SeedAccessorProtocol::SeedAccessor packet_pb;
   if (!packet_pb.ParseFromString(data)) {
     /// @todo error
@@ -207,11 +186,11 @@ void SeedAccessor::seed_link_on_recv(SeedLinkBase& link, const std::string& data
 
   std::shared_ptr<const std::string> content(new std::string(packet_pb.content()));
   logd("packet size").map_int("size", packet_pb.content().size());
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
-      Packet{NodeID::from_pb(packet_pb.dst_nid()), NodeID::from_pb(packet_pb.src_nid()), packet_pb.id(), content,
-             static_cast<PacketMode::Type>(packet_pb.mode()), static_cast<APIChannel::Type>(packet_pb.channel()),
-             static_cast<ModuleChannel::Type>(packet_pb.module_channel()),
-             static_cast<CommandID::Type>(packet_pb.command_id())});
+  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet{
+      NodeID::from_pb(packet_pb.dst_nid()), NodeID::from_pb(packet_pb.src_nid()), packet_pb.hop_count(), packet_pb.id(),
+      content, static_cast<PacketMode::Type>(packet_pb.mode()), static_cast<APIChannel::Type>(packet_pb.channel()),
+      static_cast<ModuleChannel::Type>(packet_pb.module_channel()),
+      static_cast<CommandID::Type>(packet_pb.command_id())});
 
   if (packet->src_nid == NodeID::SEED && packet->channel == APIChannel::COLONIO &&
       packet->module_channel == ModuleChannel::Colonio::SEED_ACCESSOR && packet->id == 0) {
@@ -307,7 +286,7 @@ void SeedAccessor::send_auth(const std::string& token) {
   param.SerializeToString(content.get());
 
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
-      Packet{NodeID::SEED, context.local_nid, 0, content, PacketMode::NONE, APIChannel::COLONIO,
+      Packet{NodeID::SEED, context.local_nid, 0, 0, content, PacketMode::NONE, APIChannel::COLONIO,
              ModuleChannel::Colonio::SEED_ACCESSOR, CommandID::Seed::AUTH});
 
   relay_packet(std::move(packet));
@@ -315,7 +294,7 @@ void SeedAccessor::send_auth(const std::string& token) {
 
 void SeedAccessor::send_ping() {
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
-      Packet{NodeID::SEED, context.local_nid, 0, nullptr, PacketMode::NONE, APIChannel::COLONIO,
+      Packet{NodeID::SEED, context.local_nid, 0, 0, nullptr, PacketMode::NONE, APIChannel::COLONIO,
              ModuleChannel::Colonio::SEED_ACCESSOR, CommandID::Seed::PING});
 
   relay_packet(std::move(packet));

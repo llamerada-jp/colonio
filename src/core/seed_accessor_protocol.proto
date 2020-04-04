@@ -9,12 +9,13 @@ package colonio.SeedAccessorProtocol;
 message SeedAccessor {
   core.NodeID dst_nid = 1;
   core.NodeID src_nid = 2;
-  uint32 id = 3;
-  uint32 mode = 4;
-  uint32 channel = 5;
-  uint32 module_channel = 6;
-  uint32 command_id = 7;
-  bytes content = 8;
+  uint32 hop_count = 3;
+  uint32 id = 4;
+  uint32 mode = 5;
+  uint32 channel = 6;
+  uint32 module_channel = 7;
+  uint32 command_id = 8;
+  bytes content = 9;
 }
 
 message Auth {
