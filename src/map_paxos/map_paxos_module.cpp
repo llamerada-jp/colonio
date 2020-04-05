@@ -35,10 +35,7 @@ MapPaxosModule::AcceptorInfo::AcceptorInfo() : na(0), np(0), ia(0) {
 }
 
 MapPaxosModule::AcceptorInfo::AcceptorInfo(PAXOS_N na_, PAXOS_N np_, PAXOS_N ia_, const Value& value_) :
-    na(na_),
-    np(np_),
-    ia(ia_),
-    value(value_) {
+    na(na_), np(np_), ia(ia_), value(value_) {
 }
 
 /* class MapPaxosModule::ProposerInfo */
@@ -46,27 +43,17 @@ MapPaxosModule::ProposerInfo::ProposerInfo() : np(0), ip(0), reset(true), proces
 }
 
 MapPaxosModule::ProposerInfo::ProposerInfo(PAXOS_N np_, PAXOS_N ip_, const Value& value_) :
-    np(np_),
-    ip(ip_),
-    reset(true),
-    value(value_),
-    processing_packet_id(PACKET_ID_NONE) {
+    np(np_), ip(ip_), reset(true), value(value_), processing_packet_id(PACKET_ID_NONE) {
 }
 
 /* class MapPaxosModule::CommandGet::Info */
 MapPaxosModule::CommandGet::Info::Info(MapPaxosModule& parent_, std::unique_ptr<Value> key_, int count_retry_) :
-    parent(parent_),
-    key(std::move(key_)),
-    count_retry(count_retry_),
-    time_send(0),
-    count_ng(0),
-    is_finished(false) {
+    parent(parent_), key(std::move(key_)), count_retry(count_retry_), time_send(0), count_ng(0), is_finished(false) {
 }
 
 /* class MapPaxosModule::CommandGet */
 MapPaxosModule::CommandGet::CommandGet(std::shared_ptr<Info> info_) :
-    Command(CommandID::MapPaxos::GET, PacketMode::NONE),
-    info(info_) {
+    Command(CommandID::MapPaxos::GET, PacketMode::NONE), info(info_) {
 }
 
 void MapPaxosModule::CommandGet::on_error(const std::string& message) {
@@ -124,7 +111,7 @@ void MapPaxosModule::CommandGet::postprocess() {
         info->parent.send_packet_get(
             std::move(info->key), info->count_retry + 1, interval, info->cb_on_success, info->cb_on_failure);
       } else {
-        info->cb_on_failure(Exception::Code::NOT_EXIST_KEY);
+        info->cb_on_failure(Error::NOT_EXIST_KEY);
       }
 
     } else {
@@ -153,32 +140,26 @@ void MapPaxosModule::CommandGet::postprocess() {
 /* class MapPaxosModule::CommandSet::Info */
 MapPaxosModule::CommandSet::Info::Info(
     MapPaxosModule& parent_, const Value& key_, const Value& value_, const std::function<void()>& cb_on_success_,
-    const std::function<void(Exception::Code)>& cb_on_failure_, const MapOption::Type& opt_) :
-    cb_on_success(cb_on_success_),
-    cb_on_failure(cb_on_failure_),
-    key(key_),
-    value(value_),
-    opt(opt_),
-    parent(parent_) {
+    const std::function<void(Error)>& cb_on_failure_, const MapOption::Type& opt_) :
+    cb_on_success(cb_on_success_), cb_on_failure(cb_on_failure_), key(key_), value(value_), opt(opt_), parent(parent_) {
 }
 
 /* class MapPaxosModule::CommandSet */
 MapPaxosModule::CommandSet::CommandSet(std::unique_ptr<MapPaxosModule::CommandSet::Info> info_) :
-    Command(CommandID::MapPaxos::SET, PacketMode::NONE),
-    info(std::move(info_)) {
+    Command(CommandID::MapPaxos::SET, PacketMode::NONE), info(std::move(info_)) {
 }
 
 void MapPaxosModule::CommandSet::on_error(const std::string& message) {
   logD(info->parent.context, "error on packet of 'set'").map("message", message);
-  info->cb_on_failure(Exception::Code::SYSTEM_ERROR);
+  info->cb_on_failure(Error::SYSTEM_ERROR);
 }
 
 void MapPaxosModule::CommandSet::on_failure(std::unique_ptr<const Packet> packet) {
   MapPaxosProtocol::SetFailure content;
   packet->parse_content(&content);
-  const Exception::Code reason = static_cast<Exception::Code>(content.reason());
+  const Error reason = static_cast<Error>(content.reason());
 
-  if (reason == Exception::Code::CHANGED_PROPOSER) {
+  if (reason == Error::CHANGED_PROPOSER) {
     info->parent.send_packet_set(std::move(info));
 
   } else {
@@ -192,10 +173,7 @@ void MapPaxosModule::CommandSet::on_success(std::unique_ptr<const Packet> packet
 
 /* class MapPaxosModule::CommandPrepare::Reply */
 MapPaxosModule::CommandPrepare::Reply::Reply(const NodeID& src_nid_, PAXOS_N n_, PAXOS_N i_, bool is_success_) :
-    src_nid(src_nid_),
-    n(n_),
-    i(i_),
-    is_success(is_success_) {
+    src_nid(src_nid_), n(n_), i(i_), is_success(is_success_) {
 }
 
 /* class MapPaxosModule::CommandPrepare::Info */
@@ -223,8 +201,7 @@ MapPaxosModule::CommandPrepare::Info::~Info() {
 
 /* class MapPaxosModule::CommandPrepare */
 MapPaxosModule::CommandPrepare::CommandPrepare(std::shared_ptr<MapPaxosModule::CommandPrepare::Info> info_) :
-    Command(CommandID::MapPaxos::PREPARE, PacketMode::NONE),
-    info(info_) {
+    Command(CommandID::MapPaxos::PREPARE, PacketMode::NONE), info(info_) {
 }
 
 void MapPaxosModule::CommandPrepare::on_error(const std::string& message) {
@@ -262,7 +239,7 @@ void MapPaxosModule::CommandPrepare::postprocess() {
     switch (info->packet_reply->command_id) {
       case CommandID::MapPaxos::SET: {
         MapPaxosProtocol::SetFailure param;
-        param.set_reason(static_cast<uint32_t>(Exception::Code::CHANGED_PROPOSER));
+        param.set_reason(static_cast<uint32_t>(Error::CHANGED_PROPOSER));
         info->parent.send_failure(*info->packet_reply, ModuleBase::serialize_pb(param));
       } break;
 
@@ -320,10 +297,7 @@ void MapPaxosModule::CommandPrepare::postprocess() {
 
 /* class MapPaxosModule::CommandAccept::Reply */
 MapPaxosModule::CommandAccept::Reply::Reply(const NodeID& src_nid_, PAXOS_N n_, PAXOS_N i_, bool is_success_) :
-    src_nid(src_nid_),
-    n(n_),
-    i(i_),
-    is_success(is_success_) {
+    src_nid(src_nid_), n(n_), i(i_), is_success(is_success_) {
 }
 
 /* class MapPaxosModule::CommandAccept::Info */
@@ -351,8 +325,7 @@ MapPaxosModule::CommandAccept::Info::~Info() {
 
 /* class MapPaxosModule::CommandAccept */
 MapPaxosModule::CommandAccept::CommandAccept(std::shared_ptr<MapPaxosModule::CommandAccept::Info> info_) :
-    Command(CommandID::MapPaxos::ACCEPT, PacketMode::NONE),
-    info(info_) {
+    Command(CommandID::MapPaxos::ACCEPT, PacketMode::NONE), info(info_) {
 }
 
 void MapPaxosModule::CommandAccept::on_error(const std::string& message) {
@@ -390,7 +363,7 @@ void MapPaxosModule::CommandAccept::postprocess() {
     switch (info->packet_reply->command_id) {
       case CommandID::MapPaxos::SET: {
         MapPaxosProtocol::SetFailure param;
-        param.set_reason(static_cast<uint32_t>(Exception::Code::CHANGED_PROPOSER));
+        param.set_reason(static_cast<uint32_t>(Error::CHANGED_PROPOSER));
         info->parent.send_failure(*info->packet_reply, ModuleBase::serialize_pb(param));
       } break;
 
@@ -475,13 +448,13 @@ MapPaxosModule::~MapPaxosModule() {
 
 void MapPaxosModule::get(
     const Value& key, const std::function<void(const Value&)>& on_success,
-    const std::function<void(Exception::Code)>& on_failure) {
+    const std::function<void(Error)>& on_failure) {
   send_packet_get(std::make_unique<Value>(key), 0, 0, on_success, on_failure);
 }
 
 void MapPaxosModule::set(
     const Value& key, const Value& value, const std::function<void()>& on_success,
-    const std::function<void(Exception::Code)>& on_failure, MapOption::Type opt) {
+    const std::function<void(Error)>& on_failure, MapOption::Type opt) {
   std::unique_ptr<CommandSet::Info> info =
       std::make_unique<CommandSet::Info>(*this, key, value, on_success, on_failure, opt);
   send_packet_set(std::move(info));
@@ -824,7 +797,7 @@ void MapPaxosModule::recv_packet_set(std::unique_ptr<const Packet> packet) {
   if (proposer.processing_packet_id != PACKET_ID_NONE) {
     // @todo switch by flag
     MapPaxosProtocol::SetFailure param;
-    param.set_reason(static_cast<uint32_t>(Exception::Code::COLLISION_LATE));
+    param.set_reason(static_cast<uint32_t>(Error::COLLISION_LATE));
     send_failure(*packet, serialize_pb(param));
 
   } else {
@@ -890,7 +863,7 @@ void MapPaxosModule::send_packet_balance_proposer(const Value& key, const Propos
 
 void MapPaxosModule::send_packet_get(
     std::unique_ptr<Value> key, int count_retry, int64_t interval, const std::function<void(const Value&)>& on_success,
-    const std::function<void(Exception::Code)>& on_failure) {
+    const std::function<void(Error)>& on_failure) {
   std::shared_ptr<CommandGet::Info> info = std::make_unique<CommandGet::Info>(*this, std::move(key), count_retry);
   info->cb_on_success                    = on_success;
   info->cb_on_failure                    = on_failure;

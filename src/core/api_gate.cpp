@@ -19,9 +19,9 @@ namespace colonio {
 
 Exception get_exception(const api::Reply& reply) {
   if (reply.has_failure()) {
-    return Exception(static_cast<Exception::Code>(reply.failure().code()), reply.failure().message());
+    return Exception(static_cast<Error>(reply.failure().code()), reply.failure().message());
   } else {
-    return Exception(Exception::Code::UNDEFINED, "unknown error");
+    return Exception(Error::UNDEFINED, "unknown error");
   }
 }
 

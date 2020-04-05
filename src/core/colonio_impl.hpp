@@ -19,14 +19,14 @@
 #include <string>
 
 #include "api_base.hpp"
-#include "module_bundler.hpp"
 #include "definition.hpp"
+#include "module_1d.hpp"
+#include "module_2d.hpp"
+#include "module_bundler.hpp"
 #include "node_accessor.hpp"
 #include "node_id.hpp"
 #include "routing.hpp"
 #include "seed_accessor.hpp"
-#include "module_1d.hpp"
-#include "module_2d.hpp"
 
 namespace colonio {
 class APIBundler;
@@ -90,7 +90,6 @@ class ColonioImpl : public APIBase,
   const NodeID& module_2d_do_get_relay_nid(Module2D& module_2d, const Coordinate& position) override;
 
   void api_connect(uint32_t id, const api::colonio::Connect& param);
-  void api_get_local_nid(uint32_t id);
   void api_disconnect(uint32_t id);
   void api_set_position(uint32_t id, const api::colonio::SetPosition& param);
   void check_api_connect();

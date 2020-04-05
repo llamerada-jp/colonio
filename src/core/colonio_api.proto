@@ -20,11 +20,8 @@ message ConnectReply {
     ModuleType type  = 2;
     string name      = 3;
   }
-  repeated Module modules = 1;
-}
-
-message GetLocalNIDReply {
   core.NodeID local_nid = 1;
+  repeated Module modules = 2;
 }
 
 message SetPosition {

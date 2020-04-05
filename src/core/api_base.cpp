@@ -21,9 +21,7 @@ APIDelegate::~APIDelegate() {
 }
 
 APIBase::APIBase(Context& context_, APIDelegate& delegate_, APIChannel::Type channel_) :
-    channel(channel_),
-    context(context_),
-    delegate(delegate_) {
+    channel(channel_), context(context_), delegate(delegate_) {
   assert(channel != APIChannel::NONE);
 }
 
@@ -38,7 +36,7 @@ void APIBase::api_event(std::unique_ptr<api::Event> event) {
   delegate.api_send_event(*this, std::move(event));
 }
 
-void APIBase::api_failure(uint32_t id, Exception::Code code, const std::string message) {
+void APIBase::api_failure(uint32_t id, Error code, const std::string message) {
   std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
   reply->set_id(id);
 

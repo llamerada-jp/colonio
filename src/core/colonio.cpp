@@ -26,6 +26,7 @@ namespace colonio {
 class Colonio::Impl {
  public:
   APIGate api_gate;
+  NodeID local_nid;
   std::map<std::string, std::unique_ptr<Map>> maps;
   std::map<std::string, std::unique_ptr<Pubsub2D>> pubsub_2ds;
 };
@@ -45,7 +46,7 @@ Map& Colonio::access_map(const std::string& name) {
     return *it->second;
 
   } else {
-    throw Exception(Exception::Code::CONFLICT_WITH_SETTING, Utils::format_string("map not found : ", 0, name.c_str()));
+    throw Exception(Error::CONFLICT_WITH_SETTING, Utils::format_string("map not found : ", 0, name.c_str()));
   }
 }
 
@@ -55,8 +56,7 @@ Pubsub2D& Colonio::access_pubsub_2d(const std::string& name) {
     return *it->second;
 
   } else {
-    throw Exception(
-        Exception::Code::CONFLICT_WITH_SETTING, Utils::format_string("pubsub_2d not found : ", 0, name.c_str()));
+    throw Exception(Error::CONFLICT_WITH_SETTING, Utils::format_string("pubsub_2d not found : ", 0, name.c_str()));
   }
 }
 
@@ -93,6 +93,8 @@ void Colonio::connect(const std::string& url, const std::string& token) {
   if (reply) {
     if (reply->has_colonio_connect()) {
       const api::colonio::ConnectReply& param = reply->colonio_connect();
+      impl->local_nid                         = NodeID::from_pb(param.local_nid());
+
       for (auto& module_param : param.modules()) {
         APIChannel::Type channel = static_cast<APIChannel::Type>(module_param.channel());
         switch (module_param.type()) {
@@ -137,19 +139,7 @@ void Colonio::disconnect() {
 std::string Colonio::get_local_nid() {
   assert(impl);
 
-  api::Call call;
-  call.mutable_colonio_get_local_nid();
-
-  std::unique_ptr<api::Reply> reply = impl->api_gate.call_sync(APIChannel::COLONIO, call);
-  if (reply) {
-    if (reply->has_colonio_get_local_nid()) {
-      return NodeID::from_pb(reply->colonio_get_local_nid().local_nid()).to_str();
-    } else {
-      throw get_exception(*reply);
-    }
-  } else {
-    return NodeID::NONE.to_str();
-  }
+  return impl->local_nid.to_str();
 }
 
 std::tuple<double, double> Colonio::set_position(double x, double y) {

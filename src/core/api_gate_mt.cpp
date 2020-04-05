@@ -215,7 +215,7 @@ void APIGateMultiThread::loop_controller() {
 
         } catch (const std::exception& ex) {
           logE(controller, "exception").map("message", ex.what());
-          reply_failure(call->id(), Exception::Code::UNDEFINED, ex.what());
+          reply_failure(call->id(), Error::UNDEFINED, ex.what());
           // TODO stop
           return;
         }
@@ -263,7 +263,7 @@ void APIGateMultiThread::push_event(std::unique_ptr<api::Event> event) {
   cond_event.notify_all();
 }
 
-void APIGateMultiThread::reply_failure(uint32_t id, Exception::Code code, const std::string& message) {
+void APIGateMultiThread::reply_failure(uint32_t id, Error code, const std::string& message) {
   std::lock_guard<std::mutex> lock(mtx_reply);
 
   std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();

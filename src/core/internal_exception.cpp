@@ -19,11 +19,8 @@
 #include "utils.hpp"
 
 namespace colonio {
-InternalException::InternalException(int l, const std::string& f, Exception::Code c, const std::string& m) :
-    line(l),
-    file(Utils::file_basename(f)),
-    code(c),
-    message(m) {
+InternalException::InternalException(int l, const std::string& f, Error c, const std::string& m) :
+    line(l), file(Utils::file_basename(f)), code(c), message(m) {
 }
 
 const char* InternalException::what() const noexcept {
@@ -32,6 +29,6 @@ const char* InternalException::what() const noexcept {
 }
 
 FatalException::FatalException(int l, const std::string& f, const std::string& m) :
-    InternalException(l, f, Exception::Code::UNDEFINED, m) {
+    InternalException(l, f, Error::UNDEFINED, m) {
 }
 }  // namespace colonio

@@ -160,7 +160,7 @@ NodeID NodeID::from_str(const std::string& str) {
       return NEXT;
 
     } else {
-      colonio_throw(Exception::Code::INCORRECT_DATA_FORMAT, "illegal node-id string. (string : %s)", str.c_str());
+      colonio_throw(Error::INCORRECT_DATA_FORMAT, "illegal node-id string. (string : %s)", str.c_str());
     }
   }
 }
@@ -189,8 +189,7 @@ NodeID NodeID::from_pb(const core::NodeID& pb) {
       return NodeID::NEXT;
 
     default:
-      colonio_throw(
-          Exception::Code::INCORRECT_DATA_FORMAT, "illegal node-id type in Protocol Buffers. (type : %d)", pb.type());
+      colonio_throw(Error::INCORRECT_DATA_FORMAT, "illegal node-id type in Protocol Buffers. (type : %d)", pb.type());
   }
 }
 

@@ -220,7 +220,7 @@ void colonio_map_get(
         on_success(map, ptr, &c_value);
         colonio_value_free(&c_value);
       },
-      [map, ptr, on_failure](colonio::Exception::Code reason) {
+      [map, ptr, on_failure](colonio::Error reason) {
         on_failure(map, ptr, static_cast<COLONIO_MAP_FAILURE_REASON>(reason));
       });
       */
@@ -240,7 +240,7 @@ void colonio_map_set(
   /* TODO
   impl->set(
       cpp_key, cpp_value, [map, ptr, on_success]() { on_success(map, ptr); },
-      [map, ptr, on_failure](colonio::Exception::Code reason) {
+      [map, ptr, on_failure](colonio::Error reason) {
         on_failure(map, ptr, static_cast<COLONIO_MAP_FAILURE_REASON>(reason));
       },
       opt);
@@ -257,7 +257,7 @@ void colonio_pubsub_2d_publish(
   /* TODO
   impl->publish(
       std::string(name, name_siz), x, y, r, cpp_value, [pubsub_2d, ptr, on_success]() { on_success(pubsub_2d, ptr); },
-      [pubsub_2d, ptr, on_failure](colonio::Exception::Code reason) {
+      [pubsub_2d, ptr, on_failure](colonio::Error reason) {
         on_failure(pubsub_2d, ptr, static_cast<COLONIO_PUBSUB_2D_FAILURE_REASON>(reason));
       });
       */

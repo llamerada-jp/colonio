@@ -33,11 +33,11 @@ class InternalException : public std::exception {
   const std::string file;
 
   /// Error code.
-  const Exception::Code code;
+  const Error code;
   /// A message string for display or bug report.
   const std::string message;
 
-  InternalException(int l, const std::string& f, Exception::Code c, const std::string& m);
+  InternalException(int l, const std::string& f, Error c, const std::string& m);
 
   /**
    * Pass message without line-no and file name.

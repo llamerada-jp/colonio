@@ -71,7 +71,7 @@ void ModuleBundler::on_recv_packet(std::unique_ptr<const Packet> packet) {
   } else {
     colonio_throw(
 #warning dump-packet
-        Exception::Code::INCORRECT_DATA_FORMAT, "received incorrect packet entry", Utils::dump_packet(*packet).c_str());
+        Error::INCORRECT_DATA_FORMAT, "received incorrect packet entry", Utils::dump_packet(*packet).c_str());
   }
 }
 

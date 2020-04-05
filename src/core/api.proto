@@ -16,8 +16,7 @@ message Call {
   oneof param {
     colonio.Connect colonio_connect = 1001;
     NoParam colonio_disconnect = 1002;
-    NoParam colonio_get_local_nid = 1003;
-    colonio.SetPosition colonio_set_position = 1004;
+    colonio.SetPosition colonio_set_position = 1003;
 
     map_api.Get map_get = 2001;
     map_api.Set map_set = 2002;
@@ -42,8 +41,7 @@ message Reply {
     Failure failure = 12;
 
     colonio.ConnectReply colonio_connect = 1001;
-    colonio.GetLocalNIDReply colonio_get_local_nid = 1003;
-    colonio.SetPositionReply colonio_set_position = 1004;
+    colonio.SetPositionReply colonio_set_position = 1003;
 
     map_api.GetReply map_get = 2001;
   }

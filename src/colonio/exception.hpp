@@ -18,27 +18,16 @@
 #include <exception>
 #include <string>
 
+#include "error.hpp"
+
 namespace colonio {
 class Exception : public std::exception {
  public:
-  enum class Code : uint32_t {
-    UNDEFINED,
-    SYSTEM_ERROR,
-    OFFLINE,
-    INCORRECT_DATA_FORMAT,
-    CONFLICT_WITH_SETTING,
-    NOT_EXIST_KEY,
-    // EXIST_KEY,
-    CHANGED_PROPOSER,
-    COLLISION_LATE,
-    NO_ONE_RECV,
-  };
-
-  Code code;
+  Error code;
   /// A message string for display or bug report.
   const std::string message;
 
-  explicit Exception(Code code_, const std::string& message_);
+  explicit Exception(Error code_, const std::string& message_);
 
   /**
    * Pass message without line-no and file name.

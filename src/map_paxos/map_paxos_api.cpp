@@ -44,8 +44,7 @@ void MapPaxosAPI::make_entry(
 
 MapPaxosAPI::MapPaxosAPI(
     Context& context, APIDelegate& delegate, APIChannel::Type channel, std::unique_ptr<MapPaxosModule> module_) :
-    APIBase(context, delegate, channel),
-    module(std::move(module_)) {
+    APIBase(context, delegate, channel), module(std::move(module_)) {
 }
 
 void MapPaxosAPI::api_on_recv_call(const api::Call& call) {
@@ -76,7 +75,7 @@ void MapPaxosAPI::api_get(uint32_t id, const Value& key) {
         ValueImpl::to_pb(param->mutable_value(), value);
         api_reply(std::move(reply));
       },
-      [this, id](Exception::Code code) {
+      [this, id](Error code) {
         // TODO error message
         api_failure(id, code, "");
       });
@@ -85,7 +84,7 @@ void MapPaxosAPI::api_get(uint32_t id, const Value& key) {
 void MapPaxosAPI::api_set(uint32_t id, const Value& key, const Value& value, MapOption::Type opt) {
   module->set(
       key, value, [this, id]() { api_success(id); },
-      [this, id](Exception::Code code) {
+      [this, id](Error code) {
         // TODO error message
         api_failure(id, code, "");
       },

@@ -43,7 +43,7 @@ class Pubsub2DModule : public Module2D {
 
   void publish(
       const std::string& name, double x, double y, double r, const Value& value, uint32_t opt,
-      const std::function<void()>& on_success, const std::function<void(Exception::Code)>& on_failure);
+      const std::function<void()>& on_success, const std::function<void(Error)>& on_failure);
 
   void module_process_command(std::unique_ptr<const Packet> packet) override;
 
@@ -87,7 +87,7 @@ class Pubsub2DModule : public Module2D {
    public:
     CommandPass(
         Pubsub2DModule& parent_, uint64_t uid_, const std::function<void()>& cb_on_success_,
-        const std::function<void(Exception::Code)>& cb_on_failure_);
+        const std::function<void(Error)>& cb_on_failure_);
 
     void on_error(const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
@@ -97,7 +97,7 @@ class Pubsub2DModule : public Module2D {
     Pubsub2DModule& parent;
     const uint64_t uid;
     const std::function<void()> cb_on_success;
-    const std::function<void(Exception::Code)> cb_on_failure;
+    const std::function<void(Error)> cb_on_failure;
   };
 
   uint64_t assign_uid();
@@ -110,7 +110,6 @@ class Pubsub2DModule : public Module2D {
   void send_packet_knock(const NodeID& exclude, const Cache& cache);
   void send_packet_deffuse(const NodeID& dst_nid, const Cache& cache);
   void send_packet_pass(
-      const Cache& cache, const std::function<void()>& on_success,
-      const std::function<void(Exception::Code)>& on_failure);
+      const Cache& cache, const std::function<void()>& on_success, const std::function<void(Error)>& on_failure);
 };
 }  // namespace colonio

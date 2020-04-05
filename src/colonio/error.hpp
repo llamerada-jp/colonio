@@ -13,14 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-#include "colonio/exception.hpp"
+#pragma once
 
 namespace colonio {
-Exception::Exception(Error code_, const std::string& message_) : code(code_), message(message_) {
-}
-
-const char* Exception::what() const noexcept {
-  return message.c_str();
-}
+enum class Error : uint32_t {
+  UNDEFINED,
+  SYSTEM_ERROR,
+  OFFLINE,
+  INCORRECT_DATA_FORMAT,
+  CONFLICT_WITH_SETTING,
+  NOT_EXIST_KEY,
+  // EXIST_KEY,
+  CHANGED_PROPOSER,
+  COLLISION_LATE,
+  NO_ONE_RECV,
+};
 }  // namespace colonio

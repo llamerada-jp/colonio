@@ -58,10 +58,6 @@ void ColonioImpl::api_on_recv_call(const api::Call& call) {
       api_disconnect(call.id());
       break;
 
-    case api::Call::ParamCase::kColonioGetLocalNid:
-      api_get_local_nid(call.id());
-      break;
-
     case api::Call::ParamCase::kColonioSetPosition:
       api_set_position(call.id(), call.colonio_set_position());
       break;
@@ -228,14 +224,6 @@ void ColonioImpl::api_connect(uint32_t id, const api::colonio::Connect& param) {
       this, [this]() { on_change_accessor_status(seed_accessor->get_status(), node_accessor->get_status()); }, 0);
 }
 
-void ColonioImpl::api_get_local_nid(uint32_t id) {
-  std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
-  reply->set_id(id);
-  api::colonio::GetLocalNIDReply* param = reply->mutable_colonio_get_local_nid();
-  context.local_nid.to_pb(param->mutable_local_nid());
-  api_reply(std::move(reply));
-}
-
 void ColonioImpl::api_disconnect(uint32_t id) {
   enable_retry = false;
   seed_accessor->disconnect();
@@ -276,7 +264,7 @@ void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition&
     api_reply(std::move(reply));
 
   } else {
-    api_failure(id, Exception::Code::CONFLICT_WITH_SETTING, "coordinate system was not enabled");
+    api_failure(id, Error::CONFLICT_WITH_SETTING, "coordinate system was not enabled");
   }
 }
 
@@ -286,6 +274,7 @@ void ColonioImpl::check_api_connect() {
 
     std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
     reply->set_id(api_connect_id);
+    context.local_nid.to_pb(api_connect_reply->mutable_local_nid());
     reply->set_allocated_colonio_connect(api_connect_reply.get());
     api_connect_reply.release();
 
@@ -367,7 +356,7 @@ void ColonioImpl::on_change_accessor_status(LinkStatus::Type seed_status, LinkSt
   } else if (seed_accessor->get_auth_status() == AuthStatus::FAILURE) {
     loge("connect failure");
     if (api_connect_id != 0) {
-      api_failure(api_connect_id, Exception::Code::OFFLINE, "Connect failure.");
+      api_failure(api_connect_id, Error::OFFLINE, "Connect failure.");
       api_connect_id = 0;
     }
     assert(false);

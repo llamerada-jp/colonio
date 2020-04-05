@@ -38,10 +38,10 @@ class MapPaxosModule : public Module1D {
 
   void get(
       const Value& key, const std::function<void(const Value&)>& on_success,
-      const std::function<void(Exception::Code)>& on_failure);
+      const std::function<void(Error)>& on_failure);
   void set(
       const Value& key, const Value& value, const std::function<void()>& on_success,
-      const std::function<void(Exception::Code)>& on_failure, MapOption::Type opt);
+      const std::function<void(Error)>& on_failure, MapOption::Type opt);
 
   void module_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) override;
 
@@ -86,7 +86,7 @@ class MapPaxosModule : public Module1D {
       int count_ng;
       bool is_finished;
       std::function<void(const Value&)> cb_on_success;
-      std::function<void(Exception::Code)> cb_on_failure;
+      std::function<void(Error)> cb_on_failure;
 
       Info(MapPaxosModule& parent_, std::unique_ptr<Value> key_, int count_retry_);
     };
@@ -112,11 +112,11 @@ class MapPaxosModule : public Module1D {
       const MapOption::Type opt;
 
       std::function<void()> cb_on_success;
-      std::function<void(Exception::Code)> cb_on_failure;
+      std::function<void(Error)> cb_on_failure;
 
       Info(
           MapPaxosModule& parent_, const Value& key_, const Value& value_, const std::function<void()>& cb_on_success_,
-          const std::function<void(Exception::Code)>& cb_on_failure_, const MapOption::Type& opt_);
+          const std::function<void(Error)>& cb_on_failure_, const MapOption::Type& opt_);
     };
     std::unique_ptr<Info> info;
 
@@ -233,7 +233,7 @@ class MapPaxosModule : public Module1D {
   void send_packet_balance_proposer(const Value& key, const ProposerInfo& proposer);
   void send_packet_get(
       std::unique_ptr<Value> key, int count_retry, int64_t interval,
-      const std::function<void(const Value&)>& on_success, const std::function<void(Exception::Code)>& on_failure);
+      const std::function<void(const Value&)>& on_success, const std::function<void(Error)>& on_failure);
   void send_packet_hint(const Value& key, const Value& value, PAXOS_N n, PAXOS_N i);
   void send_packet_prepare(
       ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply, std::unique_ptr<Value> key,
