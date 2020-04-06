@@ -27,10 +27,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
-#include <random>
-#include <sstream>
 #include <map>
 #include <mutex>
+#include <random>
+#include <sstream>
 
 #include "colonio/colonio.hpp"
 
@@ -74,7 +74,7 @@ void on_map_set_failure(const colonio::Exception& reason);
 
 class MyColonio : public colonio::Colonio {
  public:
-  void on_output_log(colonio::LogLevel::Type level, const std::string& message) override {
+  void on_output_log(colonio::LogLevel level, const std::string& message) override {
     if (level == colonio::LogLevel::INFO) {
       std::cout << message << std::endl;
     } else {

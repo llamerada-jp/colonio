@@ -18,7 +18,7 @@ class MyColonio : public colonio::Colonio {
   MyColonio() : Colonio() {
   }
 
-  void on_output_log(colonio::LogLevel::Type level, const std::string& message) override {
+  void on_output_log(colonio::LogLevel level, const std::string& message) override {
     time_t now = time(nullptr);
     if (level == colonio::LogLevel::INFO) {
       std::cout << ctime(&now) << " - " << message << std::endl;

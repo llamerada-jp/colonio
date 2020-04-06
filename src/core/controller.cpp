@@ -21,10 +21,7 @@ ControllerDelegate::~ControllerDelegate() {
 }
 
 Controller::Controller(ControllerDelegate& delegate_) :
-    delegate(delegate_),
-    logger(*this),
-    scheduler(*this),
-    context(logger, scheduler) {
+    delegate(delegate_), logger(*this), scheduler(*this), context(logger, scheduler) {
   colonio_impl = std::make_shared<ColonioImpl>(context, *this, bundler);
   bundler.registrate(colonio_impl);
 #ifndef NDEBUG
@@ -58,7 +55,7 @@ void Controller::api_send_reply(APIBase& api_base, std::unique_ptr<api::Reply> r
   delegate.controller_on_reply(*this, std::move(reply));
 }
 
-void Controller::logger_on_output(Logger& logger, LogLevel::Type level, const std::string& message) {
+void Controller::logger_on_output(Logger& logger, LogLevel level, const std::string& message) {
   // Send log message as event.
   std::unique_ptr<api::Event> event = std::make_unique<api::Event>();
   event->set_channel(APIChannel::COLONIO);

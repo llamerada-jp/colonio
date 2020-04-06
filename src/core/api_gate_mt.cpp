@@ -120,7 +120,7 @@ void APIGateMultiThread::controller_on_require_invoke(Controller& sm, unsigned i
   }
 }
 
-void APIGateMultiThread::logger_on_output(Logger& logger, LogLevel::Type level, const std::string& message) {
+void APIGateMultiThread::logger_on_output(Logger& logger, LogLevel level, const std::string& message) {
   std::unique_ptr<api::Event> event = std::make_unique<api::Event>();
   event->set_channel(APIChannel::COLONIO);
   api::colonio::LogEvent* log_event = event->mutable_colonio_log();

@@ -27,13 +27,13 @@ class DummyContext : public LoggerDelegate {
   Logger logger;
 
   Logger* last_logger;
-  LogLevel::Type last_level;
+  LogLevel last_level;
   std::string last_message;
 
   DummyContext() : logger(*this) {
   }
 
-  void logger_on_output(Logger& logger, LogLevel::Type level, const std::string& message) override {
+  void logger_on_output(Logger& logger, LogLevel level, const std::string& message) override {
     last_logger  = &logger;
     last_level   = level;
     last_message = message;

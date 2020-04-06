@@ -18,7 +18,7 @@
 #include <exception>
 #include <string>
 
-#include "error.hpp"
+#include "constant.hpp"
 
 namespace colonio {
 class Exception : public std::exception {

@@ -41,7 +41,7 @@ class LoggerDelegate {
    * @param level Log level.
    * @param message Log message.
    */
-  virtual void logger_on_output(Logger& logger, LogLevel::Type level, const std::string& message) = 0;
+  virtual void logger_on_output(Logger& logger, LogLevel level, const std::string& message) = 0;
 };
 
 /**
@@ -52,8 +52,7 @@ class Logger {
  public:
   class L {
    public:
-    L(Logger& logger_, const std::string file_, unsigned long line_, LogLevel::Type level_,
-      const std::string& message_);
+    L(Logger& logger_, const std::string file_, unsigned long line_, LogLevel level_, const std::string& message_);
     virtual ~L();
     L& map(const std::string& name, const std::string& value);
     L& map(const std::string& name, const NodeID& value);
@@ -70,7 +69,7 @@ class Logger {
     Logger& logger;
     std::string file;
     unsigned long line;
-    LogLevel::Type level;
+    LogLevel level;
     const std::string message;
     picojson::object params;
   };
@@ -121,7 +120,7 @@ class Logger {
   Logger(LoggerDelegate& delegate_);
   virtual ~Logger();
 
-  L create(const std::string& file, unsigned long line, LogLevel::Type level, const std::string& message);
+  L create(const std::string& file, unsigned long line, LogLevel level, const std::string& message);
 
  private:
   LoggerDelegate& delegate;

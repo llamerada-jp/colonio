@@ -39,7 +39,7 @@ class Colonio {
   std::tuple<double, double> set_position(double x, double y);
 
  protected:
-  virtual void on_output_log(LogLevel::Type level, const std::string& message);
+  virtual void on_output_log(LogLevel level, const std::string& message);
   virtual void on_debug_event(DebugEvent::Type event, const std::string& json);
 
  private:

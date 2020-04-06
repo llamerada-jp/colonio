@@ -15,10 +15,9 @@
  */
 #pragma once
 
+#include <cstdint>
+
 namespace colonio {
-namespace LogLevel {
-enum Type { INFO, WARN, ERROR, DEBUG };
-}  // namespace LogLevel
 
 namespace DebugEvent {
 enum Type {
@@ -32,4 +31,26 @@ enum Type {
   KNOWN_2D,
 };
 }  // namespace DebugEvent
+
+enum class Error : uint32_t {
+  UNDEFINED,
+  SYSTEM_ERROR,
+  OFFLINE,
+  INCORRECT_DATA_FORMAT,
+  CONFLICT_WITH_SETTING,
+  NOT_EXIST_KEY,
+  // EXIST_KEY,
+  CHANGED_PROPOSER,
+  COLLISION_LATE,
+  NO_ONE_RECV,
+};
+
+enum class LogLevel : uint32_t {
+  //
+  INFO,
+  WARN,
+  ERROR,
+  DEBUG
+};
+
 }  // namespace colonio

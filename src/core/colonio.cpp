@@ -68,7 +68,7 @@ void Colonio::connect(const std::string& url, const std::string& token) {
     switch (e.param_case()) {
       case api::Event::ParamCase::kColonioLog: {
         const api::colonio::LogEvent& l = e.colonio_log();
-        on_output_log(static_cast<LogLevel::Type>(l.level()), l.message());
+        on_output_log(static_cast<LogLevel>(l.level()), l.message());
       } break;
 
       case api::Event::ParamCase::kColonioDebug: {
@@ -158,7 +158,7 @@ std::tuple<double, double> Colonio::set_position(double x, double y) {
   }
 }
 
-void Colonio::on_output_log(LogLevel::Type level, const std::string& message) {
+void Colonio::on_output_log(LogLevel level, const std::string& message) {
   // Drop log message.
 }
 

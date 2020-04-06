@@ -43,7 +43,7 @@ class ColonioC : public colonio::Colonio {
    }
    */
 
-  void on_output_log(colonio::LogLevel::Type level, const std::string& message) override {
+  void on_output_log(colonio::LogLevel level, const std::string& message) override {
     if (cb_on_output_log != nullptr) {
       cb_on_output_log(colonio, static_cast<COLONIO_LOG_LEVEL>(level), message.c_str(), message.size() + 1);
     }
