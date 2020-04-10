@@ -17,7 +17,7 @@
 #include "colonio/exception.hpp"
 
 namespace colonio {
-Exception::Exception(Error code_, const std::string& message_) : code(code_), message(message_) {
+Exception::Exception(ErrorCode code_, const std::string& message_) : code(code_), message(message_) {
 }
 
 const char* Exception::what() const noexcept {

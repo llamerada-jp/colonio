@@ -76,7 +76,7 @@ void Pubsub2DAPI::api_publish(
         //
         api_success(id);
       },
-      [this, id](Error code) {
+      [this, id](ErrorCode code) {
         // TODO error message
         api_failure(id, code, "");
       });

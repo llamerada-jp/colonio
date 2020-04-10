@@ -48,7 +48,7 @@ TEST(MapTest, set_get_single) {
     ADD_FAILURE();
 
   } catch (const Exception& e) {
-    EXPECT_EQ(e.code, Error::NOT_EXIST_KEY);
+    EXPECT_EQ(e.code, ErrorCode::NOT_EXIST_KEY);
     helper.mark("a");
   }
 
@@ -98,7 +98,7 @@ TEST(MapTest, set_get_multi) {
     ADD_FAILURE();
 
   } catch (const Exception& e) {
-    EXPECT_EQ(e.code, Error::NOT_EXIST_KEY);
+    EXPECT_EQ(e.code, ErrorCode::NOT_EXIST_KEY);
     helper.mark("a");
   }
 
@@ -109,7 +109,7 @@ TEST(MapTest, set_get_multi) {
     ADD_FAILURE();
 
   } catch (const Exception& e) {
-    EXPECT_EQ(e.code, Error::NOT_EXIST_KEY);
+    EXPECT_EQ(e.code, ErrorCode::NOT_EXIST_KEY);
     helper.mark("b");
   }
 

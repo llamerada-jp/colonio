@@ -75,7 +75,7 @@ void MapPaxosAPI::api_get(uint32_t id, const Value& key) {
         ValueImpl::to_pb(param->mutable_value(), value);
         api_reply(std::move(reply));
       },
-      [this, id](Error code) {
+      [this, id](ErrorCode code) {
         // TODO error message
         api_failure(id, code, "");
       });
@@ -84,7 +84,7 @@ void MapPaxosAPI::api_get(uint32_t id, const Value& key) {
 void MapPaxosAPI::api_set(uint32_t id, const Value& key, const Value& value, MapOption::Type opt) {
   module->set(
       key, value, [this, id]() { api_success(id); },
-      [this, id](Error code) {
+      [this, id](ErrorCode code) {
         // TODO error message
         api_failure(id, code, "");
       },

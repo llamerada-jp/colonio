@@ -16,6 +16,7 @@ set(COLONIO_FILES
   core/coord_system_sphere.cpp
   core/coordinate.cpp
   core/core.pb.cc
+  core/error.cpp
   core/exception.cpp
   core/export_c.cpp
   core/internal_exception.cpp

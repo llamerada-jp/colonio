@@ -264,7 +264,7 @@ void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition&
     api_reply(std::move(reply));
 
   } else {
-    api_failure(id, Error::CONFLICT_WITH_SETTING, "coordinate system was not enabled");
+    api_failure(id, ErrorCode::CONFLICT_WITH_SETTING, "coordinate system was not enabled");
   }
 }
 
@@ -356,7 +356,7 @@ void ColonioImpl::on_change_accessor_status(LinkStatus::Type seed_status, LinkSt
   } else if (seed_accessor->get_auth_status() == AuthStatus::FAILURE) {
     loge("connect failure");
     if (api_connect_id != 0) {
-      api_failure(api_connect_id, Error::OFFLINE, "Connect failure.");
+      api_failure(api_connect_id, ErrorCode::OFFLINE, "Connect failure.");
       api_connect_id = 0;
     }
     assert(false);

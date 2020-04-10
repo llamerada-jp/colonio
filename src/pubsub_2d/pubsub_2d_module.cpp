@@ -49,7 +49,7 @@ Pubsub2DModule::~Pubsub2DModule() {
 
 void Pubsub2DModule::publish(
     const std::string& name, double x, double y, double r, const Value& value, uint32_t opt,
-    const std::function<void()>& on_success, const std::function<void(Error)>& on_failure) {
+    const std::function<void()>& on_success, const std::function<void(ErrorCode)>& on_failure) {
   uint64_t uid  = assign_uid();
   Cache& c      = cache[uid];
   c.name        = name;
@@ -132,7 +132,7 @@ void Pubsub2DModule::CommandKnock::on_success(std::unique_ptr<const Packet> pack
 
 Pubsub2DModule::CommandPass::CommandPass(
     Pubsub2DModule& parent_, uint64_t uid_, const std::function<void()>& cb_on_success_,
-    const std::function<void(Error)>& cb_on_failure_) :
+    const std::function<void(ErrorCode)>& cb_on_failure_) :
     Command(CommandID::Pubsub2D::PASS, PacketMode::NONE),
     parent(parent_),
     uid(uid_),
@@ -142,13 +142,13 @@ Pubsub2DModule::CommandPass::CommandPass(
 
 void Pubsub2DModule::CommandPass::on_error(const std::string& message) {
   // @todo output log.
-  cb_on_failure(Error::SYSTEM_ERROR);
+  cb_on_failure(ErrorCode::SYSTEM_ERROR);
 }
 
 void Pubsub2DModule::CommandPass::on_failure(std::unique_ptr<const Packet> packet) {
   Pubsub2DProtocol::PassFailure content;
   packet->parse_content(&content);
-  Error reason = static_cast<Error>(content.reason());
+  ErrorCode reason = static_cast<ErrorCode>(content.reason());
   cb_on_failure(reason);
 }
 
@@ -256,7 +256,7 @@ void Pubsub2DModule::recv_packet_pass(std::unique_ptr<const Packet> packet) {
       if (dest == NodeID::THIS) {
         if (opt & Pubsub2D::RAISE_NO_ONE_RECV) {
           Pubsub2DProtocol::PassFailure param;
-          param.set_reason(static_cast<uint32_t>(Error::NO_ONE_RECV));
+          param.set_reason(static_cast<uint32_t>(ErrorCode::NO_ONE_RECV));
           send_failure(*packet, serialize_pb(param));
         } else {
           send_success(*packet, nullptr);
@@ -268,7 +268,7 @@ void Pubsub2DModule::recv_packet_pass(std::unique_ptr<const Packet> packet) {
   } else {
     if (opt & Pubsub2D::RAISE_NO_ONE_RECV) {
       Pubsub2DProtocol::PassFailure param;
-      param.set_reason(static_cast<uint32_t>(Error::NO_ONE_RECV));
+      param.set_reason(static_cast<uint32_t>(ErrorCode::NO_ONE_RECV));
       send_failure(*packet, serialize_pb(param));
     } else {
       send_success(*packet, nullptr);
@@ -306,7 +306,7 @@ void Pubsub2DModule::send_packet_deffuse(const NodeID& dst_nid, const Cache& cac
 }
 
 void Pubsub2DModule::send_packet_pass(
-    const Cache& cache, const std::function<void()>& on_success, const std::function<void(Error)>& on_failure) {
+    const Cache& cache, const std::function<void()>& on_success, const std::function<void(ErrorCode)>& on_failure) {
   Pubsub2DProtocol::Pass param;
   cache.center.to_pb(param.mutable_center());
   param.set_r(cache.r);

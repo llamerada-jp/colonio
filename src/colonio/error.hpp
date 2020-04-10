@@ -13,29 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "api_gate.hpp"
+#pragma once
+
+#include <exception>
+#include <string>
+
+#include "constant.hpp"
 
 namespace colonio {
+class Error {
+ public:
+  ErrorCode code;
+  /// A message string for display or bug report.
+  const std::string message;
 
-Error get_error(const api::Reply& reply) {
-  if (reply.has_failure()) {
-    return Error(static_cast<ErrorCode>(reply.failure().code()), reply.failure().message());
-  } else {
-    return Error(ErrorCode::UNDEFINED, "unknown error");
-  }
-}
-
-Exception get_exception(const api::Reply& reply) {
-  if (reply.has_failure()) {
-    return Exception(static_cast<ErrorCode>(reply.failure().code()), reply.failure().message());
-  } else {
-    return Exception(ErrorCode::UNDEFINED, "unknown error");
-  }
-}
-
-APIGateBase::APIGateBase() : logger(*this) {
-}
-
-APIGateBase::~APIGateBase() {
-}
+  explicit Error(ErrorCode code_, const std::string& message_);
+};
 }  // namespace colonio

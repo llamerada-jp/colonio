@@ -15,12 +15,19 @@
  */
 #pragma once
 
+#include <condition_variable>
+#include <set>
 #include <sstream>
 #include <string>
+#include <thread>
 
 class AsyncHelper {
  public:
   std::stringstream marks;
+
+  std::set<std::string> signals;
+  std::mutex mtx_signals;
+  std::condition_variable cond_signals;
 
   AsyncHelper() {
   }
@@ -34,5 +41,16 @@ class AsyncHelper {
 
   std::string get_route() {
     return marks.str();
+  }
+
+  void pass_signal(const std::string& key) {
+    std::lock_guard<std::mutex> lock(mtx_signals);
+    signals.insert(key);
+    cond_signals.notify_all();
+  }
+
+  void wait_signal(const std::string& key) {
+    std::unique_lock<std::mutex> lock(mtx_signals);
+    cond_signals.wait(lock, [this, &key]() { return signals.find(key) != signals.end(); });
   }
 };

@@ -33,6 +33,21 @@ TEST(ConnectTest, connect_single) {
   node.disconnect();
 }
 
+TEST(ConnectTest, connect_async) {
+  AsyncHelper helper;
+  TestSeed seed;
+  seed.run();
+
+  ColonioNode node("node");
+
+  node.connect(
+      "http://localhost:8080/test", "", [&](colonio::Colonio& c) { helper.pass_signal("connect"); },
+      [&](colonio::Colonio& c, const colonio::Error& err) { ADD_FAILURE(); });
+
+  helper.wait_signal("connect");
+  node.disconnect();
+}
+
 TEST(ConnectTest, connect_multi) {
   const std::string URL      = "http://localhost:8080/test";
   const std::string TOKEN    = "";

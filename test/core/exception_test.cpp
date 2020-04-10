@@ -23,7 +23,7 @@ using namespace colonio;
 
 TEST(UtilsTest, Exception) {
   try {
-    colonio_throw(Error::SYSTEM_ERROR, "test");
+    colonio_throw(ErrorCode::SYSTEM_ERROR, "test");
 
   } catch (FatalException& e) {
     FAIL();
@@ -31,7 +31,7 @@ TEST(UtilsTest, Exception) {
   } catch (InternalException& e) {
     EXPECT_EQ(e.line, 26);
     EXPECT_STREQ(e.file.c_str(), "exception_test.cpp");
-    EXPECT_EQ(e.code, Error::SYSTEM_ERROR);
+    EXPECT_EQ(e.code, ErrorCode::SYSTEM_ERROR);
     EXPECT_EQ(e.message, "test");
     EXPECT_STREQ(e.what(), "test");
   }
@@ -42,7 +42,7 @@ TEST(UtilsTest, Exception) {
   } catch (FatalException& e) {
     EXPECT_EQ(e.line, 40);
     EXPECT_STREQ(e.file.c_str(), "exception_test.cpp");
-    EXPECT_EQ(e.code, Error::UNDEFINED);
+    EXPECT_EQ(e.code, ErrorCode::UNDEFINED);
     EXPECT_EQ(e.message, "test");
     EXPECT_STREQ(e.what(), "test");
 

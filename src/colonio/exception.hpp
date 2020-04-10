@@ -23,11 +23,11 @@
 namespace colonio {
 class Exception : public std::exception {
  public:
-  Error code;
+  ErrorCode code;
   /// A message string for display or bug report.
   const std::string message;
 
-  explicit Exception(Error code_, const std::string& message_);
+  explicit Exception(ErrorCode code_, const std::string& message_);
 
   /**
    * Pass message without line-no and file name.

@@ -32,7 +32,7 @@ enum Type {
 };
 }  // namespace DebugEvent
 
-enum class Error : uint32_t {
+enum class ErrorCode : uint32_t {
   UNDEFINED,
   SYSTEM_ERROR,
   OFFLINE,

@@ -46,7 +46,7 @@ Map& Colonio::access_map(const std::string& name) {
     return *it->second;
 
   } else {
-    throw Exception(Error::CONFLICT_WITH_SETTING, Utils::format_string("map not found : ", 0, name.c_str()));
+    throw Exception(ErrorCode::CONFLICT_WITH_SETTING, Utils::format_string("map not found : ", 0, name.c_str()));
   }
 }
 
@@ -56,7 +56,7 @@ Pubsub2D& Colonio::access_pubsub_2d(const std::string& name) {
     return *it->second;
 
   } else {
-    throw Exception(Error::CONFLICT_WITH_SETTING, Utils::format_string("pubsub_2d not found : ", 0, name.c_str()));
+    throw Exception(ErrorCode::CONFLICT_WITH_SETTING, Utils::format_string("pubsub_2d not found : ", 0, name.c_str()));
   }
 }
 
@@ -119,12 +119,75 @@ void Colonio::connect(const std::string& url, const std::string& token) {
   }
 }
 
+void Colonio::connect(
+    const std::string& url, const std::string& token, std::function<void(Colonio&)> on_success,
+    std::function<void(Colonio&, const Error&)> on_failure) {
+  assert(!impl);
+
+  impl = std::make_unique<Colonio::Impl>();
+  impl->api_gate.set_event_hook(APIChannel::COLONIO, [this](const api::Event& e) {
+    switch (e.param_case()) {
+      case api::Event::ParamCase::kColonioLog: {
+        const api::colonio::LogEvent& l = e.colonio_log();
+        on_output_log(static_cast<LogLevel>(l.level()), l.message());
+      } break;
+
+      case api::Event::ParamCase::kColonioDebug: {
+        const api::colonio::DebugEvent& d = e.colonio_debug();
+        on_debug_event(static_cast<DebugEvent::Type>(d.event()), d.json());
+      } break;
+
+      default:
+        assert(false);
+        break;
+    }
+  });
+
+  impl->api_gate.init();
+
+  api::Call call;
+  api::colonio::Connect* api = call.mutable_colonio_connect();
+  api->set_url(url);
+  api->set_token(token);
+
+  impl->api_gate.call_async(APIChannel::COLONIO, call, [on_success, on_failure, this](const api::Reply& reply) {
+    if (reply.has_colonio_connect()) {
+      const api::colonio::ConnectReply& param = reply.colonio_connect();
+      impl->local_nid                         = NodeID::from_pb(param.local_nid());
+
+      for (auto& module_param : param.modules()) {
+        APIChannel::Type channel = static_cast<APIChannel::Type>(module_param.channel());
+        switch (module_param.type()) {
+          case api::colonio::ConnectReply_ModuleType_MAP:
+            impl->maps.insert(
+                std::make_pair(module_param.name(), std::unique_ptr<Map>(new MapImpl(impl->api_gate, channel))));
+            break;
+
+          case api::colonio::ConnectReply_ModuleType_PUBSUB_2D:
+            impl->pubsub_2ds.insert(std::make_pair(
+                module_param.name(), std::unique_ptr<Pubsub2D>(new Pubsub2DImpl(impl->api_gate, channel))));
+            break;
+
+          default:
+            assert(false);
+            break;
+        }
+      }
+      on_success(*this);
+
+    } else {
+      on_failure(*this, get_error(reply));
+    }
+  });
+}
+
 void Colonio::disconnect() {
   assert(impl);
 
   api::Call call;
   call.mutable_colonio_disconnect();
 
+  // TODO: implement async disconnect for wasm
   std::unique_ptr<api::Reply> reply = impl->api_gate.call_sync(APIChannel::COLONIO, call);
   if (reply) {
     if (!reply->has_success()) {
@@ -156,6 +219,25 @@ std::tuple<double, double> Colonio::set_position(double x, double y) {
   } else {
     throw get_exception(*reply);
   }
+}
+
+void Colonio::set_position(
+    double x, double y, std::function<void(Colonio&, double, double)> on_success,
+    std::function<void(Colonio&, const Error&)> on_failure) {
+  assert(impl);
+
+  api::Call call;
+  api::colonio::SetPosition* api = call.mutable_colonio_set_position();
+  Coordinate(x, y).to_pb(api->mutable_position());
+
+  impl->api_gate.call_async(APIChannel::COLONIO, call, [on_success, on_failure, this](const api::Reply& reply) {
+    if (reply.has_colonio_set_position()) {
+      Coordinate position = Coordinate::from_pb(reply.colonio_set_position().position());
+      on_success(*this, position.x, position.y);
+    } else {
+      on_failure(*this, get_error(reply));
+    }
+  });
 }
 
 void Colonio::on_output_log(LogLevel level, const std::string& message) {

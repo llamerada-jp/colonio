@@ -28,13 +28,33 @@ class APIGateMultiThread : public APIGateBase, public ControllerDelegate {
  public:
   APIGateMultiThread();
 
+  void call_async(
+      APIChannel::Type channel, const api::Call& call, std::function<void(const api::Reply&)> on_reply) override;
   std::unique_ptr<api::Reply> call_sync(APIChannel::Type channel, const api::Call& call) override;
   void init() override;
   void quit() override;
   void set_event_hook(APIChannel::Type channel, std::function<void(const api::Event&)> on_event) override;
 
  private:
-  std::unique_ptr<std::thread> th_event;
+  struct Reply {
+    std::unique_ptr<api::Reply> value;
+    std::function<void(const api::Reply&)> on_reply;
+
+    Reply();
+    Reply(std::function<void(const api::Reply&)> on_reply_);
+  };
+
+  class EventCall {
+   public:
+    std::unique_ptr<api::Event> event;
+    std::unique_ptr<api::Reply> reply;
+    std::function<void(const api::Reply&)> on_reply;
+
+    EventCall(std::unique_ptr<api::Reply> reply_, std::function<void(const api::Reply&)> on_reply_);
+    EventCall(std::unique_ptr<api::Event> event_);
+  };
+
+  std::unique_ptr<std::thread> th_event_call;
   std::unique_ptr<std::thread> th_controller;
   bool flg_end;
   std::mutex mtx_end;
@@ -42,8 +62,8 @@ class APIGateMultiThread : public APIGateBase, public ControllerDelegate {
   Controller controller;
 
   std::deque<std::unique_ptr<api::Call>> que_call;
-  std::map<uint32_t, std::unique_ptr<api::Reply>> map_reply;
-  std::unique_ptr<std::deque<std::unique_ptr<api::Event>>> que_event;
+  std::map<uint32_t, Reply> map_reply;
+  std::unique_ptr<std::deque<EventCall>> que_event_calls;
   std::map<APIChannel::Type, std::function<void(const api::Event&)>> map_event;
   std::mutex mtx_call;
   std::mutex mtx_event;
@@ -60,11 +80,12 @@ class APIGateMultiThread : public APIGateBase, public ControllerDelegate {
 
   void logger_on_output(Logger& logger, LogLevel level, const std::string& message) override;
 
-  void loop_event();
+  void loop_event_call();
   void loop_controller();
   bool has_end();
   void push_event(std::unique_ptr<api::Event> event);
-  void reply_failure(uint32_t id, Error code, const std::string& message);
+  void push_reply(std::unique_ptr<api::Reply> reply, std::function<void(const api::Reply&)> on_reply);
+  void reply_failure(uint32_t id, ErrorCode code, const std::string& message);
 };
 
 typedef APIGateMultiThread APIGate;

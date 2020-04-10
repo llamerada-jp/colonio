@@ -25,6 +25,8 @@
 #include <string>
 #include <tuple>
 
+#include "colonio/error.hpp"
+
 namespace colonio {
 class Colonio {
  public:
@@ -34,9 +36,15 @@ class Colonio {
   Map& access_map(const std::string& name);
   Pubsub2D& access_pubsub_2d(const std::string& name);
   void connect(const std::string& url, const std::string& token);
+  void connect(
+      const std::string& url, const std::string& token, std::function<void(Colonio&)> on_success,
+      std::function<void(Colonio&, const Error&)> on_failure);
   void disconnect();
   std::string get_local_nid();
   std::tuple<double, double> set_position(double x, double y);
+  void set_position(
+      double x, double y, std::function<void(Colonio&, double, double)> on_success,
+      std::function<void(Colonio&, const Error&)> on_failure);
 
  protected:
   virtual void on_output_log(LogLevel level, const std::string& message);

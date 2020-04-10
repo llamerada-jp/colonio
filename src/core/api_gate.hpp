@@ -18,6 +18,7 @@
 #include <functional>
 
 #include "api.pb.h"
+#include "colonio/error.hpp"
 #include "colonio/exception.hpp"
 #include "definition.hpp"
 #include "logger.hpp"
@@ -25,6 +26,7 @@
 namespace colonio {
 
 // Helper method.
+Error get_error(const api::Reply& reply);
 Exception get_exception(const api::Reply& reply);
 
 class APIGateBase : public LoggerDelegate {
@@ -33,6 +35,8 @@ class APIGateBase : public LoggerDelegate {
 
   APIGateBase();
   virtual ~APIGateBase();
+  virtual void call_async(
+      APIChannel::Type channel, const api::Call& call, std::function<void(const api::Reply&)> on_reply)    = 0;
   virtual std::unique_ptr<api::Reply> call_sync(APIChannel::Type channel, const api::Call& call)           = 0;
   virtual void init()                                                                                      = 0;
   virtual void quit()                                                                                      = 0;
