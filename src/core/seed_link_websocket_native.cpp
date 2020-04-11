@@ -35,10 +35,11 @@ SeedLinkWebsocketNative::~SeedLinkWebsocketNative() {
   client.stop_perpetual();
 
   websocketpp::lib::error_code ec;
-  client.close(con->get_handle(), websocketpp::close::status::going_away, "", ec);
-  if (ec) {
-    // @todo error
-    std::cout << "> Error closing connection: " << ec.message() << std::endl;
+  if (con) {
+    client.close(con->get_handle(), websocketpp::close::status::going_away, "", ec);
+    if (ec) {
+      // @todo error
+    }
   }
 
   m_thread->join();
@@ -56,15 +57,18 @@ void SeedLinkWebsocketNative::connect(const std::string& url) {
   }
 
   con->set_open_handler([this](std::weak_ptr<void>) {
-    context.scheduler.add_timeout_task(this, [this]() { this->delegate.seed_link_on_connect(*this); }, 0);
+    context.scheduler.add_timeout_task(
+        this, [this]() { this->delegate.seed_link_on_connect(*this); }, 0);
   });
 
   con->set_fail_handler([this](std::weak_ptr<void>) {
-    context.scheduler.add_timeout_task(this, [this]() { this->delegate.seed_link_on_error(*this); }, 0);
+    context.scheduler.add_timeout_task(
+        this, [this]() { this->delegate.seed_link_on_error(*this); }, 0);
   });
 
   con->set_close_handler([this](std::weak_ptr<void>) {
-    context.scheduler.add_timeout_task(this, [this]() { this->delegate.seed_link_on_disconnect(*this); }, 0);
+    context.scheduler.add_timeout_task(
+        this, [this]() { this->delegate.seed_link_on_disconnect(*this); }, 0);
   });
 
   con->set_message_handler([this](std::weak_ptr<void>, message_ptr msg) {
