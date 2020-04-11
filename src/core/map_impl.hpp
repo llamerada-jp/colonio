@@ -24,7 +24,13 @@ class MapImpl : public Map {
   MapImpl(APIGate& api_gate_, APIChannel::Type channel_);
 
   Value get(const Value& key) override;
-  void set(const Value& key, const Value& value, MapOption::Type opt = MapOption::NONE) override;
+  void get(
+      const Value& key, std::function<void(Map&, const Value&)> on_success,
+      std::function<void(Map&, const Error&)> on_failure) override;
+  void set(const Value& key, const Value& value, uint32_t opt) override;
+  void set(
+      const Value& key, const Value& value, std::function<void(Map&)> on_success,
+      std::function<void(Map&, const Error&)> on_failure, uint32_t opt = 0x00) override;
 
  private:
   APIGate& api_gate;

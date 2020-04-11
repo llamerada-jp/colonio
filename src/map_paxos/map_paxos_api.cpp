@@ -81,7 +81,7 @@ void MapPaxosAPI::api_get(uint32_t id, const Value& key) {
       });
 }
 
-void MapPaxosAPI::api_set(uint32_t id, const Value& key, const Value& value, MapOption::Type opt) {
+void MapPaxosAPI::api_set(uint32_t id, const Value& key, const Value& value, uint32_t opt) {
   module->set(
       key, value, [this, id]() { api_success(id); },
       [this, id](ErrorCode code) {

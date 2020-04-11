@@ -16,23 +16,27 @@
 #pragma once
 
 #include <colonio/value.hpp>
-#include <cstdint>
+#include <functional>
 
 namespace colonio {
-
-namespace MapOption {
-typedef uint32_t Type;
-static const Type NONE                = 0x0;
-static const Type ERROR_WITHOUT_EXIST = 0x1;  // del, unlook
-// static const Type ERROR_WITH_EXIST    = 0x2; // set
-static const Type TRY_LOCK = 0x4;  // lock
-}  // namespace MapOption
+class Error;
 
 class Map {
  public:
+  // options
+  static const uint32_t ERROR_WITHOUT_EXIST = 0x1;  // del, unlook
+  static const uint32_t ERROR_WITH_EXIST    = 0x2;  // set (unsupported yet)
+  static const uint32_t TRY_LOCK            = 0x4;  // lock
+
   virtual ~Map();
 
-  virtual Value get(const Value& key)                                                           = 0;
-  virtual void set(const Value& key, const Value& value, MapOption::Type opt = MapOption::NONE) = 0;
+  virtual Value get(const Value& key) = 0;
+  virtual void get(
+      const Value& key, std::function<void(Map&, const Value&)> on_success,
+      std::function<void(Map&, const Error&)> on_failure)                     = 0;
+  virtual void set(const Value& key, const Value& value, uint32_t opt = 0x00) = 0;
+  virtual void set(
+      const Value& key, const Value& value, std::function<void(Map&)> on_success,
+      std::function<void(Map&, const Error&)> on_failure, uint32_t opt = 0x00) = 0;
 };
 }  // namespace colonio

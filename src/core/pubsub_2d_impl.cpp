@@ -52,6 +52,27 @@ void Pubsub2DImpl::publish(const std::string& name, double x, double y, double r
   }
 }
 
+void Pubsub2DImpl::publish(
+    const std::string& name, double x, double y, double r, const Value& value,
+    std::function<void(Pubsub2D&)> on_success, std::function<void(Pubsub2D&, const Error&)> on_failure, uint32_t opt) {
+  api::Call call;
+  api::pubsub_2d::Publish* api = call.mutable_pubsub_2d_publish();
+  api->set_name(name);
+  api->set_x(x);
+  api->set_y(y);
+  api->set_r(r);
+  ValueImpl::to_pb(api->mutable_value(), value);
+  api->set_opt(opt);
+
+  api_gate.call_async(channel, call, [on_success, on_failure, this](const api::Reply& reply) {
+    if (reply.has_success()) {
+      on_success(*this);
+    } else {
+      on_failure(*this, get_error(reply));
+    }
+  });
+}
+
 void Pubsub2DImpl::on(const std::string& name, const std::function<void(const Value&)>& subscriber) {
   subscribers.insert(std::make_pair(name, subscriber));
 }

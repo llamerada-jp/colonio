@@ -140,7 +140,7 @@ void MapPaxosModule::CommandGet::postprocess() {
 /* class MapPaxosModule::CommandSet::Info */
 MapPaxosModule::CommandSet::Info::Info(
     MapPaxosModule& parent_, const Value& key_, const Value& value_, const std::function<void()>& cb_on_success_,
-    const std::function<void(ErrorCode)>& cb_on_failure_, const MapOption::Type& opt_) :
+    const std::function<void(ErrorCode)>& cb_on_failure_, const uint32_t& opt_) :
     cb_on_success(cb_on_success_), cb_on_failure(cb_on_failure_), key(key_), value(value_), opt(opt_), parent(parent_) {
 }
 
@@ -178,8 +178,7 @@ MapPaxosModule::CommandPrepare::Reply::Reply(const NodeID& src_nid_, PAXOS_N n_,
 
 /* class MapPaxosModule::CommandPrepare::Info */
 MapPaxosModule::CommandPrepare::Info::Info(
-    MapPaxosModule& parent_, std::unique_ptr<const Packet> packet_reply_, std::unique_ptr<Value> key_,
-    MapOption::Type opt_) :
+    MapPaxosModule& parent_, std::unique_ptr<const Packet> packet_reply_, std::unique_ptr<Value> key_, uint32_t opt_) :
     packet_reply(std::move(packet_reply_)),
     key(std::move(key_)),
     n_max(0),
@@ -302,8 +301,7 @@ MapPaxosModule::CommandAccept::Reply::Reply(const NodeID& src_nid_, PAXOS_N n_, 
 
 /* class MapPaxosModule::CommandAccept::Info */
 MapPaxosModule::CommandAccept::Info::Info(
-    MapPaxosModule& parent_, std::unique_ptr<const Packet> packet_reply_, std::unique_ptr<Value> key_,
-    MapOption::Type opt_) :
+    MapPaxosModule& parent_, std::unique_ptr<const Packet> packet_reply_, std::unique_ptr<Value> key_, uint32_t opt_) :
     packet_reply(std::move(packet_reply_)),
     key(std::move(key_)),
     n_max(0),
@@ -454,7 +452,7 @@ void MapPaxosModule::get(
 
 void MapPaxosModule::set(
     const Value& key, const Value& value, const std::function<void()>& on_success,
-    const std::function<void(ErrorCode)>& on_failure, MapOption::Type opt) {
+    const std::function<void(ErrorCode)>& on_failure, uint32_t opt) {
   std::unique_ptr<CommandSet::Info> info =
       std::make_unique<CommandSet::Info>(*this, key, value, on_success, on_failure, opt);
   send_packet_set(std::move(info));
@@ -630,13 +628,11 @@ void MapPaxosModule::recv_packet_hint(std::unique_ptr<const Packet> packet) {
     // Same logic with set command.
     if (proposer.reset) {
       logd("prepare").map_u32("id", packet->id);
-      send_packet_prepare(
-          proposer, ModuleBase::copy_packet_for_reply(*packet), std::make_unique<Value>(key), MapOption::NONE);
+      send_packet_prepare(proposer, ModuleBase::copy_packet_for_reply(*packet), std::make_unique<Value>(key), 0x00);
 
     } else {
       logd("accept").map_u32("id", packet->id);
-      send_packet_accept(
-          proposer, ModuleBase::copy_packet_for_reply(*packet), std::make_unique<Value>(key), MapOption::NONE);
+      send_packet_accept(proposer, ModuleBase::copy_packet_for_reply(*packet), std::make_unique<Value>(key), 0x00);
     }
 
   } else {
@@ -724,9 +720,9 @@ void MapPaxosModule::recv_packet_get(std::unique_ptr<const Packet> packet) {
 void MapPaxosModule::recv_packet_prepare(std::unique_ptr<const Packet> packet) {
   MapPaxosProtocol::Prepare content;
   packet->parse_content(&content);
-  Value key                 = ValueImpl::from_pb(content.key());
-  const PAXOS_N n           = content.n();
-  const MapOption::Type opt = content.opt();
+  Value key          = ValueImpl::from_pb(content.key());
+  const PAXOS_N n    = content.n();
+  const uint32_t opt = content.opt();
 
   auto acceptor_it = acceptor_infos.find(key);
   if (acceptor_it == acceptor_infos.end()) {
@@ -769,9 +765,9 @@ void MapPaxosModule::recv_packet_prepare(std::unique_ptr<const Packet> packet) {
 void MapPaxosModule::recv_packet_set(std::unique_ptr<const Packet> packet) {
   MapPaxosProtocol::Set content;
   packet->parse_content(&content);
-  Value key                 = ValueImpl::from_pb(content.key());
-  Value value               = ValueImpl::from_pb(content.value());
-  const MapOption::Type opt = content.opt();
+  Value key          = ValueImpl::from_pb(content.key());
+  Value value        = ValueImpl::from_pb(content.value());
+  const uint32_t opt = content.opt();
 
   auto proposer_it = proposer_infos.find(key);
   if (proposer_it == proposer_infos.end()) {
@@ -814,8 +810,7 @@ void MapPaxosModule::recv_packet_set(std::unique_ptr<const Packet> packet) {
 }
 
 void MapPaxosModule::send_packet_accept(
-    ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply, std::unique_ptr<Value> key,
-    MapOption::Type opt) {
+    ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply, std::unique_ptr<Value> key, uint32_t opt) {
   std::shared_ptr<CommandAccept::Info> accept_info =
       std::make_shared<CommandAccept::Info>(*this, std::move(packet_reply), std::move(key), opt);
 
@@ -904,8 +899,7 @@ void MapPaxosModule::send_packet_hint(const Value& key, const Value& value, PAXO
 }
 
 void MapPaxosModule::send_packet_prepare(
-    ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply, std::unique_ptr<Value> key,
-    MapOption::Type opt) {
+    ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply, std::unique_ptr<Value> key, uint32_t opt) {
   std::shared_ptr<CommandPrepare::Info> prepare_info =
       std::make_unique<CommandPrepare::Info>(*this, std::move(packet_reply), std::move(key), opt);
 

@@ -42,7 +42,7 @@ class MapPaxosAPI : public APIBase {
 
   void api_on_recv_call(const api::Call& call) override;
   void api_get(uint32_t id, const Value& key);
-  void api_set(uint32_t id, const Value& key, const Value& value, MapOption::Type opt);
+  void api_set(uint32_t id, const Value& key, const Value& value, uint32_t opt);
 };
 
 }  // namespace colonio

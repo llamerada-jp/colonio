@@ -36,7 +36,23 @@ Value MapImpl ::get(const Value& key) {
   }
 }
 
-void MapImpl ::set(const Value& key, const Value& value, MapOption::Type opt) {
+void MapImpl::get(
+    const Value& key, std::function<void(Map&, const Value&)> on_success,
+    std::function<void(Map&, const Error&)> on_failure) {
+  api::Call call;
+  api::map_api::Get* api = call.mutable_map_get();
+  ValueImpl::to_pb(api->mutable_key(), key);
+
+  api_gate.call_async(channel, call, [on_success, on_failure, this](const api::Reply& reply) {
+    if (reply.has_map_get()) {
+      on_success(*this, ValueImpl::from_pb(reply.map_get().value()));
+    } else {
+      on_failure(*this, get_error(reply));
+    }
+  });
+}
+
+void MapImpl ::set(const Value& key, const Value& value, uint32_t opt) {
   api::Call call;
   api::map_api::Set* api = call.mutable_map_set();
   ValueImpl::to_pb(api->mutable_key(), key);
@@ -47,5 +63,23 @@ void MapImpl ::set(const Value& key, const Value& value, MapOption::Type opt) {
   if (!reply->has_success()) {
     throw get_exception(*reply);
   }
+}
+
+void MapImpl::set(
+    const Value& key, const Value& value, std::function<void(Map&)> on_success,
+    std::function<void(Map&, const Error&)> on_failure, uint32_t opt) {
+  api::Call call;
+  api::map_api::Set* api = call.mutable_map_set();
+  ValueImpl::to_pb(api->mutable_key(), key);
+  ValueImpl::to_pb(api->mutable_value(), value);
+  api->set_opt(opt);
+
+  api_gate.call_async(channel, call, [on_success, on_failure, this](const api::Reply& reply) {
+    if (reply.has_success()) {
+      on_success(*this);
+    } else {
+      on_failure(*this, get_error(reply));
+    }
+  });
 }
 }  // namespace colonio

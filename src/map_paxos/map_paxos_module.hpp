@@ -41,7 +41,7 @@ class MapPaxosModule : public Module1D {
       const std::function<void(ErrorCode)>& on_failure);
   void set(
       const Value& key, const Value& value, const std::function<void()>& on_success,
-      const std::function<void(ErrorCode)>& on_failure, MapOption::Type opt);
+      const std::function<void(ErrorCode)>& on_failure, uint32_t opt);
 
   void module_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) override;
 
@@ -109,14 +109,14 @@ class MapPaxosModule : public Module1D {
       MapPaxosModule& parent;
       const Value key;
       const Value value;
-      const MapOption::Type opt;
+      const uint32_t opt;
 
       std::function<void()> cb_on_success;
       std::function<void(ErrorCode)> cb_on_failure;
 
       Info(
           MapPaxosModule& parent_, const Value& key_, const Value& value_, const std::function<void()>& cb_on_success_,
-          const std::function<void(ErrorCode)>& cb_on_failure_, const MapOption::Type& opt_);
+          const std::function<void(ErrorCode)>& cb_on_failure_, const uint32_t& opt_);
     };
     std::unique_ptr<Info> info;
 
@@ -145,13 +145,13 @@ class MapPaxosModule : public Module1D {
       std::unique_ptr<Value> key;
       PAXOS_N n_max;
       PAXOS_N i_max;
-      MapOption::Type opt;
+      uint32_t opt;
       MapPaxosModule& parent;
       std::vector<Reply> replys;
       bool is_finished;
       Info(
           MapPaxosModule& parent_, std::unique_ptr<const Packet> packet_reply_, std::unique_ptr<Value> key_,
-          MapOption::Type opt_);
+          uint32_t opt_);
       virtual ~Info();
     };
 
@@ -183,14 +183,14 @@ class MapPaxosModule : public Module1D {
       std::unique_ptr<Value> key;
       PAXOS_N n_max;
       PAXOS_N i_max;
-      MapOption::Type opt;
+      uint32_t opt;
       MapPaxosModule& parent;
       std::vector<Reply> replys;
       bool is_finished;
 
       Info(
           MapPaxosModule& parent_, std::unique_ptr<const Packet> packet_reply_, std::unique_ptr<Value> key_,
-          MapOption::Type opt_);
+          uint32_t opt_);
       virtual ~Info();
     };
 
@@ -227,8 +227,7 @@ class MapPaxosModule : public Module1D {
   void recv_packet_prepare(std::unique_ptr<const Packet> packet);
   void recv_packet_set(std::unique_ptr<const Packet> packet);
   void send_packet_accept(
-      ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply, std::unique_ptr<Value> key,
-      MapOption::Type opt);
+      ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply, std::unique_ptr<Value> key, uint32_t opt);
   void send_packet_balance_acceptor(const Value& key, const AcceptorInfo& acceptor);
   void send_packet_balance_proposer(const Value& key, const ProposerInfo& proposer);
   void send_packet_get(
@@ -236,8 +235,7 @@ class MapPaxosModule : public Module1D {
       const std::function<void(const Value&)>& on_success, const std::function<void(ErrorCode)>& on_failure);
   void send_packet_hint(const Value& key, const Value& value, PAXOS_N n, PAXOS_N i);
   void send_packet_prepare(
-      ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply, std::unique_ptr<Value> key,
-      MapOption::Type opt);
+      ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply, std::unique_ptr<Value> key, uint32_t opt);
   void send_packet_set(std::unique_ptr<CommandSet::Info> info);
 
 #ifndef NDEBUG

@@ -19,6 +19,7 @@
 #include <functional>
 
 namespace colonio {
+class Error;
 
 class Pubsub2D {
  public:
@@ -29,7 +30,11 @@ class Pubsub2D {
 
   virtual void publish(
       const std::string& name, double x, double y, double r, const Value& value, uint32_t opt = 0x00) = 0;
-  virtual void on(const std::string& name, const std::function<void(const Value&)>& subscriber)       = 0;
-  virtual void off(const std::string& name)                                                           = 0;
+  virtual void publish(
+      const std::string& name, double x, double y, double r, const Value& value,
+      std::function<void(Pubsub2D&)> on_success, std::function<void(Pubsub2D&, const Error&)> on_failure,
+      uint32_t opt = 0x00)                                                                      = 0;
+  virtual void on(const std::string& name, const std::function<void(const Value&)>& subscriber) = 0;
+  virtual void off(const std::string& name)                                                     = 0;
 };
 }  // namespace colonio

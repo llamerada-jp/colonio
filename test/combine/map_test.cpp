@@ -51,7 +51,6 @@ TEST(MapTest, set_get_single) {
     EXPECT_EQ(e.code, ErrorCode::NOT_EXIST_KEY);
     helper.mark("a");
   }
-
   // set(key, val)
   printf("set a value.\n");
   map.set(Value(KEY_NAME), Value(VALUE));
@@ -64,6 +63,66 @@ TEST(MapTest, set_get_single) {
 
   node.disconnect();
   EXPECT_THAT(helper.get_route(), MatchesRegex("^a$"));
+}
+
+TEST(MapTest, set_get_async) {
+  const std::string URL      = "http://localhost:8080/test";
+  const std::string TOKEN    = "";
+  const std::string MAP_NAME = "map";
+  const std::string KEY_NAME = "key";
+  const std::string VALUE    = "test value";
+
+  AsyncHelper helper;
+  TestSeed seed;
+  seed.add_module_map_paxos(MAP_NAME, 256);
+  seed.run();
+
+  ColonioNode node("node");
+
+  // connect node
+  printf("connect node1\n");
+  node.connect(
+      URL, TOKEN,
+      [&node, &MAP_NAME, &KEY_NAME, &VALUE, &helper](colonio::Colonio& _) {
+        Map& map = node.access_map(MAP_NAME);
+
+        // get(key) : not exist
+        printf("get a not existed value.\n");
+        map.get(
+            Value(KEY_NAME), [](colonio::Map& _, const colonio::Value& value) { ADD_FAILURE(); },
+            [&KEY_NAME, &VALUE, &helper](colonio::Map& map, const colonio::Error& err) {
+              EXPECT_EQ(err.code, ErrorCode::NOT_EXIST_KEY);
+              // set(key, val)
+              printf("set a value.\n");
+              map.set(
+                  Value(KEY_NAME), Value(VALUE),
+                  [&KEY_NAME, &VALUE, &helper](colonio::Map& map) {
+                    // get(key)
+                    printf("get a existed value.\n");
+                    map.get(
+                        Value(KEY_NAME),
+                        [&VALUE, &helper](colonio::Map& _, const colonio::Value& value) {
+                          EXPECT_EQ(value.get<std::string>(), VALUE);
+                          helper.pass_signal("connect");
+                        },
+                        [](colonio::Map& _, const colonio::Error& err) {
+                          std::cerr << err.message << std::endl;
+                          ADD_FAILURE();
+                        });
+                  },
+                  [](colonio::Map& _, const colonio::Error& err) {
+                    std::cerr << err.message << std::endl;
+                    ADD_FAILURE();
+                  });
+            });
+      },
+      [](colonio::Colonio& _1, const colonio::Error& err) {
+        std::cerr << err.message << std::endl;
+        ADD_FAILURE();
+      });
+
+  helper.wait_signal("connect");
+  node.disconnect();
 }
 
 TEST(MapTest, set_get_multi) {
