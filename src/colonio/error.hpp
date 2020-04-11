@@ -15,10 +15,9 @@
  */
 #pragma once
 
+#include <colonio/constant.hpp>
 #include <exception>
 #include <string>
-
-#include "constant.hpp"
 
 namespace colonio {
 class Error {

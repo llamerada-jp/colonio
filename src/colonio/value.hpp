@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 #pragma once
+
+#include <cstdint>
 #include <memory>
 
 namespace colonio {

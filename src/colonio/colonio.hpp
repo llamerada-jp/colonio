@@ -16,6 +16,7 @@
 #pragma once
 
 #include <colonio/constant.hpp>
+#include <colonio/error.hpp>
 #include <colonio/exception.hpp>
 #include <colonio/map.hpp>
 #include <colonio/pubsub_2d.hpp>
@@ -25,9 +26,8 @@
 #include <string>
 #include <tuple>
 
-#include "colonio/error.hpp"
-
 namespace colonio {
+
 class Colonio {
  public:
   Colonio();
