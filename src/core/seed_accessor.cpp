@@ -78,8 +78,10 @@ void SeedAccessor::connect(unsigned int interval) {
         [this]() {
           int64_t current_msec = Utils::get_current_msec();
           last_connect_time    = current_msec;
-          link->connect(url);
-          delegate.seed_accessor_on_change_status(*this, get_status());
+          if (link) {
+            link->connect(url);
+            delegate.seed_accessor_on_change_status(*this, get_status());
+          }
         },
         last_connect_time + interval - current_msec);
   }
