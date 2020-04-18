@@ -252,8 +252,8 @@ void Pubsub2DModule::recv_packet_pass(std::unique_ptr<const Packet> packet) {
       delegate.pubsub_2d_module_on_on(*this, c.name, c.data);
 
     } else {
-      const NodeID& dest = get_relay_nid(center);
-      if (dest == NodeID::THIS) {
+      const NodeID& dst = get_relay_nid(center);
+      if (dst == NodeID::THIS) {
         if (opt & Pubsub2D::RAISE_NO_ONE_RECV) {
           Pubsub2DProtocol::PassFailure param;
           param.set_reason(static_cast<uint32_t>(ErrorCode::NO_ONE_RECV));
@@ -262,7 +262,7 @@ void Pubsub2DModule::recv_packet_pass(std::unique_ptr<const Packet> packet) {
           send_success(*packet, nullptr);
         }
       } else {
-        relay_packet(dest, std::move(packet));
+        relay_packet(dst, std::move(packet));
       }
     }
   } else {

@@ -93,9 +93,9 @@ bool Routing::is_covered_range_1d(const NodeID& nid) {
   return routing_1d->is_covered_range(nid);
 }
 
-const NodeID& Routing::get_relay_nid_2d(const Coordinate& dest) {
+const NodeID& Routing::get_relay_nid_2d(const Coordinate& dst) {
   assert(routing_2d != nullptr);
-  return routing_2d->get_relay_nid(dest);
+  return routing_2d->get_relay_nid(dst);
 }
 
 std::tuple<const NodeID&, const NodeID&, uint32_t> Routing::get_route_to_seed() {

@@ -31,6 +31,7 @@ add_library(colonio_test STATIC
 # Combination test
 set(test_targets_combine
   connect
+  export_c
   map
   pubsub_2d
   )

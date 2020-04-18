@@ -26,7 +26,7 @@ class Map {
   // options
   static const uint32_t ERROR_WITHOUT_EXIST = 0x1;  // del, unlook
   static const uint32_t ERROR_WITH_EXIST    = 0x2;  // set (unsupported yet)
-  static const uint32_t TRY_LOCK            = 0x4;  // lock
+  static const uint32_t TRY_LOCK            = 0x4;  // lock (unsupported yet)
 
   virtual ~Map();
 
@@ -36,7 +36,7 @@ class Map {
       std::function<void(Map&, const Error&)> on_failure)                     = 0;
   virtual void set(const Value& key, const Value& value, uint32_t opt = 0x00) = 0;
   virtual void set(
-      const Value& key, const Value& value, std::function<void(Map&)> on_success,
-      std::function<void(Map&, const Error&)> on_failure, uint32_t opt = 0x00) = 0;
+      const Value& key, const Value& value, uint32_t opt, std::function<void(Map&)> on_success,
+      std::function<void(Map&, const Error&)> on_failure) = 0;
 };
 }  // namespace colonio

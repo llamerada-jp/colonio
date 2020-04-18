@@ -85,7 +85,7 @@ class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public Rou
   const NodeID& get_relay_nid_1d(const Packet& packet);
   bool is_covered_range_1d(const NodeID& nid);
 
-  const NodeID& get_relay_nid_2d(const Coordinate& dest);
+  const NodeID& get_relay_nid_2d(const Coordinate& dst);
   bool is_covered_range_2d(const Coordinate& position);
 
   // next, seed, steps

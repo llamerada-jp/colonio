@@ -104,14 +104,14 @@ TEST(Pubsub2DTest, puhsub_async) {
 
   printf("publish position node1\n");
   ps1.publish(
-      "key", d2r(50), d2r(50), 10, Value("a"), [&helper](Pubsub2D& _) {},
+      "key", d2r(50), d2r(50), 10, Value("a"), 0, [&helper](Pubsub2D& _) {},
       [](Pubsub2D& _, const Error& err) {
         std::cout << err.message << std::endl;
         ADD_FAILURE();
       });
   printf("publish position node2\n");
   ps2.publish(
-      "key", d2r(50), d2r(50), 10, Value("b"), [&helper](Pubsub2D& _) {},
+      "key", d2r(50), d2r(50), 10, Value("b"), 0, [&helper](Pubsub2D& _) {},
       [](Pubsub2D& _, const Error& err) {
         std::cout << err.message << std::endl;
         ADD_FAILURE();

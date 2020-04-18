@@ -66,8 +66,8 @@ void MapImpl ::set(const Value& key, const Value& value, uint32_t opt) {
 }
 
 void MapImpl::set(
-    const Value& key, const Value& value, std::function<void(Map&)> on_success,
-    std::function<void(Map&, const Error&)> on_failure, uint32_t opt) {
+    const Value& key, const Value& value, uint32_t opt, std::function<void(Map&)> on_success,
+    std::function<void(Map&, const Error&)> on_failure) {
   api::Call call;
   api::map_api::Set* api = call.mutable_map_set();
   ValueImpl::to_pb(api->mutable_key(), key);

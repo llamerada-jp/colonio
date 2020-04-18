@@ -29,8 +29,8 @@ class MapImpl : public Map {
       std::function<void(Map&, const Error&)> on_failure) override;
   void set(const Value& key, const Value& value, uint32_t opt) override;
   void set(
-      const Value& key, const Value& value, std::function<void(Map&)> on_success,
-      std::function<void(Map&, const Error&)> on_failure, uint32_t opt = 0x00) override;
+      const Value& key, const Value& value, uint32_t opt, std::function<void(Map&)> on_success,
+      std::function<void(Map&, const Error&)> on_failure) override;
 
  private:
   APIGate& api_gate;

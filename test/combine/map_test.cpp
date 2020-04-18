@@ -95,7 +95,7 @@ TEST(MapTest, set_get_async) {
               // set(key, val)
               printf("set a value.\n");
               map.set(
-                  Value(KEY_NAME), Value(VALUE),
+                  Value(KEY_NAME), Value(VALUE), 0,
                   [&KEY_NAME, &VALUE, &helper](colonio::Map& map) {
                     // get(key)
                     printf("get a existed value.\n");
