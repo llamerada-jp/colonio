@@ -64,13 +64,11 @@ TEST(Pubsub2DTest, puhsub_async) {
   Pubsub2D& ps1 = node1.access_pubsub_2d(PUBSUB_2D_NAME);
   Pubsub2D& ps2 = node2.access_pubsub_2d(PUBSUB_2D_NAME);
   ps1.on("key", [&helper](const Value& v) {
-    helper.mark("1");
-    helper.mark(v.get<std::string>());
+    helper.mark("1" + v.get<std::string>());
     helper.pass_signal("on1");
   });
   ps2.on("key", [&helper](const Value& v) {
-    helper.mark("2");
-    helper.mark(v.get<std::string>());
+    helper.mark("2" + v.get<std::string>());
     helper.pass_signal("on2");
   });
 
