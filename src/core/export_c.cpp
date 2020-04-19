@@ -32,7 +32,7 @@ class ColonioC : public colonio::Colonio {
  protected:
   void on_output_log(colonio::LogLevel level, const std::string& message) override {
     if (cb_on_output_log != nullptr) {
-      cb_on_output_log(colonio, static_cast<COLONIO_LOG_LEVEL>(level), message.c_str(), message.size() + 1);
+      cb_on_output_log(colonio, static_cast<COLONIO_LOG_LEVEL>(level), message.c_str(), message.size());
     }
   }
 };
@@ -62,11 +62,12 @@ colonio_error_t* colonio_init(colonio_t* colonio) {
   return nullptr;
 }
 
-colonio_error_t* colonio_connect(colonio_t* colonio, const char* url, const char* token) {
+colonio_error_t* colonio_connect(
+    colonio_t* colonio, const char* url, unsigned int url_siz, const char* token, unsigned int token_siz) {
   colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
 
   try {
-    impl->connect(url, token);
+    impl->connect(std::string(url, url_siz), std::string(token, token_siz));
   } catch (const colonio::Exception& e) {
     return convert_exception(e);
   }
@@ -75,11 +76,12 @@ colonio_error_t* colonio_connect(colonio_t* colonio, const char* url, const char
 }
 
 void colonio_connect_async(
-    colonio_t* colonio, const char* url, const char* token, void (*on_success)(colonio_t*),
-    void (*on_failure)(colonio_t*, const colonio_error_t*)) {
+    colonio_t* colonio, const char* url, unsigned int url_siz, const char* token, unsigned int token_siz,
+    void (*on_success)(colonio_t*), void (*on_failure)(colonio_t*, const colonio_error_t*)) {
   colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
   impl->connect(
-      url, token, [colonio, on_success](colonio::Colonio&) { on_success(colonio); },
+      std::string(url, url_siz), std::string(token, token_siz),
+      [colonio, on_success](colonio::Colonio&) { on_success(colonio); },
       [colonio, on_failure](colonio::Colonio&, const colonio::Error& e) { on_failure(colonio, convert_error(e)); });
 }
 
@@ -98,30 +100,33 @@ colonio_error_t* colonio_disconnect(colonio_t* colonio) {
   return nullptr;
 }
 
-colonio_map_t colonio_access_map(colonio_t* colonio, const char* name) {
+colonio_map_t colonio_access_map(colonio_t* colonio, const char* name, unsigned int name_siz) {
   colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
 
   colonio_map_t map;
   map.data = colonio->data;
-  map.impl = &impl->access_map(name);
+  map.impl = &impl->access_map(std::string(name, name_siz));
 
   return map;
 }
 
-colonio_pubsub_2d_t colonio_access_pubsub_2d(colonio_t* colonio, const char* name) {
+colonio_pubsub_2d_t colonio_access_pubsub_2d(colonio_t* colonio, const char* name, unsigned int name_siz) {
   colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
 
   colonio_pubsub_2d_t pubsub_2d;
   pubsub_2d.data = colonio->data;
-  pubsub_2d.impl = &impl->access_pubsub_2d(name);
+  pubsub_2d.impl = &impl->access_pubsub_2d(std::string(name, name_siz));
 
   return pubsub_2d;
 }
 
-void colonio_get_local_nid(colonio_t* colonio, char* dst) {
+void colonio_get_local_nid(colonio_t* colonio, char* dst, unsigned int* siz) {
   colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
   std::string local_nid            = impl->get_local_nid();
   memcpy(dst, local_nid.c_str(), local_nid.size() + 1);
+  if (siz != nullptr) {
+    *siz = local_nid.size();
+  }
 }
 
 colonio_error_t* colonio_set_position(colonio_t* colonio, double* x, double* y) {
@@ -180,14 +185,14 @@ double colonio_value_get_double(colonio_value_t* value) {
   return value->value.double_v;
 }
 
-unsigned int colonio_value_get_string_len(colonio_value_t* value) {
+unsigned int colonio_value_get_string_siz(colonio_value_t* value) {
   assert(value->type == COLONIO_VALUE_TYPE_STRING);
-  return value->value.string_v.len;
+  return value->value.string_v.siz;
 }
 
 void colonio_value_get_string(colonio_value_t* value, char* dst) {
   assert(value->type == COLONIO_VALUE_TYPE_STRING);
-  memcpy(dst, value->value.string_v.str, value->value.string_v.len);
+  memcpy(dst, value->value.string_v.str, value->value.string_v.siz);
 }
 
 void colonio_value_set_bool(colonio_value_t* value, bool v) {
@@ -208,12 +213,12 @@ void colonio_value_set_double(colonio_value_t* value, double v) {
   value->value.double_v = v;
 }
 
-void colonio_value_set_string(colonio_value_t* value, const char* v, unsigned int len) {
+void colonio_value_set_string(colonio_value_t* value, const char* v, unsigned int siz) {
   colonio_value_free(value);
   value->type               = COLONIO_VALUE_TYPE_STRING;
-  value->value.string_v.str = new char[len];
-  memcpy(value->value.string_v.str, v, len);
-  value->value.string_v.len = len;
+  value->value.string_v.str = new char[siz];
+  memcpy(value->value.string_v.str, v, siz);
+  value->value.string_v.siz = siz;
 }
 
 void colonio_value_free(colonio_value_t* value) {
@@ -372,7 +377,7 @@ void convert_value_c_to_cpp(colonio::Value* dst, const colonio_value_t* src) {
     } break;
 
     case COLONIO_VALUE_TYPE_STRING: {
-      dst->set(std::string(src->value.string_v.str, src->value.string_v.len));
+      dst->set(std::string(src->value.string_v.str, src->value.string_v.siz));
     } break;
   }
 }

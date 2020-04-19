@@ -41,13 +41,15 @@ TEST(ExternC, connect_sync) {
   err = colonio_init(&colonio);
   EXPECT_EQ(err, nullptr);
 
-  err = colonio_connect(&colonio, URL, TOKEN);
+  err = colonio_connect(&colonio, URL, strlen(URL), TOKEN, strlen(TOKEN));
   EXPECT_EQ(err, nullptr);
 
   {
     char nid[COLONIO_NID_LENGTH + 1];
-    colonio_get_local_nid(&colonio, nid);
+    unsigned int nid_str_len;
+    colonio_get_local_nid(&colonio, nid, &nid_str_len);
     EXPECT_EQ(strlen(nid), COLONIO_NID_LENGTH);
+    EXPECT_EQ(nid_str_len, COLONIO_NID_LENGTH);
   }
 
   err = colonio_disconnect(&colonio);
@@ -80,7 +82,8 @@ TEST(ExternC, connect_async) {
   data.colonio = &colonio;
   colonio.data = &data;
 
-  colonio_connect_async(&colonio, URL, TOKEN, connect_async_on_success, connect_async_on_failure);
+  colonio_connect_async(
+      &colonio, URL, strlen(URL), TOKEN, strlen(TOKEN), connect_async_on_success, connect_async_on_failure);
 
   helper.wait_signal("connect");
 

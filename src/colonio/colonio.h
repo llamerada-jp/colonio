@@ -125,7 +125,7 @@ typedef struct colonio_value_s {
     int64_t int_v;
     double double_v;
     struct string_t {
-      unsigned int len;
+      unsigned int siz;
       char* str;
     } string_v;
   } value;
@@ -137,32 +137,34 @@ typedef struct colonio_error_s {
 } colonio_error_t;
 
 COLONIO_PUBLIC colonio_error_t* colonio_init(colonio_t* colonio);
-COLONIO_PUBLIC colonio_error_t* colonio_connect(colonio_t* colonio, const char* url, const char* token);
+COLONIO_PUBLIC colonio_error_t* colonio_connect(
+    colonio_t* colonio, const char* url, unsigned int url_siz, const char* token, unsigned int token_siz);
 COLONIO_PUBLIC void colonio_connect_async(
-    colonio_t* colonio, const char* url, const char* token, void (*on_success)(colonio_t*),
-    void (*on_failure)(colonio_t*, const colonio_error_t*));
+    colonio_t* colonio, const char* url, unsigned int url_siz, const char* token, unsigned int token_siz,
+    void (*on_success)(colonio_t*), void (*on_failure)(colonio_t*, const colonio_error_t*));
 COLONIO_PUBLIC colonio_error_t* colonio_disconnect(colonio_t* colonio);
-COLONIO_PUBLIC colonio_map_t colonio_access_map(colonio_t* colonio, const char* name);
-COLONIO_PUBLIC colonio_pubsub_2d_t colonio_access_pubsub_2d(colonio_t* colonio, const char* name);
-COLONIO_PUBLIC void colonio_get_local_nid(colonio_t* colonio, char* dst);
+COLONIO_PUBLIC colonio_map_t colonio_access_map(colonio_t* colonio, const char* name, unsigned int name_siz);
+COLONIO_PUBLIC colonio_pubsub_2d_t
+colonio_access_pubsub_2d(colonio_t* colonio, const char* name, unsigned int name_siz);
+COLONIO_PUBLIC void colonio_get_local_nid(colonio_t* colonio, char* dst, unsigned int* siz);
 COLONIO_PUBLIC colonio_error_t* colonio_set_position(colonio_t* colonio, double* x, double* y);
 COLONIO_PUBLIC void colonio_set_position_async(
     colonio_t* colonio, double x, double y, void* ptr, void (*on_success)(colonio_t*, void*, double, double),
     void (*on_failure)(colonio_t*, void*, const colonio_error_t*));
 COLONIO_PUBLIC void colonio_set_on_output_log(
-    colonio_t* colonio, void (*func)(colonio_t*, COLONIO_LOG_LEVEL, const char*));
+    colonio_t* colonio, void (*func)(colonio_t*, COLONIO_LOG_LEVEL, const char*, unsigned int));
 
 COLONIO_PUBLIC void colonio_value_init(colonio_value_t* value);
 COLONIO_PUBLIC COLONIO_VALUE_TYPE colonio_value_get_type(const colonio_value_t* value);
 COLONIO_PUBLIC bool colonio_value_get_bool(colonio_value_t* value);
 COLONIO_PUBLIC int64_t colonio_value_get_int(colonio_value_t* value);
 COLONIO_PUBLIC double colonio_value_get_double(colonio_value_t* value);
-COLONIO_PUBLIC unsigned int colonio_value_get_string_len(colonio_value_t* value);
+COLONIO_PUBLIC unsigned int colonio_value_get_string_siz(colonio_value_t* value);
 COLONIO_PUBLIC void colonio_value_get_string(colonio_value_t* value, char* dst);
 COLONIO_PUBLIC void colonio_value_set_bool(colonio_value_t* value, bool v);
 COLONIO_PUBLIC void colonio_value_set_int(colonio_value_t* value, int64_t v);
 COLONIO_PUBLIC void colonio_value_set_double(colonio_value_t* value, double v);
-COLONIO_PUBLIC void colonio_value_set_string(colonio_value_t* value, const char* v, unsigned int len);
+COLONIO_PUBLIC void colonio_value_set_string(colonio_value_t* value, const char* v, unsigned int siz);
 COLONIO_PUBLIC void colonio_value_free(colonio_value_t* value);
 
 COLONIO_PUBLIC colonio_error_t* colonio_map_get(colonio_map_t* map, const colonio_value_t* key, colonio_value_t* dst);
