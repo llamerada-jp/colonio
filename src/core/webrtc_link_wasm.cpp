@@ -18,6 +18,7 @@
 #include <cassert>
 #include <sstream>
 
+#include "scheduler.hpp"
 #include "webrtc_link.hpp"
 
 extern "C" {

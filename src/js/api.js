@@ -16,7 +16,6 @@
 
 mergeInto(LibraryManager.library, {
   js_on_output_log: function (p1, p2, p3, p4) { jsOnOutputLog(p1, p2, p3, p4); },
-  js_on_debug_event: function (p1, p2, p3, p4) { jsOnDebugEvent(p1, p2, p3, p4); },
 
   seed_link_ws_connect: function (p1, p2, p3) { seedLinkWsConnect(p1, p2, p3); },
   seed_link_ws_disconnect: function (p1) { seedLinkWsDisconnect(p1); },

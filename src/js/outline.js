@@ -24,6 +24,8 @@
   #endif
 
   const ID_MAX = 2147483647;
+  const CB_ON_SUCCESS = 0;
+  const CB_ON_FAILURE = 1;
 
   /* Push/Pop object */
   let idObjectPair = new Object();
@@ -124,6 +126,11 @@
     } else {
       return [];
     }
+  }
+
+  function convertError(ptr) {
+    // TODO
+    return {};
   }
 
   /**
@@ -250,10 +257,18 @@
     init() {
       const promise = new Promise((resolve, reject) => {
         addFuncAfterLoad(() => {
+          let setPositionOnSuccess = addFunction((id, newX, newY) => {
+            popObject(id)[CB_ON_SUCCESS](newX, newY);
+          }, 'vidd');
+
+          let setPositionOnFailure = addFunction((id, errorPtr) => {
+            popObject(id)[CB_ON_FAILURE](convertError(errorPtr));
+          }, 'vii');
+
           // Initialize module.
           this._colonioPtr = ccall('js_init', 'number',
-            ['number'],
-            [addFunction(this._onRequireInvoke.bind(this), 'vii')]);
+            ['number', 'number'],
+            [setPositionOnSuccess, setPositionOnFailure]);
 
           resolve();
         });
@@ -264,20 +279,24 @@
 
     connect(url, token) {
       const promise = new Promise((resolve, reject) => {
-        let onSuccess = addFunction((colonioPtr) => {
+        var onSuccess = addFunction((colonioPtr) => {
           resolve();
+          removeFunction(onSuccess);
+          removeFunction(onFailure);
         }, 'vi');
 
-        let onFailure = addFunction((colonioPtr) => {
-          reject();
-        }, 'vi');
+        var onFailure = addFunction((colonioPtr, errorPtr) => {
+          reject(convertError(errorPtr));
+          removeFunction(onSuccess);
+          removeFunction(onFailure);
+        }, 'vii');
 
-        let [urlPtr] = allocPtrString(url);
-        let [tokenPtr] = allocPtrString(token);
+        let [urlPtr, urlSiz] = allocPtrString(url);
+        let [tokenPtr, tokenSiz] = allocPtrString(token);
 
         ccall('js_connect', 'null',
-          ['number', 'number', 'number', 'number'],
-          [this._colonioPtr, urlPtr, tokenPtr, onSuccess, onFailure]);
+          ['number', 'number', 'number', 'number', 'number', 'number', 'number'],
+          [this._colonioPtr, urlPtr, urlSiz, tokenPtr, tokenSiz, onSuccess, onFailure]);
 
         freePtr(url);
         freePtr(token);
@@ -286,27 +305,12 @@
       return promise;
     }
 
-    _onRequireInvoke(colonioPtr, msec) {
-      function invoke() {
-        let next = ccall('js_invoke', 'number', ['number'], [colonioPtr]);
-        if (this._timerInvoke !== false) {
-          clearTimeout(this._timerInvoke);
-        }
-        this._timerInvoke = setTimeout(invoke.bind(this), next);
-      }
-
-      if (this._timerInvoke !== false) {
-        clearTimeout(this._timerInvoke);
-      }
-      this._timerInvoke = setTimeout(invoke.bind(this), msec);
-    }
-
     accessMap(name) {
       if (!(name in this._instanceCache)) {
-        let [namePtr] = allocPtrString(name);
+        let [namePtr, nameSiz] = allocPtrString(name);
         this._instanceCache[name] = new ColonioMap(ccall('js_access_map', 'number',
-          ['number', 'number'],
-          [this._colonioPtr, namePtr]));
+          ['number', 'number', 'number'],
+          [this._colonioPtr, namePtr, nameSiz]));
         freePtr(namePtr);
       }
       return this._instanceCache[name];
@@ -314,10 +318,10 @@
 
     accessPubsub2D(name) {
       if (!(name in this._instanceCache)) {
-        let [namePtr] = allocPtrString(name);
+        let [namePtr, nameSiz] = allocPtrString(name);
         this._instanceCache[name] = new Pubsub2D(ccall('js_access_pubsub_2d', 'number',
-          ['number', 'number'],
-          [this._colonioPtr, namePtr]));
+          ['number', 'number', 'number'],
+          [this._colonioPtr, namePtr, nameSiz]));
         freePtr(namePtr);
       }
       return this._instanceCache[name];
@@ -338,34 +342,37 @@
       let nidPtr = allocPtr(32 + 1);
       ccall('js_get_local_nid', 'null', ['number', 'number'], [this._colonioPtr, nidPtr]);
       let nid = UTF8ToString(nidPtr);
-      freePtr(nidPtr);
       return nid;
     }
 
     setPosition(x, y) {
-      ccall('js_set_position', 'null',
-        ['number', 'number', 'number'],
-        [this._colonioPtr, x, y]);
+      const promise = new Promise((resolve, reject) => {
+        let id = pushObject({
+          CB_ON_SUCCESS: resolve,
+          CB_ON_FAILURE: reject,
+        });
+
+        ccall('js_set_position', 'null',
+          ['number', 'number', 'number', 'number'],
+          [this._colonioPtr, x, y, id]);
+      });
+
+      return promise;
     }
 
     on(type, func) {
-      const TYPES = ['log', 'debug'];
+      const TYPES = ['log'];
       assert(TYPES.indexOf(type) >= 0);
 
       switch (type) {
         case 'log':
           ccall('js_enable_output_log', 'null', ['number'], [this._colonioPtr]);
           break;
-
-        case 'debug':
-          ccall('js_enable_debug_event', 'null', ['number'], [this._colonioPtr]);
-          break;
       }
 
       setEventFunc(this._colonioPtr, 'colonio', type, func);
     }
   };
-
 
   /* log */
   function jsOnOutputLog(colonioPtr, level, messagePtr, messageSiz) {
@@ -376,20 +383,6 @@
         type: 'log',
         level: level,
         content: message
-      });
-    }
-  }
-
-  /* debug event */
-  function jsOnDebugEvent(colonioPtr, event, messagePtr, messageSiz) {
-    let message = convertPointerToString(messagePtr, messageSiz);
-    let json = JSON.parse(message);
-    let funcs = getEventFuncs(colonioPtr, 'colonio', 'debug');
-    for (let idx = 0; idx < funcs.length; idx++) {
-      funcs[idx]({
-        type: 'debug',
-        event: event,
-        content: json
       });
     }
   }
@@ -515,15 +508,26 @@
   }
 
   function initializeMap() {
-    let onMapGet = addFunction((id, reason, valuePtr) => {
-      popObject(id)(reason, valuePtr);
-    }, 'viii');
-
-    let onMapSet = addFunction((id, reason) => {
-      popObject(id)(reason);
+    let getValueOnSuccess = addFunction((id, valuePtr) => {
+      const val = new ColonioValue(valuePtr);
+      popObject(id)[CB_ON_SUCCESS](val.getJsValue());
     }, 'vii');
 
-    ccall('js_map_init', 'null', ['number', 'number'], [onMapGet, onMapSet]);
+    let getValueOnFailure = addFunction((id, errorPtr) => {
+      popObject(id)[CB_ON_FAILURE](convertError(errorPtr));
+    }, 'vii');
+
+    let setValueOnSuccess = addFunction((id) => {
+      popObject(id)[CB_ON_SUCCESS]();
+    }, 'vi');
+
+    let setValueOnFailure = addFunction((id, errorPtr) => {
+      popObject(id)[CB_ON_FAILURE](convertError(errorPtr));
+    }, 'vii');
+
+    ccall('js_map_init', 'null',
+      ['number', 'number', 'number', 'number'],
+      [getValueOnSuccess, getValueOnFailure, setValueOnSuccess, setValueOnFailure]);
   }
 
   class ColonioMap {
@@ -535,15 +539,9 @@
       let promise = new Promise((resolve, reject) => {
         const keyValue = convertValue(key);
 
-        let id = pushObject((reason, valuePtr) => {
-          if (reason === Colonio.MAP_FAILURE_REASON_NONE) {
-            const val = new ColonioValue(valuePtr);
-            resolve(val.getJsValue());
-            // val.release(); valuePtr will release on colonio_map_get@export_c.cpp
-
-          } else {
-            reject(reason);
-          }
+        let id = pushObject({
+          CB_ON_SUCCESS: resolve,
+          CB_ON_FAILURE: reject,
         });
 
         ccall('js_map_get_value', 'null',
@@ -561,17 +559,14 @@
         const keyValue = convertValue(key);
         const valValue = convertValue(val);
 
-        let id = pushObject((reason) => {
-          if (reason === Colonio.MAP_FAILURE_REASON_NONE) {
-            resolve();
-          } else {
-            reject(reason);
-          }
+        let id = pushObject({
+          CB_ON_SUCCESS: resolve,
+          CB_ON_FAILURE: reject,
         });
 
         ccall('js_map_set_value', 'null',
           ['number', 'number', 'number', 'number', 'number'],
-          [this._mapPtr, keyValue._valuePtr, valValue._valuePtr, id, opt]);
+          [this._mapPtr, keyValue._valuePtr, valValue._valuePtr, opt, id]);
 
         keyValue.release();
         valValue.release();
@@ -582,15 +577,22 @@
   }
 
   function initializePubsub2D() {
-    let onPublish = addFunction((id, reason) => {
-      popObject(id)(reason);
+    let publishOnSuccess = addFunction((id) => {
+      popObject(id)[CB_ON_SUCCESS]();
+    }, 'vi');
+
+    let publishOnFailure = addFunction((id, errorPtr) => {
+      popObject(id)[CB_ON_FAILURE](convertError(errorPtr));
     }, 'vii');
 
     let onOn = addFunction((id, valuePtr) => {
-      getObject(id)(valuePtr);
+      const val = new ColonioValue(valuePtr);
+      getObject(id)(val.getJsValue());
     }, 'vii');
 
-    ccall('js_pubsub_2d_init', 'null', ['number', 'number'], [onPublish, onOn]);
+    ccall('js_pubsub_2d_init', 'null',
+      ['number', 'number', 'number'],
+      [publishOnSuccess, publishOnFailure, onOn]);
   }
 
   class Pubsub2D {
@@ -598,22 +600,19 @@
       this._pubsub2DPtr = pubsub2DPtr;
     }
 
-    publish(name, x, y, r, val) {
+    publish(name, x, y, r, val, opt) {
       let promise = new Promise((resolve, reject) => {
         let [namePtr, nameSiz] = allocPtrString(name);
         const value = convertValue(val);
 
-        let id = pushObject((reason) => {
-          if (reason === Colonio.PUBSUB_2D_FAILURE_REASON_NONE) {
-            resolve();
-          } else {
-            reject(reason);
-          }
+        let id = pushObject({
+          CB_ON_SUCCESS: resolve,
+          CB_ON_FAILURE: reject,
         });
 
         ccall('js_pubsub_2d_publish', 'null',
-          ['number', 'number', 'number', 'number', 'number', 'number', 'number', 'number'],
-          [this._pubsub2DPtr, namePtr, nameSiz, x, y, r, value._valuePtr, id]);
+          ['number', 'number', 'number', 'number', 'number', 'number', 'number', 'number', 'number'],
+          [this._pubsub2DPtr, namePtr, nameSiz, x, y, r, value._valuePtr, opt, id]);
 
         freePtr(namePtr);
         value.release();
@@ -623,10 +622,7 @@
     }
 
     on(name, cb) {
-      let id = pushObject((valuePtr) => {
-        const val = new ColonioValue(valuePtr);
-        cb(val.getJsValue());
-      });
+      let id = pushObject(cb);
 
       let [namePtr, nameSiz] = allocPtrString(name);
 

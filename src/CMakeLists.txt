@@ -64,6 +64,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   ## WebAssembly
   ##
   list(APPEND COLONIO_FILES core/md5/md5.c)
+  list(APPEND COLONIO_FILES core/api_gate_mt.cpp)
   list(APPEND COLONIO_FILES core/webrtc_context_wasm.cpp)
   list(APPEND COLONIO_FILES core/webrtc_link_wasm.cpp)
   list(APPEND COLONIO_FILES core/seed_link_websocket_wasm.cpp)
