@@ -17,6 +17,10 @@
 mergeInto(LibraryManager.library, {
   js_on_output_log: function (p1, p2, p3, p4) { jsOnOutputLog(p1, p2, p3, p4); },
 
+  api_gate_release: function (p1) { apiGateRelease(p1); },
+  api_gate_require_call_after: function (p1, p2) { apiGateRequireCallAfter(p1, p2); },
+  api_gate_require_invoke: function (p1, p2) { apiGateRequireInvoke(p1, p2); },
+
   seed_link_ws_connect: function (p1, p2, p3) { seedLinkWsConnect(p1, p2, p3); },
   seed_link_ws_disconnect: function (p1) { seedLinkWsDisconnect(p1); },
   seed_link_ws_finalize: function (p1) { seedLinkWsFinalize(p1); },

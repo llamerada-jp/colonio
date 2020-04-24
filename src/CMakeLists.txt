@@ -64,7 +64,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   ## WebAssembly
   ##
   list(APPEND COLONIO_FILES core/md5/md5.c)
-  list(APPEND COLONIO_FILES core/api_gate_mt.cpp)
+  list(APPEND COLONIO_FILES core/api_gate_wasm.cpp)
   list(APPEND COLONIO_FILES core/webrtc_context_wasm.cpp)
   list(APPEND COLONIO_FILES core/webrtc_link_wasm.cpp)
   list(APPEND COLONIO_FILES core/seed_link_websocket_wasm.cpp)
@@ -77,20 +77,10 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   target_link_libraries(colonio
     ${webassembly_libs}
     )
-
-  if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
-    add_custom_target(libcolonio ALL
-      COMMAND "cc" "-E" "-C" "-P" "-x" "c" "-Wno-invalid-pp-token" "-o" "libcolonio.js" "-I" "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/js/outline.js"
-      DEPENDS colonio
-      SOURCES js/outline.js
-      )
-  else()
-    add_custom_target(libcolonio ALL
-      COMMAND "cc" "-D" "NDEBUG" "-E" "-C" "-P" "-x" "c" "-Wno-invalid-pp-token" "-o" "libcolonio.js" "-I" "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/js/outline.js"
-      DEPENDS colonio
-      SOURCES js/outline.js
-      )
-  endif()
+  add_custom_target(install_colonio ALL
+    COMMAND "cp" "colonio.js" "colonio.wasm" "${PROJECT_SOURCE_DIR}/local/lib/"
+    DEPENDS colonio
+    )
 
 else()
   ##

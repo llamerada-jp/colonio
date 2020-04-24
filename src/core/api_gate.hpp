@@ -47,5 +47,5 @@ class APIGateBase : public LoggerDelegate {
 #ifndef EMSCRIPTEN
 #  include "api_gate_mt.hpp"
 #else
-#  include "api_gate_mt.hpp"
+#  include "api_gate_wasm.hpp"
 #endif
