@@ -733,6 +733,10 @@ function seedLinkWsFinalize(seedLink) {
   }
 }
 
+function utilsGetRandomSeed() {
+  return Math.random();
+}
+
 /* WebrtcContext */
 let webrtcContextPcConfig;
 let webrtcContextDcConfig;

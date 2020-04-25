@@ -22,6 +22,13 @@
 #endif
 #include <sys/param.h>
 
+#ifdef EMSCRIPTEN
+#  include <emscripten.h>
+extern "C" {
+extern int utils_get_random_seed();
+}
+#endif
+
 #include <cassert>
 #include <cstdarg>
 #include <cstring>
@@ -40,9 +47,15 @@
 
 namespace colonio {
 // Random value generator.
+#ifndef EMSCRIPTEN
 static std::random_device seed_gen;
 static std::mt19937 rnd32(seed_gen());
 static std::mt19937_64 rnd64(seed_gen());
+#else
+static std::mt19937 rnd32(utils_get_random_seed());
+static std::mt19937_64 rnd64(utils_get_random_seed());
+#endif
+
 static std::mutex mutex32;
 static std::mutex mutex64;
 

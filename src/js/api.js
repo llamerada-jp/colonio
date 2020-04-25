@@ -26,6 +26,8 @@ mergeInto(LibraryManager.library, {
   seed_link_ws_finalize: function (p1) { seedLinkWsFinalize(p1); },
   seed_link_ws_send: function (p1, p2, p3) { seedLinkWsSend(p1, p2, p3); },
 
+  utils_get_random_seed: function () { return utilsGetRandomSeed(); },
+
   webrtc_context_initialize: function () { webrtcContextInitialize(); },
   webrtc_context_add_ice_server: function (p1, p2) { webrtcContextAddIceServer(p1, p2); },
 
