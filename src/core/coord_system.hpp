@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,8 +29,8 @@ class CoordSystem {
   virtual ~CoordSystem();
   // for use delaunay triangle.
   virtual double get_distance(const Coordinate& p1, const Coordinate& p2)                     = 0;
-  virtual Coordinate get_my_position()                                                        = 0;
-  virtual void set_my_position(const Coordinate& position)                                    = 0;
+  virtual Coordinate get_local_position()                                                     = 0;
+  virtual void set_local_position(const Coordinate& position)                                 = 0;
   virtual Coordinate shift_for_routing_2d(const Coordinate& base, const Coordinate& position) = 0;
 
  protected:

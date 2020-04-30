@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,8 @@ typedef uint64_t vaddr_t;
 
 static const char PROTOCOL_VERSION[] = "A1";
 
+typedef uint32_t CallID;
+
 /**
  * Pipe/server connection status.
  */
@@ -41,22 +43,38 @@ static const Type CLOSING    = 3;
  * Specified node-id.
  */
 namespace NID {
-static const char NONE[] = "";      ///< Set none if destination node-id is't yet determined.
+static const char NONE[] = "";      ///< Set none if destination node-id isn't yet determined.
 static const char THIS[] = ".";     ///< Send command to this(local) node.
 static const char SEED[] = "seed";  ///< Server is a special node.
 static const char NEXT[] = "next";  ///< Next node is nodes of connecting direct from this node.
 }  // namespace NID
 
+namespace APIChannel {
+typedef uint16_t Type;
+static const Type NONE    = 0;
+static const Type COLONIO = 1;
+}  // namespace APIChannel
+
 namespace ModuleChannel {
 typedef uint16_t Type;
-static const Type NONE           = 0;
-static const Type SEED           = 1;
-static const Type WEBRTC_CONNECT = 2;
-static const Type SYSTEM_ROUTING = 15;
-// static const Type SYSTEM_ROUTING_2D = 16;
-}  // namespace ModuleChannel
+static const Type NONE = 0;
 
-typedef uint16_t ModuleNo;
+namespace Colonio {
+static const Type MAIN           = 1;
+static const Type SEED_ACCESSOR  = 2;
+static const Type NODE_ACCESSOR  = 3;
+static const Type SYSTEM_ROUTING = 4;
+// static const Type SYSTEM_ROUTING_2D = 16;
+}  // namespace Colonio
+
+namespace MapPaxos {
+static const Type MAP_PAXOS = 1;
+}
+
+namespace Pubsub2D {
+static const Type PUBSUB_2D = 1;
+}
+}  // namespace ModuleChannel
 
 namespace CommandID {
 typedef uint16_t Type;
@@ -90,11 +108,11 @@ static const Type BALANCE_ACCEPTOR = 6;
 static const Type BALANCE_PROPOSER = 7;
 }  // namespace MapPaxos
 
-namespace PubSub2D {
+namespace Pubsub2D {
 static const Type PASS    = 1;
 static const Type KNOCK   = 2;
 static const Type DEFFUSE = 3;
-}  // namespace PubSub2D
+}  // namespace Pubsub2D
 }  // namespace CommandID
 
 namespace SeedHint {
@@ -121,26 +139,33 @@ static const Type NO_RETRY   = 0x0010;
 static const uint32_t ESTIMATED_HEAD_SIZE = 64;
 
 // default values.
-static const unsigned int MAP_PAXOS_RETRY_MAX = 5;
-static const unsigned int PUBSUB2D_CACHE_TIME = 30000;  // [msec]
-
-static const uint32_t ORPHAN_NODES_MAX                  = 32;
-static const unsigned int PACKET_RETRY_COUNT_MAX        = 5;
-static const int64_t PACKET_RETRY_INTERVAL              = 10000;
-static const int64_t CONNECT_LINK_TIMEOUT               = 30000;
-static const unsigned int FIRST_LINK_RETRY_MAX          = 3;
-static const int64_t LINK_TRIAL_TIME_MIN                = 60000;
-static const unsigned int LINKS_MIN                     = 4;
-static const unsigned int LINKS_MAX                     = 24;
-static const unsigned int NODE_ACCESSOR_PACKET_SIZE     = 8192;
 static const unsigned int NODE_ACCESSOR_BUFFER_INTERVAL = 100;
-static const unsigned int ROUTING_UPDATE_PERIOD         = 1000;
-static const unsigned int ROUTING_FORCE_UPDATE_TIMES    = 30;
-static const unsigned int ROUTING_SEED_RANDOM_WAIT      = 60000;
-static const unsigned int ROUTING_SEED_CONNECT_STEP     = 10;
-static const unsigned int ROUTING_SEED_DISCONNECT_STEP  = 8;
-static const int64_t SEED_CONNECT_INTERVAL              = 10000;
-static const uint32_t PACKET_ID_NONE                    = 0x0;
+static const uint32_t NODE_ACCESSOR_HOP_COUNT_MAX       = 64;
+static const unsigned int NODE_ACCESSOR_PACKET_SIZE     = 8192;
+
+static const unsigned int MAP_PAXOS_RETRY_MAX          = 5;
+static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MIN = 1000;  // [msec]
+static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MAX = 2000;  // [msec]
+
+static const unsigned int PUBSUB_2D_CACHE_TIME = 30000;  // [msec]
+
+// fixed parameters
+static const uint32_t ORPHAN_NODES_MAX                 = 32;
+static const unsigned int PACKET_RETRY_COUNT_MAX       = 5;
+static const int64_t PACKET_RETRY_INTERVAL             = 10000;
+static const int64_t CONNECT_LINK_TIMEOUT              = 30000;
+static const unsigned int FIRST_LINK_RETRY_MAX         = 3;
+static const int64_t LINK_TRIAL_TIME_MIN               = 60000;
+static const unsigned int LINKS_MIN                    = 4;
+static const unsigned int LINKS_MAX                    = 24;
+static const unsigned int ROUTING_UPDATE_PERIOD        = 1000;
+static const unsigned int ROUTING_FORCE_UPDATE_TIMES   = 30;
+static const unsigned int ROUTING_SEED_RANDOM_WAIT     = 60000;
+static const unsigned int ROUTING_SEED_CONNECT_STEP    = 10;
+static const unsigned int ROUTING_SEED_DISCONNECT_STEP = 8;
+static const int64_t SEED_CONNECT_INTERVAL             = 10000;
+static const uint32_t PACKET_ID_NONE                   = 0x0;
+static const unsigned int EVENT_QUEUE_LIMIT            = 100;
 
 // debug parameter
 static const int DEBUG_PRINT_PACKET_SIZE = 32;

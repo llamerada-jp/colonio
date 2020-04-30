@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,43 +15,44 @@
  */
 #pragma once
 
-#include <uv.h>
-
+#include <condition_variable>
+#include <set>
 #include <sstream>
 #include <string>
+#include <thread>
 
 class AsyncHelper {
  public:
+  std::mutex mtx;
+
   std::stringstream marks;
-  std::unique_ptr<uv_loop_t> loop;
+  std::set<std::string> signals;
+  std::condition_variable cond_signals;
 
   AsyncHelper() {
   }
 
   virtual ~AsyncHelper() {
-    if (loop) {
-      uv_loop_close(loop.get());
-    }
-  }
-
-  uv_loop_t* get_libuv_instance() {
-    if (!loop) {
-      loop.reset(new uv_loop_t());
-      uv_loop_init(loop.get());
-    }
-
-    return loop.get();
   }
 
   void mark(const std::string& m) {
+    std::lock_guard<std::mutex> lock(mtx);
     marks << m;
   }
 
-  void run() {
-    uv_run(get_libuv_instance(), UV_RUN_DEFAULT);
+  std::string get_route() {
+    std::lock_guard<std::mutex> lock(mtx);
+    return marks.str();
   }
 
-  std::string get_route() {
-    return marks.str();
+  void pass_signal(const std::string& key) {
+    std::lock_guard<std::mutex> lock(mtx);
+    signals.insert(key);
+    cond_signals.notify_all();
+  }
+
+  void wait_signal(const std::string& key) {
+    std::unique_lock<std::mutex> lock(mtx);
+    cond_signals.wait(lock, [this, &key]() { return signals.find(key) != signals.end(); });
   }
 };

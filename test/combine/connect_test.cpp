@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,33 +17,68 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "colonio/colonio_libuv.hpp"
-#include "test_utils/async_helper.hpp"
-#include "test_utils/test_seed.hpp"
+#include "test_utils/all.hpp"
 
 using namespace colonio;
-using namespace colonio_helper;
 using ::testing::MatchesRegex;
 
-TEST(ConnectTest, connectSingle) {
+TEST(ConnectTest, connect_single) {
   AsyncHelper helper;
   TestSeed seed;
   seed.run();
 
-  ColonioLibuv node(helper.get_libuv_instance());
+  ColonioNode node("node");
+
+  node.connect("http://localhost:8080/test", "");
+  node.disconnect();
+}
+
+TEST(ConnectTest, connect_async) {
+  AsyncHelper helper;
+  TestSeed seed;
+  seed.run();
+
+  ColonioNode node("node");
 
   node.connect(
-      "http://localhost:8080/test", "",
-      [&](Colonio& c) {
-        helper.mark("a");
-        c.disconnect();
-      },
-      [&](Colonio& c) {
-        FAIL();
-        c.disconnect();
-      });
+      "http://localhost:8080/test", "", [&](colonio::Colonio& c) { helper.pass_signal("connect"); },
+      [&](colonio::Colonio& c, const colonio::Error& err) { ADD_FAILURE(); });
 
-  // node.run();
-  helper.run();
-  EXPECT_THAT(helper.get_route(), MatchesRegex("^a$"));
+  helper.wait_signal("connect");
+  node.disconnect();
+}
+
+TEST(ConnectTest, connect_multi) {
+  const std::string URL      = "http://localhost:8080/test";
+  const std::string TOKEN    = "";
+  const std::string MAP_NAME = "map";
+  const std::string KEY_NAME = "key";
+  const std::string VALUE    = "test value";
+
+  AsyncHelper helper;
+  TestSeed seed;
+  seed.add_module_map_paxos(MAP_NAME, 256);
+  seed.run();
+
+  ColonioNode node1("node1");
+  ColonioNode node2("node2");
+
+  // connect node1
+  printf("connect node1\n");
+  node1.connect(URL, TOKEN);
+
+  // connect node2
+  printf("connect node2\n");
+  node2.connect(URL, TOKEN);
+
+  EXPECT_NE(&node1, &node2);
+  EXPECT_STRNE(node1.get_local_nid().c_str(), node2.get_local_nid().c_str());
+
+  // disconnect node 2
+  printf("disconnect node2\n");
+  node2.disconnect();
+
+  // disconnect node 1
+  printf("disconnect node1\n");
+  node1.disconnect();
 }

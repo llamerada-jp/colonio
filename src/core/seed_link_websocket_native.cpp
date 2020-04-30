@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 #include "seed_link_websocket_native.hpp"
 
 #include "context.hpp"
+#include "scheduler.hpp"
 
 namespace colonio {
 SeedLinkWebsocketNative::SeedLinkWebsocketNative(SeedLinkDelegate& delegate_, Context& context_) :
@@ -34,10 +35,11 @@ SeedLinkWebsocketNative::~SeedLinkWebsocketNative() {
   client.stop_perpetual();
 
   websocketpp::lib::error_code ec;
-  client.close(con->get_handle(), websocketpp::close::status::going_away, "", ec);
-  if (ec) {
-    // @todo error
-    std::cout << "> Error closing connection: " << ec.message() << std::endl;
+  if (con) {
+    client.close(con->get_handle(), websocketpp::close::status::going_away, "", ec);
+    if (ec) {
+      // @todo error
+    }
   }
 
   m_thread->join();
@@ -55,15 +57,18 @@ void SeedLinkWebsocketNative::connect(const std::string& url) {
   }
 
   con->set_open_handler([this](std::weak_ptr<void>) {
-    context.scheduler.add_timeout_task(this, [this]() { this->delegate.seed_link_on_connect(*this); }, 0);
+    context.scheduler.add_timeout_task(
+        this, [this]() { this->delegate.seed_link_on_connect(*this); }, 0);
   });
 
   con->set_fail_handler([this](std::weak_ptr<void>) {
-    context.scheduler.add_timeout_task(this, [this]() { this->delegate.seed_link_on_error(*this); }, 0);
+    context.scheduler.add_timeout_task(
+        this, [this]() { this->delegate.seed_link_on_error(*this); }, 0);
   });
 
   con->set_close_handler([this](std::weak_ptr<void>) {
-    context.scheduler.add_timeout_task(this, [this]() { this->delegate.seed_link_on_disconnect(*this); }, 0);
+    context.scheduler.add_timeout_task(
+        this, [this]() { this->delegate.seed_link_on_disconnect(*this); }, 0);
   });
 
   con->set_message_handler([this](std::weak_ptr<void>, message_ptr msg) {

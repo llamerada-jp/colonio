@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,11 +22,20 @@
 #endif
 #include <sys/param.h>
 
+#ifdef EMSCRIPTEN
+#  include <emscripten.h>
+extern "C" {
+extern int utils_get_random_seed();
+}
+#endif
+
 #include <cassert>
 #include <cstdarg>
 #include <cstring>
 #include <iomanip>
 #include <memory>
+#include <mutex>
+#include <random>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -37,6 +46,19 @@
 #include "utils.hpp"
 
 namespace colonio {
+// Random value generator.
+#ifndef EMSCRIPTEN
+static std::random_device seed_gen;
+static std::mt19937 rnd32(seed_gen());
+static std::mt19937_64 rnd64(seed_gen());
+#else
+static std::mt19937 rnd32(utils_get_random_seed());
+static std::mt19937_64 rnd64(utils_get_random_seed());
+#endif
+
+static std::mutex mutex32;
+static std::mutex mutex64;
+
 template<>
 bool Utils::check_json_optional<unsigned int>(const picojson::object& obj, const std::string& key, unsigned int* dst) {
   auto it = obj.find(key);
@@ -98,6 +120,7 @@ std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
   out << is << "id : " << Convert::int2str(packet.id) << std::endl;
   out << is << "mode : " << Convert::int2str(packet.mode) << std::endl;
   out << is << "channel : " << Convert::int2str(packet.channel) << std::endl;
+  out << is << "module_channel : " << Convert::int2str(packet.module_channel) << std::endl;
   out << is << "command_id : " << Convert::int2str(packet.command_id) << std::endl;
   out << is << "content : " << dump_binary(*packet.content);
 
@@ -187,6 +210,22 @@ std::string Utils::file_dirname(const std::string& path) {
   return std::string(dirname(buffer.get()));
 }
 
+uint32_t Utils::get_rnd_32() {
+  std::lock_guard<std::mutex> guard(mutex32);
+  return rnd32();
+}
+
+uint32_t Utils::get_rnd_32(uint32_t min, uint32_t max) {
+  std::lock_guard<std::mutex> guard(mutex32);
+  std::uniform_int_distribution<uint32_t> dist(min, max);
+  return dist(rnd32);
+}
+
+uint64_t Utils::get_rnd_64() {
+  std::lock_guard<std::mutex> guard(mutex64);
+  return rnd64();
+}
+
 bool Utils::is_safevalue(double v) {
   if (
 #ifdef _MSC_VER
@@ -209,7 +248,7 @@ void Utils::output_assert(
   printf(
       "Assersion failed: (%s) func: %s, file: %s, line: %ld\n%s\n", exp.c_str(), func.c_str(), file.c_str(), line,
       mesg.c_str());
-  exit(-1);
+  exit(EXIT_FAILURE);
 }
 
 double Utils::pmod(double a, double b) {

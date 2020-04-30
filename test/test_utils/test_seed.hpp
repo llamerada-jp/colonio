@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,10 +35,10 @@ class TestSeed {
       flg_break(false),
       pid(0),
       path("/test"),
-      ping_interval(1000),
+      ping_interval(20 * 1000),
       port(8080),
       revision(0.1),
-      timeout(10000),
+      timeout(30 * 1000),
       update_period(500),
       force_update_times(20) {
   }
@@ -91,15 +91,27 @@ class TestSeed {
     port = p;
   }
 
-  void set_coord_system_sphere(double r) {
+  void set_coord_system_sphere(double r = 6378137.0) {
     coord_system.insert(std::make_pair("type", picojson::value("sphere")));
     coord_system.insert(std::make_pair("radius", picojson::value(r)));
   }
 
-  void add_module_map_paxos(const std::string& name, unsigned int channel) {
+  void add_module_map_paxos(
+      const std::string& name, unsigned int channel, unsigned int retry_interval_min = 200,
+      unsigned int retry_interval_max = 300) {
     picojson::object m;
     m.insert(std::make_pair("type", picojson::value("mapPaxos")));
     m.insert(std::make_pair("channel", picojson::value(static_cast<double>(channel))));
+    m.insert(std::make_pair("retryIntervalMin", picojson::value(static_cast<double>(retry_interval_min))));
+    m.insert(std::make_pair("retryIntervalMax", picojson::value(static_cast<double>(retry_interval_max))));
+    modules.insert(std::make_pair(name, picojson::value(m)));
+  }
+
+  void add_module_pubsub_2d(const std::string& name, unsigned int channel, unsigned int cache_time = 100) {
+    picojson::object m;
+    m.insert(std::make_pair("type", picojson::value("pubsub2D")));
+    m.insert(std::make_pair("channel", picojson::value(static_cast<double>(channel))));
+    m.insert(std::make_pair("cacheTime", picojson::value(static_cast<double>(cache_time))));
     modules.insert(std::make_pair(name, picojson::value(m)));
   }
 

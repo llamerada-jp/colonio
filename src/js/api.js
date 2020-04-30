@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,22 +15,27 @@
  */
 
 mergeInto(LibraryManager.library, {
-  js_on_output_log: function(p1, p2, p3, p4) { jsOnOutputLog(p1, p2, p3, p4); },
-  js_on_debug_event: function(p1, p2, p3, p4) { jsOnDebugEvent(p1, p2, p3, p4); },
+  js_on_output_log: function (p1, p2, p3, p4) { jsOnOutputLog(p1, p2, p3, p4); },
 
-  seed_link_ws_connect: function(p1, p2, p3) { seedLinkWsConnect(p1, p2, p3); },
-  seed_link_ws_disconnect: function(p1) { seedLinkWsDisconnect(p1); },
-  seed_link_ws_finalize: function(p1) { seedLinkWsFinalize(p1); },
-  seed_link_ws_send: function(p1, p2, p3) { seedLinkWsSend(p1, p2, p3); },
+  api_gate_release: function (p1) { apiGateRelease(p1); },
+  api_gate_require_call_after: function (p1, p2) { apiGateRequireCallAfter(p1, p2); },
+  api_gate_require_invoke: function (p1, p2) { apiGateRequireInvoke(p1, p2); },
 
-  webrtc_context_initialize: function() { webrtcContextInitialize(); },
-  webrtc_context_add_ice_server: function(p1, p2) { webrtcContextAddIceServer(p1, p2); },
+  seed_link_ws_connect: function (p1, p2, p3) { seedLinkWsConnect(p1, p2, p3); },
+  seed_link_ws_disconnect: function (p1) { seedLinkWsDisconnect(p1); },
+  seed_link_ws_finalize: function (p1) { seedLinkWsFinalize(p1); },
+  seed_link_ws_send: function (p1, p2, p3) { seedLinkWsSend(p1, p2, p3); },
 
-  webrtc_link_initialize: function(p1, p2) { webrtcLinkInitialize(p1, p2); },
-  webrtc_link_finalize: function(p1) { webrtcLinkFinalize(p1); },
-  webrtc_link_disconnect: function(p1) { webrtcLinkDisconnect(p1); },
-  webrtc_link_get_local_sdp: function(p1, p2) { webrtcLinkGetLocalSdp(p1, p2); },
-  webrtc_link_send: function(p1, p2, p3) { webrtcLinkSend(p1, p2, p3); },
-  webrtc_link_set_remote_sdp: function(p1, p2, p3, p4) { webrtcLinkSetRemoteSdp(p1, p2, p3, p4); },
-  webrtc_link_update_ice: function(p1, p2, p3) { webrtcLinkUpdateIce(p1, p2, p3); }
+  utils_get_random_seed: function () { return utilsGetRandomSeed(); },
+
+  webrtc_context_initialize: function () { webrtcContextInitialize(); },
+  webrtc_context_add_ice_server: function (p1, p2) { webrtcContextAddIceServer(p1, p2); },
+
+  webrtc_link_initialize: function (p1, p2) { webrtcLinkInitialize(p1, p2); },
+  webrtc_link_finalize: function (p1) { webrtcLinkFinalize(p1); },
+  webrtc_link_disconnect: function (p1) { webrtcLinkDisconnect(p1); },
+  webrtc_link_get_local_sdp: function (p1, p2) { webrtcLinkGetLocalSdp(p1, p2); },
+  webrtc_link_send: function (p1, p2, p3) { webrtcLinkSend(p1, p2, p3); },
+  webrtc_link_set_remote_sdp: function (p1, p2, p3, p4) { webrtcLinkSetRemoteSdp(p1, p2, p3, p4); },
+  webrtc_link_update_ice: function (p1, p2, p3) { webrtcLinkUpdateIce(p1, p2, p3); }
 });

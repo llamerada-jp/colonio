@@ -64,7 +64,6 @@ setup_native() {
     req_pkg=''
     has_pkg=$(brew list)
     for p in \
-      asio\
       cmake\
       glog\
       libuv\
@@ -86,13 +85,13 @@ setup_native() {
       sudo apt-get install -y pkg-config automake cmake build-essential curl libcurl4-nss-dev libtool libx11-dev libgoogle-glog-dev
     fi
 
-    setup_asio
     setup_libuv
   fi
 
+  setup_asio
   setup_picojson
-  setup_websocketpp
   setup_protoc_native
+  setup_websocketpp
   setup_webrtc
   if [ "${WITH_TEST}" = 'true' ]; then
     setup_gtest
@@ -303,8 +302,8 @@ setup_protoc_native() {
 
   cd ${ROOT_PATH}
   ${LOCAL_ENV_PATH}/bin/protoc -I=src --cpp_out=src src/core/*.proto
-  ${LOCAL_ENV_PATH}/bin/protoc -I=src --cpp_out=src src/core/map_paxos/*.proto
-  ${LOCAL_ENV_PATH}/bin/protoc -I=src --cpp_out=src src/core/pubsub_2d/*.proto
+  ${LOCAL_ENV_PATH}/bin/protoc -I=src --cpp_out=src src/map_paxos/*.proto
+  ${LOCAL_ENV_PATH}/bin/protoc -I=src --cpp_out=src src/pubsub_2d/*.proto
 
   build_protoc
 }
@@ -410,8 +409,8 @@ build_native() {
 build_protoc() {
   cd ${ROOT_PATH}
   ./local/bin/protoc --cpp_out src -I src src/core/*.proto
-  ./local/bin/protoc --cpp_out src -I src src/core/map_paxos/*.proto
-  ./local/bin/protoc --cpp_out src -I src src/core/pubsub_2d/*.proto
+  ./local/bin/protoc --cpp_out src -I src src/map_paxos/*.proto
+  ./local/bin/protoc --cpp_out src -I src src/pubsub_2d/*.proto
 }
 
 build_wasm() {

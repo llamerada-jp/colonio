@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,16 @@
 #pragma once
 
 namespace colonio {
-namespace Protocol {
+namespace core {
 class Coordinate;
-}  // namespace Protocol
+}  // namespace core
 
 class Coordinate {
  public:
   double x;
   double y;
 
-  static Coordinate from_pb(const Protocol::Coordinate& pb);
+  static Coordinate from_pb(const core::Coordinate& pb);
 
   Coordinate();
   Coordinate(double x_, double y_);
@@ -33,6 +33,6 @@ class Coordinate {
   bool operator!=(const Coordinate& r) const;
 
   bool is_enable();
-  void to_pb(Protocol::Coordinate* pb) const;
+  void to_pb(core::Coordinate* pb) const;
 };
 }  // namespace colonio

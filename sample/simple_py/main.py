@@ -9,8 +9,8 @@ nodes_tmp       = set()
 nodes_online    = dict()
 
 def onSuccess(v):
-    print 'onSuccess : ' + v.getMyNid().toStr()
-    nodes_online[v.getMyNid()] = {
+    print 'onSuccess : ' + v.getLocalNid().toStr()
+    nodes_online[v.getLocalNid()] = {
         'instance': v
     }
     nodes_tmp.remove(v)

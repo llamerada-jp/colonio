@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,19 +14,13 @@
  * limitations under the License.
  */
 
-#include "exception.hpp"
-
-#include "utils.hpp"
+#include "colonio/exception.hpp"
 
 namespace colonio {
-Exception::Exception(int l, const std::string& f, const std::string& m) :
-    line(l),
-    file(Utils::file_basename(f, true)),
-    message(m) {
+Exception::Exception(ErrorCode code_, const std::string& message_) : code(code_), message(message_) {
 }
 
 const char* Exception::what() const noexcept {
-  // Pass message without line-no and file name.
   return message.c_str();
 }
 }  // namespace colonio

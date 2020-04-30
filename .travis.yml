@@ -19,8 +19,8 @@ install:
 
 script:
   - cd $TRAVIS_BUILD_DIR
-  - ./bin/build.sh -c
-  - make -C build/ubuntu_18.04_x86_64 test
+  - sh bin/build.sh -c
+  - make -C build/ubuntu_18.04_x86_64 test ARGS='--verbose --timeout 60'
 
 after_success:
-  - coveralls -b ./build/ubuntu_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src --gcov-options '\-lp'
+  - coveralls -b ./build/ubuntu_18.04_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/test -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ ValueImpl::~ValueImpl() {
   }
 }
 
-void ValueImpl::to_pb(Protocol::Value* pb, const Value& value) {
+void ValueImpl::to_pb(core::Value* pb, const Value& value) {
   switch (value.impl->type) {
     case Value::NULL_T:
       // pb->clear_value();
@@ -98,21 +98,21 @@ void ValueImpl::to_pb(Protocol::Value* pb, const Value& value) {
   }
 }
 
-Value ValueImpl::from_pb(const Protocol::Value& pb) {
+Value ValueImpl::from_pb(const core::Value& pb) {
   switch (pb.value_case()) {
-    case Protocol::Value::VALUE_NOT_SET:
+    case core::Value::VALUE_NOT_SET:
       return Value();
 
-    case Protocol::Value::kBoolV:
+    case core::Value::kBoolV:
       return Value(pb.bool_v());
 
-    case Protocol::Value::kIntV:
+    case core::Value::kIntV:
       return Value(pb.int_v());
 
-    case Protocol::Value::kDoubleV:
+    case core::Value::kDoubleV:
       return Value(pb.double_v());
 
-    case Protocol::Value::kStringV:
+    case core::Value::kStringV:
       return Value(pb.string_v());
 
     default:

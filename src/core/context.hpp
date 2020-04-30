@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,31 +17,31 @@
 
 #include <functional>
 #include <list>
+#include <memory>
 
+#include "coord_system.hpp"
 #include "coordinate.hpp"
-#include "logger.hpp"
+#include "definition.hpp"
 #include "node_id.hpp"
-#include "scheduler.hpp"
 
 namespace colonio {
-class CoordSystem;
+class Logger;
+class Scheduler;
+
 class Context {
  public:
   LinkStatus::Type link_status;
-  Logger logger;
-  Scheduler scheduler;
+  Logger& logger;
+  Scheduler& scheduler;
   std::unique_ptr<CoordSystem> coord_system;
-  const NodeID my_nid;
+  const NodeID local_nid;
 
-  Context(LoggerDelegate& logger_delegate, SchedulerDelegate& sched_delegate);
+  Context(Logger& logger_, Scheduler& scheduler_);
 
-  static uint32_t get_rnd_32();
-  static uint64_t get_rnd_64();
-
-  Coordinate get_my_position();
-  bool has_my_position();
-  void hook_on_change_my_position(std::function<void(const Coordinate&)> func);
-  void set_my_position(const Coordinate& pos);
+  Coordinate get_local_position();
+  bool has_local_position();
+  void hook_on_change_local_position(std::function<void(const Coordinate&)> func);
+  void set_local_position(const Coordinate& pos);
 
 #ifndef NDEBUG
   void hook_on_debug_event(std::function<void(DebugEvent::Type type, const picojson::value& data)> cb);
@@ -49,7 +49,7 @@ class Context {
 #endif
 
  private:
-  std::list<std::function<void(const Coordinate&)>> funcs_on_change_my_position;
+  std::list<std::function<void(const Coordinate&)>> funcs_on_change_local_position;
 
 #ifndef NDEBUG
   bool enable_debug_event;

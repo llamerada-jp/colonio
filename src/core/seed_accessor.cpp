@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@
 #include "convert.hpp"
 #include "logger.hpp"
 #include "packet.hpp"
+#include "scheduler.hpp"
 #include "seed_accessor_protocol.pb.h"
 #include "utils.hpp"
 
@@ -77,8 +78,10 @@ void SeedAccessor::connect(unsigned int interval) {
         [this]() {
           int64_t current_msec = Utils::get_current_msec();
           last_connect_time    = current_msec;
-          link->connect(url);
-          delegate.seed_accessor_on_change_status(*this, get_status());
+          if (link) {
+            link->connect(url);
+            delegate.seed_accessor_on_change_status(*this, get_status());
+          }
         },
         last_connect_time + interval - current_msec);
   }
@@ -90,6 +93,7 @@ void SeedAccessor::connect(unsigned int interval) {
  * Disconnect from the server.
  */
 void SeedAccessor::disconnect() {
+  logd("SeedAccessor::disconnect");
   if (get_status() != LinkStatus::OFFLINE) {
     link.reset();
 
@@ -126,15 +130,14 @@ bool SeedAccessor::is_only_one() {
 
 void SeedAccessor::relay_packet(std::unique_ptr<const Packet> packet) {
   if (link) {
-    logd("Relay to seed. %s", Utils::dump_packet(*packet).c_str());
-
     SeedAccessorProtocol::SeedAccessor packet_sa;
     packet->dst_nid.to_pb(packet_sa.mutable_dst_nid());
     packet->src_nid.to_pb(packet_sa.mutable_src_nid());
+    packet_sa.set_hop_count(packet->hop_count);
     packet_sa.set_id(packet->id);
     packet_sa.set_mode(packet->mode);
     packet_sa.set_channel(packet->channel);
-    packet_sa.set_module_no(packet->module_no);
+    packet_sa.set_module_channel(packet->module_channel);
     packet_sa.set_command_id(packet->command_id);
     if (packet->content != nullptr) {
       packet_sa.set_content(*packet->content);
@@ -142,11 +145,11 @@ void SeedAccessor::relay_packet(std::unique_ptr<const Packet> packet) {
 
     std::string packet_bin;
     packet_sa.SerializeToString(&packet_bin);
-    logd("Binary to seed. size:%d data:%s", packet_bin.size(), Utils::dump_binary(packet_bin).c_str());
+    logd("binary to seed").map_int("size", packet_bin.size()).map_dump("data", packet_bin);
     link->send(packet_bin);
 
   } else {
-    logd("Reject relaying packet to seed. %s", Utils::dump_packet(*packet).c_str());
+    logw("reject relaying packet to seed").map("packet", *packet);
   }
 }
 
@@ -177,28 +180,6 @@ void SeedAccessor::seed_link_on_error(SeedLinkBase& l) {
 }
 
 void SeedAccessor::seed_link_on_recv(SeedLinkBase& link, const std::string& data) {
-  /*
-  std::istringstream is(data);
-  picojson::value v;
-  std::string err = picojson::parse(v, is);
-  if (!err.empty()) {
-    /// @todo error
-    assert(false);
-  }
-
-  picojson::object& json = v.get<picojson::object>();
-
-  picojson::value content;
-  std::string content_str = json.at("content").get<std::string>();
-  if (content_str.size() != 0) {
-    std::istringstream is(content_str);
-    std::string err = picojson::parse(content, is);
-    if (!err.empty()) {
-      // TODO(llamerada.jp@gmail.com): Output warning log.
-      assert(false);
-    }
-  }
-  */
   SeedAccessorProtocol::SeedAccessor packet_pb;
   if (!packet_pb.ParseFromString(data)) {
     /// @todo error
@@ -206,13 +187,15 @@ void SeedAccessor::seed_link_on_recv(SeedLinkBase& link, const std::string& data
   }
 
   std::shared_ptr<const std::string> content(new std::string(packet_pb.content()));
-  logd("packet size ? :%d", packet_pb.content().size());
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
-      Packet{NodeID::from_pb(packet_pb.dst_nid()), NodeID::from_pb(packet_pb.src_nid()), packet_pb.id(), content,
-             static_cast<PacketMode::Type>(packet_pb.mode()), static_cast<ModuleChannel::Type>(packet_pb.channel()),
-             static_cast<ModuleNo>(packet_pb.module_no()), static_cast<CommandID::Type>(packet_pb.command_id())});
+  logd("packet size").map_int("size", packet_pb.content().size());
+  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet{
+      NodeID::from_pb(packet_pb.dst_nid()), NodeID::from_pb(packet_pb.src_nid()), packet_pb.hop_count(), packet_pb.id(),
+      content, static_cast<PacketMode::Type>(packet_pb.mode()), static_cast<APIChannel::Type>(packet_pb.channel()),
+      static_cast<ModuleChannel::Type>(packet_pb.module_channel()),
+      static_cast<CommandID::Type>(packet_pb.command_id())});
 
-  if (packet->src_nid == NodeID::SEED && packet->channel == ModuleChannel::SEED && packet->id == 0) {
+  if (packet->src_nid == NodeID::SEED && packet->channel == APIChannel::COLONIO &&
+      packet->module_channel == ModuleChannel::Colonio::SEED_ACCESSOR && packet->id == 0) {
     switch (packet->command_id) {
       case CommandID::SUCCESS: {
         recv_auth_success(*packet);
@@ -304,15 +287,17 @@ void SeedAccessor::send_auth(const std::string& token) {
   std::shared_ptr<std::string> content(new std::string());
   param.SerializeToString(content.get());
 
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet{
-      NodeID::SEED, context.my_nid, 0, content, PacketMode::NONE, ModuleChannel::SEED, 0, CommandID::Seed::AUTH});
+  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
+      Packet{NodeID::SEED, context.local_nid, 0, 0, content, PacketMode::NONE, APIChannel::COLONIO,
+             ModuleChannel::Colonio::SEED_ACCESSOR, CommandID::Seed::AUTH});
 
   relay_packet(std::move(packet));
 }
 
 void SeedAccessor::send_ping() {
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet{
-      NodeID::SEED, context.my_nid, 0, nullptr, PacketMode::NONE, ModuleChannel::SEED, 0, CommandID::Seed::PING});
+  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
+      Packet{NodeID::SEED, context.local_nid, 0, 0, nullptr, PacketMode::NONE, APIChannel::COLONIO,
+             ModuleChannel::Colonio::SEED_ACCESSOR, CommandID::Seed::PING});
 
   relay_packet(std::move(packet));
 }

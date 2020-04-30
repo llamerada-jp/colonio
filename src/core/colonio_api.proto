@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package colonio.api.colonio;
+
+import "core/core.proto";
+
+message Connect {
+  string url   = 1;
+  string token = 2;
+}
+
+message ConnectReply {
+  enum ModuleType {
+    NONE      = 0;
+    MAP       = 1;
+    PUBSUB_2D  = 2;
+  }
+  message Module {
+    uint32 channel   = 1;
+    ModuleType type  = 2;
+    string name      = 3;
+  }
+  core.NodeID local_nid = 1;
+  repeated Module modules = 2;
+}
+
+message SetPosition {
+  core.Coordinate position = 1;
+}
+
+message SetPositionReply {
+  core.Coordinate position = 1;
+}
+
+message LogEvent {
+  uint32 level    = 1;
+  string message  = 2;
+}
+
+message DebugEvent {
+  uint32 event  = 1;
+  string json   = 2;
+}

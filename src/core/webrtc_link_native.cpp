@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@
 
 #include "context.hpp"
 #include "convert.hpp"
+#include "logger.hpp"
+#include "scheduler.hpp"
 #include "webrtc_link.hpp"
 
 namespace colonio {
@@ -130,7 +132,7 @@ WebrtcLinkNative::~WebrtcLinkNative() {
 }
 
 void WebrtcLinkNative::disconnect() {
-  logd("Disconnect.(nid= %s)", nid.to_str().c_str());
+  logd("disconnect").map("nid", nid);
 
   init_data.reset();
   if (peer_connection != nullptr) {
@@ -271,9 +273,8 @@ void WebrtcLinkNative::on_change_status() {
   }
 
   LinkStatus::Type status = get_status();
-  logd("Change status.(nid=%s, %d -> %d)", nid.to_str().c_str(), prev_status, status);
-
   if (status != prev_status) {
+    logd("change status").map("nid", nid).map_int("before", prev_status).map_int("after", status);
     prev_status = status;
     delegate.webrtc_link_on_change_stateus(*this, status);
   }

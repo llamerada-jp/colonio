@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@
 
 #include <gtest/gtest.h>
 
-#include "core/exception.hpp"
-#include "core/protocol.pb.h"
+#include "core/core.pb.h"
+#include "core/internal_exception.hpp"
 
 using namespace colonio;
 
@@ -57,18 +57,18 @@ TEST(NodeIDTest, str) {
   bool has_error = false;
   try {
     const NodeID out02 = NodeID::from_str("0123456789abcdef0123456789ABCDEZ");
-  } catch (Exception& e) {
+  } catch (InternalException& e) {
     has_error = true;
-    EXPECT_STREQ(e.what(), "Illegal node-id string. (string : 0123456789abcdef0123456789ABCDEZ)");
+    EXPECT_STREQ(e.what(), "illegal node-id string. (string : 0123456789abcdef0123456789ABCDEZ)");
   }
   EXPECT_EQ(has_error, true);
 
   has_error = false;
   try {
     const NodeID out02 = NodeID::from_str("Z123456789abcdef0123456789ABCDE");
-  } catch (Exception& e) {
+  } catch (InternalException& e) {
     has_error = true;
-    EXPECT_STREQ(e.what(), "Illegal node-id string. (string : Z123456789abcdef0123456789ABCDE)");
+    EXPECT_STREQ(e.what(), "illegal node-id string. (string : Z123456789abcdef0123456789ABCDE)");
   }
   EXPECT_EQ(has_error, true);
 }
@@ -77,7 +77,7 @@ TEST(NodeIDTest, pb) {
 #define TEST00(T, V)                           \
   {                                            \
     NodeID itest00 = NodeID::T;                \
-    Protocol::NodeID ptest00;                  \
+    core::NodeID ptest00;                      \
     itest00.to_pb(&ptest00);                   \
     EXPECT_EQ(ptest00.type(), V);              \
     NodeID otest00 = NodeID::from_pb(ptest00); \
@@ -92,7 +92,7 @@ TEST(NodeIDTest, pb) {
 
   {
     NodeID itest01 = NodeID::from_str("0123456789abcdef9876543210ABCDEF");
-    Protocol::NodeID ptest01;
+    core::NodeID ptest01;
     itest01.to_pb(&ptest01);
     // EXPECT_EQ(ptest01.type(), Type::NORMAL);
     EXPECT_EQ(ptest01.id0(), 0x0123456789ABCDEF);
@@ -107,13 +107,13 @@ TEST(NodeIDTest, pb) {
 
   bool has_error = false;
   try {
-    Protocol::NodeID ptest02;
+    core::NodeID ptest02;
     ptest02.set_type(5);
     NodeID otest02 = NodeID::from_pb(ptest02);
 
-  } catch (Exception& e) {
+  } catch (InternalException& e) {
     has_error = true;
-    EXPECT_STREQ(e.what(), "Illegal node-id type in Protocol Buffers. (type : 5)");
+    EXPECT_STREQ(e.what(), "illegal node-id type in Protocol Buffers. (type : 5)");
   }
   EXPECT_EQ(has_error, true);
 }

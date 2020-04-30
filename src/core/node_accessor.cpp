@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,9 @@
 
 #include "context.hpp"
 #include "convert.hpp"
+#include "logger.hpp"
 #include "node_accessor_protocol.pb.h"
+#include "scheduler.hpp"
 #include "utils.hpp"
 
 namespace colonio {
@@ -31,7 +33,7 @@ NodeAccessorDelegate::~NodeAccessorDelegate() {
 }
 
 NodeAccessor::NodeAccessor(Context& context, ModuleDelegate& module_delegate, NodeAccessorDelegate& na_delegate) :
-    Module(context, module_delegate, ModuleChannel::WEBRTC_CONNECT, 0),
+    ModuleBase(context, module_delegate, APIChannel::COLONIO, ModuleChannel::Colonio::NODE_ACCESSOR),
     delegate(na_delegate),
     count_seed_transrate(0) {
   context.scheduler.add_interval_task(
@@ -63,11 +65,13 @@ void NodeAccessor::connect_link(const NodeID& nid) {
         links.erase(it);
       } break;
 
-      default: { assert(false); } break;
+      default: {
+        assert(false);
+      } break;
     }
   }
 
-  logd("Connect a link.(nid=%s)", nid.to_str().c_str());
+  logd("connect a link").map("nid", nid);
 
   WebrtcLink* link          = create_link(true);
   link->nid                 = nid;
@@ -77,7 +81,7 @@ void NodeAccessor::connect_link(const NodeID& nid) {
 
   update_link_status();
 
-  send_offer(link, context.my_nid, nid, OFFER_TYPE_NORMAL);
+  send_offer(link, context.local_nid, nid, OFFER_TYPE_NORMAL);
 }
 
 void NodeAccessor::connect_init_link() {
@@ -85,7 +89,7 @@ void NodeAccessor::connect_init_link() {
   assert(!first_link);
   // assert(links.empty()); containing closeing links.
 
-  logd("Connect init link.(tmp_my_nid=%s)", context.my_nid.to_str().c_str());
+  logd("connect init link").map("local_nid", context.local_nid);
 
   first_link_try_count = 0;
   create_first_link();
@@ -94,18 +98,18 @@ void NodeAccessor::connect_init_link() {
 void NodeAccessor::connect_random_link() {
   // If connecting random link yet, do nothing.
   if (random_link || first_link) {
-    logd("Connect random (ignore).");
+    logd("connect random (ignore)");
     return;
 
   } else {
-    logd("Connect random (start).");
+    logd("connect random (start)");
   }
 
   random_link.reset(create_link(true));
   random_link->init_data->is_by_seed = true;
   random_link->init_data->is_prime   = true;
 
-  send_offer(random_link.get(), context.my_nid, context.my_nid, OFFER_TYPE_RANDOM);
+  send_offer(random_link.get(), context.local_nid, context.local_nid, OFFER_TYPE_RANDOM);
 }
 
 LinkStatus::Type NodeAccessor::get_status() {
@@ -129,8 +133,9 @@ LinkStatus::Type NodeAccessor::get_status() {
   }
 }
 
-void NodeAccessor::disconnect_all() {
-  while (first_link || random_link || links.size() != 0 || closing_links.size() != 0) {
+void NodeAccessor::disconnect_all(std::function<void()> on_after) {
+  cleanup_closing();
+  if (first_link || random_link || links.size() != 0 || closing_links.size() != 0) {
     disconnect_first_link();
     disconnect_random_link();
 
@@ -142,7 +147,11 @@ void NodeAccessor::disconnect_all() {
       disconnect_link(nid);
     }
 
-    cleanup_closing();
+    context.scheduler.add_timeout_task(
+        this, [this, on_after]() { disconnect_all(on_after); }, 500);
+
+  } else {
+    on_after();
   }
 }
 
@@ -153,18 +162,20 @@ void NodeAccessor::disconnect_link(const NodeID& nid) {
     return;
   }
 
-  logd("Disconnect link.(nid=%s)", nid.to_str().c_str());
+  logd("disconnect link").map("nid", nid);
 
   WebrtcLink* link = it->second.get();
   link->disconnect();
 }
 
 void NodeAccessor::initialize(const picojson::object& config) {
-  CONFIG_PACKET_SIZE     = Utils::get_json(config, "packetSize", NODE_ACCESSOR_PACKET_SIZE);
   CONFIG_BUFFER_INTERVAL = Utils::get_json(config, "bufferInterval", NODE_ACCESSOR_BUFFER_INTERVAL);
+  CONFIG_HOP_COUNT_MAX   = Utils::get_json(config, "hopCountMax", NODE_ACCESSOR_HOP_COUNT_MAX);
+  CONFIG_PACKET_SIZE     = Utils::get_json(config, "packetSize", NODE_ACCESSOR_PACKET_SIZE);
 
   if (CONFIG_PACKET_SIZE != 0 && CONFIG_BUFFER_INTERVAL != 0) {
-    context.scheduler.add_interval_task(this, [this]() { send_all_packet(); }, CONFIG_BUFFER_INTERVAL);
+    context.scheduler.add_interval_task(
+        this, [this]() { send_all_packet(); }, CONFIG_BUFFER_INTERVAL);
   }
 
   webrtc_context.initialize(Utils::get_json<picojson::array>(config, "iceServers"));
@@ -175,7 +186,7 @@ bool NodeAccessor::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Pac
   assert(dst_nid != NodeID::SEED);
   assert(dst_nid != NodeID::THIS);
   if (get_status() != LinkStatus::ONLINE) {
-    logd("drop packet:%s", Utils::dump_packet(*packet).c_str());
+    logw("drop packet").map("packet", *packet);
     return false;
   }
 
@@ -193,7 +204,7 @@ bool NodeAccessor::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Pac
 
   } else {
     if (links.find(dst_nid) == links.end()) {
-      logd("drop packet:%s", Utils::dump_packet(*packet).c_str());
+      logw("drop packet").map("packet", *packet);
       return false;
 
     } else {
@@ -301,7 +312,7 @@ void NodeAccessor::CommandOffer::on_error(const std::string& message) {
 
     } else {
       // Maybe timeouted.
-      logD(accessor.context, "Timeout?");
+      logD(accessor.context, "timeout?");
       return;
     }
   }
@@ -313,28 +324,24 @@ void NodeAccessor::CommandOffer::on_error(const std::string& message) {
 }
 
 void NodeAccessor::module_process_command(std::unique_ptr<const Packet> packet) {
-  if (packet->channel == ModuleChannel::WEBRTC_CONNECT) {
-    switch (packet->command_id) {
-      case CommandID::WebrtcConnect::OFFER:
-        recv_offer(std::move(packet));
-        break;
+  switch (packet->command_id) {
+    case CommandID::WebrtcConnect::OFFER:
+      recv_offer(std::move(packet));
+      break;
 
-      case CommandID::WebrtcConnect::ICE:
-        recv_ice(std::move(packet));
-        break;
+    case CommandID::WebrtcConnect::ICE:
+      recv_ice(std::move(packet));
+      break;
 
-      default:
-        assert(false);
-        return;
-        break;
-    }
-  } else {
-    assert(false);
+    default:
+      assert(false);
+      return;
+      break;
   }
 }
 
 void NodeAccessor::webrtc_link_on_change_stateus(WebrtcLink& link, LinkStatus::Type link_status) {
-  logd("Change status. (status=%d)", link_status);
+  logd("change status").map_int("status", link_status);
 
   update_link_status();
   delegate.node_accessor_on_change_status(*this, get_status());
@@ -386,10 +393,11 @@ void NodeAccessor::webrtc_link_on_recv_data(WebrtcLink& link, const std::string&
     const NodeAccessorProtocol::Packet& pb_packet = ca.packet(i);
     if (pb_packet.has_head()) {
       const NodeAccessorProtocol::Head& pb_head = pb_packet.head();
-      std::unique_ptr<Packet> packet            = std::make_unique<Packet>(
-          Packet{NodeID::from_pb(pb_head.dst_nid()), NodeID::from_pb(pb_head.src_nid()), pb_packet.id(), nullptr,
-                 static_cast<PacketMode::Type>(pb_head.mode()), static_cast<ModuleChannel::Type>(pb_head.channel()),
-                 static_cast<ModuleNo>(pb_head.module_no()), static_cast<CommandID::Type>(pb_head.command_id())});
+      std::unique_ptr<Packet> packet            = std::make_unique<Packet>(Packet{
+          NodeID::from_pb(pb_head.dst_nid()), NodeID::from_pb(pb_head.src_nid()), pb_head.hop_count() + 1,
+          pb_packet.id(), nullptr, static_cast<PacketMode::Type>(pb_head.mode()),
+          static_cast<APIChannel::Type>(pb_head.channel()), static_cast<ModuleChannel::Type>(pb_head.module_channel()),
+          static_cast<CommandID::Type>(pb_head.command_id())});
       std::shared_ptr<const std::string> content(new std::string(pb_packet.content()));
 
       if (pb_packet.index() == 0) {
@@ -538,7 +546,7 @@ void NodeAccessor::create_first_link() {
   first_link->init_data->is_by_seed = true;
   first_link->init_data->is_prime   = true;
 
-  send_offer(first_link.get(), context.my_nid, context.my_nid, OFFER_TYPE_FIRST);
+  send_offer(first_link.get(), context.local_nid, context.local_nid, OFFER_TYPE_FIRST);
 }
 
 WebrtcLink* NodeAccessor::create_link(bool is_create_dc) {
@@ -579,7 +587,7 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
     is_by_seed = false;
   }
 
-  if (prime_nid != context.my_nid) {
+  if (prime_nid != context.local_nid) {
     auto it = links.find(prime_nid);
     if (it != links.end()) {
       WebrtcLink* link = it->second.get();
@@ -587,11 +595,11 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
         // Already having a online connection with prime node yet.
         NodeAccessorProtocol::OfferSuccess param;
         param.set_status(OFFER_STATUS_SUCCESS_ALREADY);
-        context.my_nid.to_pb(param.mutable_second_nid());
+        context.local_nid.to_pb(param.mutable_second_nid());
 
         send_success(*packet, serialize_pb(param));
 
-      } else if (prime_nid < context.my_nid) {
+      } else if (prime_nid < context.local_nid) {
         // Already having not a online connection that will be reconnect.
         link->disconnect();
         closing_links.insert(std::move(it->second));
@@ -610,7 +618,7 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
         link->get_local_sdp([this, p](const std::string& sdp) -> void {
           NodeAccessorProtocol::OfferSuccess param;
           param.set_status(OFFER_STATUS_SUCCESS_ACCEPT);
-          context.my_nid.to_pb(param.mutable_second_nid());
+          context.local_nid.to_pb(param.mutable_second_nid());
           param.set_sdp(sdp);
 
           send_success(p, serialize_pb(param));
@@ -636,7 +644,7 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
       link->get_local_sdp([this, p](const std::string& sdp) -> void {
         NodeAccessorProtocol::OfferSuccess param;
         param.set_status(OFFER_STATUS_SUCCESS_ACCEPT);
-        context.my_nid.to_pb(param.mutable_second_nid());
+        context.local_nid.to_pb(param.mutable_second_nid());
         param.set_sdp(sdp);
 
         send_success(p, serialize_pb(param));
@@ -686,7 +694,7 @@ void NodeAccessor::recv_ice(std::unique_ptr<const Packet> packet) {
   }
   picojson::array ice_array = v.get<picojson::array>();
 
-  assert(remote_nid == context.my_nid);
+  assert(remote_nid == context.local_nid);
 
   auto it = links.find(local_nid);
   if (it != links.end()) {
@@ -708,8 +716,12 @@ void NodeAccessor::recv_ice(std::unique_ptr<const Packet> packet) {
 }
 
 void NodeAccessor::send_all_packet() {
+  std::set<NodeID> nids;
   for (auto& it : send_buffers) {
-    send_packet_list(it.first, true);
+    nids.insert(it.first);
+  }
+  for (auto& it : nids) {
+    send_packet_list(it, true);
   }
 }
 
@@ -730,7 +742,7 @@ void NodeAccessor::send_ice(WebrtcLink* link, const picojson::array& ice) {
   assert(link->nid != NodeID::NONE);
   assert(link->init_data);
   NodeAccessorProtocol::ICE content;
-  context.my_nid.to_pb(content.mutable_local_nid());
+  context.local_nid.to_pb(content.mutable_local_nid());
   link->nid.to_pb(content.mutable_remote_nid());
   content.set_ice(picojson::value(ice).serialize());
 
@@ -763,6 +775,10 @@ bool NodeAccessor::send_packet_list(const NodeID& dst_nid, bool is_all) {
       NodeAccessorProtocol::Carrier ca;
       unsigned int size_sum = 0;
       while (it != sb.end()) {
+        if (it->hop_count > CONFIG_HOP_COUNT_MAX) {
+          it = sb.erase(it);
+          continue;
+        }
         const int content_size = it->content ? it->content->size() : 0;
         if (size_sum + ESTIMATED_HEAD_SIZE + content_size > CONFIG_PACKET_SIZE) {
           break;
@@ -777,8 +793,10 @@ bool NodeAccessor::send_packet_list(const NodeID& dst_nid, bool is_all) {
           it->dst_nid.to_pb(head->mutable_dst_nid());
         }
         it->src_nid.to_pb(head->mutable_src_nid());
+        head->set_hop_count(it->hop_count);
         head->set_mode(it->mode);
         head->set_channel(it->channel);
+        head->set_module_channel(it->module_channel);
         head->set_command_id(it->command_id);
         packet->set_id(it->id);
         packet->set_index(0);
@@ -799,6 +817,10 @@ bool NodeAccessor::send_packet_list(const NodeID& dst_nid, bool is_all) {
     }
 
     while (it != sb.end() && it->content && ESTIMATED_HEAD_SIZE + it->content->size() >= CONFIG_PACKET_SIZE) {
+      if (it->hop_count > CONFIG_HOP_COUNT_MAX) {
+        it = sb.erase(it);
+        continue;
+      }
       const int content_size = it->content ? it->content->size() : 0;
       // Split large packet to send it.
       const int num = (ESTIMATED_HEAD_SIZE + content_size) / CONFIG_PACKET_SIZE +
@@ -817,8 +839,10 @@ bool NodeAccessor::send_packet_list(const NodeID& dst_nid, bool is_all) {
             it->dst_nid.to_pb(head->mutable_dst_nid());
           }
           it->src_nid.to_pb(head->mutable_src_nid());
+          head->set_hop_count(it->hop_count);
           head->set_mode(it->mode);
           head->set_channel(it->channel);
+          head->set_module_channel(it->module_channel);
           head->set_command_id(it->command_id);
         }
         packet->set_id(it->id);

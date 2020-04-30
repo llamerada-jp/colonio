@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,17 @@
  */
 #pragma once
 
+#include <memory>
 #include <string>
 
 #include "definition.hpp"
 #include "utils.hpp"
 
 namespace colonio {
+class NodeID;
+class Packet;
+class Value;
+
 class Logger;
 /**
  * LoggerDelegate is a delegate for Logger.
@@ -36,7 +41,7 @@ class LoggerDelegate {
    * @param level Log level.
    * @param message Log message.
    */
-  virtual void logger_on_output(Logger& logger, LogLevel::Type level, const std::string& message) = 0;
+  virtual void logger_on_output(Logger& logger, LogLevel level, const std::string& message) = 0;
 };
 
 /**
@@ -45,36 +50,105 @@ class LoggerDelegate {
  */
 class Logger {
  public:
+  class L {
+   public:
+    L(Logger& logger_, const std::string file_, unsigned long line_, LogLevel level_, const std::string& message_);
+    virtual ~L();
+    L& map(const std::string& name, const std::string& value);
+    L& map(const std::string& name, const NodeID& value);
+    L& map(const std::string& name, const Packet& value);
+    L& map(const std::string& name, const Value& value);
+    L& map_bool(const std::string& name, bool value);
+    L& map_dump(const std::string& name, const std::string& value);
+    L& map_float(const std::string& name, double value);
+    L& map_int(const std::string& name, int64_t value);
+    L& map_u32(const std::string& name, uint32_t value);
+    L& map_u64(const std::string& name, uint64_t value);
+
+   private:
+    Logger& logger;
+    std::string file;
+    unsigned long line;
+    LogLevel level;
+    const std::string message;
+    picojson::object params;
+  };
+
+  class D {
+   public:
+    D& map(const std::string& name, const std::string& value) {
+      return *this;
+    }
+
+    D& map(const std::string& name, const NodeID& value) {
+      return *this;
+    }
+
+    D& map(const std::string& name, const Packet& value) {
+      return *this;
+    }
+
+    D& map(const std::string& name, const Value& value) {
+      return *this;
+    }
+
+    D& map_bool(const std::string& name, bool value) {
+      return *this;
+    }
+
+    D& map_dump(const std::string& name, const std::string& value) {
+      return *this;
+    }
+
+    D& map_float(const std::string& name, double value) {
+      return *this;
+    }
+
+    D& map_int(const std::string& name, int64_t value) {
+      return *this;
+    }
+
+    D& map_u32(const std::string& name, uint32_t value) {
+      return *this;
+    }
+
+    D& map_u64(const std::string& name, uint64_t value) {
+      return *this;
+    }
+  };
+
   Logger(LoggerDelegate& delegate_);
   virtual ~Logger();
 
-  void output(
-      const std::string& file, unsigned long line, LogLevel::Type level, unsigned long mid, const std::string& message);
+  L create(const std::string& file, unsigned long line, LogLevel level, const std::string& message);
 
  private:
   LoggerDelegate& delegate;
 };
 
-#define logi(MID, FORMAT, ...) \
-  this->context.logger.output(__FILE__, __LINE__, LogLevel::INFO, MID, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
-#define logI(INSTANCE, MID, FORMAT, ...) \
-  INSTANCE.logger.output(__FILE__, __LINE__, LogLevel::INFO, MID, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+#define logi(FORMAT, ...) \
+  this->context.logger.create(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+#define logI(INSTANCE, FORMAT, ...) \
+  (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
-#define loge(MID, FORMAT, ...) \
-  this->context.logger.output(__FILE__, __LINE__, LogLevel::ERROR, MID, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
-#define logE(INSTANCE, MID, FORMAT, ...) \
-  INSTANCE.logger.output(__FILE__, __LINE__, LogLevel::ERROR, MID, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+#define logw(FORMAT, ...) \
+  this->context.logger.create(__FILE__, __LINE__, LogLevel::WARN, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+#define logW(INSTANCE, FORMAT, ...) \
+  (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::WARN, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+
+#define loge(FORMAT, ...) \
+  this->context.logger.create(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+#define logE(INSTANCE, FORMAT, ...) \
+  (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 #ifndef NDEBUG
 #  define logd(FORMAT, ...) \
-    this->context.logger.output(__FILE__, __LINE__, LogLevel::DEBUG, 0, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+    this->context.logger.create(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 #  define logD(INSTANCE, FORMAT, ...) \
-    INSTANCE.logger.output(__FILE__, __LINE__, LogLevel::DEBUG, 0, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+    (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 #else
-inline void do_nothing() {
-}
-#  define logd(...) do_nothing()
-#  define logD(...) do_nothing()
+#  define logd(...) Logger::D()
+#  define logD(...) Logger::D()
 #endif
 }  // namespace colonio

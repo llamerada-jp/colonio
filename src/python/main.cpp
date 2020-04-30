@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ class PythonMap {
 
   void get(
       const py::object key, const std::function<void(py::object&)>& on_success,
-      const std::function<void(colonio::MapFailureReason)>& on_failure) {
+      const std::function<void(colonio::Error)>& on_failure) {
     colonio::Value key_value = convertValue(key);
     map.get(
         key_value,
@@ -81,7 +81,7 @@ class PythonMap {
 
   void set(
       const py::object key, const py::object val, const std::function<void()>& on_success,
-      const std::function<void(colonio::MapFailureReason)>& on_failure) {
+      const std::function<void(colonio::Error)>& on_failure) {
     colonio::Value key_value = convertValue(key);
     colonio::Value val_value = convertValue(val);
     map.set(key_value, val_value, on_success, on_failure);
@@ -134,11 +134,11 @@ PYBIND11_MODULE(colonio, m) {
   py::class_<PythonMap> Map(m, "Map");
   Map.def("get", &PythonMap::get).def("set", &PythonMap::set);
 
-  py::enum_<colonio::MapFailureReason>(Map, "FailureReason")
-      .value("NONE", colonio::MapFailureReason::NONE)
-      .value("SYSTEM_ERROR", colonio::MapFailureReason::SYSTEM_ERROR)
-      .value("NOT_EXIST_KEY", colonio::MapFailureReason::NOT_EXIST_KEY)
-      .value("CHANGED_PROPOSER", colonio::MapFailureReason::CHANGED_PROPOSER)
+  py::enum_<colonio::Error>(Map, "FailureReason")
+      .value("NONE", colonio::Error::NONE)
+      .value("SYSTEM_ERROR", colonio::Error::SYSTEM_ERROR)
+      .value("NOT_EXIST_KEY", colonio::Error::NOT_EXIST_KEY)
+      .value("CHANGED_PROPOSER", colonio::Error::CHANGED_PROPOSER)
       .export_values();
 
   // Colonio
@@ -148,7 +148,7 @@ PYBIND11_MODULE(colonio, m) {
       .def("connect", &PythonColonio::_connect)
       .def("run", &PythonColonio::_run)
       .def("disconnect", &PythonColonio::disconnect)
-      .def("getMyNid", &PythonColonio::get_my_nid);
+      .def("getLocalNid", &PythonColonio::get_local_nid);
 
   py::enum_<PythonColonio::RUN_MODE>(Colonio, "RunMode")
       .value("DEFAULT", PythonColonio::RUN_MODE::DEFAULT)

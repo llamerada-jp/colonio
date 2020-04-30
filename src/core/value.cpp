@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,9 @@ Value::Value(double v) : impl(std::make_unique<ValueImpl>(v)) {
 }
 
 Value::Value(const std::string& v) : impl(std::make_unique<ValueImpl>(v)) {
+}
+
+Value::Value(const char* v) : impl(std::make_unique<ValueImpl>(std::string(v))) {
 }
 
 Value::Value(const Value& src) : impl(std::make_unique<ValueImpl>(*src.impl)) {

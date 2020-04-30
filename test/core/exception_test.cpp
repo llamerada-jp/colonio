@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,24 +14,24 @@
  * limitations under the License.
  */
 
-#include "core/exception.hpp"
-
 #include <gtest/gtest.h>
 
+#include "core/internal_exception.hpp"
 #include "core/utils.hpp"
 
 using namespace colonio;
 
 TEST(UtilsTest, Exception) {
   try {
-    colonio_throw("test");
+    colonio_throw(ErrorCode::SYSTEM_ERROR, "test");
 
   } catch (FatalException& e) {
     FAIL();
 
-  } catch (Exception& e) {
-    EXPECT_EQ(e.line, 27);
-    EXPECT_STREQ(e.file.c_str(), "exception_test");
+  } catch (InternalException& e) {
+    EXPECT_EQ(e.line, 26);
+    EXPECT_STREQ(e.file.c_str(), "exception_test.cpp");
+    EXPECT_EQ(e.code, ErrorCode::SYSTEM_ERROR);
     EXPECT_EQ(e.message, "test");
     EXPECT_STREQ(e.what(), "test");
   }
@@ -41,11 +41,12 @@ TEST(UtilsTest, Exception) {
 
   } catch (FatalException& e) {
     EXPECT_EQ(e.line, 40);
-    EXPECT_STREQ(e.file.c_str(), "exception_test");
+    EXPECT_STREQ(e.file.c_str(), "exception_test.cpp");
+    EXPECT_EQ(e.code, ErrorCode::UNDEFINED);
     EXPECT_EQ(e.message, "test");
     EXPECT_STREQ(e.what(), "test");
 
-  } catch (Exception& e) {
+  } catch (InternalException& e) {
     FAIL();
   }
 }

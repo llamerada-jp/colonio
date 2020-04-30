@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 #include <cassert>
 #include <string>
 
-#include "exception.hpp"
+#include "internal_exception.hpp"
 
 namespace colonio {
 class Packet;
@@ -36,14 +36,18 @@ class Packet;
     }
 
 #else
-#  define colonio_assert(EX, FORMAT, ...) exit(-1);
+#  define colonio_assert(EX, FORMAT, ...) \
+    if (!(EX)) {                          \
+      exit(EXIT_FAILURE);                 \
+    }
 #endif
 
 /**
  * THROW macro is helper function to throw exception with line number and file name.
  * @param FORMAT Format string of an exception message that similar to printf.
  */
-#define colonio_throw(FORMAT, ...) throw Exception(__LINE__, __FILE__, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+#define colonio_throw(CODE, FORMAT, ...) \
+  throw InternalException(__LINE__, __FILE__, CODE, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 /**
  * FATAL macro is helper function to throw fatal exception.
@@ -103,9 +107,12 @@ unsigned int
 get_json<unsigned int>(const picojson::object& obj, const std::string& key, const unsigned int& default_value);
 
 std::string dump_binary(const std::string& bin);
-std::string dump_packet(const Packet& packet, unsigned int indent = 0);
+std::string dump_packet(const Packet& packet, unsigned int indent = 2);
 int64_t get_current_msec();
 std::string get_current_thread_id();
+uint32_t get_rnd_32();
+uint32_t get_rnd_32(uint32_t min, uint32_t max);
+uint64_t get_rnd_64();
 
 template<typename T>
 const T* get_json_value(const picojson::object& parent, const std::string& key) {

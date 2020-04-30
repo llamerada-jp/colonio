@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ class Routing2D : public RoutingAlgorithm {
   Routing2D(Context& context_, RoutingAlgorithm2DDelegate& delegate_);
 
   const std::set<NodeID>& get_required_nodes() override;
-  void on_change_my_position(const Coordinate& position) override;
+  void on_change_local_position(const Coordinate& position) override;
   void on_recv_packet(const NodeID& nid, const Packet& packet) override;
   void send_routing_info(RoutingProtocol::RoutingInfo* param) override;
   bool update_routing_info(

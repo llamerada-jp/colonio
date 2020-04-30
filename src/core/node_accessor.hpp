@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,12 @@
 
 #include <picojson.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 
-#include "module.hpp"
+#include "command.hpp"
+#include "module_base.hpp"
 #include "node_id.hpp"
 #include "webrtc_context.hpp"
 #include "webrtc_link.hpp"
@@ -38,7 +40,7 @@ class NodeAccessorDelegate {
       NodeAccessor& na, const NodeID& nid, std::unique_ptr<const Packet> packet) = 0;
 };
 
-class NodeAccessor : public Module, public WebrtcLinkDelegate {
+class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
  public:
   NodeAccessor(Context& context, ModuleDelegate& module_delegate, NodeAccessorDelegate& na_delegate);
   virtual ~NodeAccessor();
@@ -47,7 +49,7 @@ class NodeAccessor : public Module, public WebrtcLinkDelegate {
   void connect_init_link();
   void connect_random_link();
   LinkStatus::Type get_status();
-  void disconnect_all();
+  void disconnect_all(std::function<void()> on_after);
   void disconnect_link(const NodeID& nid);
   void initialize(const picojson::object& config);
   bool relay_packet(const NodeID& dst, std::unique_ptr<const Packet> packet);
@@ -83,8 +85,9 @@ class NodeAccessor : public Module, public WebrtcLinkDelegate {
     OFFER_TYPE type;
   };
 
-  unsigned int CONFIG_PACKET_SIZE;
   unsigned int CONFIG_BUFFER_INTERVAL;
+  unsigned int CONFIG_HOP_COUNT_MAX;
+  unsigned int CONFIG_PACKET_SIZE;
 
   NodeAccessorDelegate& delegate;
   WebrtcContext webrtc_context;

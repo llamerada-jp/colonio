@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,68 +16,50 @@
 #include "context.hpp"
 
 #include <cassert>
-#include <mutex>
-#include <random>
 
 #include "coord_system.hpp"
+#include "logger.hpp"
 
 namespace colonio {
 
-// Random value generator.
-static std::random_device seed_gen;
-static std::mt19937 rnd32(seed_gen());
-static std::mt19937_64 rnd64(seed_gen());
-static std::mutex mutex32;
-static std::mutex mutex64;
-
-Context::Context(LoggerDelegate& logger_delegate, SchedulerDelegate& sched_delegate) :
+Context::Context(Logger& logger_, Scheduler& scheduler_) :
     link_status(LinkStatus::OFFLINE),
-    logger(logger_delegate),
-    scheduler(sched_delegate),
-    my_nid(NodeID::make_random()) {
+    logger(logger_),
+    scheduler(scheduler_),
+    local_nid(NodeID::make_random()) {
 #ifndef NDEBUG
   enable_debug_event = false;
 #endif
 }
 
-uint32_t Context::get_rnd_32() {
-  std::lock_guard<std::mutex> guard(mutex32);
-  return rnd32();
-}
-
-uint64_t Context::get_rnd_64() {
-  std::lock_guard<std::mutex> guard(mutex64);
-  return rnd64();
-}
-
-Coordinate Context::get_my_position() {
+Coordinate Context::get_local_position() {
   assert(coord_system);
 
-  return coord_system->get_my_position();
+  return coord_system->get_local_position();
 }
 
-bool Context::has_my_position() {
+bool Context::has_local_position() {
   assert(coord_system);
 
-  return coord_system->get_my_position().is_enable();
+  return coord_system->get_local_position().is_enable();
 }
 
-void Context::hook_on_change_my_position(std::function<void(const Coordinate&)> func) {
-  funcs_on_change_my_position.push_back(func);
+void Context::hook_on_change_local_position(std::function<void(const Coordinate&)> func) {
+  funcs_on_change_local_position.push_back(func);
 }
 
-void Context::set_my_position(const Coordinate& pos) {
+void Context::set_local_position(const Coordinate& pos) {
   assert(coord_system);
 
-  Coordinate prev_my_position = coord_system->get_my_position();
-  coord_system->set_my_position(pos);
-  Coordinate new_my_position = coord_system->get_my_position();
+  Coordinate prev_local_position = coord_system->get_local_position();
+  coord_system->set_local_position(pos);
+  Coordinate new_local_position = coord_system->get_local_position();
 
-  if (prev_my_position.x != new_my_position.x || prev_my_position.y != new_my_position.y) {
-    logI((*this), 0x00020002, "Change my position.(x=%f, y=%f)", new_my_position.x, new_my_position.y);
+  if (prev_local_position.x != new_local_position.x || prev_local_position.y != new_local_position.y) {
+    logI((*this), "change local position").map_float("x", new_local_position.x).map_float("y", new_local_position.y);
 
-    for (auto& it : funcs_on_change_my_position) {
-      it(new_my_position);
+    for (auto& it : funcs_on_change_local_position) {
+      it(new_local_position);
     }
   }
 }

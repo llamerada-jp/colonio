@@ -4,18 +4,6 @@
 list(APPEND extra_libs "glog")
 
 ##
-## simple_c
-##
-add_executable(simple_c
-  simple_c/main.c
-  )
-target_link_libraries(simple_c
-  colonio
-  ${webrtc_libs}
-  ${extra_libs}
-  )
-
-##
 ## simple_cpp
 ##
 add_executable(simple_cpp

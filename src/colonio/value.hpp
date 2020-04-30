@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 #pragma once
+
+#include <cstdint>
 #include <memory>
 
 namespace colonio {
@@ -27,6 +29,7 @@ class Value {
   explicit Value(bool v);
   explicit Value(int64_t v);
   explicit Value(double v);
+  explicit Value(const char* v);
   explicit Value(const std::string& v);
   virtual ~Value();
 

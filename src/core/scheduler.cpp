@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,6 +73,9 @@ unsigned int Scheduler::invoke() {
         if ((*it)->interval == 0) {
           it = tasks.erase(it);
         } else {
+          while ((*it)->next <= current_msec) {
+            (*it)->next += (*it)->interval;
+          }
           it++;
         }
       } else {
@@ -109,14 +112,15 @@ unsigned int Scheduler::invoke() {
       int64_t current_msec = Utils::get_current_msec();
       int64_t min_next     = INT64_MAX;
       for (auto& it : tasks) {
-        while (it->next <= current_msec) {
-          it->next += it->interval;
-        }
         if (min_next > it->next) {
           min_next = it->next;
         }
       }
-      return min_next - current_msec;
+      if (min_next > current_msec) {
+        return min_next - current_msec;
+      } else {
+        return 1;
+      }
     }
   }
 }

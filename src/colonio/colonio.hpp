@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 #pragma once
 
 #include <colonio/constant.hpp>
+#include <colonio/error.hpp>
+#include <colonio/exception.hpp>
 #include <colonio/map.hpp>
 #include <colonio/pubsub_2d.hpp>
 #include <colonio/value.hpp>
@@ -25,8 +27,6 @@
 #include <tuple>
 
 namespace colonio {
-class Colonio;
-class ColonioImpl;
 
 class Colonio {
  public:
@@ -34,24 +34,29 @@ class Colonio {
   virtual ~Colonio();
 
   Map& access_map(const std::string& name);
-  PubSub2D& access_pubsub2d(const std::string& name);
+  Pubsub2D& access_pubsub_2d(const std::string& name);
+  void connect(const std::string& url, const std::string& token);
   void connect(
       const std::string& url, const std::string& token, std::function<void(Colonio&)> on_success,
-      std::function<void(Colonio&)> on_failure);
+      std::function<void(Colonio&, const Error&)> on_failure);
+#ifndef EMSCRIPTEN
   void disconnect();
-  std::string get_my_nid();
+#else
+  void disconnect(std::function<void(Colonio&)> on_success, std::function<void(Colonio&, const Error&)> on_failure);
+#endif
+  std::string get_local_nid();
   std::tuple<double, double> set_position(double x, double y);
+  void set_position(
+      double x, double y, std::function<void(Colonio&, double, double)> on_success,
+      std::function<void(Colonio&, const Error&)> on_failure);
 
  protected:
-  virtual void on_require_invoke(unsigned int msec) = 0;
-  virtual void on_output_log(LogLevel::Type level, const std::string& message);
+  virtual void on_output_log(LogLevel level, const std::string& message);
   virtual void on_debug_event(DebugEvent::Type event, const std::string& json);
 
-  unsigned int invoke();
-
  private:
-  friend ColonioImpl;
-  std::unique_ptr<ColonioImpl> impl;
+  class Impl;
+  std::unique_ptr<Impl> impl;
 
   Colonio(const Colonio&);
   Colonio& operator=(const Colonio&);

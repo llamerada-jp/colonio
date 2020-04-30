@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,12 +23,12 @@ extern "C" {
 #include <string>
 #include <tuple>
 
-#include "context.hpp"
 #include "convert.hpp"
+#include "core.pb.h"
 #include "definition.hpp"
-#include "exception.hpp"
+#include "internal_exception.hpp"
 #include "node_id.hpp"
-#include "protocol.pb.h"
+#include "utils.hpp"
 
 namespace colonio {
 // Node types.
@@ -160,7 +160,7 @@ NodeID NodeID::from_str(const std::string& str) {
       return NEXT;
 
     } else {
-      colonio_throw("Illegal node-id string. (string : %s)", str.c_str());
+      colonio_throw(ErrorCode::INCORRECT_DATA_FORMAT, "illegal node-id string. (string : %s)", str.c_str());
     }
   }
 }
@@ -171,7 +171,7 @@ NodeID NodeID::from_str(const std::string& str) {
  * @return A node-id.
  * @exception Raise when a illegal packet was selected.
  */
-NodeID NodeID::from_pb(const Protocol::NodeID& pb) {
+NodeID NodeID::from_pb(const core::NodeID& pb) {
   switch (pb.type()) {
     case Type::NONE:
       return NodeID::NONE;
@@ -189,7 +189,8 @@ NodeID NodeID::from_pb(const Protocol::NodeID& pb) {
       return NodeID::NEXT;
 
     default:
-      colonio_throw("Illegal node-id type in Protocol Buffers. (type : %d)", pb.type());
+      colonio_throw(
+          ErrorCode::INCORRECT_DATA_FORMAT, "illegal node-id type in Protocol Buffers. (type : %d)", pb.type());
   }
 }
 
@@ -223,7 +224,7 @@ NodeID NodeID::make_hash_from_str(const std::string& str) {
  * @return A node-id.
  */
 NodeID NodeID::make_random() {
-  return NodeID(Context::get_rnd_64(), Context::get_rnd_64());
+  return NodeID(Utils::get_rnd_64(), Utils::get_rnd_64());
 }
 
 NodeID& NodeID::operator=(const NodeID& src) {
@@ -477,7 +478,7 @@ std::string NodeID::to_str() const {
   }
 }
 
-void NodeID::to_pb(Protocol::NodeID* pb) const {
+void NodeID::to_pb(core::NodeID* pb) const {
   if (type == Type::NORMAL) {
     pb->set_type(Type::NORMAL);
     pb->set_id0(id[0]);

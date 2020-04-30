@@ -1,0 +1,35 @@
+{
+    "revision": 20200401.1,
+    "host": "",
+    "port": 8080,
+    "path": "/test",
+    "pingInterval": 10000,
+    "timeout": 30000,
+    "node": {
+        "nodeAccessor": {
+            "packetSize": 8192,
+            "bufferInterval": 200
+        },
+        "iceServers": [
+            {
+                "urls": [
+                    "stun:stun.l.google.com:19302"
+                ]
+            }
+        ],
+        "routing": {
+            "updatePeriod": 500,
+            "forceUpdateTimes": 20
+        },
+        "coordSystem2D": {
+            "type": "sphere",
+            "radius": 6378137
+        },
+        "modules": {
+            "map": {
+                "type": "mapPaxos",
+                "channel": 256
+            }
+        }
+    }
+}

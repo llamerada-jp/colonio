@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 #include <cmath>
 #include <limits>
 
-#include "protocol.pb.h"
+#include "core.pb.h"
 
 namespace colonio {
 Coordinate::Coordinate() :
@@ -31,7 +31,7 @@ Coordinate::Coordinate() :
 Coordinate::Coordinate(double x_, double y_) : x(x_), y(y_) {
 }
 
-Coordinate Coordinate::from_pb(const Protocol::Coordinate& pb) {
+Coordinate Coordinate::from_pb(const core::Coordinate& pb) {
   return Coordinate(pb.x(), pb.y());
 }
 
@@ -61,7 +61,7 @@ bool Coordinate::is_enable() {
   }
 }
 
-void Coordinate::to_pb(Protocol::Coordinate* pb) const {
+void Coordinate::to_pb(core::Coordinate* pb) const {
   pb->set_x(x);
   pb->set_y(y);
 }

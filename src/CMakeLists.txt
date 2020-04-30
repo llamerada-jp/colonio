@@ -3,27 +3,37 @@
 ##
 file(GLOB HEADER_FILES "*.hpp")
 set(COLONIO_FILES
+  core/api.pb.cc
+  core/api_base.cpp
+  core/api_bundler.cpp
+  core/api_gate.cpp
+  core/colonio_api.pb.cc
   core/command.cpp
   core/context.cpp
+  core/controller.cpp
   core/convert.cpp
   core/coord_system.cpp
   core/coord_system_sphere.cpp
   core/coordinate.cpp
+  core/core.pb.cc
+  core/error.cpp
   core/exception.cpp
   core/export_c.cpp
+  core/internal_exception.cpp
   core/logger.cpp
   core/map.cpp
-  core/map_paxos/map_paxos.cpp
-  core/map_paxos/map_paxos_protocol.pb.cc
-  core/module.cpp
-  core/module_protocol.pb.cc
+  core/map_api.pb.cc
+  core/map_impl.cpp
+  core/module_1d.cpp
+  core/module_2d.cpp
+  core/module_base.cpp
+  core/module_bundler.cpp
   core/node_accessor.cpp
   core/node_accessor_protocol.pb.cc
   core/node_id.cpp
-  core/protocol.pb.cc
   core/pubsub_2d.cpp
-  core/pubsub_2d/pubsub_2d_impl.cpp
-  core/pubsub_2d/pubsub_2d_protocol.pb.cc
+  core/pubsub_2d_api.pb.cc
+  core/pubsub_2d_impl.cpp
   core/routing.cpp
   core/routing_protocol.pb.cc
   core/routing_1d.cpp
@@ -32,8 +42,6 @@ set(COLONIO_FILES
   core/seed_accessor_protocol.pb.cc
   core/seed_link.cpp
   core/scheduler.cpp
-  core/system_1d.cpp
-  core/system_2d.cpp
   core/utils.cpp
   core/value.cpp
   core/value_impl.cpp
@@ -41,6 +49,14 @@ set(COLONIO_FILES
   core/colonio_impl.cpp
   core/webrtc_context.cpp
   core/webrtc_link.cpp
+
+  map_paxos/map_paxos_api.cpp
+  map_paxos/map_paxos_module.cpp
+  map_paxos/map_paxos_protocol.pb.cc
+
+  pubsub_2d/pubsub_2d_api.cpp
+  pubsub_2d/pubsub_2d_module.cpp
+  pubsub_2d/pubsub_2d_protocol.pb.cc
   )
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
@@ -48,6 +64,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   ## WebAssembly
   ##
   list(APPEND COLONIO_FILES core/md5/md5.c)
+  list(APPEND COLONIO_FILES core/api_gate_wasm.cpp)
   list(APPEND COLONIO_FILES core/webrtc_context_wasm.cpp)
   list(APPEND COLONIO_FILES core/webrtc_link_wasm.cpp)
   list(APPEND COLONIO_FILES core/seed_link_websocket_wasm.cpp)
@@ -60,25 +77,16 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   target_link_libraries(colonio
     ${webassembly_libs}
     )
-
-  if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
-    add_custom_target(libcolonio ALL
-      COMMAND "cc" "-E" "-C" "-P" "-x" "c" "-Wno-invalid-pp-token" "-o" "libcolonio.js" "-I" "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/js/outline.js"
-      DEPENDS colonio
-      SOURCES js/outline.js
-      )
-  else()
-    add_custom_target(libcolonio ALL
-      COMMAND "cc" "-D" "NDEBUG" "-E" "-C" "-P" "-x" "c" "-Wno-invalid-pp-token" "-o" "libcolonio.js" "-I" "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/js/outline.js"
-      DEPENDS colonio
-      SOURCES js/outline.js
-      )
-  endif()
+  add_custom_target(install_colonio ALL
+    COMMAND "cp" "colonio.js" "colonio.wasm" "${PROJECT_SOURCE_DIR}/local/lib/"
+    DEPENDS colonio
+    )
 
 else()
   ##
   ## Native
   ##
+  list(APPEND COLONIO_FILES core/api_gate_mt.cpp)
   list(APPEND COLONIO_FILES core/webrtc_context_native.cpp)
   list(APPEND COLONIO_FILES core/webrtc_link_native.cpp)
   list(APPEND COLONIO_FILES core/seed_link_websocket_native.cpp)

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,37 +16,27 @@
 #pragma once
 
 #include <colonio/value.hpp>
-#include <cstdint>
 #include <functional>
 
 namespace colonio {
-
-namespace MapOption {
-typedef uint32_t Type;
-static const Type NONE                = 0x0;
-static const Type ERROR_WITHOUT_EXIST = 0x1;  // del, unlook
-// static const Type ERROR_WITH_EXIST    = 0x2; // set
-static const Type TRY_LOCK = 0x4;  // lock
-}  // namespace MapOption
-
-enum class MapFailureReason : uint32_t {
-  NONE,
-  SYSTEM_ERROR,
-  NOT_EXIST_KEY,
-  // EXIST_KEY,
-  CHANGED_PROPOSER,
-  COLLISION_LATE
-};
+class Error;
 
 class Map {
  public:
+  // options
+  static const uint32_t ERROR_WITHOUT_EXIST = 0x1;  // del, unlook
+  static const uint32_t ERROR_WITH_EXIST    = 0x2;  // set (unsupported yet)
+  static const uint32_t TRY_LOCK            = 0x4;  // lock (unsupported yet)
+
   virtual ~Map();
 
+  virtual Value get(const Value& key) = 0;
   virtual void get(
-      const Value& key, const std::function<void(const Value&)>& on_success,
-      const std::function<void(MapFailureReason)>& on_failure) = 0;
+      const Value& key, std::function<void(Map&, const Value&)> on_success,
+      std::function<void(Map&, const Error&)> on_failure)                     = 0;
+  virtual void set(const Value& key, const Value& value, uint32_t opt = 0x00) = 0;
   virtual void set(
-      const Value& key, const Value& value, const std::function<void()>& on_success,
-      const std::function<void(MapFailureReason)>& on_failure, MapOption::Type opt = 0x0) = 0;
+      const Value& key, const Value& value, uint32_t opt, std::function<void(Map&)> on_success,
+      std::function<void(Map&, const Error&)> on_failure) = 0;
 };
 }  // namespace colonio

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
  */
 #pragma once
 
+#include <memory>
+
 #include "definition.hpp"
 #include "node_id.hpp"
 
@@ -25,11 +27,12 @@ class Packet {
 
   const NodeID dst_nid;
   const NodeID src_nid;
+  const uint32_t hop_count;
   const uint32_t id;
   std::shared_ptr<const std::string> content;
   const PacketMode::Type mode;
-  const ModuleChannel::Type channel;
-  const ModuleNo module_no;
+  const APIChannel::Type channel;
+  const ModuleChannel::Type module_channel;
   const CommandID::Type command_id;
 
   template<typename T>

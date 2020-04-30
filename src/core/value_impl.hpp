@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@
 #include <string>
 
 #include "colonio/value.hpp"
+#include "core.pb.h"
 #include "node_id.hpp"
-#include "protocol.pb.h"
 
 namespace colonio {
 class ValueImpl {
@@ -45,8 +45,8 @@ class ValueImpl {
   ValueImpl(const ValueImpl& src);
   virtual ~ValueImpl();
 
-  static void to_pb(Protocol::Value* pb, const Value& value);
-  static Value from_pb(const Protocol::Value& pb);
+  static void to_pb(core::Value* pb, const Value& value);
+  static Value from_pb(const core::Value& pb);
 
   static NodeID to_hash(const Value& value, const std::string& solt);
   static std::string to_str(const Value& value);

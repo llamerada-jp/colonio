@@ -1,7 +1,0 @@
-syntax = "proto3";
-
-package colonio.ModuleProtocol;
-
-message Error {
-  string message = 1;
-}

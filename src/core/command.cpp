@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ std::tuple<CommandID::Type, PacketMode::Type> Command::get_define() {
  * @param packet Received error packet.
  */
 void Command::on_error(const std::string& message) {
-  colonio_throw(message);
+  colonio_throw(ErrorCode::UNDEFINED, message);
 }
 
 /**

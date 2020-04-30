@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,11 @@
  */
 #pragma once
 
-#include <list>
-#include <mutex>
+#include <map>
 #include <set>
 
 #include "coordinate.hpp"
-#include "module.hpp"
+#include "module_base.hpp"
 #include "node_id.hpp"
 #include "routing_protocol.pb.h"
 
@@ -38,9 +37,9 @@ class RoutingDelegate {
   virtual void routing_do_disconnect_node(Routing& routing, const NodeID& nid)                                      = 0;
   virtual void routing_do_connect_seed(Routing& route)                                                              = 0;
   virtual void routing_do_disconnect_seed(Routing& route)                                                           = 0;
-  virtual void routing_on_system_1d_change_nearby(Routing& routing, const NodeID& prev_nid, const NodeID& next_nid) = 0;
-  virtual void routing_on_system_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids)                   = 0;
-  virtual void routing_on_system_2d_change_nearby_position(
+  virtual void routing_on_module_1d_change_nearby(Routing& routing, const NodeID& prev_nid, const NodeID& next_nid) = 0;
+  virtual void routing_on_module_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids)                   = 0;
+  virtual void routing_on_module_2d_change_nearby_position(
       Routing& routing, const std::map<NodeID, Coordinate>& positions) = 0;
 };
 
@@ -51,7 +50,7 @@ class RoutingAlgorithm {
   RoutingAlgorithm(const std::string& name_);
   virtual ~RoutingAlgorithm();
   virtual const std::set<NodeID>& get_required_nodes()                 = 0;
-  virtual void on_change_my_position(const Coordinate& position)       = 0;
+  virtual void on_change_local_position(const Coordinate& position)    = 0;
   virtual void on_recv_packet(const NodeID& nid, const Packet& packet) = 0;
   virtual void send_routing_info(RoutingProtocol::RoutingInfo* param)  = 0;
   virtual bool update_routing_info(
@@ -75,23 +74,23 @@ class RoutingAlgorithm2DDelegate {
       RoutingAlgorithm& algorithm, const std::map<NodeID, Coordinate>& positions) = 0;
 };
 
-class Routing : public Module, public RoutingAlgorithm1DDelegate, public RoutingAlgorithm2DDelegate {
+class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public RoutingAlgorithm2DDelegate {
  public:
   Routing(
-      Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, ModuleChannel::Type channel,
+      Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, APIChannel::Type channel,
       const picojson::object& config);
   virtual ~Routing();
 
   const NodeID& get_relay_nid_1d(const Packet& packet);
-  bool is_coverd_range_1d(const NodeID& nid);
+  bool is_covered_range_1d(const NodeID& nid);
 
-  const NodeID& get_relay_nid_2d(const Coordinate& dest);
-  bool is_coverd_range_2d(const Coordinate& position);
+  const NodeID& get_relay_nid_2d(const Coordinate& dst);
+  bool is_covered_range_2d(const Coordinate& position);
 
   // next, seed, steps
   std::tuple<const NodeID&, const NodeID&, uint32_t> get_route_to_seed();
   bool is_direct_connect(const NodeID& nid);
-  void on_change_my_position(const Coordinate& position);
+  void on_change_local_position(const Coordinate& position);
   void on_change_online_links(const std::set<NodeID>& nids);
   void on_recv_packet(const NodeID& nid, const Packet& packet);
 
@@ -133,7 +132,9 @@ class Routing : public Module, public RoutingAlgorithm1DDelegate, public Routing
   void send_routing_info();
   void update();
   void update_node_connection();
-  void update_route_to_seed();
   void update_seed_connection();
+  void update_seed_route_by_info(const NodeID& src_nid, const RoutingProtocol::RoutingInfo& info);
+  void update_seed_route_by_links();
+  void update_seed_route_by_status();
 };
 }  // namespace colonio
