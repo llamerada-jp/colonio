@@ -23,10 +23,10 @@
 
 class AsyncHelper {
  public:
-  std::stringstream marks;
+  std::mutex mtx;
 
+  std::stringstream marks;
   std::set<std::string> signals;
-  std::mutex mtx_signals;
   std::condition_variable cond_signals;
 
   AsyncHelper() {
@@ -36,21 +36,23 @@ class AsyncHelper {
   }
 
   void mark(const std::string& m) {
+    std::lock_guard<std::mutex> lock(mtx);
     marks << m;
   }
 
   std::string get_route() {
+    std::lock_guard<std::mutex> lock(mtx);
     return marks.str();
   }
 
   void pass_signal(const std::string& key) {
-    std::lock_guard<std::mutex> lock(mtx_signals);
+    std::lock_guard<std::mutex> lock(mtx);
     signals.insert(key);
     cond_signals.notify_all();
   }
 
   void wait_signal(const std::string& key) {
-    std::unique_lock<std::mutex> lock(mtx_signals);
+    std::unique_lock<std::mutex> lock(mtx);
     cond_signals.wait(lock, [this, &key]() { return signals.find(key) != signals.end(); });
   }
 };
