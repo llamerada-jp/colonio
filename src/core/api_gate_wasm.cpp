@@ -51,21 +51,6 @@ void api_gate_invoke(COLONIO_PTR_T this_ptr) {
 
 namespace colonio {
 
-template<typename signature>
-struct make_copyable_function_helper;
-template<typename R, typename... Args>
-struct make_copyable_function_helper<R(Args...)> {
-  template<typename input>
-  std::function<R(Args...)> operator()(input&& i) const {
-    auto ptr = std::make_shared<typename std::decay<input>::type>(std::forward<input>(i));
-    return [ptr](Args... args) -> R { return (*ptr)(std::forward<Args>(args)...); };
-  }
-};
-template<typename signature, typename input>
-std::function<signature> make_copyable_function(input&& i) {
-  return make_copyable_function_helper<signature>()(std::forward<input>(i));
-}
-
 APIGateWASM::APIGateWASM() : controller(*this) {
 }
 
@@ -169,20 +154,21 @@ void APIGateWASM::logger_on_output(Logger& logger, LogLevel level, const std::st
 }
 
 void APIGateWASM::call_event(std::unique_ptr<api::Event> event) {
-  // std::unique_ptr<api::Event> e = std::move(event);
-  push_call(make_copyable_function<void()>([event = std::move(event), this]() {
-    auto it = map_event.find(event->channel());
+  std::shared_ptr<api::Event> shared_ev = std::move(event);
+  push_call([this, shared_ev]() {
+    auto it = map_event.find(shared_ev->channel());
     if (it != map_event.end()) {
-      it->second(*event);
+      it->second(*shared_ev);
     } else {
-      logE(*this, "send event for channel not set").map_u32("channel", event->channel());
+      logE(*this, "send event for channel not set").map_u32("channel", shared_ev->channel());
       assert(false);
     }
-  }));
+  });
 }
 
 void APIGateWASM::call_reply(std::unique_ptr<api::Reply> reply, std::function<void(const api::Reply&)> on_reply) {
-  push_call(make_copyable_function<void()>([reply = std::move(reply), on_reply, this]() { on_reply(*reply); }));
+  std::shared_ptr<api::Reply> shared_reply = std::move(reply);
+  push_call([this, shared_reply, on_reply]() { on_reply(*shared_reply); });
 }
 
 void APIGateWASM::push_call(std::function<void()> func) {

@@ -34,11 +34,12 @@ EMSCRIPTEN_KEEPALIVE void js_connect(
 EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_access_map(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name, unsigned int name_siz);
 EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T
 js_access_pubsub_2d(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name, unsigned int name_siz);
-EMSCRIPTEN_KEEPALIVE void js_disconnect(COLONIO_PTR_T colonio_ptr);
+EMSCRIPTEN_KEEPALIVE void js_disconnect(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T on_success, COLONIO_PTR_T on_failure);
 EMSCRIPTEN_KEEPALIVE void js_enable_output_log(COLONIO_PTR_T colonio_ptr);
 EMSCRIPTEN_KEEPALIVE void js_get_local_nid(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T nid_ptr);
 EMSCRIPTEN_KEEPALIVE void js_set_position(COLONIO_PTR_T colonio_ptr, double x, double y, COLONIO_ID_T id);
 EMSCRIPTEN_KEEPALIVE unsigned int js_invoke(COLONIO_PTR_T colonio_ptr);
+EMSCRIPTEN_KEEPALIVE void js_quit(COLONIO_PTR_T colonio_ptr);
 
 EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_value_init();
 EMSCRIPTEN_KEEPALIVE int js_value_get_type(COLONIO_PTR_T value_ptr);
@@ -79,6 +80,7 @@ std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> set_position_on_failure;
 COLONIO_PTR_T js_init(COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_position_on_failure_) {
   colonio_t* colonio = new colonio_t();
 
+  // TODO detect an error
   colonio_init(colonio);
 
   set_position_on_success = reinterpret_cast<void (*)(COLONIO_ID_T, double, double)>(set_position_on_success_);
@@ -120,9 +122,10 @@ COLONIO_PTR_T js_access_pubsub_2d(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name,
   return reinterpret_cast<COLONIO_PTR_T>(&pubsub_2d_cache.at(name_str));
 }
 
-void js_disconnect(COLONIO_PTR_T colonio_ptr) {
-  colonio_disconnect(reinterpret_cast<colonio_t*>(colonio_ptr));
-  delete reinterpret_cast<colonio_t*>(colonio_ptr);
+void js_disconnect(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T on_success, COLONIO_PTR_T on_failure) {
+  colonio_disconnect_async(
+      reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<void (*)(colonio_t*)>(on_success),
+      reinterpret_cast<void (*)(colonio_t*, const colonio_error_t*)>(on_failure));
 }
 
 void wrap_on_output_log(
@@ -154,6 +157,12 @@ void js_set_position(COLONIO_PTR_T colonio_ptr, double x, double y, COLONIO_ID_T
   colonio_set_position_async(
       reinterpret_cast<colonio_t*>(colonio_ptr), x, y, reinterpret_cast<void*>(id), wrap_set_position_on_success,
       wrap_set_position_on_failure);
+}
+
+void js_quit(COLONIO_PTR_T colonio_ptr) {
+  // TODO ditect an error
+  colonio_quit(reinterpret_cast<colonio_t*>(colonio_ptr));
+  delete reinterpret_cast<colonio_t*>(colonio_ptr);
 }
 
 COLONIO_PTR_T js_value_init() {

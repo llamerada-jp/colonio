@@ -54,6 +54,8 @@ TEST(ExternC, connect_sync) {
 
   err = colonio_disconnect(&colonio);
   EXPECT_EQ(err, nullptr);
+  err = colonio_quit(&colonio);
+  EXPECT_EQ(err, nullptr);
 }
 
 void connect_async_on_success(colonio_t* c) {
@@ -88,5 +90,7 @@ TEST(ExternC, connect_async) {
   helper.wait_signal("connect");
 
   err = colonio_disconnect(&colonio);
+  EXPECT_EQ(err, nullptr);
+  err = colonio_quit(&colonio);
   EXPECT_EQ(err, nullptr);
 }

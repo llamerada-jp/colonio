@@ -22,7 +22,9 @@ const ID_MAX = 2147483647;
 const CB_ON_SUCCESS = 0;
 const CB_ON_FAILURE = 1;
 
-/* Push/Pop object */
+/* Push/Pop object
+ * TODO release when disconnect
+ */
 let idObjectPair = new Object();
 
 function pushObject(obj) {
@@ -233,56 +235,49 @@ class Colonio {
 
   constructor() {
     this._colonioPtr = null;
-
     this._instanceCache = new Object();
-  }
 
-  init() {
-    const promise = new Promise((resolve, reject) => {
-      addFuncAfterLoad(() => {
-        let setPositionOnSuccess = Module.addFunction((id, newX, newY) => {
-          popObject(id)[CB_ON_SUCCESS](newX, newY);
-        }, 'vidd');
+    addFuncAfterLoad(() => {
+      // initialize
+      let setPositionOnSuccess = Module.addFunction((id, newX, newY) => {
+        popObject(id)[CB_ON_SUCCESS](newX, newY);
+      }, 'vidd');
 
-        let setPositionOnFailure = Module.addFunction((id, errorPtr) => {
-          popObject(id)[CB_ON_FAILURE](convertError(errorPtr));
-        }, 'vii');
+      let setPositionOnFailure = Module.addFunction((id, errorPtr) => {
+        popObject(id)[CB_ON_FAILURE](convertError(errorPtr));
+      }, 'vii');
 
-        // Initialize module.
-        this._colonioPtr = ccall('js_init', 'number',
-          ['number', 'number'],
-          [setPositionOnSuccess, setPositionOnFailure]);
-
-        resolve();
-      });
+      this._colonioPtr = ccall('js_init', 'number',
+        ['number', 'number'],
+        [setPositionOnSuccess, setPositionOnFailure]);
     });
-
-    return promise;
   }
 
   connect(url, token) {
     const promise = new Promise((resolve, reject) => {
-      var onSuccess = Module.addFunction((colonioPtr) => {
-        resolve();
-        removeFunction(onSuccess);
-        removeFunction(onFailure);
-      }, 'vi');
+      addFuncAfterLoad(() => {
+        var onSuccess = Module.addFunction((colonioPtr) => {
+          resolve();
+          removeFunction(onSuccess);
+          removeFunction(onFailure);
+        }, 'vi');
 
-      var onFailure = Module.addFunction((colonioPtr, errorPtr) => {
-        reject(convertError(errorPtr));
-        removeFunction(onSuccess);
-        removeFunction(onFailure);
-      }, 'vii');
+        var onFailure = Module.addFunction((colonioPtr, errorPtr) => {
+          reject(convertError(errorPtr));
+          removeFunction(onSuccess);
+          removeFunction(onFailure);
+        }, 'vii');
 
-      let [urlPtr, urlSiz] = allocPtrString(url);
-      let [tokenPtr, tokenSiz] = allocPtrString(token);
+        let [urlPtr, urlSiz] = allocPtrString(url);
+        let [tokenPtr, tokenSiz] = allocPtrString(token);
 
-      ccall('js_connect', 'null',
-        ['number', 'number', 'number', 'number', 'number', 'number', 'number'],
-        [this._colonioPtr, urlPtr, urlSiz, tokenPtr, tokenSiz, onSuccess, onFailure]);
+        ccall('js_connect', 'null',
+          ['number', 'number', 'number', 'number', 'number', 'number', 'number'],
+          [this._colonioPtr, urlPtr, urlSiz, tokenPtr, tokenSiz, onSuccess, onFailure]);
 
-      freePtr(url);
-      freePtr(token);
+        freePtr(url);
+        freePtr(token);
+      });
     });
 
     return promise;
@@ -311,9 +306,28 @@ class Colonio {
   }
 
   disconnect() {
-    ccall('js_disconnect', 'null', ['number'], [this._colonioPtr]);
+    const promise = new Promise((resolve, reject) => {
+      var onSuccess = Module.addFunction((colonioPtr) => {
+        removeFunction(onSuccess);
+        removeFunction(onFailure);
 
-    delete this._instanceCache;
+        setTimeout(() => {
+          ccall('js_quit', 'null', ['number'], [this._colonioPtr]);
+          delete this._instanceCache;
+          resolve();
+        }, 0);
+      }, 'vi');
+
+      var onFailure = Module.addFunction((colonioPtr, errorPtr) => {
+        reject(convertError(errorPtr));
+        removeFunction(onSuccess);
+        removeFunction(onFailure);
+      }, 'vii');
+
+      ccall('js_disconnect', 'null', ['number', 'number', 'number'], [this._colonioPtr, onSuccess, onFailure]);
+    });
+
+    return promise;
   }
 
   getLocalNid() {
@@ -339,16 +353,18 @@ class Colonio {
   }
 
   on(type, func) {
-    const TYPES = ['log'];
-    assert(TYPES.indexOf(type) >= 0);
+    addFuncAfterLoad(() => {
+      const TYPES = ['log'];
+      assert(TYPES.indexOf(type) >= 0);
 
-    switch (type) {
-      case 'log':
-        ccall('js_enable_output_log', 'null', ['number'], [this._colonioPtr]);
-        break;
-    }
+      switch (type) {
+        case 'log':
+          ccall('js_enable_output_log', 'null', ['number'], [this._colonioPtr]);
+          break;
+      }
 
-    setEventFunc(this._colonioPtr, 'colonio', type, func);
+      setEventFunc(this._colonioPtr, 'colonio', type, func);
+    });
   }
 };
 
@@ -680,7 +696,7 @@ function seedLinkWsConnect(seedLink, urlPtr, urlSiz) {
   };
 
   socket.onmessage = (e) => {
-    //logd('socket recv', seedLink, dumpPacket(e.data));
+    logd('socket message', seedLink /*, dumpPacket(e.data) */);
     if (seedLink in availableSeedLinks) {
       let [dataPtr, dataSiz] = allocPtrArrayBuffer(e.data);
 
@@ -704,8 +720,11 @@ function seedLinkWsSend(seedLink, dataPtr, dataSiz) {
   logd('socket send', seedLink);
   assert(seedLink in availableSeedLinks);
 
-  let data = HEAP8.buffer.slice(dataPtr, dataPtr + dataSiz);
-  availableSeedLinks[seedLink].send(data);
+  let data = new Uint8Array(dataSiz);
+  for (let idx = 0; idx < dataSiz; idx++) {
+    data[idx] = HEAPU8[dataPtr + idx];
+  }
+  availableSeedLinks[seedLink].send(new Uint8Array(data));
 }
 
 function seedLinkWsDisconnect(seedLink) {

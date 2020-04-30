@@ -142,7 +142,12 @@ COLONIO_PUBLIC colonio_error_t* colonio_connect(
 COLONIO_PUBLIC void colonio_connect_async(
     colonio_t* colonio, const char* url, unsigned int url_siz, const char* token, unsigned int token_siz,
     void (*on_success)(colonio_t*), void (*on_failure)(colonio_t*, const colonio_error_t*));
+#ifndef EMSCRIPTEN
 COLONIO_PUBLIC colonio_error_t* colonio_disconnect(colonio_t* colonio);
+#else
+COLONIO_PUBLIC void colonio_disconnect_async(
+    colonio_t* colonio, void (*on_success)(colonio_t*), void (*on_failure)(colonio_t*, const colonio_error_t*));
+#endif
 COLONIO_PUBLIC colonio_map_t colonio_access_map(colonio_t* colonio, const char* name, unsigned int name_siz);
 COLONIO_PUBLIC colonio_pubsub_2d_t
 colonio_access_pubsub_2d(colonio_t* colonio, const char* name, unsigned int name_siz);
@@ -153,6 +158,7 @@ COLONIO_PUBLIC void colonio_set_position_async(
     void (*on_failure)(colonio_t*, void*, const colonio_error_t*));
 COLONIO_PUBLIC void colonio_set_on_output_log(
     colonio_t* colonio, void (*func)(colonio_t*, COLONIO_LOG_LEVEL, const char*, unsigned int));
+COLONIO_PUBLIC colonio_error_t* colonio_quit(colonio_t* colonio);
 
 COLONIO_PUBLIC void colonio_value_init(colonio_value_t* value);
 COLONIO_PUBLIC COLONIO_VALUE_TYPE colonio_value_get_type(const colonio_value_t* value);

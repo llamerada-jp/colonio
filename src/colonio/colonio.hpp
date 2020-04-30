@@ -39,7 +39,11 @@ class Colonio {
   void connect(
       const std::string& url, const std::string& token, std::function<void(Colonio&)> on_success,
       std::function<void(Colonio&, const Error&)> on_failure);
+#ifndef EMSCRIPTEN
   void disconnect();
+#else
+  void disconnect(std::function<void(Colonio&)> on_success, std::function<void(Colonio&, const Error&)> on_failure);
+#endif
   std::string get_local_nid();
   std::tuple<double, double> set_position(double x, double y);
   void set_position(

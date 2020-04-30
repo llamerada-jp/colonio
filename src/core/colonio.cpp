@@ -25,18 +25,26 @@
 namespace colonio {
 class Colonio::Impl {
  public:
+  bool enabled;
   APIGate api_gate;
   NodeID local_nid;
   std::map<std::string, std::unique_ptr<Map>> maps;
   std::map<std::string, std::unique_ptr<Pubsub2D>> pubsub_2ds;
+
+  Impl() : enabled(false) {
+  }
 };
 
-Colonio::Colonio() {
+Colonio::Colonio() : impl(std::make_unique<Colonio::Impl>()) {
 }
 
 Colonio::~Colonio() {
-  if (impl) {
+  if (impl->enabled) {
+#ifndef EMSCRIPTEN
     disconnect();
+#else
+    assert(false);
+#endif
   }
 }
 
@@ -61,9 +69,9 @@ Pubsub2D& Colonio::access_pubsub_2d(const std::string& name) {
 }
 
 void Colonio::connect(const std::string& url, const std::string& token) {
-  assert(!impl);
+  assert(!impl->enabled);
 
-  impl = std::make_unique<Colonio::Impl>();
+  impl->enabled = true;
   impl->api_gate.set_event_hook(APIChannel::COLONIO, [this](const api::Event& e) {
     switch (e.param_case()) {
       case api::Event::ParamCase::kColonioLog: {
@@ -122,7 +130,7 @@ void Colonio::connect(const std::string& url, const std::string& token) {
 void Colonio::connect(
     const std::string& url, const std::string& token, std::function<void(Colonio&)> on_success,
     std::function<void(Colonio&, const Error&)> on_failure) {
-  assert(!impl);
+  assert(!impl->enabled);
 
   impl = std::make_unique<Colonio::Impl>();
   impl->api_gate.set_event_hook(APIChannel::COLONIO, [this](const api::Event& e) {
@@ -181,13 +189,13 @@ void Colonio::connect(
   });
 }
 
+#ifndef EMSCRIPTEN
 void Colonio::disconnect() {
   assert(impl);
 
   api::Call call;
   call.mutable_colonio_disconnect();
 
-  // TODO: implement async disconnect for wasm
   std::unique_ptr<api::Reply> reply = impl->api_gate.call_sync(APIChannel::COLONIO, call);
   if (reply) {
     if (!reply->has_success()) {
@@ -196,8 +204,27 @@ void Colonio::disconnect() {
   }
 
   impl->api_gate.quit();
-  impl.reset();
+  impl->enabled = false;
 }
+#else
+
+void Colonio::disconnect(
+    std::function<void(Colonio&)> on_success, std::function<void(Colonio&, const Error&)> on_failure) {
+  api::Call call;
+  call.mutable_colonio_disconnect();
+
+  std::unique_ptr<api::Reply> reply = impl->api_gate.call_sync(APIChannel::COLONIO, call);
+  impl->api_gate.call_async(APIChannel::COLONIO, call, [on_success, on_failure, this](const api::Reply& reply) {
+    if (reply.has_success()) {
+      impl->api_gate.quit();
+      impl->enabled = false;
+      on_success(*this);
+    } else {
+      on_failure(*this, get_error(reply));
+    }
+  });
+}
+#endif
 
 std::string Colonio::get_local_nid() {
   assert(impl);
