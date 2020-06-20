@@ -20,12 +20,28 @@
 #include <string>
 
 namespace colonio {
+
+/**
+ * @brief Error information. This is used when the asynchronous method calls a failed callback.
+ *
+ * The code and message are set to the same content as the Exception.
+ *
+ * @sa ErrorCode,
+ *     Exception
+ */
 class Error {
  public:
-  ErrorCode code;
-  /// A message string for display or bug report.
+  /// Code to indicate the cause of the error.
+  const ErrorCode code;
+  /// A detailed message string for display or bug report.
   const std::string message;
 
+  /**
+   * @brief Construct a new Error object.
+   *
+   * @param code_ Code to indicate the cause of the error.
+   * @param message_ A detailed message string for display or bug report.
+   */
   explicit Error(ErrorCode code_, const std::string& message_);
 };
 }  // namespace colonio

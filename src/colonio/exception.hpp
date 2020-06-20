@@ -20,16 +20,34 @@
 #include <string>
 
 namespace colonio {
+
+/**
+ * @brief Error information. This exception is thrown when an error occurs in a synchronous method.
+ *
+ * The code and message are set to the same content as the @ref Error.
+ *
+ * @sa Error,
+ *     ErrorCode
+ */
 class Exception : public std::exception {
  public:
-  ErrorCode code;
-  /// A message string for display or bug report.
+  /// Code to indicate the cause of the error.
+  const ErrorCode code;
+  /// A detailed message string for display or bug report.
   const std::string message;
 
+  /**
+   * @brief Construct a new Exception object
+   *
+   * @param code_ Code to indicate the cause of the error.
+   * @param message_ A detailed message string for display or bug report.
+   */
   explicit Exception(ErrorCode code_, const std::string& message_);
 
   /**
-   * Pass message without line-no and file name.
+   * @brief Override the standard method to output message.
+   *
+   * @return const char* The message is returned as it is.
    */
   const char* what() const noexcept override;
 };

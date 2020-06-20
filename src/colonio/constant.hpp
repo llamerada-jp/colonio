@@ -19,6 +19,9 @@
 
 namespace colonio {
 
+/**
+ * @brief DebugEvent is going to be removed and is deprecated.
+ */
 namespace DebugEvent {
 enum Type {
   MAP_SET,
@@ -32,25 +35,35 @@ enum Type {
 };
 }  // namespace DebugEvent
 
+/**
+ * @brief ErrorCode is assigned each error reason and is used with Error and Exception.
+ *
+ * @sa Error, Exception
+ */
 enum class ErrorCode : uint32_t {
-  UNDEFINED,
-  SYSTEM_ERROR,
-  OFFLINE,
-  INCORRECT_DATA_FORMAT,
-  CONFLICT_WITH_SETTING,
-  NOT_EXIST_KEY,
-  // EXIST_KEY,
-  CHANGED_PROPOSER,
-  COLLISION_LATE,
-  NO_ONE_RECV,
+  UNDEFINED,              ///< Undefined error is occured.
+  SYSTEM_ERROR,           ///< An error occurred in the API, which is used inside colonio.
+  OFFLINE,                ///< The node cannot perform processing because of offline.
+  INCORRECT_DATA_FORMAT,  ///< Incorrect data format detected.
+  CONFLICT_WITH_SETTING,  ///< The calling method or setting parameter was inconsistent with the configuration in the
+                          ///< seed.
+  NOT_EXIST_KEY,          ///< Tried to get a value for a key that doesn't exist.
+  EXIST_KEY,              ///< Under developing.
+  CHANGED_PROPOSER,       ///< Under developing.
+  COLLISION_LATE,         ///< Under developing.
+  NO_ONE_RECV,            ///< There was no node receiving the message.
 };
 
+/**
+ * @brief The urgency of the log.
+ *
+ * @sa Colonio::on_output_log
+ */
 enum class LogLevel : uint32_t {
-  //
-  INFO,
-  WARN,
-  ERROR,
-  DEBUG
+  INFO,   ///< Logs of normal operations.
+  WARN,   ///< Logs errors that do not require program interruption.
+  ERROR,  ///< Logs errors that require end of colonio.
+  DEBUG,  ///< Logs for debugging, This is output only when build with debug flag.
 };
 
 }  // namespace colonio

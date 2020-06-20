@@ -21,6 +21,10 @@
 namespace colonio {
 class Error;
 
+/**
+ * @brief Under developing.
+ *
+ */
 class Map {
  public:
   // options
