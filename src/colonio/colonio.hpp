@@ -191,14 +191,6 @@ class Colonio {
    */
   virtual void on_output_log(LogLevel level, const std::string& message);
 
-  /**
-   * @brief on_debug_event is going to be removed and is deprecated.
-   *
-   * @param event Event type.
-   * @param json JSON formatted information.
-   */
-  virtual void on_debug_event(DebugEvent::Type event, const std::string& json);
-
  private:
   class Impl;
   std::unique_ptr<Impl> impl;

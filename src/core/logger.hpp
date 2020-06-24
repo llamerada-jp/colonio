@@ -58,6 +58,7 @@ class Logger {
     L& map(const std::string& name, const NodeID& value);
     L& map(const std::string& name, const Packet& value);
     L& map(const std::string& name, const Value& value);
+    L& map(const std::string& name, const picojson::value& value);
     L& map_bool(const std::string& name, bool value);
     L& map_dump(const std::string& name, const std::string& value);
     L& map_float(const std::string& name, double value);
@@ -89,6 +90,10 @@ class Logger {
     }
 
     D& map(const std::string& name, const Value& value) {
+      return *this;
+    }
+
+    D& map(const std::string& name, const picojson::value& value) {
       return *this;
     }
 

@@ -551,7 +551,7 @@ void MapPaxosModule::debug_on_change_set() {
     a.push_back(picojson::value(o));
   }
 
-  context.debug_event(DebugEvent::MAP_SET, picojson::value(a));
+  logd("map paxos proposer").map("map", picojson::value(a));
 }
 #endif
 

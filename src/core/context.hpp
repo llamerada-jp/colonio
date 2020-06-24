@@ -43,18 +43,8 @@ class Context {
   void hook_on_change_local_position(std::function<void(const Coordinate&)> func);
   void set_local_position(const Coordinate& pos);
 
-#ifndef NDEBUG
-  void hook_on_debug_event(std::function<void(DebugEvent::Type type, const picojson::value& data)> cb);
-  void debug_event(DebugEvent::Type type, const picojson::value& data);
-#endif
-
  private:
   std::list<std::function<void(const Coordinate&)>> funcs_on_change_local_position;
-
-#ifndef NDEBUG
-  bool enable_debug_event;
-  std::function<void(DebugEvent::Type type, const picojson::value& data)> func_on_debug_event;
-#endif
 
   Context(const Context&);
   void operator=(const Context&);

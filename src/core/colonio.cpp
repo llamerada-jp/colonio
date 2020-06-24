@@ -79,11 +79,6 @@ void Colonio::connect(const std::string& url, const std::string& token) {
         on_output_log(static_cast<LogLevel>(l.level()), l.message());
       } break;
 
-      case api::Event::ParamCase::kColonioDebug: {
-        const api::colonio::DebugEvent& d = e.colonio_debug();
-        on_debug_event(static_cast<DebugEvent::Type>(d.event()), d.json());
-      } break;
-
       default:
         assert(false);
         break;
@@ -138,11 +133,6 @@ void Colonio::connect(
       case api::Event::ParamCase::kColonioLog: {
         const api::colonio::LogEvent& l = e.colonio_log();
         on_output_log(static_cast<LogLevel>(l.level()), l.message());
-      } break;
-
-      case api::Event::ParamCase::kColonioDebug: {
-        const api::colonio::DebugEvent& d = e.colonio_debug();
-        on_debug_event(static_cast<DebugEvent::Type>(d.event()), d.json());
       } break;
 
       default:
@@ -269,9 +259,5 @@ void Colonio::set_position(
 
 void Colonio::on_output_log(LogLevel level, const std::string& message) {
   // Drop log message.
-}
-
-void Colonio::on_debug_event(DebugEvent::Type event, const std::string& json) {
-  // Drop debug event.
 }
 }  // namespace colonio

@@ -52,7 +52,6 @@ message Event {
 
   oneof param {
     colonio.LogEvent colonio_log = 1001;
-    colonio.DebugEvent colonio_debug = 1002;
 
     pubsub_2d.OnEvent pubsub_2d_on = 3001;
   }

@@ -20,22 +20,6 @@
 namespace colonio {
 
 /**
- * @brief DebugEvent is going to be removed and is deprecated.
- */
-namespace DebugEvent {
-enum Type {
-  MAP_SET,
-  LINKS,
-  NEXTS,
-  POSITION,
-  REQUIRED_1D,
-  REQUIRED_2D,
-  KNOWN_1D,
-  KNOWN_2D,
-};
-}  // namespace DebugEvent
-
-/**
  * @brief ErrorCode is assigned each error reason and is used with Error and Exception.
  *
  * @sa Error, Exception

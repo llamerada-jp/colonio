@@ -24,17 +24,6 @@ Controller::Controller(ControllerDelegate& delegate_) :
     delegate(delegate_), logger(*this), scheduler(*this), context(logger, scheduler) {
   colonio_impl = std::make_shared<ColonioImpl>(context, *this, bundler);
   bundler.registrate(colonio_impl);
-#ifndef NDEBUG
-  context.hook_on_debug_event([this](DebugEvent::Type event, const picojson::value& json) {
-    std::unique_ptr<api::Event> ev = std::make_unique<api::Event>();
-    ev->set_channel(APIChannel::COLONIO);
-    api::colonio::DebugEvent* debug_event = ev->mutable_colonio_debug();
-    debug_event->set_event(static_cast<uint32_t>(event));
-    debug_event->set_json(json.serialize());
-
-    delegate.controller_on_event(*this, std::move(ev));
-  });
-#endif
 }
 
 Controller::~Controller() {

@@ -90,7 +90,7 @@ void ColonioImpl::node_accessor_on_change_online_links(NodeAccessor& na, const s
     for (auto nid : nids) {
       a.push_back(picojson::value(nid.to_str()));
     }
-    context.debug_event(DebugEvent::LINKS, picojson::value(a));
+    logd("links").map("nids", picojson::value(a));
   }
 #endif
 }
@@ -210,7 +210,7 @@ void ColonioImpl::api_connect(uint32_t id, const api::colonio::Connect& param) {
     return;
 
   } else {
-    logi("connect start").map("url", url.c_str());
+    logi("connect start").map("url", url);
   }
 
   api_connect_id = id;
@@ -253,7 +253,7 @@ void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition&
       context.scheduler.add_timeout_task(
           this, [this, new_position]() { module_bundler.module_2d_on_change_local_position(new_position); }, 0);
 #ifndef NDEBUG
-      context.debug_event(DebugEvent::POSITION, Convert::coordinate2json(new_position));
+      logd("current position").map("coordinate", Convert::coordinate2json(new_position));
 #endif
     }
 

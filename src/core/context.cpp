@@ -23,13 +23,7 @@
 namespace colonio {
 
 Context::Context(Logger& logger_, Scheduler& scheduler_) :
-    link_status(LinkStatus::OFFLINE),
-    logger(logger_),
-    scheduler(scheduler_),
-    local_nid(NodeID::make_random()) {
-#ifndef NDEBUG
-  enable_debug_event = false;
-#endif
+    link_status(LinkStatus::OFFLINE), logger(logger_), scheduler(scheduler_), local_nid(NodeID::make_random()) {
 }
 
 Coordinate Context::get_local_position() {
@@ -63,17 +57,4 @@ void Context::set_local_position(const Coordinate& pos) {
     }
   }
 }
-
-#ifndef NDEBUG
-void Context::hook_on_debug_event(std::function<void(DebugEvent::Type type, const picojson::value& data)> cb) {
-  func_on_debug_event = cb;
-  enable_debug_event  = true;
-}
-
-void Context::debug_event(DebugEvent::Type type, const picojson::value& data) {
-  if (enable_debug_event) {
-    func_on_debug_event(type, data);
-  }
-}
-#endif
 }  // namespace colonio

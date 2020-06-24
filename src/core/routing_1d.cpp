@@ -19,6 +19,7 @@
 
 #include "context.hpp"
 #include "convert.hpp"
+#include "logger.hpp"
 #include "packet.hpp"
 #include "utils.hpp"
 
@@ -29,22 +30,15 @@ static const NodeID LEVEL_RANGE[LEVELS] = {NodeID::RANGE_0, NodeID::RANGE_1, Nod
                                            NodeID::RANGE_4, NodeID::RANGE_5, NodeID::RANGE_6, NodeID::RANGE_7};
 
 Routing1D::ConnectedNode::ConnectedNode(int level_) :
-    connected_time(Utils::get_current_msec()),
-    level(level_),
-    odd_score(0),
-    raw_score(0) {
+    connected_time(Utils::get_current_msec()), level(level_), odd_score(0), raw_score(0) {
 }
 
 Routing1D::RouteInfo::RouteInfo(const NodeID& root_nid_, int level_) :
-    root_nid(root_nid_),
-    level(level_),
-    raw_score(0) {
+    root_nid(root_nid_), level(level_), raw_score(0) {
 }
 
 Routing1D::Routing1D(Context& context_, RoutingAlgorithm1DDelegate& delegate_) :
-    RoutingAlgorithm("1D"),
-    context(context_),
-    delegate(delegate_) {
+    RoutingAlgorithm("1D"), context(context_), delegate(delegate_) {
 }
 
 const std::set<NodeID>& Routing1D::get_required_nodes() {
@@ -443,7 +437,7 @@ void Routing1D::update_required_nodes() {
     for (auto& nid : required_nodes) {
       a.push_back(nid.to_json());
     }
-    context.debug_event(DebugEvent::REQUIRED_1D, picojson::value(a));
+    logd("routing 1d required").map("nids", picojson::value(a));
   }
 #endif
 }
@@ -534,13 +528,13 @@ void Routing1D::update_route_infos() {
     for (auto& it : known_nids) {
       a.push_back(it.first.to_json());
     }
-    context.debug_event(DebugEvent::KNOWN_1D, picojson::value(a));
+    logd("routing 1d known").map("nids", picojson::value(a));
   }
   {
     picojson::array a;
     a.push_back(next_nid.to_json());
     a.push_back(prev_nid.to_json());
-    context.debug_event(DebugEvent::NEXTS, picojson::value(a));
+    logd("routing 1d nexts").map("nids", picojson::value(a));
   }
 #endif
 }

@@ -21,15 +21,14 @@
 #include "context.hpp"
 #include "convert.hpp"
 #include "coord_system.hpp"
+#include "logger.hpp"
 #include "packet.hpp"
 #include "utils.hpp"
 
 namespace colonio {
 
 Routing2D::Routing2D(Context& context_, RoutingAlgorithm2DDelegate& delegate_) :
-    RoutingAlgorithm("2D"),
-    context(context_),
-    delegate(delegate_) {
+    RoutingAlgorithm("2D"), context(context_), delegate(delegate_) {
 }
 
 const std::set<NodeID>& Routing2D::get_required_nodes() {
@@ -132,7 +131,6 @@ bool Routing2D::update_routing_info(
 
   // Ignore
 #ifndef NDEBUG
-  picojson::object o;
   picojson::object nodes;
   picojson::array links;
   std::list<std::pair<const NodeID&, const NodeID&>> link_tmp;
@@ -169,9 +167,7 @@ bool Routing2D::update_routing_info(
     links.push_back(picojson::value(one_pair));
   }
 
-  o.insert(std::make_pair("nodes", picojson::value(nodes)));
-  o.insert(std::make_pair("links", picojson::value(links)));
-  context.debug_event(DebugEvent::KNOWN_2D, picojson::value(o));
+  logd("routing 2d").map("nodes", picojson::value(nodes)).map("links", picojson::value(links));
 #endif
 
   return is_changed;
@@ -196,9 +192,7 @@ Routing2D::NodePoint::NodePoint() : nid(NodeID::NONE) {
 }
 
 Routing2D::NodePoint::NodePoint(const NodeID& nid_, const Coordinate& position_, const Coordinate& sposition) :
-    nid(nid_),
-    position(position_),
-    shifted_position(sposition) {
+    nid(nid_), position(position_), shifted_position(sposition) {
 }
 
 Routing2D::NodePoint& Routing2D::NodePoint::operator=(const NodePoint& r) {
@@ -446,7 +440,7 @@ void Routing2D::update_required_nodes() {
     for (auto& nid : required_nodes) {
       o.insert(std::make_pair(nid.to_str(), Convert::coordinate2json(nodes.at(nid).position)));
     }
-    context.debug_event(DebugEvent::REQUIRED_2D, picojson::value(o));
+    logd("routing 2d required").map("nids", picojson::value(o));
   }
 #endif
 }

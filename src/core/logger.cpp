@@ -102,6 +102,11 @@ Logger::L& Logger::L::map(const std::string& name, const Value& value) {
   return *this;
 }
 
+Logger::L& Logger::L::map(const std::string& name, const picojson::value& value) {
+  params.insert(std::make_pair(name, value));
+  return *this;
+}
+
 Logger::L& Logger::L::map_bool(const std::string& name, bool value) {
   params.insert(std::make_pair(name, picojson::value(value)));
   return *this;
