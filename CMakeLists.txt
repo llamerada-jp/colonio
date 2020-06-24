@@ -69,48 +69,32 @@ else()
   # Add local include path.
   include_directories(/usr/local/include)
   include_directories(${LOCAL_ENV_PATH}/include)
+  include_directories(${LOCAL_ENV_PATH}/include/third_party/abseil-cpp)
   include_directories(${PROJECT_SOURCE_DIR}/src)
 
   # Add local library path.
   link_directories(${LOCAL_ENV_PATH}/lib)
   link_directories(/usr/local/lib)
 
+  list(APPEND webrtc_libs "webrtc")
   if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     # macOS
-    file(READ ${LOCAL_ENV_PATH}/exports_libwebrtc.txt webrtc_libs)
-    string(REGEX REPLACE "lib([^.]+)\.a[\r\n]*" "\\1;" webrtc_libs "${webrtc_libs}")
-    message("webrtc_libs:${webrtc_libs}")
-
-    # Extra libs for WebRTC
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWEBRTC_MAC=1 -DWEBRTC_POSIX=1")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden")
-    find_library(CORE_FOUNDATION CoreFoundation)
-    list(APPEND webrtc_libs ${CORE_FOUNDATION})
+    # Extra libs for WebRTC
     find_library(FOUNDATION Foundation)
     list(APPEND webrtc_libs ${FOUNDATION})
-    find_library(CORE_AUDIO CoreAudio)
-    list(APPEND webrtc_libs ${CORE_AUDIO})
-    find_library(AUDIO_TOOLBOX AudioToolbox)
-    list(APPEND webrtc_libs ${AUDIO_TOOLBOX})
-    find_library(CORE_GRAPHICS CoreGraphics)
-    list(APPEND webrtc_libs ${CORE_GRAPHICS})
 
   elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     # Linux
-    list(APPEND webrtc_libs "-Wl,--start-group")
-
-    file(READ ${LOCAL_ENV_PATH}/exports_libwebrtc.txt webrtc_read_tmp)
-    string(REGEX REPLACE "lib([^.]+)\.a[\r\n]*" "\\1;" webrtc_read_tmp "${webrtc_read_tmp}")
-    list(APPEND webrtc_libs "${webrtc_read_tmp}")
-
-    list(APPEND webrtc_libs "-Wl,--end-group")
-
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWEBRTC_LINUX=1 -DWEBRTC_POSIX=1")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden -fvisibility-inlines-hidden")
-    pkg_search_module(X11 REQUIRED x11)
-    list(APPEND webrtc_libs ${X11_LIBRARIES})
   endif()
-  include_directories(${PROJECT_SOURCE_DIR}/local/include/third_party/abseil-cpp)
+
+  # OpenSSL
+  find_package(OpenSSL REQUIRED)
+  include_directories(${OPENSSL_INCLUDE_DIR})
+  list(APPEND webrtc_libs ${OPENSSL_LIBRARIES})
 
   # cURL
   find_package(CURL REQUIRED)

@@ -91,14 +91,6 @@ else()
   list(APPEND COLONIO_FILES core/webrtc_link_native.cpp)
   list(APPEND COLONIO_FILES core/seed_link_websocket_native.cpp)
 
-  # Compile option for each files.
-  set_source_files_properties(
-    core/webrtc_context_native.cpp
-    core/webrtc_link_native.cpp
-    PROPERTIES
-    COMPILE_FLAGS " -fno-rtti "
-    )
-
   # Core
   add_library(colonio STATIC
     ${HEADER_FILES}

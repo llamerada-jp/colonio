@@ -13,10 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <api/audio_codecs/builtin_audio_decoder_factory.h>
-#include <api/audio_codecs/builtin_audio_encoder_factory.h>
-#include <api/video_codecs/builtin_video_decoder_factory.h>
-#include <api/video_codecs/builtin_video_encoder_factory.h>
 #include <rtc_base/ssl_adapter.h>
 
 #include <cassert>

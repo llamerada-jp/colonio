@@ -184,12 +184,12 @@ setup_picojson() {
 
 # Download libwebrtc
 setup_webrtc() {
-  readonly WEBRTC_VER="m78"
+  readonly WEBRTC_VER="m83"
 
   cd ${LOCAL_ENV_PATH}/src
 
   if [ ${UNAME_S} = 'Darwin' ]; then
-    readonly WEBRTC_FILE="libwebrtc-78.0.3904.108-macosx-10.15.1.zip"
+    readonly WEBRTC_FILE="libwebrtc-83.0.4103.97-macos-amd64.zip"
     if ! [ -e "${WEBRTC_FILE}" ]; then
       curl -OL https://github.com/llamerada-jp/libwebrtc/releases/download/${WEBRTC_VER}/${WEBRTC_FILE}
       cd ${LOCAL_ENV_PATH}
@@ -198,7 +198,7 @@ setup_webrtc() {
     fi
 
   elif [ ${UNAME_S} = 'Linux' ]; then
-    readonly WEBRTC_FILE="libwebrtc-78.0.3904.108-ubuntu-18.04-x64.tar.gz"
+    readonly WEBRTC_FILE="libwebrtc-83.0.4103.97-linux-amd64.tar.gz"
     if ! [ -e "${WEBRTC_FILE}" ]; then
       curl -OL https://github.com/llamerada-jp/libwebrtc/releases/download/${WEBRTC_VER}/${WEBRTC_FILE}
       cd ${LOCAL_ENV_PATH}

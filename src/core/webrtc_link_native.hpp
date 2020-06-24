@@ -52,7 +52,7 @@ class WebrtcLinkNative : public WebrtcLinkBase {
     explicit CSDO(WebrtcLinkNative& parent_);
 
     void OnSuccess(webrtc::SessionDescriptionInterface* desc) override;
-    void OnFailure(const std::string& error) override;
+    void OnFailure(webrtc::RTCError error) override;
 
    private:
     WebrtcLinkNative& parent;
@@ -92,7 +92,7 @@ class WebrtcLinkNative : public WebrtcLinkBase {
     explicit SSDO(WebrtcLinkNative& parent_);
 
     void OnSuccess() override;
-    void OnFailure(const std::string& error) override;
+    void OnFailure(webrtc::RTCError error) override;
 
    private:
     WebrtcLinkNative& parent;

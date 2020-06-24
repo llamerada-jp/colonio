@@ -32,8 +32,8 @@ void WebrtcLinkNative::CSDO::OnSuccess(webrtc::SessionDescriptionInterface* desc
   parent.on_csd_success(desc);
 }
 
-void WebrtcLinkNative::CSDO::OnFailure(const std::string& error) {
-  parent.on_csd_failure(error);
+void WebrtcLinkNative::CSDO::OnFailure(webrtc::RTCError error) {
+  parent.on_csd_failure(error.message());
 }
 
 WebrtcLinkNative::DCO::DCO(WebrtcLink& parent_) : parent(parent_) {
@@ -89,8 +89,8 @@ WebrtcLinkNative::SSDO::SSDO(WebrtcLink& parent_) : parent(parent_) {
 void WebrtcLinkNative::SSDO::OnSuccess() {
 }
 
-void WebrtcLinkNative::SSDO::OnFailure(const std::string& error) {
-  parent.on_ssd_failure(error);
+void WebrtcLinkNative::SSDO::OnFailure(webrtc::RTCError error) {
+  parent.on_ssd_failure(error.message());
 }
 
 WebrtcLinkNative::WebrtcLinkNative(
