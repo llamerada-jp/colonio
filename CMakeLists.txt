@@ -116,7 +116,6 @@ else()
 
   # WebSocket++
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DASIO_STANDALONE")
-  include_directories(${PROJECT_SOURCE_DIR}/local/include/third_party/boringssl/src/include)
 
   # ProtocolBuffers
   list(APPEND extra_libs "protobuf")
