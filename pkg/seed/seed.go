@@ -515,19 +515,19 @@ func (link *Link) receive(context *context) (bool, error) {
 		defer link.unlockMutex(context)
 	}
 	if link.conn == nil {
-		return false, nil
+		return false, fmt.Errorf("disconnected link")
 	}
 	// Reset the Masked flag, server frames must not be masked as
 	// RFC6455 says.
 	header, err := ws.ReadHeader(link.conn)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to read header", err)
 	}
 
 	payload := make([]byte, header.Length)
 	_, err = io.ReadFull(link.conn, payload)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to read body", err)
 	}
 	if header.Masked {
 		ws.Cipher(payload, header.Mask, 0)
@@ -568,6 +568,9 @@ func (link *Link) receive(context *context) (bool, error) {
 		logger.D.Println("receive OpClose")
 		link.close(context)
 		return false, nil
+
+	default:
+		logger.D.Println("unsupported OpCode", header.OpCode)
 	}
 
 	return true, nil
