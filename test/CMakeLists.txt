@@ -16,13 +16,6 @@ include_directories(${PROJECT_SOURCE_DIR}/test)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCOLONIO_SEED_BIN_PATH=\\\"${COLONIO_SEED_BIN_PATH}\\\"")
 
-set_source_files_properties(
-  ${PROJECT_SOURCE_DIR}/src/core/webrtc_context_native.cpp
-  ${PROJECT_SOURCE_DIR}/src/core/webrtc_link_native.cpp
-  PROPERTIES
-  COMPILE_FLAGS " -fno-rtti "
-  )
-
 # Library for test.
 add_library(colonio_test STATIC
   ${CORE_FILES}
