@@ -24,7 +24,7 @@ extern "C" {
 typedef unsigned long COLONIO_PTR_T;
 typedef unsigned long COLONIO_ID_T;
 
-extern void js_on_output_log(COLONIO_PTR_T colonio_ptr, int level, COLONIO_PTR_T message_ptr, int message_siz);
+extern void js_on_output_log(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T json_ptr, int json_siz);
 
 EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T
 js_init(COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_position_on_failure_);
@@ -128,11 +128,8 @@ void js_disconnect(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T on_success, COLONIO_
       reinterpret_cast<void (*)(colonio_t*, const colonio_error_t*)>(on_failure));
 }
 
-void wrap_on_output_log(
-    colonio_t* colonio_ptr, COLONIO_LOG_LEVEL level, const char* message_ptr, unsigned int message_siz) {
-  js_on_output_log(
-      reinterpret_cast<COLONIO_PTR_T>(colonio_ptr), static_cast<int>(level),
-      reinterpret_cast<COLONIO_PTR_T>(message_ptr), message_siz);
+void wrap_on_output_log(colonio_t* colonio_ptr, const char* json_ptr, unsigned int json_siz) {
+  js_on_output_log(reinterpret_cast<COLONIO_PTR_T>(colonio_ptr), reinterpret_cast<COLONIO_PTR_T>(json_ptr), json_siz);
 }
 
 void js_enable_output_log(COLONIO_PTR_T colonio_ptr) {

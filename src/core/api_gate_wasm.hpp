@@ -48,7 +48,7 @@ class APIGateWASM : public APIGateBase, public ControllerDelegate {
   void controller_on_reply(Controller& sm, std::unique_ptr<api::Reply> reply) override;
   void controller_on_require_invoke(Controller& sm, unsigned int msec) override;
 
-  void logger_on_output(Logger& logger, LogLevel level, const std::string& message) override;
+  void logger_on_output(Logger& logger, const std::string& json) override;
 
   void call_event(std::unique_ptr<api::Event> event);
   void call_reply(std::unique_ptr<api::Reply> reply, std::function<void(const api::Reply&)> on_reply);

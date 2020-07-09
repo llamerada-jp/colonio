@@ -214,10 +214,10 @@ function convertPointerToString(ptr, length) {
 
 class Colonio {
   // ATTENTION: Use same value with another languages.
-  static get LOG_LEVEL_INFO() { return 0; }
-  static get LOG_LEVEL_WARN() { return 1; }
-  static get LOG_LEVEL_ERROR() { return 2; }
-  static get LOG_LEVEL_DEBUG() { return 3; }
+  static get LOG_LEVEL_INFO() { return 'info'; }
+  static get LOG_LEVEL_WARN() { return 'warn'; }
+  static get LOG_LEVEL_ERROR() { return 'error'; }
+  static get LOG_LEVEL_DEBUG() { return 'debug'; }
 
   // ATTENTION: Use same value with another languages.
   static get ERROR_CODE_UNDEFINED() { return 0; }
@@ -369,15 +369,11 @@ class Colonio {
 };
 
 /* log */
-function jsOnOutputLog(colonioPtr, level, messagePtr, messageSiz) {
-  let message = convertPointerToString(messagePtr, messageSiz);
+function jsOnOutputLog(colonioPtr, jsonPtr, jsonSiz) {
+  let json = convertPointerToString(jsonPtr, jsonSiz);
   let funcs = getEventFuncs(colonioPtr, 'colonio', 'log');
   for (let idx = 0; idx < funcs.length; idx++) {
-    funcs[idx]({
-      type: 'log',
-      level: level,
-      content: message
-    });
+    funcs[idx](JSON.parse(json));
   }
 }
 

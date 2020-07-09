@@ -134,7 +134,7 @@ setup_emscripten() {
   if [ ${UNAME_S} = 'Darwin' ]; then
     source ./emsdk_env.sh
   else
-    . ./emsdk_env.sh
+    ./emsdk_env.sh
   fi
 }
 

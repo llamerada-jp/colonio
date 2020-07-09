@@ -70,23 +70,17 @@ void APIGateWASM::call_async(
     controller.call(call);
 
   } catch (const FatalException& ex) {
-    logE(controller, "fatal exception")
-        .map("file", ex.file.c_str())
-        .map_int("line", ex.line)
-        .map("message", ex.message.c_str());
+    logE(controller, "fatal exception").map("file", ex.file).map_int("line", ex.line).map("message", ex.message);
     reply_failure(id, ex.code, ex.message);
     // TODO stop
     return;
 
   } catch (const InternalException& ex) {
-    logE(controller, "internal exception")
-        .map("file", ex.file.c_str())
-        .map_int("line", ex.line)
-        .map("message", ex.message.c_str());
+    logE(controller, "internal exception").map("file", ex.file).map_int("line", ex.line).map("message", ex.message);
     reply_failure(id, ex.code, ex.message);
 
   } catch (const std::exception& ex) {
-    logE(controller, "exception").map("message", ex.what());
+    logE(controller, "exception").map("message", std::string(ex.what()));
     reply_failure(id, ErrorCode::UNDEFINED, ex.what());
     // TODO stop
     return;
@@ -143,12 +137,11 @@ void APIGateWASM::controller_on_require_invoke(Controller& sm, unsigned int msec
   api_gate_require_invoke(reinterpret_cast<COLONIO_PTR_T>(this), msec);
 }
 
-void APIGateWASM::logger_on_output(Logger& logger, LogLevel level, const std::string& message) {
+void APIGateWASM::logger_on_output(Logger& logger, const std::string& json) {
   std::unique_ptr<api::Event> event = std::make_unique<api::Event>();
   event->set_channel(APIChannel::COLONIO);
   api::colonio::LogEvent* log_event = event->mutable_colonio_log();
-  log_event->set_level(static_cast<uint32_t>(level));
-  log_event->set_message(message);
+  log_event->set_json(json);
 
   call_event(std::move(event));
 }

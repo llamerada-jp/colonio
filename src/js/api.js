@@ -15,7 +15,7 @@
  */
 
 mergeInto(LibraryManager.library, {
-  js_on_output_log: function (p1, p2, p3, p4) { jsOnOutputLog(p1, p2, p3, p4); },
+  js_on_output_log: function (p1, p2, p3) { jsOnOutputLog(p1, p2, p3); },
 
   api_gate_release: function (p1) { apiGateRelease(p1); },
   api_gate_require_call_after: function (p1, p2) { apiGateRequireCallAfter(p1, p2); },

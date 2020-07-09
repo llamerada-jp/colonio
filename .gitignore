@@ -1,6 +1,8 @@
 bin/simulate
 build/
 local/
+test/js/colonio.js
+test/js/colonio.wasm
 *.pb.cc
 *.pb.h
 .vscode
