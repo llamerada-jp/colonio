@@ -29,44 +29,31 @@
 #include "value_impl.hpp"
 
 namespace colonio {
-
 LoggerDelegate::~LoggerDelegate() {
 }
 
 Logger::L::L(
-    Logger& logger_, const std::string file_, unsigned long line_, LogLevel level_, const std::string& message_) :
+    Logger& logger_, const std::string file_, unsigned long line_, const std::string& level_,
+    const std::string& message_) :
     logger(logger_), file(file_), line(line_), level(level_), message(message_) {
 }
 
 Logger::L::~L() {
-  std::stringstream stream;
-  switch (level) {
-    case LogLevel::INFO:
-      stream << "[I]";
-      break;
-    case LogLevel::WARN:
-      stream << "[W]";
-      break;
-    case LogLevel::ERROR:
-      stream << "[E]";
-      break;
-    case LogLevel::DEBUG:
-      stream << "[D]";
-      break;
-    default:
-      assert(false);
-      break;
-  }
+  picojson::object obj;
+  obj.insert(std::make_pair(LogJSONKey::FILE, picojson::value(Utils::file_basename(file))));
+  obj.insert(std::make_pair(LogJSONKey::LEVEL, picojson::value(level)));
+  obj.insert(std::make_pair(LogJSONKey::LINE, picojson::value(static_cast<double>(line))));
+  obj.insert(std::make_pair(LogJSONKey::MESSAGE, picojson::value(message)));
+  obj.insert(std::make_pair(LogJSONKey::PARAM, picojson::value(params)));
 
   std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
   std::time_t t                             = std::chrono::system_clock::to_time_t(now);
   const std::tm* lt                         = std::localtime(&t);
-  stream << " " << std::put_time(lt, "%FT%T%z") << " " << Utils::file_basename(file) << ":" << line << ": " << message;
-  if (params.size() != 0) {
-    stream << ": " << picojson::value(params).serialize();
-  }
+  std::stringstream ss;
+  ss << std::put_time(lt, "%FT%T%z");
+  obj.insert(std::make_pair(LogJSONKey::TIME, picojson::value(ss.str())));
 
-  logger.delegate.logger_on_output(logger, level, stream.str());
+  logger.delegate.logger_on_output(logger, picojson::value(obj).serialize());
 }
 
 Logger::L& Logger::L::map(const std::string& name, const std::string& value) {
@@ -143,7 +130,8 @@ Logger::Logger(LoggerDelegate& delegate_) : delegate(delegate_) {
 Logger::~Logger() {
 }
 
-Logger::L Logger::create(const std::string& file, unsigned long line, LogLevel level, const std::string& message) {
+Logger::L Logger::create(
+    const std::string& file, unsigned long line, const std::string& level, const std::string& message) {
   return L(*this, file, line, level, message);
 }
 

@@ -27,8 +27,8 @@ class ColonioNode : public colonio::Colonio {
  protected:
   std::string node_name;
 
-  void on_output_log(colonio::LogLevel level, const std::string& message) override {
+  void on_output_log(const std::string& json) override {
     // Implement log output method to check.
-    printf("%s %s\n", node_name.c_str(), message.c_str());
+    printf("%s %s\n", node_name.c_str(), json.c_str());
   }
 };

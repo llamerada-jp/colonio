@@ -21,6 +21,8 @@ extern "C" {
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <colonio/colonio.hpp>
+
 #include "test_utils/all.hpp"
 
 #define URL "http://localhost:8080/test"
@@ -30,6 +32,24 @@ struct TestData {
   AsyncHelper* helper;
   colonio_t* colonio;
 };
+
+TEST(ExternC, definition) {
+  EXPECT_EQ(static_cast<int>(colonio::ErrorCode::UNDEFINED), COLONIO_ERROR_CODE_UNDEFINED);
+  EXPECT_EQ(static_cast<int>(colonio::ErrorCode::SYSTEM_ERROR), COLONIO_ERROR_CODE_SYSTEM_ERROR);
+  EXPECT_EQ(static_cast<int>(colonio::ErrorCode::OFFLINE), COLONIO_ERROR_CODE_OFFLINE);
+  EXPECT_EQ(static_cast<int>(colonio::ErrorCode::INCORRECT_DATA_FORMAT), COLONIO_ERROR_CODE_INCORRECT_DATA_FORMAT);
+  EXPECT_EQ(static_cast<int>(colonio::ErrorCode::CONFLICT_WITH_SETTING), COLONIO_ERROR_CODE_CONFLICT_WITH_SETTING);
+  EXPECT_EQ(static_cast<int>(colonio::ErrorCode::NOT_EXIST_KEY), COLONIO_ERROR_CODE_NOT_EXIST_KEY);
+  EXPECT_EQ(static_cast<int>(colonio::ErrorCode::EXIST_KEY), COLONIO_ERROR_CODE_EXIST_KEY);
+  EXPECT_EQ(static_cast<int>(colonio::ErrorCode::CHANGED_PROPOSER), COLONIO_ERROR_CODE_CHANGED_PROPOSER);
+  EXPECT_EQ(static_cast<int>(colonio::ErrorCode::COLLISION_LATE), COLONIO_ERROR_CODE_COLLISION_LATE);
+  EXPECT_EQ(static_cast<int>(colonio::ErrorCode::NO_ONE_RECV), COLONIO_ERROR_CODE_NO_ONE_RECV);
+
+  EXPECT_STREQ(colonio::LogLevel::INFO.c_str(), COLONIO_LOG_LEVEL_INFO);
+  EXPECT_STREQ(colonio::LogLevel::WARN.c_str(), COLONIO_LOG_LEVEL_WARN);
+  EXPECT_STREQ(colonio::LogLevel::ERROR.c_str(), COLONIO_LOG_LEVEL_ERROR);
+  EXPECT_STREQ(colonio::LogLevel::DEBUG.c_str(), COLONIO_LOG_LEVEL_DEBUG);
+}
 
 TEST(ExternC, connect_sync) {
   TestSeed seed;

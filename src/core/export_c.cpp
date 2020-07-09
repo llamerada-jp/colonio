@@ -24,15 +24,15 @@ namespace colonio_export_c {
 class ColonioC : public colonio::Colonio {
  public:
   colonio_t* colonio;
-  void (*cb_on_output_log)(colonio_t*, COLONIO_LOG_LEVEL, const char*, unsigned int);
+  void (*cb_on_output_log)(colonio_t*, const char*, unsigned int);
 
   ColonioC() : colonio(nullptr), cb_on_output_log(nullptr) {
   }
 
  protected:
-  void on_output_log(colonio::LogLevel level, const std::string& message) override {
+  void on_output_log(const std::string& json) override {
     if (cb_on_output_log != nullptr) {
-      cb_on_output_log(colonio, static_cast<COLONIO_LOG_LEVEL>(level), message.c_str(), message.size());
+      cb_on_output_log(colonio, json.c_str(), json.size());
     }
   }
 };
@@ -161,8 +161,7 @@ void colonio_set_position_async(
       });
 }
 
-void colonio_set_on_output_log(
-    colonio_t* colonio, void (*func)(colonio_t*, COLONIO_LOG_LEVEL, const char*, unsigned int)) {
+void colonio_set_on_output_log(colonio_t* colonio, void (*func)(colonio_t*, const char*, unsigned int)) {
   colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
   impl->cb_on_output_log           = func;
 }

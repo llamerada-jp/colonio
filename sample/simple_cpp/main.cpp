@@ -2,6 +2,7 @@
 #  include <glog/logging.h>
 #endif
 
+#include <picojson.h>
 #include <uv.h>
 
 #include <cmath>
@@ -18,12 +19,18 @@ class MyColonio : public colonio::Colonio {
   MyColonio() : Colonio() {
   }
 
-  void on_output_log(colonio::LogLevel level, const std::string& message) override {
-    time_t now = time(nullptr);
-    if (level == colonio::LogLevel::INFO) {
-      std::cout << ctime(&now) << " - " << message << std::endl;
+  void on_output_log(const std::string& json) override {
+    picojson::value v;
+    std::string err = picojson::parse(v, json);
+    if (!err.empty()) {
+      std::cerr << err << std::endl;
+    }
+
+    picojson::object& o = v.get<picojson::object>();
+    if (o.at(colonio::LogJSONKey::LEVEL).get<std::string>() == colonio::LogLevel::INFO) {
+      std::cout << json << std::endl;
     } else {
-      std::cerr << ctime(&now) << " - " << message << std::endl;
+      std::cerr << json << std::endl;
     }
   }
 };

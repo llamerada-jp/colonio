@@ -44,13 +44,12 @@ void Controller::api_send_reply(APIBase& api_base, std::unique_ptr<api::Reply> r
   delegate.controller_on_reply(*this, std::move(reply));
 }
 
-void Controller::logger_on_output(Logger& logger, LogLevel level, const std::string& message) {
+void Controller::logger_on_output(Logger& logger, const std::string& json) {
   // Send log message as event.
   std::unique_ptr<api::Event> event = std::make_unique<api::Event>();
   event->set_channel(APIChannel::COLONIO);
   api::colonio::LogEvent* log_event = event->mutable_colonio_log();
-  log_event->set_level(static_cast<uint32_t>(level));
-  log_event->set_message(message);
+  log_event->set_json(json);
 
   delegate.controller_on_event(*this, std::move(event));
 }

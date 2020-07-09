@@ -33,6 +33,5 @@ message SetPositionReply {
 }
 
 message LogEvent {
-  uint32 level    = 1;
-  string message  = 2;
+  string json  = 1;
 }

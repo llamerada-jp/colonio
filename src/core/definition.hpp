@@ -18,7 +18,7 @@
 #include <cstdint>
 #include <ctime>
 
-#include "colonio/constant.hpp"
+#include "colonio/definition.hpp"
 
 namespace colonio {
 

@@ -15,7 +15,7 @@
  */
 #pragma once
 
-#include <colonio/constant.hpp>
+#include <colonio/definition.hpp>
 #include <colonio/error.hpp>
 #include <colonio/exception.hpp>
 #include <colonio/map.hpp>
@@ -184,12 +184,18 @@ class Colonio {
   /**
    * @brief You can set the log output destination by overriding this method.
    *
+   * json["file"]    : Log output file name.
+   * json["level"]   : The urgency of the log.
+   * json["line"]    : Log output line number.
+   * json["message"] : Readable log messages.
+   * json["param"]   : The parameters that attached for the log.
+   * json["time"]    : Log output time.
+   *
    * This method is executed in a specific thread and must be exclusive if required.
    *
-   * @param level Log level.
-   * @param message Log message.
+   * @param json Log messages in JSON format.
    */
-  virtual void on_output_log(LogLevel level, const std::string& message);
+  virtual void on_output_log(const std::string& json);
 
  private:
   class Impl;

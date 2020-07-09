@@ -15,7 +15,7 @@
  */
 #pragma once
 
-#include <colonio/constant.hpp>
+#include <colonio/definition.hpp>
 #include <exception>
 #include <string>
 

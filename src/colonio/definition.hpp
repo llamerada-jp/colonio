@@ -16,6 +16,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 namespace colonio {
 
@@ -39,15 +40,30 @@ enum class ErrorCode : uint32_t {
 };
 
 /**
+ * @brief Defines of string to be the keys for the log JSON.
+ *
+ * @sa Colonio::on_output_log
+ * @sa LogLevel
+ */
+namespace LogJSONKey {
+static const std::string FILE("file");        ///< Log output file name.
+static const std::string LEVEL("level");      ///< The urgency of the log.
+static const std::string LINE("line");        ///< Log output line number.
+static const std::string MESSAGE("message");  ///< Readable log messages.
+static const std::string PARAM("param");      ///< The parameters that attached for the log.
+static const std::string TIME("time");        ///< Log output time.
+}  // namespace LogJSONKey
+
+/**
  * @brief The urgency of the log.
  *
  * @sa Colonio::on_output_log
  */
-enum class LogLevel : uint32_t {
-  INFO,   ///< Logs of normal operations.
-  WARN,   ///< Logs errors that do not require program interruption.
-  ERROR,  ///< Logs errors that require end of colonio.
-  DEBUG,  ///< Logs for debugging, This is output only when build with debug flag.
-};
+namespace LogLevel {
+static const std::string INFO("info");    ///< Logs of normal operations.
+static const std::string WARN("warn");    ///< Logs errors that do not require program interruption.
+static const std::string ERROR("error");  ///< Logs errors that require end of colonio.
+static const std::string DEBUG("debug");  ///< Logs for debugging, This is output only when build with debug flag.
+}  // namespace LogLevel
 
 }  // namespace colonio

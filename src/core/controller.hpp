@@ -52,7 +52,7 @@ class Controller : public LoggerDelegate, public SchedulerDelegate, public APIDe
   void api_send_event(APIBase& api_base, std::unique_ptr<api::Event> event) override;
   void api_send_reply(APIBase& api_base, std::unique_ptr<api::Reply> reply) override;
 
-  void logger_on_output(Logger& logger, LogLevel level, const std::string& message) override;
+  void logger_on_output(Logger& logger, const std::string& json) override;
 
   void scheduler_on_require_invoke(Scheduler& sched, unsigned int msec) override;
 };

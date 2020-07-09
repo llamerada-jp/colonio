@@ -73,12 +73,10 @@ typedef enum COLONIO_VALUE_TYPE {
 } COLONIO_VALUE_TYPE;
 
 /* ATTENTION: Use same value with another languages. */
-typedef enum COLONIO_LOG_LEVEL {
-  COLONIO_LOG_LEVEL_INFO,
-  COLONIO_LOG_LEVEL_WARN,
-  COLONIO_LOG_LEVEL_ERROR,
-  COLONIO_LOG_LEVEL_DEBUG
-} COLONIO_LOG_LEVEL;
+#define COLONIO_LOG_LEVEL_INFO "info"
+#define COLONIO_LOG_LEVEL_WARN "warn"
+#define COLONIO_LOG_LEVEL_ERROR "error"
+#define COLONIO_LOG_LEVEL_DEBUG "debug"
 
 /* ATTENTION: Use same value with another languages. */
 typedef enum COLONIO_ERROR_CODE {
@@ -88,7 +86,7 @@ typedef enum COLONIO_ERROR_CODE {
   COLONIO_ERROR_CODE_INCORRECT_DATA_FORMAT,
   COLONIO_ERROR_CODE_CONFLICT_WITH_SETTING,
   COLONIO_ERROR_CODE_NOT_EXIST_KEY,
-  /* COLONIO_ERROR_CODE_EXIST_KEY, */
+  COLONIO_ERROR_CODE_EXIST_KEY,
   COLONIO_ERROR_CODE_CHANGED_PROPOSER,
   COLONIO_ERROR_CODE_COLLISION_LATE,
   COLONIO_ERROR_CODE_NO_ONE_RECV,
@@ -156,8 +154,7 @@ COLONIO_PUBLIC colonio_error_t* colonio_set_position(colonio_t* colonio, double*
 COLONIO_PUBLIC void colonio_set_position_async(
     colonio_t* colonio, double x, double y, void* ptr, void (*on_success)(colonio_t*, void*, double, double),
     void (*on_failure)(colonio_t*, void*, const colonio_error_t*));
-COLONIO_PUBLIC void colonio_set_on_output_log(
-    colonio_t* colonio, void (*func)(colonio_t*, COLONIO_LOG_LEVEL, const char*, unsigned int));
+COLONIO_PUBLIC void colonio_set_on_output_log(colonio_t* colonio, void (*func)(colonio_t*, const char*, unsigned int));
 COLONIO_PUBLIC colonio_error_t* colonio_quit(colonio_t* colonio);
 
 COLONIO_PUBLIC void colonio_value_init(colonio_value_t* value);
