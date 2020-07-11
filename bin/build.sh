@@ -131,11 +131,7 @@ setup_emscripten() {
     ./emsdk activate ${EMSCRIPTEN_VERSION}
   fi
   cd ${LOCAL_ENV_PATH}/opt/emsdk
-  if [ ${UNAME_S} = 'Darwin' ]; then
-    source ./emsdk_env.sh
-  else
-    ./emsdk_env.sh
-  fi
+  source ./emsdk_env.sh
 }
 
 # Compile libuv.
