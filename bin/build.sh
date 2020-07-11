@@ -82,7 +82,7 @@ setup_native() {
 
   elif [ ${UNAME_S} = 'Linux' ]; then
     if ! [ -v TRAVIS ]; then
-      sudo apt-get install -y pkg-config automake cmake build-essential curl libcurl4-nss-dev libtool libx11-dev libgoogle-glog-dev
+      sudo apt-get install -y pkg-config automake cmake build-essential curl libcurl4-nss-dev libssl-dev libtool libx11-dev libgoogle-glog-dev
     fi
 
     setup_libuv
