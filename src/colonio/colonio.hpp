@@ -137,6 +137,7 @@ class Colonio {
    *
    * The node-id is unique in the cluster.
    * A new ID will be assigned to the node when connect.
+   * Return an empty string if node-id isn't assigned.
    *
    * @return std::string The node-id of this node.
    */

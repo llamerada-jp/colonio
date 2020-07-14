@@ -217,7 +217,10 @@ void Colonio::disconnect(
 #endif
 
 std::string Colonio::get_local_nid() {
-  assert(impl);
+  // is_special is true when local_nid is not set.
+  if (impl == nullptr || impl->local_nid.is_special()) {
+    return "";
+  }
 
   return impl->local_nid.to_str();
 }

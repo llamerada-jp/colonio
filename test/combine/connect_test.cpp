@@ -63,6 +63,9 @@ TEST(ConnectTest, connect_multi) {
   ColonioNode node1("node1");
   ColonioNode node2("node2");
 
+  // before connect
+  EXPECT_STREQ(node1.get_local_nid().c_str(), "");
+
   // connect node1
   printf("connect node1\n");
   node1.connect(URL, TOKEN);
