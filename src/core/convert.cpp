@@ -88,9 +88,9 @@ picojson::value Convert::bin2json(const uint8_t* bin, unsigned int size) {
 
 picojson::value Convert::coordinate2json(const Coordinate& coordinate) {
   assert(Utils::is_safevalue(coordinate.x) && Utils::is_safevalue(coordinate.y));
-  picojson::array arr;
-  arr.push_back(picojson::value(coordinate.x));
-  arr.push_back(picojson::value(coordinate.y));
-  return picojson::value(arr);
+  picojson::object obj;
+  obj.insert(std::make_pair("x", picojson::value(coordinate.x)));
+  obj.insert(std::make_pair("y", picojson::value(coordinate.y)));
+  return picojson::value(obj);
 }
 }  // namespace colonio

@@ -252,9 +252,7 @@ void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition&
           this, [this, new_position]() { this->routing->on_change_local_position(new_position); }, 0);
       context.scheduler.add_timeout_task(
           this, [this, new_position]() { module_bundler.module_2d_on_change_local_position(new_position); }, 0);
-#ifndef NDEBUG
       logd("current position").map("coordinate", Convert::coordinate2json(new_position));
-#endif
     }
 
     std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
