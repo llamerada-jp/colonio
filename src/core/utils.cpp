@@ -226,6 +226,12 @@ uint64_t Utils::get_rnd_64() {
   return rnd64();
 }
 
+double Utils::get_rnd_double(double min, double max) {
+  std::lock_guard<std::mutex> guard(mutex32);
+  std::uniform_real_distribution<double> dist(min, max);
+  return dist(rnd32);
+}
+
 bool Utils::is_safevalue(double v) {
   if (
 #ifdef _MSC_VER

@@ -27,13 +27,7 @@ CoordSystemPlane::CoordSystemPlane(const picojson::object& config) :
         Utils::get_json<double>(config, "xMin"), Utils::get_json<double>(config, "yMin"),
         Utils::get_json<double>(config, "xMax"), Utils::get_json<double>(config, "yMax"),
         (Utils::get_json<double>(config, "xMax") - Utils::get_json<double>(config, "xMin")) / UINT32_MAX),
-    local_position(
-        (Utils::get_json<double>(config, "xMax") - Utils::get_json<double>(config, "xMin")) *
-                static_cast<double>(Utils::get_rnd_32()) / static_cast<double>(UINT32_MAX) +
-            Utils::get_json<double>(config, "xMin"),
-        (Utils::get_json<double>(config, "yMax") - Utils::get_json<double>(config, "yMin")) *
-                static_cast<double>(Utils::get_rnd_32()) / static_cast<double>(UINT32_MAX) +
-            Utils::get_json<double>(config, "yMin")) {
+    local_position(Coordinate(Utils::get_rnd_double(MIN_X, MAX_X), Utils::get_rnd_double(MIN_Y, MAX_Y))) {
 }
 
 double CoordSystemPlane::get_distance(const Coordinate& p1, const Coordinate& p2) {
