@@ -96,6 +96,14 @@ class TestSeed {
     coord_system.insert(std::make_pair("radius", picojson::value(r)));
   }
 
+  void set_coord_system_plane(double x_min = -1.0, double x_max = 1.0, double y_min = -1.0, double y_max = 1.0) {
+    coord_system.insert(std::make_pair("type", picojson::value("plane")));
+    coord_system.insert(std::make_pair("xMin", picojson::value(x_min)));
+    coord_system.insert(std::make_pair("xMax", picojson::value(x_max)));
+    coord_system.insert(std::make_pair("yMin", picojson::value(y_min)));
+    coord_system.insert(std::make_pair("yMax", picojson::value(y_max)));
+  }
+
   void add_module_map_paxos(
       const std::string& name, unsigned int channel, unsigned int retry_interval_min = 200,
       unsigned int retry_interval_max = 300) {

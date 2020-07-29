@@ -200,3 +200,57 @@ TEST(Pubsub2DTest, multi_node) {
 
   EXPECT_THAT(helper.get_route(), MatchesRegex("^21a21d22e$"));
 }
+
+TEST(Pubsub2DTest, pubsub_plane) {
+  const std::string URL            = "http://localhost:8080/test";
+  const std::string TOKEN          = "";
+  const std::string PUBSUB_2D_NAME = "ps2";
+
+  AsyncHelper helper;
+  TestSeed seed;
+  seed.set_coord_system_plane();
+  seed.add_module_pubsub_2d(PUBSUB_2D_NAME, 256);
+  seed.run();
+
+  ColonioNode node1("node1");
+  ColonioNode node2("node2");
+
+  node1.connect(URL, TOKEN);
+  Pubsub2D& ps1 = node1.access_pubsub_2d(PUBSUB_2D_NAME);
+  ps1.on("key1", [&helper](const Value& v) {
+    helper.mark("11");
+    helper.mark(v.get<std::string>());
+  });
+  ps1.on("key2", [&helper](const Value& v) {
+    helper.mark("12");
+    helper.mark(v.get<std::string>());
+  });
+
+  // connect node2;
+  printf("connect node2\n");
+  node2.connect(URL, TOKEN);
+  Pubsub2D& ps2 = node2.access_pubsub_2d(PUBSUB_2D_NAME);
+  ps2.on("key1", [&helper](const Value& v) {
+    helper.mark("21");
+    helper.mark(v.get<std::string>());
+  });
+  ps2.on("key2", [&helper](const Value& v) {
+    helper.mark("22");
+    helper.mark(v.get<std::string>());
+  });
+
+  double x1, y1;
+  std::tie(x1, y1) = node1.set_position(-0.5, 0.5);
+  EXPECT_FLOAT_EQ(x1, -0.5);
+  EXPECT_FLOAT_EQ(y1, 0.5);
+
+  double x2, y2;
+  std::tie(x2, y2) = node2.set_position(0.5, -0.5);
+  EXPECT_FLOAT_EQ(x2, 0.5);
+  EXPECT_FLOAT_EQ(y2, -0.5);
+
+  // disconnect
+  printf("disconnect\n");
+  node1.disconnect();
+  node2.disconnect();
+}
