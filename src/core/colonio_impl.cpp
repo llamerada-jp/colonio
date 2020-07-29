@@ -19,6 +19,7 @@
 
 #include "context.hpp"
 #include "convert.hpp"
+#include "coord_system_plane.hpp"
 #include "coord_system_sphere.hpp"
 #include "logger.hpp"
 #include "map_paxos/map_paxos_api.hpp"
@@ -167,6 +168,8 @@ void ColonioImpl::seed_accessor_on_recv_config(SeedAccessor& sa, const picojson:
       const std::string& type = Utils::get_json<std::string>(cs2d_config, "type");
       if (type == "sphere") {
         context.coord_system = std::make_unique<CoordSystemSphere>(cs2d_config);
+      } else if (type == "plane") {
+        context.coord_system = std::make_unique<CoordSystemPlane>(cs2d_config);
       }
     }
 

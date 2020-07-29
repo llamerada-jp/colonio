@@ -38,6 +38,7 @@ endforeach()
 
 # Unit test of core module
 set(test_targets_core
+  coord_system_plane
   exception
   logger
   node_id

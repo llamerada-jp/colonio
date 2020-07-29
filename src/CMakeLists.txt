@@ -13,6 +13,7 @@ set(COLONIO_FILES
   core/controller.cpp
   core/convert.cpp
   core/coord_system.cpp
+  core/coord_system_plane.cpp
   core/coord_system_sphere.cpp
   core/coordinate.cpp
   core/core.pb.cc
