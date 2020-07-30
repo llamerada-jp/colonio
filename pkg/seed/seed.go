@@ -40,8 +40,14 @@ type ConfigNodeAccessor struct {
 }
 
 type ConfigCoordSystem2D struct {
+	Type *string `json:"type,omitempty"`
+	// for sphere
 	Radius *float64 `json:"radius,omitempty"`
-	Type   *string  `json:"type,omitempty"`
+	// for plane
+	XMin *float64 `json:"xMin,omitempty"`
+	XMax *float64 `json:"xMax,omitempty"`
+	YMin *float64 `json:"yMin,omitempty"`
+	YMax *float64 `json:"yMax,omitempty"`
 }
 
 type ConfigIceServer struct {
