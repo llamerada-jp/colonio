@@ -21,6 +21,7 @@
 
 namespace colonio {
 class Coordinate;
+class CoordSystem;
 class Module2D;
 
 class Module2DDelegate {
@@ -36,9 +37,11 @@ class Module2D : public ModuleBase {
   virtual void module_2d_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) = 0;
 
  protected:
+  const CoordSystem& coord_system;
+
   Module2D(
-      Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate, APIChannel::Type channel,
-      ModuleChannel::Type module_channel);
+      Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate,
+      const CoordSystem& coord_system_, APIChannel::Type channel, ModuleChannel::Type module_channel);
 
   const NodeID& get_relay_nid(const Coordinate& position);
 

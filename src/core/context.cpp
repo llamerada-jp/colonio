@@ -23,38 +23,7 @@
 namespace colonio {
 
 Context::Context(Logger& logger_, Scheduler& scheduler_) :
-    link_status(LinkStatus::OFFLINE), logger(logger_), scheduler(scheduler_), local_nid(NodeID::make_random()) {
+    logger(logger_), scheduler(scheduler_), local_nid(NodeID::make_random()) {
 }
 
-Coordinate Context::get_local_position() {
-  assert(coord_system);
-
-  return coord_system->get_local_position();
-}
-
-bool Context::has_local_position() {
-  assert(coord_system);
-
-  return coord_system->get_local_position().is_enable();
-}
-
-void Context::hook_on_change_local_position(std::function<void(const Coordinate&)> func) {
-  funcs_on_change_local_position.push_back(func);
-}
-
-void Context::set_local_position(const Coordinate& pos) {
-  assert(coord_system);
-
-  Coordinate prev_local_position = coord_system->get_local_position();
-  coord_system->set_local_position(pos);
-  Coordinate new_local_position = coord_system->get_local_position();
-
-  if (prev_local_position.x != new_local_position.x || prev_local_position.y != new_local_position.y) {
-    logI((*this), "change local position").map_float("x", new_local_position.x).map_float("y", new_local_position.y);
-
-    for (auto& it : funcs_on_change_local_position) {
-      it(new_local_position);
-    }
-  }
-}
 }  // namespace colonio

@@ -30,11 +30,11 @@ CoordSystemPlane::CoordSystemPlane(const picojson::object& config) :
     local_position(Coordinate(Utils::get_rnd_double(MIN_X, MAX_X), Utils::get_rnd_double(MIN_Y, MAX_Y))) {
 }
 
-double CoordSystemPlane::get_distance(const Coordinate& p1, const Coordinate& p2) {
+double CoordSystemPlane::get_distance(const Coordinate& p1, const Coordinate& p2) const {
   return std::sqrt(std::pow(p1.x - p2.x, 2) + std::pow(p1.y - p2.y, 2));
 }
 
-Coordinate CoordSystemPlane::get_local_position() {
+Coordinate CoordSystemPlane::get_local_position() const {
   return local_position;
 }
 
@@ -52,7 +52,7 @@ void CoordSystemPlane::set_local_position(const Coordinate& position) {
   local_position = position;
 }
 
-Coordinate CoordSystemPlane::shift_for_routing_2d(const Coordinate& base, const Coordinate& position) {
+Coordinate CoordSystemPlane::shift_for_routing_2d(const Coordinate& base, const Coordinate& position) const {
   return Coordinate(position.x - base.x, position.y - base.y);
 }
 }  // namespace colonio

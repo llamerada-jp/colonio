@@ -16,6 +16,7 @@
 #include "routing_1d.hpp"
 
 #include <cassert>
+#include <list>
 
 #include "context.hpp"
 #include "convert.hpp"

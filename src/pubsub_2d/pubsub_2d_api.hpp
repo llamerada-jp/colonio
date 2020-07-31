@@ -33,7 +33,7 @@ class Pubsub2DAPI : public APIBase, public Pubsub2DModuleDelegate {
  public:
   static void make_entry(
       Context& context, APIBundler& api_bundler, APIDelegate& api_delegate, ModuleBundler& module_bundler,
-      const picojson::object& config);
+      const CoordSystem& coord_system, const picojson::object& config);
 
  private:
   std::unique_ptr<Pubsub2DModule> module;

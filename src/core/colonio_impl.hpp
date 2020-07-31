@@ -57,8 +57,10 @@ class ColonioImpl : public APIBase,
 
   std::unique_ptr<SeedAccessor> seed_accessor;
   std::unique_ptr<NodeAccessor> node_accessor;
+  std::unique_ptr<CoordSystem> coord_system;
   std::unique_ptr<Routing> routing;
 
+  LinkStatus::Type link_status;
   LinkStatus::Type node_status;
   LinkStatus::Type seed_status;
 

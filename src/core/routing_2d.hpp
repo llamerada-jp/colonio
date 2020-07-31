@@ -18,11 +18,12 @@
 #include "routing.hpp"
 
 namespace colonio {
+class CoordSystem;
 class Context;
 
 class Routing2D : public RoutingAlgorithm {
  public:
-  Routing2D(Context& context_, RoutingAlgorithm2DDelegate& delegate_);
+  Routing2D(Context& context_, RoutingAlgorithm2DDelegate& delegate_, const CoordSystem& coord_system_);
 
   const std::set<NodeID>& get_required_nodes() override;
   void on_change_local_position(const Coordinate& position) override;
@@ -41,6 +42,7 @@ class Routing2D : public RoutingAlgorithm {
  private:
   Context& context;
   RoutingAlgorithm2DDelegate& delegate;
+  const CoordSystem& coord_system;
 
   std::set<NodeID> required_nodes;
   std::map<NodeID, Coordinate> nearby_nodes;
@@ -78,7 +80,7 @@ class Routing2D : public RoutingAlgorithm {
 
     bool check_contain_node(const NodeID& nid) const;
     bool check_equal(const Triangle& t) const;
-    Circle get_circumscribed_circle(Context& context);
+    Circle get_circumscribed_circle(const CoordSystem& coord_system);
   };
 
   void delaunay_add_tmp_triangle(std::map<Triangle, bool>& tmp_triangles, const Triangle& triangle);

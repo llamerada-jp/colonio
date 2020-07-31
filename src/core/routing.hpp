@@ -24,6 +24,7 @@
 #include "routing_protocol.pb.h"
 
 namespace colonio {
+class CoordSystem;
 class Context;
 class Packet;
 class Routing;
@@ -78,7 +79,7 @@ class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public Rou
  public:
   Routing(
       Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, APIChannel::Type channel,
-      const picojson::object& config);
+      const CoordSystem* coord_system, const picojson::object& config);
   virtual ~Routing();
 
   const NodeID& get_relay_nid_1d(const Packet& packet);

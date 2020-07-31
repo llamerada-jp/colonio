@@ -18,11 +18,7 @@
 
 namespace colonio {
 CoordSystem::CoordSystem(double min_x, double min_y, double max_x, double max_y, double precision) :
-    MIN_X(min_x),
-    MIN_Y(min_y),
-    MAX_X(max_x),
-    MAX_Y(max_y),
-    PRECISION(precision) {
+    MIN_X(min_x), MIN_Y(min_y), MAX_X(max_x), MAX_Y(max_y), PRECISION(precision) {
 }
 
 CoordSystem::~CoordSystem() {

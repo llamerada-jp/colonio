@@ -31,7 +31,7 @@ CoordSystemSphere::CoordSystemSphere(const picojson::object& config) :
   conf_radius = Utils::get_json<double>(config, "radius");
 }
 
-double CoordSystemSphere::get_distance(const Coordinate& p1, const Coordinate& p2) {
+double CoordSystemSphere::get_distance(const Coordinate& p1, const Coordinate& p2) const {
   // spherical trigonometry (球面三角法)
   double avr_x = (p1.x - p2.x) / 2;
   double avr_y = (p1.y - p2.y) / 2;
@@ -40,7 +40,7 @@ double CoordSystemSphere::get_distance(const Coordinate& p1, const Coordinate& p
              std::sqrt(std::pow(std::sin(avr_y), 2) + std::cos(p1.y) * std::cos(p2.y) * std::pow(std::sin(avr_x), 2)));
 }
 
-Coordinate CoordSystemSphere::get_local_position() {
+Coordinate CoordSystemSphere::get_local_position() const {
   return local_position;
 }
 
@@ -58,7 +58,7 @@ void CoordSystemSphere::set_local_position(const Coordinate& position) {
   local_position = position;
 }
 
-Coordinate CoordSystemSphere::shift_for_routing_2d(const Coordinate& base, const Coordinate& position) {
+Coordinate CoordSystemSphere::shift_for_routing_2d(const Coordinate& base, const Coordinate& position) const {
   Coordinate ans(position.x - base.x, position.y - base.y);
   ans.x = Utils::pmod(ans.x + M_PI, M_PI * 2.0) - M_PI;
   ans.y = Utils::pmod(ans.y + M_PI * 0.5, M_PI) - M_PI * 0.5;

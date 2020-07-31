@@ -17,6 +17,7 @@
 #include "routing_2d.hpp"
 
 #include <cassert>
+#include <list>
 
 #include "context.hpp"
 #include "convert.hpp"
@@ -27,8 +28,8 @@
 
 namespace colonio {
 
-Routing2D::Routing2D(Context& context_, RoutingAlgorithm2DDelegate& delegate_) :
-    RoutingAlgorithm("2D"), context(context_), delegate(delegate_) {
+Routing2D::Routing2D(Context& context_, RoutingAlgorithm2DDelegate& delegate_, const CoordSystem& coord_system_) :
+    RoutingAlgorithm("2D"), context(context_), delegate(delegate_), coord_system(coord_system_) {
 }
 
 const std::set<NodeID>& Routing2D::get_required_nodes() {
@@ -102,8 +103,8 @@ bool Routing2D::on_recv_routing_info(const Packet& packet, const RoutingProtocol
 }
 
 void Routing2D::send_routing_info(RoutingProtocol::RoutingInfo* param) {
-  if (context.has_local_position()) {
-    context.get_local_position().to_pb(param->mutable_r2d_position());
+  if (coord_system.get_local_position().is_enable()) {
+    coord_system.get_local_position().to_pb(param->mutable_r2d_position());
 
     for (auto& it_cn : connected_nodes) {
       if (it_cn.second.position.is_enable()) {
@@ -174,11 +175,12 @@ bool Routing2D::update_routing_info(
 }
 
 const NodeID& Routing2D::get_relay_nid(const Coordinate& position) {
-  const NodeID* near_nid = &NodeID::THIS;
-  double min_distance    = std::numeric_limits<double>::max();
+  const NodeID* near_nid    = &NodeID::THIS;
+  double min_distance       = std::numeric_limits<double>::max();
+  Coordinate local_position = coord_system.get_local_position();
 
   for (auto& node : connected_nodes) {
-    double distance = context.coord_system->get_distance(context.get_local_position(), node.second.position);
+    double distance = coord_system.get_distance(local_position, node.second.position);
     if (distance < min_distance) {
       min_distance = distance;
       near_nid     = &node.first;
@@ -247,7 +249,7 @@ bool Routing2D::Triangle::check_equal(const Triangle& t) const {
   return true;
 }
 
-Routing2D::Circle Routing2D::Triangle::get_circumscribed_circle(Context& context) {
+Routing2D::Circle Routing2D::Triangle::get_circumscribed_circle(const CoordSystem& coord_system) {
   double x1 = p[0].shifted_position.x;
   double y1 = p[0].shifted_position.y;
   double x2 = p[1].shifted_position.x;
@@ -260,7 +262,7 @@ Routing2D::Circle Routing2D::Triangle::get_circumscribed_circle(Context& context
   ret.center = Coordinate(
       ((y3 - y1) * (x2 * x2 - x1 * x1 + y2 * y2 - y1 * y1) + (y1 - y2) * (x3 * x3 - x1 * x1 + y3 * y3 - y1 * y1)) / c,
       ((x1 - x3) * (x2 * x2 - x1 * x1 + y2 * y2 - y1 * y1) + (x2 - x1) * (x3 * x3 - x1 * x1 + y3 * y3 - y1 * y1)) / c);
-  ret.r = context.coord_system->get_distance(ret.center, p[0].shifted_position);
+  ret.r = coord_system.get_distance(ret.center, p[0].shifted_position);
 
   return ret;
 }
@@ -293,11 +295,8 @@ void Routing2D::delaunay_check_duplicate_point(std::map<NodeID, NodePoint>& node
 }
 
 Routing2D::Triangle Routing2D::delaunay_get_huge_triangle() {
-  Coordinate center(
-      (context.coord_system->MAX_X - context.coord_system->MIN_X) / 2,
-      (context.coord_system->MAX_Y - context.coord_system->MIN_Y) / 2);
-  double r =
-      context.coord_system->get_distance(center, Coordinate(context.coord_system->MIN_X, context.coord_system->MIN_Y));
+  Coordinate center((coord_system.MAX_X - coord_system.MIN_X) / 2, (coord_system.MAX_Y - coord_system.MIN_Y) / 2);
+  double r = coord_system.get_distance(center, Coordinate(coord_system.MIN_X, coord_system.MIN_Y));
   Coordinate p1(center.x - sqrt(3) * r, center.y - r);
   Coordinate p2(center.x + sqrt(3) * r, center.y - r);
   Coordinate p3(center.x, center.y + 2 * r);
@@ -312,7 +311,7 @@ Routing2D::Triangle Routing2D::delaunay_get_huge_triangle() {
  */
 void Routing2D::delaunay_make_nodes(std::map<NodeID, NodePoint>& nodes) {
   const NodeID& local_nid = context.local_nid;
-  Coordinate base         = context.get_local_position();
+  Coordinate base         = coord_system.get_local_position();
 
   nodes.insert(std::make_pair(NodeID::THIS, NodePoint(NodeID::THIS, base, Coordinate(0.0, 0.0))));
 
@@ -320,13 +319,13 @@ void Routing2D::delaunay_make_nodes(std::map<NodeID, NodePoint>& nodes) {
     if (nodes.find(it_cn.first) == nodes.end() && it_cn.second.position.is_enable()) {
       assert(it_cn.first != local_nid);
       nodes.insert(std::make_pair(
-          it_cn.first, NodePoint(
-                           it_cn.first, it_cn.second.position,
-                           context.coord_system->shift_for_routing_2d(base, it_cn.second.position))));
+          it_cn.first,
+          NodePoint(
+              it_cn.first, it_cn.second.position, coord_system.shift_for_routing_2d(base, it_cn.second.position))));
 
     } else if (it_cn.second.position.is_enable()) {
       auto it_nodes                     = nodes.find(it_cn.first);
-      it_nodes->second.shifted_position = context.coord_system->shift_for_routing_2d(base, it_cn.second.position);
+      it_nodes->second.shifted_position = coord_system.shift_for_routing_2d(base, it_cn.second.position);
     }
 
     for (auto& it_next : it_cn.second.nexts) {
@@ -334,8 +333,7 @@ void Routing2D::delaunay_make_nodes(std::map<NodeID, NodePoint>& nodes) {
         assert(it_next.first != local_nid);
         nodes.insert(std::make_pair(
             it_next.first,
-            NodePoint(
-                it_next.first, it_next.second, context.coord_system->shift_for_routing_2d(base, it_next.second))));
+            NodePoint(it_next.first, it_next.second, coord_system.shift_for_routing_2d(base, it_next.second))));
       }
     }
   }
@@ -345,8 +343,8 @@ void Routing2D::delaunay_shift_duplicate_point(NodePoint& np) {
   uint64_t id0;
   uint64_t id1;
   np.nid.get_raw(&id0, &id1);
-  double shift_x = (context.coord_system->PRECISION * id0) / static_cast<double>(UINT64_MAX);
-  double shift_y = (context.coord_system->PRECISION * id1) / static_cast<double>(UINT64_MAX);
+  double shift_x = (coord_system.PRECISION * id0) / static_cast<double>(UINT64_MAX);
+  double shift_y = (coord_system.PRECISION * id1) / static_cast<double>(UINT64_MAX);
   np.shifted_position.x += shift_x;
   np.shifted_position.y += shift_y;
 }
@@ -368,8 +366,8 @@ void Routing2D::update_required_nodes() {
 
     auto it_triangle = triangles.begin();
     while (it_triangle != triangles.end()) {
-      Circle c = it_triangle->get_circumscribed_circle(context);
-      if (context.coord_system->get_distance(c.center, node_point.shifted_position) <= c.r) {
+      Circle c = it_triangle->get_circumscribed_circle(coord_system);
+      if (coord_system.get_distance(c.center, node_point.shifted_position) <= c.r) {
         delaunay_add_tmp_triangle(tmp_triangles, Triangle(node_point, it_triangle->p[0], it_triangle->p[1]));
         delaunay_add_tmp_triangle(tmp_triangles, Triangle(node_point, it_triangle->p[1], it_triangle->p[2]));
         delaunay_add_tmp_triangle(tmp_triangles, Triangle(node_point, it_triangle->p[2], it_triangle->p[0]));

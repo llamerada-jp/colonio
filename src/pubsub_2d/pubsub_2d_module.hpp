@@ -37,8 +37,8 @@ class Pubsub2DModule : public Module2D {
  public:
   Pubsub2DModule(
       Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate,
-      Pubsub2DModuleDelegate& delegate_, APIChannel::Type channel, ModuleChannel::Type module_channel,
-      uint32_t cache_time);
+      Pubsub2DModuleDelegate& delegate_, const CoordSystem& coord_system, APIChannel::Type channel,
+      ModuleChannel::Type module_channel, uint32_t cache_time);
   virtual ~Pubsub2DModule();
 
   void publish(

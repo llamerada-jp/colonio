@@ -38,6 +38,7 @@ ColonioImpl::ColonioImpl(Context& context, APIDelegate& api_delegate_, APIBundle
     enable_retry(true),
     node_accessor(nullptr),
     routing(nullptr),
+    link_status(LinkStatus::OFFLINE),
     node_status(LinkStatus::OFFLINE),
     seed_status(LinkStatus::OFFLINE) {
 }
@@ -46,7 +47,7 @@ ColonioImpl::~ColonioImpl() {
 }
 
 LinkStatus::Type ColonioImpl::get_status() {
-  return context.link_status;
+  return link_status;
 }
 
 void ColonioImpl::api_on_recv_call(const api::Call& call) {
@@ -167,15 +168,16 @@ void ColonioImpl::seed_accessor_on_recv_config(SeedAccessor& sa, const picojson:
     if (Utils::check_json_optional(config, "coordSystem2D", &cs2d_config)) {
       const std::string& type = Utils::get_json<std::string>(cs2d_config, "type");
       if (type == "sphere") {
-        context.coord_system = std::make_unique<CoordSystemSphere>(cs2d_config);
+        coord_system = std::make_unique<CoordSystemSphere>(cs2d_config);
       } else if (type == "plane") {
-        context.coord_system = std::make_unique<CoordSystemPlane>(cs2d_config);
+        coord_system = std::make_unique<CoordSystemPlane>(cs2d_config);
       }
     }
 
     // routing
     routing = std::make_unique<Routing>(
-        context, *this, *this, APIChannel::COLONIO, Utils::get_json<picojson::object>(config, "routing"));
+        context, *this, *this, APIChannel::COLONIO, coord_system.get(),
+        Utils::get_json<picojson::object>(config, "routing"));
     module_bundler.registrate(routing.get(), false, false);
 
     // modules
@@ -208,7 +210,7 @@ void ColonioImpl::api_connect(uint32_t id, const api::colonio::Connect& param) {
   const std::string& url   = param.url();
   const std::string& token = param.token();
 
-  if (context.link_status != LinkStatus::OFFLINE && context.link_status != LinkStatus::CLOSING) {
+  if (link_status != LinkStatus::OFFLINE && link_status != LinkStatus::CLOSING) {
     loge("duplicate connection.");
     return;
 
@@ -245,12 +247,10 @@ void ColonioImpl::api_disconnect(uint32_t id) {
 }
 
 void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition& param) {
-  if (context.coord_system) {
-    Coordinate pos          = Coordinate::from_pb(param.position());
-    Coordinate old_position = context.get_local_position();
-    context.set_local_position(pos);
-    Coordinate new_position = context.get_local_position();
-    if (old_position != new_position) {
+  if (coord_system) {
+    Coordinate new_position = Coordinate::from_pb(param.position());
+    Coordinate old_position = coord_system->get_local_position();
+    if (new_position != old_position) {
       context.scheduler.add_timeout_task(
           this, [this, new_position]() { this->routing->on_change_local_position(new_position); }, 0);
       context.scheduler.add_timeout_task(
@@ -270,7 +270,7 @@ void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition&
 }
 
 void ColonioImpl::check_api_connect() {
-  if (api_connect_id != 0 && context.link_status == LinkStatus::ONLINE && api_connect_reply) {
+  if (api_connect_id != 0 && link_status == LinkStatus::ONLINE && api_connect_reply) {
     assert(seed_accessor->get_auth_status() == AuthStatus::SUCCESS);
 
     std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
@@ -298,7 +298,7 @@ void ColonioImpl::initialize_algorithms() {
     module->set_name(name);
 
     if (type == "pubsub2D") {
-      Pubsub2DAPI::make_entry(context, api_bundler, api_delegate, module_bundler, module_config);
+      Pubsub2DAPI::make_entry(context, api_bundler, api_delegate, module_bundler, *coord_system, module_config);
       module->set_type(api::colonio::ConnectReply_ModuleType_PUBSUB_2D);
 
     } else if (type == "mapPaxos") {
@@ -370,7 +370,7 @@ void ColonioImpl::on_change_accessor_status(LinkStatus::Type seed_status, LinkSt
     status = LinkStatus::CONNECTING;
   }
 
-  context.link_status = status;
+  link_status = status;
   check_api_connect();
 
   module_bundler.on_change_accessor_status(seed_status, node_status);

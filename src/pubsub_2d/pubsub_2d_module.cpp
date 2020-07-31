@@ -35,9 +35,9 @@ Pubsub2DModuleDelegate ::~Pubsub2DModuleDelegate() {
 
 Pubsub2DModule::Pubsub2DModule(
     Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate,
-    Pubsub2DModuleDelegate& delegate_, APIChannel::Type channel, ModuleChannel::Type module_channel,
-    uint32_t cache_time) :
-    Module2D(context, module_delegate, module_2d_delegate, channel, module_channel),
+    Pubsub2DModuleDelegate& delegate_, const CoordSystem& coord_system, APIChannel::Type channel,
+    ModuleChannel::Type module_channel, uint32_t cache_time) :
+    Module2D(context, module_delegate, module_2d_delegate, coord_system, channel, module_channel),
     delegate(delegate_),
     CONF_CACHE_TIME(cache_time) {
   context.scheduler.add_interval_task(this, std::bind(&Pubsub2DModule::clear_cache, this), 1000);
@@ -50,23 +50,24 @@ Pubsub2DModule::~Pubsub2DModule() {
 void Pubsub2DModule::publish(
     const std::string& name, double x, double y, double r, const Value& value, uint32_t opt,
     const std::function<void()>& on_success, const std::function<void(ErrorCode)>& on_failure) {
-  uint64_t uid  = assign_uid();
-  Cache& c      = cache[uid];
-  c.name        = name;
-  c.center      = Coordinate(x, y);
-  c.r           = r;
-  c.uid         = uid;
-  c.create_time = Utils::get_current_msec();
-  c.data        = value;
-  c.opt         = opt;
+  uint64_t uid              = assign_uid();
+  Coordinate local_position = coord_system.get_local_position();
+  Cache& c                  = cache[uid];
+  c.name                    = name;
+  c.center                  = Coordinate(x, y);
+  c.r                       = r;
+  c.uid                     = uid;
+  c.create_time             = Utils::get_current_msec();
+  c.data                    = value;
+  c.opt                     = opt;
 
-  if (context.coord_system->get_distance(c.center, context.get_local_position()) < r) {
+  if (coord_system.get_distance(c.center, local_position) < r) {
     if (c.data.get_type() == Value::STRING_T) {
       send_packet_knock(NodeID::NONE, c);
 
     } else {
       for (auto& it : next_positions) {
-        if (context.coord_system->get_distance(c.center, it.second) < r) {
+        if (coord_system.get_distance(c.center, it.second) < r) {
           send_packet_deffuse(it.first, c);
         }
       }
@@ -183,7 +184,7 @@ void Pubsub2DModule::recv_packet_knock(std::unique_ptr<const Packet> packet) {
   double r          = content.r();
   uint64_t uid      = content.uid();
 
-  if (cache.find(uid) == cache.end() && context.coord_system->get_distance(context.get_local_position(), center) < r) {
+  if (cache.find(uid) == cache.end() && coord_system.get_distance(coord_system.get_local_position(), center) < r) {
     send_success(*packet, nullptr);
   } else {
     send_failure(*packet, nullptr);
@@ -197,7 +198,7 @@ void Pubsub2DModule::recv_packet_deffuse(std::unique_ptr<const Packet> packet) {
   double r          = content.r();
   uint64_t uid      = content.uid();
 
-  if (cache.find(uid) == cache.end() && context.coord_system->get_distance(context.get_local_position(), center) < r) {
+  if (cache.find(uid) == cache.end() && coord_system.get_distance(coord_system.get_local_position(), center) < r) {
     const std::string& name = content.name();
     const Value data        = ValueImpl::from_pb(content.data());
     Cache& c                = cache[uid];
@@ -213,7 +214,7 @@ void Pubsub2DModule::recv_packet_deffuse(std::unique_ptr<const Packet> packet) {
 
     } else {
       for (auto& it_np : next_positions) {
-        if (it_np.first != packet->src_nid && context.coord_system->get_distance(c.center, it_np.second) < r) {
+        if (it_np.first != packet->src_nid && coord_system.get_distance(c.center, it_np.second) < r) {
           send_packet_deffuse(it_np.first, c);
         }
       }
@@ -236,14 +237,14 @@ void Pubsub2DModule::recv_packet_pass(std::unique_ptr<const Packet> packet) {
                              uid, Cache{content.name(), center, content.r(), uid, Utils::get_current_msec(),
                                         ValueImpl::from_pb(content.data()), opt}))
                          .first->second;
-    if (context.coord_system->get_distance(center, context.get_local_position()) < c.r) {
+    if (coord_system.get_distance(center, coord_system.get_local_position()) < c.r) {
       if (c.data.get_type() == Value::STRING_T) {
         // @todo send_success after check the result.
         send_packet_knock(NodeID::NONE, c);
 
       } else {
         for (auto& it : next_positions) {
-          if (context.coord_system->get_distance(c.center, it.second) < c.r) {
+          if (coord_system.get_distance(c.center, it.second) < c.r) {
             send_packet_deffuse(it.first, c);
           }
         }
@@ -287,7 +288,7 @@ void Pubsub2DModule::send_packet_knock(const NodeID& exclude, const Cache& cache
     const NodeID& nid    = it_np.first;
     Coordinate& position = it_np.second;
 
-    if (nid != exclude && context.coord_system->get_distance(cache.center, position) < cache.r) {
+    if (nid != exclude && coord_system.get_distance(cache.center, position) < cache.r) {
       std::unique_ptr<Command> command = std::make_unique<CommandKnock>(*this, cache.uid);
       send_packet(std::move(command), nid, param_bin);
     }

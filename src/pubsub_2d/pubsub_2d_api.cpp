@@ -26,13 +26,13 @@ namespace colonio {
 
 void Pubsub2DAPI::make_entry(
     Context& context, APIBundler& api_bundler, APIDelegate& api_delegate, ModuleBundler& module_bundler,
-    const picojson::object& config) {
+    const CoordSystem& coord_system, const picojson::object& config) {
   APIChannel::Type channel = static_cast<APIChannel::Type>(Utils::get_json<double>(config, "channel"));
   uint32_t cache_time      = Utils::get_json<double>(config, "cacheTime", PUBSUB_2D_CACHE_TIME);
 
   std::shared_ptr<Pubsub2DAPI> entry(new Pubsub2DAPI(context, api_delegate, channel));
   std::unique_ptr<Pubsub2DModule> module = std::make_unique<Pubsub2DModule>(
-      context, module_bundler.module_delegate, module_bundler.module_2d_delegate, *entry, channel,
+      context, module_bundler.module_delegate, module_bundler.module_2d_delegate, *entry, coord_system, channel,
       ModuleChannel::Pubsub2D::PUBSUB_2D, cache_time);
 
   module_bundler.registrate(module.get(), false, true);

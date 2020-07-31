@@ -15,13 +15,6 @@
  */
 #pragma once
 
-#include <functional>
-#include <list>
-#include <memory>
-
-#include "coord_system.hpp"
-#include "coordinate.hpp"
-#include "definition.hpp"
 #include "node_id.hpp"
 
 namespace colonio {
@@ -30,22 +23,13 @@ class Scheduler;
 
 class Context {
  public:
-  LinkStatus::Type link_status;
   Logger& logger;
   Scheduler& scheduler;
-  std::unique_ptr<CoordSystem> coord_system;
   const NodeID local_nid;
 
   Context(Logger& logger_, Scheduler& scheduler_);
 
-  Coordinate get_local_position();
-  bool has_local_position();
-  void hook_on_change_local_position(std::function<void(const Coordinate&)> func);
-  void set_local_position(const Coordinate& pos);
-
  private:
-  std::list<std::function<void(const Coordinate&)>> funcs_on_change_local_position;
-
   Context(const Context&);
   void operator=(const Context&);
 };

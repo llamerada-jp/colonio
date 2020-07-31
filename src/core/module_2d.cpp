@@ -22,9 +22,10 @@ Module2DDelegate::~Module2DDelegate() {
 }
 
 Module2D::Module2D(
-    Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate, APIChannel::Type channel,
-    ModuleChannel::Type module_channel) :
+    Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate,
+    const CoordSystem& coord_system_, APIChannel::Type channel, ModuleChannel::Type module_channel) :
     ModuleBase(context, module_delegate, channel, module_channel),
+    coord_system(coord_system_),
     delegate(module_2d_delegate) {
 }
 

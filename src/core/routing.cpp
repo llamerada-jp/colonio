@@ -54,7 +54,7 @@ RoutingAlgorithm2DDelegate::~RoutingAlgorithm2DDelegate() {
  */
 Routing::Routing(
     Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, APIChannel::Type channel,
-    const picojson::object& config) :
+    const CoordSystem* coord_system, const picojson::object& config) :
     ModuleBase(context, module_delegate, channel, ModuleChannel::Colonio::SYSTEM_ROUTING),
     CONFIG_UPDATE_PERIOD(Utils::get_json(config, "updatePeriod", ROUTING_UPDATE_PERIOD)),
     CONFIG_FORCE_UPDATE_TIMES(Utils::get_json(config, "forceUpdateTimes", ROUTING_FORCE_UPDATE_TIMES)),
@@ -69,8 +69,8 @@ Routing::Routing(
   routing_1d = new Routing1D(context, *this);
   algorithms.push_back(std::unique_ptr<RoutingAlgorithm>(routing_1d));
 
-  if (context.coord_system) {
-    routing_2d = new Routing2D(context, *this);
+  if (coord_system) {
+    routing_2d = new Routing2D(context, *this, *coord_system);
     algorithms.push_back(std::unique_ptr<RoutingAlgorithm>(routing_2d));
   }
 
