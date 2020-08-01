@@ -251,6 +251,7 @@ void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition&
     Coordinate new_position = Coordinate::from_pb(param.position());
     Coordinate old_position = coord_system->get_local_position();
     if (new_position != old_position) {
+      coord_system->set_local_position(new_position);
       context.scheduler.add_timeout_task(
           this, [this, new_position]() { this->routing->on_change_local_position(new_position); }, 0);
       context.scheduler.add_timeout_task(
