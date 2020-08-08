@@ -34,9 +34,6 @@ class Routing2D : public RoutingAlgorithm {
       const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>, RoutingProtocol::RoutingInfo>>& routing_infos)
       override;
 
-  bool on_change_online_links(const std::set<NodeID>& nids);
-  bool on_recv_routing_info(const Packet& packet, const RoutingProtocol::RoutingInfo& routing_info);
-
   const NodeID& get_relay_nid(const Coordinate& position);
 
  private:
@@ -44,50 +41,13 @@ class Routing2D : public RoutingAlgorithm {
   RoutingAlgorithm2DDelegate& delegate;
   const CoordSystem& coord_system;
 
-  std::set<NodeID> required_nodes;
+  std::set<NodeID> connected_nodes;
+  std::set<NodeID> nearby_nids;
   std::map<NodeID, Coordinate> nearby_nodes;
+  std::map<NodeID, Coordinate> known_nodes;
 
-  class ConnectedNode {
-   public:
-    Coordinate position;
-    std::map<NodeID, Coordinate> nexts;
-  };
-  std::map<NodeID, ConnectedNode> connected_nodes;
-
-  class NodePoint {
-   public:
-    NodeID nid;
-    Coordinate position;
-    Coordinate shifted_position;
-
-    NodePoint();
-    NodePoint(const NodeID& nid_, const Coordinate& position_, const Coordinate& sposition);
-    NodePoint& operator=(const NodePoint& r);
-  };
-
-  class Circle {
-   public:
-    Coordinate center;
-    double r;
-  };
-
-  class Triangle {
-   public:
-    NodePoint p[3];
-
-    Triangle(const NodePoint& p1, const NodePoint& p2, const NodePoint& p3);
-    bool operator<(const Triangle& t) const;
-
-    bool check_contain_node(const NodeID& nid) const;
-    bool check_equal(const Triangle& t) const;
-    Circle get_circumscribed_circle(const CoordSystem& coord_system);
-  };
-
-  void delaunay_add_tmp_triangle(std::map<Triangle, bool>& tmp_triangles, const Triangle& triangle);
-  void delaunay_check_duplicate_point(std::map<NodeID, NodePoint>& nodes);
-  Triangle delaunay_get_huge_triangle();
-  void delaunay_make_nodes(std::map<NodeID, NodePoint>& nodes);
-  void delaunay_shift_duplicate_point(NodePoint& np);
-  void update_required_nodes();
+  void check_duplicate_point(const std::vector<NodeID>& nids, std::vector<double>* x_vec, std::vector<double>* y_vec);
+  void shift_duplicate_point(const NodeID& nid, double* x, double* y);
+  void update_node_infos();
 };
 }  // namespace colonio

@@ -35,5 +35,9 @@ class CoordSystem {
 
  protected:
   CoordSystem(double min_x, double min_y, double max_x, double max_y, double precision);
+
+ private:
+  CoordSystem(const CoordSystem&);
+  void operator=(const CoordSystem&);
 };
 }  // namespace colonio

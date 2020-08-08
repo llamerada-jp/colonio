@@ -90,6 +90,7 @@ setup_native() {
 
   setup_asio
   setup_picojson
+  setup_cpp_algorithms
   setup_protoc_native
   setup_websocketpp
   setup_webrtc
@@ -100,6 +101,7 @@ setup_native() {
 
 setup_wasm() {
   setup_picojson
+  setup_cpp_algorithms
   setup_emscripten
   setup_protoc_wasm
 }
@@ -176,6 +178,22 @@ setup_picojson() {
   cd ${LOCAL_ENV_PATH}/src/picojson
   git checkout refs/tags/v${PICOJSON_VERSION}
   cp ${LOCAL_ENV_PATH}/src/picojson/picojson.h ${LOCAL_ENV_PATH}/include/
+}
+
+# Download cpp_algorithms
+setup_cpp_algorithms() {
+  if [ -e ${LOCAL_ENV_PATH}/src/cpp_algorithms ]; then
+    cd ${LOCAL_ENV_PATH}/src/cpp_algorithms
+    git checkout .
+    git checkout master
+    git pull
+  else
+    cd ${LOCAL_ENV_PATH}/src
+    git clone https://github.com/hs-nazuna/cpp_algorithms.git
+  fi
+  cd ${LOCAL_ENV_PATH}/src/cpp_algorithms
+  git checkout 5de21c513796a39f31e1db02a62fdb8dcc8ea775
+  cp ${LOCAL_ENV_PATH}/src/cpp_algorithms/DelaunayTriangulation/delaunay_triangulation.hpp ${LOCAL_ENV_PATH}/include/
 }
 
 # Download libwebrtc

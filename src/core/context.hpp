@@ -28,6 +28,7 @@ class Context {
   const NodeID local_nid;
 
   Context(Logger& logger_, Scheduler& scheduler_);
+  virtual ~Context();
 
  private:
   Context(const Context&);
