@@ -250,14 +250,14 @@ bool Utils::is_safevalue(double v) {
 
 void Utils::output_assert(
     const std::string& func, const std::string& file, unsigned long line, const std::string& exp,
-    const std::string& mesg) {
+    const std::string& message) {
   printf(
       "Assersion failed: (%s) func: %s, file: %s, line: %ld\n%s\n", exp.c_str(), func.c_str(), file.c_str(), line,
-      mesg.c_str());
+      message.c_str());
   exit(EXIT_FAILURE);
 }
 
-double Utils::pmod(double a, double b) {
+double Utils::float_mod(double a, double b) {
   assert(b > 0);
   return a - std::floor(a / b) * b;
 }

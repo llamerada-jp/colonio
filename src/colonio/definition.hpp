@@ -26,7 +26,7 @@ namespace colonio {
  * @sa Error, Exception
  */
 enum class ErrorCode : uint32_t {
-  UNDEFINED,              ///< Undefined error is occured.
+  UNDEFINED,              ///< Undefined error is occurred.
   SYSTEM_ERROR,           ///< An error occurred in the API, which is used inside colonio.
   OFFLINE,                ///< The node cannot perform processing because of offline.
   INCORRECT_DATA_FORMAT,  ///< Incorrect data format detected.

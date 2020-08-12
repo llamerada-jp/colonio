@@ -59,7 +59,7 @@ class Routing1D : public RoutingAlgorithm {
     const int64_t connected_time;
     const int level;
     // Next node's nid.
-    std::set<NodeID> nexts;
+    std::set<NodeID> next_nids;
     int odd_score;
     int raw_score;
 

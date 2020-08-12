@@ -142,7 +142,7 @@ void WebrtcLinkNative::disconnect() {
 
 /**
  * Get new SDP of peer.
- * @todo Relase SDP string?
+ * @todo Release SDP string?
  */
 void WebrtcLinkNative::get_local_sdp(std::function<void(const std::string&)> func) {
   assert(local_sdp.empty());
@@ -276,7 +276,7 @@ void WebrtcLinkNative::on_change_status() {
   if (status != prev_status) {
     logd("change status").map("nid", nid).map_int("before", prev_status).map_int("after", status);
     prev_status = status;
-    delegate.webrtc_link_on_change_stateus(*this, status);
+    delegate.webrtc_link_on_change_status(*this, status);
   }
 }
 

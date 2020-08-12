@@ -69,7 +69,7 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
   };
 
   enum OFFERS_STATUS_FAILURE {
-    OFFER_STATUS_FAILURE_CONFRICT = 0,
+    OFFER_STATUS_FAILURE_CONFLICT = 0,
   };
 
   class CommandOffer : public Command {
@@ -122,7 +122,7 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
 
   void module_process_command(std::unique_ptr<const Packet> packet) override;
 
-  void webrtc_link_on_change_stateus(WebrtcLink& link, LinkStatus::Type status) override;
+  void webrtc_link_on_change_status(WebrtcLink& link, LinkStatus::Type status) override;
   void webrtc_link_on_error(WebrtcLink& link) override;
   void webrtc_link_on_update_ice(WebrtcLink& link, const picojson::object& ice) override;
   void webrtc_link_on_recv_data(WebrtcLink& link, const std::string& data) override;

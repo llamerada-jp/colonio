@@ -218,31 +218,31 @@ void Routing2D::update_node_infos() {
     }
   }
 
-  bool is_changed_nearby         = false;
-  bool is_changed_nearby_positon = false;
+  bool is_changed_nearby          = false;
+  bool is_changed_nearby_position = false;
 
   if (old_nearby_nodes.size() == nearby_nodes.size()) {
     for (auto& old_node : old_nearby_nodes) {
       auto it = nearby_nodes.find(old_node.first);
       if (it == nearby_nodes.end()) {
-        is_changed_nearby         = true;
-        is_changed_nearby_positon = true;
+        is_changed_nearby          = true;
+        is_changed_nearby_position = true;
         break;
       }
 
       if (old_node.second != it->second) {
-        is_changed_nearby_positon = true;
+        is_changed_nearby_position = true;
       }
     }
   } else {
-    is_changed_nearby         = true;
-    is_changed_nearby_positon = true;
+    is_changed_nearby          = true;
+    is_changed_nearby_position = true;
   }
 
   if (is_changed_nearby) {
     delegate.algorithm_2d_on_change_nearby(*this, nearby_nids);
   }
-  if (is_changed_nearby_positon) {
+  if (is_changed_nearby_position) {
     delegate.algorithm_2d_on_change_nearby_position(*this, nearby_nodes);
   }
 

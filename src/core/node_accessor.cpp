@@ -340,7 +340,7 @@ void NodeAccessor::module_process_command(std::unique_ptr<const Packet> packet) 
   }
 }
 
-void NodeAccessor::webrtc_link_on_change_stateus(WebrtcLink& link, LinkStatus::Type link_status) {
+void NodeAccessor::webrtc_link_on_change_status(WebrtcLink& link, LinkStatus::Type link_status) {
   logd("change status").map_int("status", link_status);
 
   update_link_status();
@@ -625,7 +625,7 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
         });
 
       } else {
-        // Already having a connecton and it will be disconnect.
+        // Already having a connection and it will be disconnect.
         link->disconnect();
         closing_links.insert(std::move(it->second));
         links.erase(it);
@@ -666,7 +666,7 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
 
     } else {
       NodeAccessorProtocol::OfferFailure param;
-      param.set_status(OFFER_STATUS_FAILURE_CONFRICT);
+      param.set_status(OFFER_STATUS_FAILURE_CONFLICT);
       prime_nid.to_pb(param.mutable_prime_nid());
 
       send_failure(*packet, serialize_pb(param));
@@ -674,7 +674,7 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
 
   } else {
     NodeAccessorProtocol::OfferFailure param;
-    param.set_status(OFFER_STATUS_FAILURE_CONFRICT);
+    param.set_status(OFFER_STATUS_FAILURE_CONFLICT);
     prime_nid.to_pb(param.mutable_prime_nid());
 
     send_failure(*packet, serialize_pb(param));

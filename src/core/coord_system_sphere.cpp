@@ -60,8 +60,8 @@ void CoordSystemSphere::set_local_position(const Coordinate& position) {
 
 Coordinate CoordSystemSphere::shift_for_routing_2d(const Coordinate& base, const Coordinate& position) const {
   Coordinate ans(position.x - base.x, position.y - base.y);
-  ans.x = Utils::pmod(ans.x + M_PI, M_PI * 2.0) - M_PI;
-  ans.y = Utils::pmod(ans.y + M_PI * 0.5, M_PI) - M_PI * 0.5;
+  ans.x = Utils::float_mod(ans.x + M_PI, M_PI * 2.0) - M_PI;
+  ans.y = Utils::float_mod(ans.y + M_PI * 0.5, M_PI) - M_PI * 0.5;
 
   assert(MIN_X <= ans.x && ans.x < MAX_X && MIN_Y <= ans.y && ans.y < MAX_Y);
 

@@ -121,22 +121,22 @@ Value ValueImpl::from_pb(const core::Value& pb) {
   }
 }
 
-NodeID ValueImpl::to_hash(const Value& value, const std::string& solt) {
+NodeID ValueImpl::to_hash(const Value& value, const std::string& salt) {
   switch (value.impl->type) {
     case Value::NULL_T:
-      return NodeID::make_hash_from_str(solt + "n");
+      return NodeID::make_hash_from_str(salt + "n");
 
     case Value::BOOL_T:
-      return NodeID::make_hash_from_str(solt + (value.impl->storage.bool_v ? "t" : "f"));
+      return NodeID::make_hash_from_str(salt + (value.impl->storage.bool_v ? "t" : "f"));
 
     case Value::INT_T:
-      return NodeID::make_hash_from_str(solt + Convert::int2str(value.impl->storage.int64_v));
+      return NodeID::make_hash_from_str(salt + Convert::int2str(value.impl->storage.int64_v));
 
     case Value::DOUBLE_T:
-      return NodeID::make_hash_from_str(solt + std::to_string(value.impl->storage.double_v));
+      return NodeID::make_hash_from_str(salt + std::to_string(value.impl->storage.double_v));
 
     case Value::STRING_T:
-      return NodeID::make_hash_from_str(solt + *(value.impl->storage.string_v));
+      return NodeID::make_hash_from_str(salt + *(value.impl->storage.string_v));
 
     default:
       assert(false);

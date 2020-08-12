@@ -98,12 +98,12 @@ bool Routing1D::on_recv_routing_info(const Packet& packet, const RoutingProtocol
 
   ConnectedNode& cn = connected_nodes.at(packet.src_nid);
 
-  std::set<NodeID> nexts;
+  std::set<NodeID> next_nids;
   int odd_score = 0;
 
   for (auto& it : routing_info.nodes()) {
     NodeID nid = NodeID::from_str(it.first);
-    nexts.insert(nid);
+    next_nids.insert(nid);
     if (nid == context.local_nid) {
       odd_score = it.second.r1d_score();
     }
@@ -111,8 +111,8 @@ bool Routing1D::on_recv_routing_info(const Packet& packet, const RoutingProtocol
 
   cn.odd_score = odd_score;
 
-  if (cn.nexts != nexts) {
-    cn.nexts = nexts;
+  if (cn.next_nids != next_nids) {
+    cn.next_nids = next_nids;
     return true;
 
   } else {
@@ -151,7 +151,7 @@ bool Routing1D::update_routing_info(
 
 /**
  * Get node-id for relaying packet to send a packet to target node.
- * @retrn THIS for local node, NORMAL node-id for another node, NONE if target node has not exist.
+ * @return THIS for local node, NORMAL node-id for another node, NONE if target node has not exist.
  */
 const NodeID& Routing1D::get_relay_nid(const Packet& packet) {
   bool is_explicit = packet.mode & PacketMode::EXPLICIT;
@@ -220,7 +220,7 @@ bool Routing1D::is_covered_range(const NodeID& nid) {
 bool Routing1D::is_orphan(unsigned int nodes_count) {
   std::set<NodeID> nids;
   for (auto& it : connected_nodes) {
-    for (auto& nid : it.second.nexts) {
+    for (auto& nid : it.second.next_nids) {
       nids.insert(nid);
     }
   }
@@ -356,14 +356,14 @@ void Routing1D::update_required_nodes() {
     const NodeID& root = it.first;
     ConnectedNode& cn  = it.second;
 
-    if (cn.nexts.size() < LINKS_MIN || cn.connected_time + LINK_TRIAL_TIME_MIN > current_msec) {
+    if (cn.next_nids.size() < LINKS_MIN || cn.connected_time + LINK_TRIAL_TIME_MIN > current_msec) {
       required_nodes.insert(root);
 
     } else {
       NodeID prev;
       NodeID next;
       std::set<NodeID> nids;
-      for (auto& nid : cn.nexts) {
+      for (auto& nid : cn.next_nids) {
         nids.insert(nid);
       }
       nids.insert(context.local_nid);
@@ -396,10 +396,10 @@ void Routing1D::update_required_nodes() {
   }
 
   for (int level = 0; level < LEVELS; level++) {
-    std::list<NodeID>& cnids   = connected_nids[level];
-    std::vector<NodeID>& rnids = route_nids[level];
+    std::list<NodeID>& c_nids   = connected_nids[level];
+    std::vector<NodeID>& r_nids = route_nids[level];
 
-    cnids.sort([this](NodeID& a, NodeID& b) {
+    c_nids.sort([this](NodeID& a, NodeID& b) {
       ConnectedNode& a_cn = connected_nodes.at(a);
       ConnectedNode& b_cn = connected_nodes.at(b);
       int a_score         = a_cn.odd_score + a_cn.raw_score;
@@ -414,9 +414,9 @@ void Routing1D::update_required_nodes() {
     });
 
     bool need_connect = true;
-    if (cnids.size() >= 2) {
-      auto it = cnids.begin();
-      for (it++; it != cnids.end(); it++) {
+    if (c_nids.size() >= 2) {
+      auto it = c_nids.begin();
+      for (it++; it != c_nids.end(); it++) {
         const NodeID& nid = *it;
         ConnectedNode& cn = connected_nodes.at(nid);
 
@@ -426,9 +426,9 @@ void Routing1D::update_required_nodes() {
       }
     }
 
-    if (need_connect && rnids.size() > 0) {
-      int idx           = Utils::get_rnd_32() % rnids.size();
-      const NodeID& nid = rnids[idx];
+    if (need_connect && r_nids.size() > 0) {
+      int idx           = Utils::get_rnd_32() % r_nids.size();
+      const NodeID& nid = r_nids[idx];
       required_nodes.insert(nid);
     }
   }
@@ -459,7 +459,7 @@ void Routing1D::update_route_infos() {
       known_nids.at(root_nid) = root_nid;
     }
 
-    for (const auto& nid : it.second.nexts) {
+    for (const auto& nid : it.second.next_nids) {
       auto find = known_nids.find(nid);
       if (find == known_nids.end()) {
         known_nids.insert(std::make_pair(nid, root_nid));
@@ -535,7 +535,7 @@ void Routing1D::update_route_infos() {
     picojson::array a;
     a.push_back(next_nid.to_json());
     a.push_back(prev_nid.to_json());
-    logd("routing 1d nexts").map("nids", picojson::value(a));
+    logd("routing 1d next").map("nids", picojson::value(a));
   }
 #endif
 }
@@ -549,7 +549,7 @@ void Routing1D::show_debug_info() {
   std::cerr << "connected_nodes" << std::endl;
   for (auto& it : connected_nodes) {
     std::cerr << "  " << it.first.to_str() << std::endl;
-    for (auto& next : it.second.nexts) {
+    for (auto& next : it.second.next_nids) {
       std::cerr << "    " << next.to_str() << std::endl;
     }
   }

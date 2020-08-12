@@ -75,7 +75,7 @@ Routing::Routing(
   }
 
   // set a watch.
-  dists_from_seed.insert(std::make_pair(NodeID::NONE, std::make_pair(NodeID::NONE, INT32_MAX)));
+  distance_from_seed.insert(std::make_pair(NodeID::NONE, std::make_pair(NodeID::NONE, INT32_MAX)));
 
   // add task
   context.scheduler.add_interval_task(this, std::bind(&Routing::update, this), CONFIG_UPDATE_PERIOD);
@@ -100,8 +100,8 @@ const NodeID& Routing::get_relay_nid_2d(const Coordinate& dst) {
 
 std::tuple<const NodeID&, const NodeID&, uint32_t> Routing::get_route_to_seed() {
   return std::make_tuple(
-      std::ref(next_to_seed), std::ref(dists_from_seed.at(next_to_seed).first),
-      dists_from_seed.at(next_to_seed).second);
+      std::ref(next_to_seed), std::ref(distance_from_seed.at(next_to_seed).first),
+      distance_from_seed.at(next_to_seed).second);
 }
 
 bool Routing::is_direct_connect(const NodeID& nid) {
@@ -189,7 +189,7 @@ void Routing::send_routing_info() {
 
   NodeID seed_nid;
   uint32_t distance;
-  std::tie(seed_nid, distance) = dists_from_seed.at(next_to_seed);
+  std::tie(seed_nid, distance) = distance_from_seed.at(next_to_seed);
 
   param.set_seed_distance(distance + 1);
   seed_nid.to_pb(param.mutable_seed_nid());
@@ -252,7 +252,7 @@ void Routing::update_node_connection() {
 }
 
 void Routing::update_seed_connection() {
-  uint32_t distance = dists_from_seed.at(next_to_seed).second;
+  uint32_t distance = distance_from_seed.at(next_to_seed).second;
 
   if (node_status == LinkStatus::ONLINE && seed_status == LinkStatus::ONLINE &&
       distance < ROUTING_SEED_DISCONNECT_STEP) {
@@ -276,9 +276,9 @@ void Routing::update_seed_route_by_info(const NodeID& src_nid, const RoutingProt
   NodeID seed_nid   = NodeID::from_pb(info.seed_nid());
   uint32_t distance = info.seed_distance();
 
-  dists_from_seed[src_nid] = std::make_pair(seed_nid, distance);
+  distance_from_seed[src_nid] = std::make_pair(seed_nid, distance);
 
-  if (distance < dists_from_seed.at(next_to_seed).second) {
+  if (distance < distance_from_seed.at(next_to_seed).second) {
     next_to_seed = src_nid;
     logi("force routing");
     routing_countdown = 0;
@@ -286,21 +286,21 @@ void Routing::update_seed_route_by_info(const NodeID& src_nid, const RoutingProt
 }
 
 void Routing::update_seed_route_by_links() {
-  auto it = dists_from_seed.begin();
-  while (it != dists_from_seed.end()) {
+  auto it = distance_from_seed.begin();
+  while (it != distance_from_seed.end()) {
     const NodeID& nid = it->first;
     if (nid != NodeID::NONE && online_links.find(nid) == online_links.end()) {
-      it = dists_from_seed.erase(it);
+      it = distance_from_seed.erase(it);
     } else {
       it++;
     }
   }
 
-  if (dists_from_seed.find(next_to_seed) == dists_from_seed.end()) {
+  if (distance_from_seed.find(next_to_seed) == distance_from_seed.end()) {
     uint32_t min = UINT32_MAX;
     next_to_seed = NodeID::NONE;
 
-    for (auto& it : dists_from_seed) {
+    for (auto& it : distance_from_seed) {
       if (it.second.second < min) {
         min          = it.second.second;
         next_to_seed = it.first;
@@ -314,15 +314,15 @@ void Routing::update_seed_route_by_links() {
 void Routing::update_seed_route_by_status() {
   if (seed_status == LinkStatus::ONLINE) {
     if (next_to_seed != context.local_nid) {
-      next_to_seed                  = context.local_nid;
-      dists_from_seed[next_to_seed] = std::make_pair(context.local_nid, 1);
+      next_to_seed                     = context.local_nid;
+      distance_from_seed[next_to_seed] = std::make_pair(context.local_nid, 1);
       logi("force routing");
       routing_countdown = 0;
     }
 
   } else {
     if (next_to_seed == context.local_nid) {
-      dists_from_seed.erase(context.local_nid);
+      distance_from_seed.erase(context.local_nid);
       update_seed_route_by_links();
     }
   }

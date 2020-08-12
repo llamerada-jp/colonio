@@ -28,7 +28,7 @@ class Error;
 class Map {
  public:
   // options
-  static const uint32_t ERROR_WITHOUT_EXIST = 0x1;  // del, unlook
+  static const uint32_t ERROR_WITHOUT_EXIST = 0x1;  // del, unlock
   static const uint32_t ERROR_WITH_EXIST    = 0x2;  // set (unsupported yet)
   static const uint32_t TRY_LOCK            = 0x4;  // lock (unsupported yet)
 

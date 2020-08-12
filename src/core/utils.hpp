@@ -60,7 +60,7 @@ namespace Utils {
 std::string format_string(const std::string& format, int dummy, ...);
 void output_assert(
     const std::string& func, const std::string& file, unsigned long line, const std::string& exp,
-    const std::string& mesg);
+    const std::string& message);
 
 template<typename T>
 bool check_json_optional(const picojson::object& obj, const std::string& key, T* dst) {
@@ -129,7 +129,7 @@ const T* get_json_value(const picojson::object& parent, const std::string& key) 
 std::string file_basename(const std::string& path, bool cutoff_ext = false);
 std::string file_dirname(const std::string& path);
 bool is_safevalue(double v);
-double pmod(double a, double b);
+double float_mod(double a, double b);
 void replace_string(std::string* str, const std::string& from, const std::string& to);
 }  // namespace Utils
 }  // namespace colonio

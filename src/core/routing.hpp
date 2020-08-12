@@ -113,7 +113,7 @@ class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public Rou
   std::map<NodeID, std::tuple<std::unique_ptr<const Packet>, RoutingProtocol::RoutingInfo>> routing_infos;
 
   // next, seed, distance
-  std::map<NodeID, std::pair<NodeID, uint32_t>> dists_from_seed;
+  std::map<NodeID, std::pair<NodeID, uint32_t>> distance_from_seed;
   NodeID next_to_seed;
   const int64_t RANDOM_WAIT_SEED_CONNECTION;
   int64_t passed_seed_connection;

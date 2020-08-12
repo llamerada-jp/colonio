@@ -530,7 +530,7 @@ int NodeID::compare(const NodeID& a, const NodeID& b) {
  * @param a1 Node-id A's lower value.
  * @param a0 Node-id B's upper value.
  * @param a1 Node-id B's lower value.
- * @return Calucated value's upper and lower pair.
+ * @return Calculated value's upper and lower pair.
  */
 std::tuple<uint64_t, uint64_t> NodeID::add_mod(uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1) {
   uint64_t d0, d1;
@@ -549,10 +549,10 @@ std::tuple<uint64_t, uint64_t> NodeID::add_mod(uint64_t a0, uint64_t a1, uint64_
 }
 
 /**
- * Calucate 1 bit right shift for node-id.
+ * Calculate 1 bit right shift for node-id.
  * @param a0 Node-id's upper value.
  * @param a1 Node-id's lower value.
- * @return Calucated value's upper and lower pair.
+ * @return Calculated value's upper and lower pair.
  */
 std::tuple<uint64_t, uint64_t> NodeID::shift_right(uint64_t a0, uint64_t a1) {
   uint64_t c0, c1;

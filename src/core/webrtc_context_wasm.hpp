@@ -19,6 +19,8 @@
 #  error For WebAssembly.
 #endif
 
+#include <picojson.h>
+
 namespace colonio {
 class WebrtcContextWasm : public WebrtcContextBase {
  public:

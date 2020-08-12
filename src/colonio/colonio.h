@@ -28,7 +28,7 @@ extern "C" {
  * API design for C++(日本語訳:C++のためのAPIデザイン)
  */
 #if defined _WIN32 || defined __CYGWIN__
-#  ifdef COLONIO_WITH_EXPORTING /* -DCOLONIO_WITH_EXPORTING for generate dll */
+#  ifdef COLONIO_WITH_EXPORTING /* define COLONIO_WITH_EXPORTING for generate dll */
 #    ifdef __GNUC__
 #      define COLONIO_PUBLIC __attribute__((dllexport))
 #    else

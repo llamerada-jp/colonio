@@ -39,7 +39,7 @@ typedef WebrtcLinkWasm WebrtcLink;
 class WebrtcLinkDelegate {
  public:
   virtual ~WebrtcLinkDelegate();
-  virtual void webrtc_link_on_change_stateus(WebrtcLink& link, LinkStatus::Type status) = 0;
+  virtual void webrtc_link_on_change_status(WebrtcLink& link, LinkStatus::Type status)  = 0;
   virtual void webrtc_link_on_error(WebrtcLink& link)                                   = 0;
   virtual void webrtc_link_on_update_ice(WebrtcLink& link, const picojson::object& ice) = 0;
   virtual void webrtc_link_on_recv_data(WebrtcLink& link, const std::string& data)      = 0;
@@ -65,7 +65,7 @@ class WebrtcLinkBase {
     std::function<void(void*)> on_delete_func;
     void* on_delete_v;
   };
-  /// Opposide peer's node-id.
+  /// Opposite peer's node-id.
   NodeID nid;
   /// Event handler.
   WebrtcLinkDelegate& delegate;

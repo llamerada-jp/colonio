@@ -28,7 +28,7 @@ double d2r(double d) {
   return M_PI * d / 180.0;
 }
 
-TEST(Pubsub2DTest, puhsub_async) {
+TEST(Pubsub2DTest, pubsub_async) {
   const std::string URL            = "http://localhost:8080/test";
   const std::string TOKEN          = "";
   const std::string PUBSUB_2D_NAME = "ps2";

@@ -271,7 +271,7 @@ void WebrtcLinkWasm::on_change_status() {
 
   if (status != prev_status) {
     prev_status = status;
-    delegate.webrtc_link_on_change_stateus(*this, status);
+    delegate.webrtc_link_on_change_status(*this, status);
   }
 }
 
