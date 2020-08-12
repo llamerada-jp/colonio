@@ -35,7 +35,7 @@ class NodeAccessorDelegate {
  public:
   virtual ~NodeAccessorDelegate();
   virtual void node_accessor_on_change_online_links(NodeAccessor& na, const std::set<NodeID> nids) = 0;
-  virtual void node_accessor_on_change_status(NodeAccessor& na, LinkStatus::Type status)           = 0;
+  virtual void node_accessor_on_change_status(NodeAccessor& na)                                    = 0;
   virtual void node_accessor_on_recv_packet(
       NodeAccessor& na, const NodeID& nid, std::unique_ptr<const Packet> packet) = 0;
 };

@@ -80,13 +80,13 @@ void SeedAccessor::connect(unsigned int interval) {
           last_connect_time    = current_msec;
           if (link) {
             link->connect(url);
-            delegate.seed_accessor_on_change_status(*this, get_status());
+            delegate.seed_accessor_on_change_status(*this);
           }
         },
         last_connect_time + interval - current_msec);
   }
 
-  delegate.seed_accessor_on_change_status(*this, get_status());
+  delegate.seed_accessor_on_change_status(*this);
 }
 
 /**
@@ -97,7 +97,7 @@ void SeedAccessor::disconnect() {
   if (get_status() != LinkStatus::OFFLINE) {
     link.reset();
 
-    delegate.seed_accessor_on_change_status(*this, get_status());
+    delegate.seed_accessor_on_change_status(*this);
   }
 }
 
@@ -247,7 +247,7 @@ void SeedAccessor::recv_auth_success(const Packet& packet) {
 
   auth_status = AuthStatus::SUCCESS;
   delegate.seed_accessor_on_recv_config(*this, v.get<picojson::object>());
-  delegate.seed_accessor_on_change_status(*this, get_status());
+  delegate.seed_accessor_on_change_status(*this);
 }
 
 void SeedAccessor::recv_auth_failure(const Packet& packet) {
@@ -267,7 +267,7 @@ void SeedAccessor::recv_hint(const Packet& packet) {
   hint = content.hint();
 
   if (hint != hint_old) {
-    delegate.seed_accessor_on_change_status(*this, get_status());
+    delegate.seed_accessor_on_change_status(*this);
   }
 }
 
@@ -287,17 +287,17 @@ void SeedAccessor::send_auth(const std::string& token) {
   std::shared_ptr<std::string> content(new std::string());
   param.SerializeToString(content.get());
 
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
-      Packet{NodeID::SEED, context.local_nid, 0, 0, content, PacketMode::NONE, APIChannel::COLONIO,
-             ModuleChannel::Colonio::SEED_ACCESSOR, CommandID::Seed::AUTH});
+  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet{
+      NodeID::SEED, context.local_nid, 0, 0, content, PacketMode::NONE, APIChannel::COLONIO,
+      ModuleChannel::Colonio::SEED_ACCESSOR, CommandID::Seed::AUTH});
 
   relay_packet(std::move(packet));
 }
 
 void SeedAccessor::send_ping() {
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
-      Packet{NodeID::SEED, context.local_nid, 0, 0, nullptr, PacketMode::NONE, APIChannel::COLONIO,
-             ModuleChannel::Colonio::SEED_ACCESSOR, CommandID::Seed::PING});
+  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet{
+      NodeID::SEED, context.local_nid, 0, 0, nullptr, PacketMode::NONE, APIChannel::COLONIO,
+      ModuleChannel::Colonio::SEED_ACCESSOR, CommandID::Seed::PING});
 
   relay_packet(std::move(packet));
 }

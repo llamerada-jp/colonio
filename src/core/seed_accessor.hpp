@@ -34,7 +34,7 @@ class SeedAccessor;
 class SeedAccessorDelegate {
  public:
   virtual ~SeedAccessorDelegate();
-  virtual void seed_accessor_on_change_status(SeedAccessor& sa, LinkStatus::Type status)            = 0;
+  virtual void seed_accessor_on_change_status(SeedAccessor& sa)                                     = 0;
   virtual void seed_accessor_on_recv_config(SeedAccessor& sa, const picojson::object& config)       = 0;
   virtual void seed_accessor_on_recv_packet(SeedAccessor& sa, std::unique_ptr<const Packet> packet) = 0;
   virtual void seed_accessor_on_recv_require_random(SeedAccessor& sa)                               = 0;

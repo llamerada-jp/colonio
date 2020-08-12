@@ -61,8 +61,6 @@ class ColonioImpl : public APIBase,
   std::unique_ptr<Routing> routing;
 
   LinkStatus::Type link_status;
-  LinkStatus::Type node_status;
-  LinkStatus::Type seed_status;
 
   void api_on_recv_call(const api::Call& call) override;
 
@@ -70,7 +68,7 @@ class ColonioImpl : public APIBase,
   void module_do_relay_packet(ModuleBase& module, const NodeID& dst_nid, std::unique_ptr<const Packet> packet) override;
 
   void node_accessor_on_change_online_links(NodeAccessor& na, const std::set<NodeID> nids) override;
-  void node_accessor_on_change_status(NodeAccessor& na, LinkStatus::Type status) override;
+  void node_accessor_on_change_status(NodeAccessor& na) override;
   void node_accessor_on_recv_packet(NodeAccessor& na, const NodeID& nid, std::unique_ptr<const Packet> packet) override;
 
   void routing_do_connect_node(Routing& routing, const NodeID& nid) override;
@@ -82,7 +80,7 @@ class ColonioImpl : public APIBase,
   void routing_on_module_2d_change_nearby_position(
       Routing& routing, const std::map<NodeID, Coordinate>& positions) override;
 
-  void seed_accessor_on_change_status(SeedAccessor& sa, LinkStatus::Type status) override;
+  void seed_accessor_on_change_status(SeedAccessor& sa) override;
   void seed_accessor_on_recv_config(SeedAccessor& sa, const picojson::object& config) override;
   void seed_accessor_on_recv_packet(SeedAccessor& sa, std::unique_ptr<const Packet> packet) override;
   void seed_accessor_on_recv_require_random(SeedAccessor& sa) override;
@@ -96,7 +94,7 @@ class ColonioImpl : public APIBase,
   void api_set_position(uint32_t id, const api::colonio::SetPosition& param);
   void check_api_connect();
   void initialize_algorithms();
-  void on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status);
+  void on_change_accessor_status();
   void relay_packet(std::unique_ptr<const Packet> packet, bool is_from_seed);
 };
 }  // namespace colonio

@@ -38,9 +38,7 @@ ColonioImpl::ColonioImpl(Context& context, APIDelegate& api_delegate_, APIBundle
     enable_retry(true),
     node_accessor(nullptr),
     routing(nullptr),
-    link_status(LinkStatus::OFFLINE),
-    node_status(LinkStatus::OFFLINE),
-    seed_status(LinkStatus::OFFLINE) {
+    link_status(LinkStatus::OFFLINE) {
 }
 
 ColonioImpl::~ColonioImpl() {
@@ -97,9 +95,9 @@ void ColonioImpl::node_accessor_on_change_online_links(NodeAccessor& na, const s
 #endif
 }
 
-void ColonioImpl::node_accessor_on_change_status(NodeAccessor& na, LinkStatus::Type status) {
+void ColonioImpl::node_accessor_on_change_status(NodeAccessor& na) {
   context.scheduler.add_timeout_task(
-      this, [this, status]() { on_change_accessor_status(seed_accessor->get_status(), status); }, 0);
+      this, [this]() { on_change_accessor_status(); }, 0);
 }
 
 void ColonioImpl::node_accessor_on_recv_packet(
@@ -152,9 +150,9 @@ void ColonioImpl::routing_on_module_2d_change_nearby_position(
       this, [this, positions]() { module_bundler.module_2d_on_change_nearby_position(positions); }, 0);
 }
 
-void ColonioImpl::seed_accessor_on_change_status(SeedAccessor& sa, LinkStatus::Type status) {
+void ColonioImpl::seed_accessor_on_change_status(SeedAccessor& sa) {
   context.scheduler.add_timeout_task(
-      this, [this, status]() { on_change_accessor_status(status, node_accessor->get_status()); }, 0);
+      this, [this]() { on_change_accessor_status(); }, 0);
 }
 
 void ColonioImpl::seed_accessor_on_recv_config(SeedAccessor& sa, const picojson::object& newconfig) {
@@ -226,14 +224,16 @@ void ColonioImpl::api_connect(uint32_t id, const api::colonio::Connect& param) {
   module_bundler.registrate(node_accessor.get(), false, false);
 
   context.scheduler.add_timeout_task(
-      this, [this]() { on_change_accessor_status(seed_accessor->get_status(), node_accessor->get_status()); }, 0);
+      this, [this]() { on_change_accessor_status(); }, 0);
 }
 
 void ColonioImpl::api_disconnect(uint32_t id) {
   enable_retry = false;
   seed_accessor->disconnect();
   node_accessor->disconnect_all([this, id]() {
-    on_change_accessor_status(LinkStatus::OFFLINE, LinkStatus::OFFLINE);
+    link_status = LinkStatus::OFFLINE;
+    module_bundler.on_change_accessor_status(LinkStatus::OFFLINE, LinkStatus::OFFLINE);
+
     module_bundler.clear();
 
     node_accessor.reset();
@@ -314,18 +314,15 @@ void ColonioImpl::initialize_algorithms() {
   check_api_connect();
 }
 
-void ColonioImpl::on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status) {
+void ColonioImpl::on_change_accessor_status() {
+  LinkStatus::Type seed_status = seed_accessor->get_status();
+  LinkStatus::Type node_status = node_accessor->get_status();
+
   logd("")
       .map_int("seed", seed_status)
       .map_int("node", node_status)
       .map_int("auth", seed_accessor->get_auth_status())
       .map_bool("onlyone", seed_accessor->is_only_one());
-
-  assert(seed_status != LinkStatus::CLOSING);
-  assert(node_status != LinkStatus::CLOSING);
-
-  this->seed_status = seed_status;
-  this->node_status = node_status;
 
   LinkStatus::Type status = LinkStatus::OFFLINE;
 
@@ -382,6 +379,8 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
   assert(packet->module_channel != ModuleChannel::NONE);
 
   if ((packet->mode & PacketMode::RELAY_SEED) != 0x0) {
+    LinkStatus::Type seed_status = seed_accessor->get_status();
+
     if ((packet->mode & PacketMode::REPLY) != 0x0 && !is_from_seed) {
       if (seed_status == LinkStatus::ONLINE) {
         seed_accessor->relay_packet(std::move(packet));

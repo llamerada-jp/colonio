@@ -166,6 +166,8 @@ void NodeAccessor::disconnect_link(const NodeID& nid) {
 
   WebrtcLink* link = it->second.get();
   link->disconnect();
+  closing_links.insert(std::move(it->second));
+  links.erase(it);
 }
 
 void NodeAccessor::initialize(const picojson::object& config) {
@@ -232,7 +234,7 @@ void NodeAccessor::CommandOffer::on_success(std::unique_ptr<const Packet> packet
       assert(accessor.first_link);
       assert(accessor.links.size() == 0);
       accessor.disconnect_first_link();
-      accessor.delegate.node_accessor_on_change_status(accessor, accessor.get_status());
+      accessor.delegate.node_accessor_on_change_status(accessor);
     } break;
 
     case OFFER_STATUS_SUCCESS_ACCEPT: {
@@ -320,7 +322,7 @@ void NodeAccessor::CommandOffer::on_error(const std::string& message) {
   link->disconnect();
   accessor.closing_links.insert(std::move(link));
   accessor.update_link_status();
-  accessor.delegate.node_accessor_on_change_status(accessor, accessor.get_status());
+  accessor.delegate.node_accessor_on_change_status(accessor);
 }
 
 void NodeAccessor::module_process_command(std::unique_ptr<const Packet> packet) {
@@ -344,7 +346,7 @@ void NodeAccessor::webrtc_link_on_change_status(WebrtcLink& link, LinkStatus::Ty
   logd("change status").map_int("status", link_status);
 
   update_link_status();
-  delegate.node_accessor_on_change_status(*this, get_status());
+  delegate.node_accessor_on_change_status(*this);
 }
 
 void NodeAccessor::webrtc_link_on_error(WebrtcLink& link) {
@@ -473,14 +475,13 @@ void NodeAccessor::check_link_timeout() {
       disconnect_first_link();
       is_changed_first = true;
 
-      LinkStatus::Type status = get_status();
-      if (status != LinkStatus::ONLINE) {
+      if (get_status() != LinkStatus::ONLINE) {
         if (first_link_try_count < FIRST_LINK_RETRY_MAX) {
           first_link_try_count++;
           create_first_link();
 
         } else {
-          delegate.node_accessor_on_change_status(*this, status);
+          delegate.node_accessor_on_change_status(*this);
         }
       }
     }
@@ -519,7 +520,7 @@ void NodeAccessor::check_link_timeout() {
     if (!first_link) {
       create_first_link();
     }
-    delegate.node_accessor_on_change_status(*this, get_status());
+    delegate.node_accessor_on_change_status(*this);
   }
 }
 
