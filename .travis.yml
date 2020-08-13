@@ -9,6 +9,7 @@ matrix:
         apt:
           update: true
           packages:
+            - valgrind
             - libcurl4-nss-dev
             - libgoogle-glog-dev
             - libtool

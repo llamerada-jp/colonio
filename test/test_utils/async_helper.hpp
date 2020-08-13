@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include <chrono>
 #include <condition_variable>
 #include <set>
 #include <sstream>
@@ -40,6 +41,11 @@ class AsyncHelper {
     marks << m;
   }
 
+  void clear_signal() {
+    std::lock_guard<std::mutex> lock(mtx);
+    signals.clear();
+  }
+
   std::string get_route() {
     std::lock_guard<std::mutex> lock(mtx);
     return marks.str();
@@ -54,5 +60,13 @@ class AsyncHelper {
   void wait_signal(const std::string& key) {
     std::unique_lock<std::mutex> lock(mtx);
     cond_signals.wait(lock, [this, &key]() { return signals.find(key) != signals.end(); });
+  }
+
+  void wait_signal(const std::string& key, std::function<void()> func) {
+    std::unique_lock<std::mutex> lock(mtx);
+    while (!cond_signals.wait_for(
+        lock, std::chrono::seconds(3), [this, &key]() { return signals.find(key) != signals.end(); })) {
+      func();
+    }
   }
 };
