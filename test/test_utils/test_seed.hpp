@@ -31,8 +31,6 @@
 class TestSeed {
  public:
   TestSeed() :
-      flg_running(false),
-      flg_break(false),
       pid(0),
       path("/test"),
       ping_interval(20 * 1000),
@@ -63,24 +61,9 @@ class TestSeed {
         perror("execl");
       }
       exit(EXIT_FAILURE);
-
-    } else {
-      // Start monitoring thread on the parent(current) prcess.
-      flg_running = true;
-      // Reduce retry on sign-in by waiting to start the seed.
-      sleep(1);
-
-      monitoring_thread = std::make_unique<std::thread>([&]() {
-        int status;
-        assert(waitpid(pid, &status, 0) == pid);
-        assert(WEXITSTATUS(status) == 0);
-        {
-          std::lock_guard<std::mutex> guard(mtx);
-          flg_running = false;
-          EXPECT_TRUE(flg_break);
-        }
-      });
     }
+    // Reduce retry on sign-in by waiting to start the seed.
+    sleep(1);
   }
 
   void set_path(const std::string& p) {
@@ -124,25 +107,14 @@ class TestSeed {
   }
 
   void stop() {
-    {
-      std::lock_guard<std::mutex> guard(mtx);
-      if (flg_running) {
-        flg_break = true;
-        kill(pid, SIGTERM);
-      }
-    }
-
-    if (monitoring_thread) {
-      monitoring_thread->join();
-    }
+    kill(pid, SIGTERM);
+    int status;
+    assert(waitpid(pid, &status, 0) == pid);
+    assert(WEXITSTATUS(status) == 0);
   }
 
  private:
   pid_t pid;
-  bool flg_running;
-  bool flg_break;
-  std::unique_ptr<std::thread> monitoring_thread;
-  std::mutex mtx;
 
   std::string path;
   int ping_interval;
