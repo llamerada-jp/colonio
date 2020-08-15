@@ -3,7 +3,7 @@ language: cpp
 matrix:
   include:
     - os: linux
-      dist: bionic
+      dist: focal
       compiler: gcc
       addons:
         apt:
@@ -21,7 +21,7 @@ install:
 script:
   - cd $TRAVIS_BUILD_DIR
   - sh bin/build.sh -c
-  - make -C build/ubuntu_18.04_x86_64 test ARGS='--verbose --timeout 60'
+  - make -C build/ubuntu_20.04_x86_64 test ARGS='-VV --timeout 60'
 
 after_success:
-  - coveralls -b ./build/ubuntu_18.04_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/test -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'
+  - coveralls -b ./build/ubuntu_20.04_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/test -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'
