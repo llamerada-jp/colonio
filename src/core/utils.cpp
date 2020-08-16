@@ -24,9 +24,8 @@
 
 #ifdef EMSCRIPTEN
 #  include <emscripten.h>
-extern "C" {
-extern int utils_get_random_seed();
-}
+#else
+#  include <ctime>
 #endif
 
 #include <cassert>
@@ -48,10 +47,22 @@ extern int utils_get_random_seed();
 namespace colonio {
 // Random value generator.
 #ifndef EMSCRIPTEN
-static std::random_device seed_gen;
-static std::mt19937 rnd32(seed_gen());
-static std::mt19937_64 rnd64(seed_gen());
+int get_random_seed() {
+  std::random_device seed_gen;
+  int seed = seed_gen();
+  // avoid WSL2 issue https://github.com/microsoft/WSL/issues/5767
+  if (seed = 0xFFFFFFFF) {
+    seed = static_cast<int>(clock());
+  }
+  return seed;
+}
+
+static std::mt19937 rnd32(get_random_seed());
+static std::mt19937_64 rnd64(get_random_seed());
 #else
+extern "C" {
+extern int utils_get_random_seed();
+}
 static std::mt19937 rnd32(utils_get_random_seed());
 static std::mt19937_64 rnd64(utils_get_random_seed());
 #endif
