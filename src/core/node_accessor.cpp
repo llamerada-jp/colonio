@@ -300,11 +300,9 @@ void NodeAccessor::CommandOffer::on_failure(std::unique_ptr<const Packet> packet
 
 void NodeAccessor::CommandOffer::on_error(const std::string& message) {
   std::unique_ptr<WebrtcLink> link;
-  bool is_first_link = false;
 
   if (accessor.first_link) {
-    link          = std::move(accessor.first_link);
-    is_first_link = true;
+    link = std::move(accessor.first_link);
 
   } else {
     auto it = accessor.links.find(nid);
@@ -533,7 +531,10 @@ void NodeAccessor::cleanup_closing() {
       it = closing_links.erase(it);
 
     } else {
-      assert(status == LinkStatus::CLOSING || context.scheduler.is_having_task(&link));
+      // There is a link that is not closing rarely, so disconnect it.
+      if (status != LinkStatus::OFFLINE && status != LinkStatus::CLOSING) {
+        (**it).disconnect();
+      }
       it++;
     }
   }

@@ -169,13 +169,7 @@ LinkStatus::Type WebrtcLinkNative::get_status() {
     return LinkStatus::CONNECTING;
 
   } else {
-    LinkStatus::Type dco_status;
-    LinkStatus::Type pco_status;
-    {
-      std::lock_guard<std::mutex> guard(mutex_status);
-      dco_status = this->dco_status;
-      pco_status = this->pco_status;
-    }
+    std::lock_guard<std::mutex> guard(mutex_status);
 
     if (dco_status == LinkStatus::ONLINE && pco_status == LinkStatus::ONLINE) {
       return LinkStatus::ONLINE;
