@@ -358,7 +358,7 @@ void ColonioImpl::on_change_accessor_status() {
       api_failure(api_connect_id, ErrorCode::OFFLINE, "Connect failure.");
       api_connect_id = 0;
     }
-    assert(false);
+
     context.scheduler.add_timeout_task(
         this, [this]() { api_disconnect(0); }, 0);
     status = LinkStatus::OFFLINE;
