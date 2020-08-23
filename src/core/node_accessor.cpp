@@ -240,11 +240,15 @@ void NodeAccessor::CommandOffer::on_success(std::unique_ptr<const Packet> packet
     case OFFER_STATUS_SUCCESS_ACCEPT: {
       NodeID second_nid = NodeID::from_pb(content.second_nid());
       std::string sdp   = content.sdp();
-      WebrtcLink* link;
+      WebrtcLink* link  = nullptr;
 
       switch (type) {
         case OFFER_TYPE_FIRST: {
-          assert(accessor.first_link);
+          if (!accessor.first_link) {
+            assert(!accessor.random_link);
+            assert(accessor.links.empty());
+            return;
+          }
           link                     = accessor.first_link.get();
           accessor.first_link->nid = second_nid;
           assert(accessor.links.find(second_nid) == accessor.links.end());
@@ -252,15 +256,17 @@ void NodeAccessor::CommandOffer::on_success(std::unique_ptr<const Packet> packet
         } break;
 
         case OFFER_TYPE_RANDOM: {
-          assert(accessor.random_link);
+          if (!accessor.random_link) {
+            return;
+          }
           link                      = accessor.random_link.get();
           accessor.random_link->nid = second_nid;
-          if (accessor.links.find(second_nid) == accessor.links.end()) {
-            accessor.links.insert(std::make_pair(second_nid, std::move(accessor.random_link)));
-          } else {
-            // Duplicate.
+          // Check duplicate.
+          if (accessor.links.find(second_nid) != accessor.links.end()) {
             accessor.disconnect_random_link();
+            return;
           }
+          accessor.links.insert(std::make_pair(second_nid, std::move(accessor.random_link)));
         } break;
 
         case OFFER_TYPE_NORMAL: {
