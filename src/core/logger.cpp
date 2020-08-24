@@ -18,6 +18,7 @@
 #include <cassert>
 #include <chrono>
 #include <cstdarg>
+#include <ctime>
 #include <iomanip>
 #include <sstream>
 #include <vector>
@@ -48,9 +49,10 @@ Logger::L::~L() {
 
   std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
   std::time_t t                             = std::chrono::system_clock::to_time_t(now);
-  const std::tm* lt                         = std::localtime(&t);
+  std::tm lt;
+  localtime_r(&t, &lt);
   std::stringstream ss;
-  ss << std::put_time(lt, "%FT%T%z");
+  ss << std::put_time(&lt, "%FT%T%z");
   obj.insert(std::make_pair(LogJSONKey::TIME, picojson::value(ss.str())));
 
   logger.delegate.logger_on_output(logger, picojson::value(obj).serialize());
