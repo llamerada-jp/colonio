@@ -318,7 +318,7 @@ void ColonioImpl::on_change_accessor_status() {
   LinkStatus::Type seed_status = seed_accessor->get_status();
   LinkStatus::Type node_status = node_accessor->get_status();
 
-  logd("")
+  logd("link status")
       .map_int("seed", seed_status)
       .map_int("node", node_status)
       .map_int("auth", seed_accessor->get_auth_status())
