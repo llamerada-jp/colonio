@@ -386,7 +386,7 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
         seed_accessor->relay_packet(std::move(packet));
       } else {
         assert(routing);
-        node_accessor->relay_packet(std::get<0>(routing->get_route_to_seed()), std::move(packet));
+        node_accessor->relay_packet(routing->get_route_to_seed(), std::move(packet));
       }
       return;
 

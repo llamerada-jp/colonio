@@ -11,7 +11,7 @@ message RoutingInfoOne {
 
 message RoutingInfo {
   uint32 seed_distance = 1;
-  core.NodeID seed_nid = 2;
+  repeated core.NodeID seed_nids = 2;
   core.Coordinate r2d_position = 3;
   // Key type of map is string from node-id.
   map<string, RoutingInfoOne> nodes = 4;

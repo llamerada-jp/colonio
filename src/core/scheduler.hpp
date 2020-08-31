@@ -23,6 +23,7 @@
 #include <mutex>
 
 namespace colonio {
+class Logger;
 class Scheduler;
 
 class SchedulerDelegate {
@@ -33,7 +34,7 @@ class SchedulerDelegate {
 
 class Scheduler {
  public:
-  Scheduler(SchedulerDelegate& delegate_);
+  Scheduler(SchedulerDelegate& delegate_, Logger& logger_);
   virtual ~Scheduler();
 
   void add_interval_task(void* src, std::function<void()> func, unsigned int msec);
@@ -44,6 +45,7 @@ class Scheduler {
 
  private:
   SchedulerDelegate& delegate;
+  Logger& logger;
   struct Task {
     void* src;
     std::function<void()> func;

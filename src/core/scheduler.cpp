@@ -18,13 +18,14 @@
 #include <cassert>
 #include <iostream>
 
+#include "logger.hpp"
 #include "utils.hpp"
 
 namespace colonio {
 SchedulerDelegate::~SchedulerDelegate() {
 }
 
-Scheduler::Scheduler(SchedulerDelegate& delegate_) : delegate(delegate_) {
+Scheduler::Scheduler(SchedulerDelegate& delegate_, Logger& logger_) : delegate(delegate_), logger(logger_) {
 }
 
 Scheduler::~Scheduler() {

@@ -88,16 +88,22 @@ class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public Rou
   const NodeID& get_relay_nid_2d(const Coordinate& dst);
   bool is_covered_range_2d(const Coordinate& position);
 
-  // next, seed, steps
-  std::tuple<const NodeID&, const NodeID&, uint32_t> get_route_to_seed();
+  const NodeID& get_route_to_seed();
   bool is_direct_connect(const NodeID& nid);
   void on_change_local_position(const Coordinate& position);
   void on_change_online_links(const std::set<NodeID>& nids);
   void on_recv_packet(const NodeID& nid, const Packet& packet);
 
  private:
+  const unsigned int CONFIG_FORCE_UPDATE_COUNT;
+  const unsigned int CONFIG_SEED_CONNECT_INTERVAL;
+  const unsigned int CONFIG_SEED_CONNECT_RATE;
+  const unsigned int CONFIG_SEED_DISCONNECT_THREATHOLD;
+  const unsigned int CONFIG_SEED_INFO_KEEP_THREATHOLD;
+  const unsigned int CONFIG_SEED_INFO_NIDS_COUNT;
+  const double CONFIG_SEED_NEXT_POSITION;
   const unsigned int CONFIG_UPDATE_PERIOD;
-  const unsigned int CONFIG_FORCE_UPDATE_TIMES;
+
   RoutingDelegate& delegate;
 
   std::vector<std::unique_ptr<RoutingAlgorithm>> algorithms;
@@ -111,13 +117,13 @@ class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public Rou
   bool has_update_online_links;
 
   std::map<NodeID, std::tuple<std::unique_ptr<const Packet>, RoutingProtocol::RoutingInfo>> routing_infos;
-
-  // next, seed, distance
-  std::map<NodeID, std::pair<NodeID, uint32_t>> distance_from_seed;
-  NodeID next_to_seed;
-  const int64_t RANDOM_WAIT_SEED_CONNECTION;
-  int64_t passed_seed_connection;
   int64_t routing_countdown;
+
+  // next, distance
+  std::map<NodeID, uint32_t> distance_from_seed;
+  std::map<NodeID, int64_t> seed_timestamps;
+  NodeID next_to_seed;
+  int64_t seed_online_timestamp;
 
   void algorithm_1d_on_change_nearby(
       RoutingAlgorithm& algorithm, const NodeID& prev_nid, const NodeID& next_nid) override;

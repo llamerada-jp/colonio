@@ -56,16 +56,25 @@ Routing::Routing(
     Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, APIChannel::Type channel,
     const CoordSystem* coord_system, const picojson::object& config) :
     ModuleBase(context, module_delegate, channel, ModuleChannel::Colonio::SYSTEM_ROUTING),
+
+    CONFIG_FORCE_UPDATE_COUNT(Utils::get_json(config, "forceUpdateTimes", ROUTING_FORCE_UPDATE_COUNT)),
+    CONFIG_SEED_CONNECT_INTERVAL(Utils::get_json(config, "seedConnectInterval", ROUTING_SEED_CONNECT_INTERVAL)),
+    CONFIG_SEED_CONNECT_RATE(Utils::get_json(config, "seedConnectRate", ROUTING_SEED_CONNECT_RATE)),
+    CONFIG_SEED_DISCONNECT_THREATHOLD(
+        Utils::get_json(config, "seedDisconnectThreathold", ROUTING_SEED_DISCONNECT_THREATHOLD)),
+    CONFIG_SEED_INFO_KEEP_THREATHOLD(
+        Utils::get_json(config, "seedInfoKeepThreathold", ROUTING_SEED_INFO_KEEP_THREATHOLD)),
+    CONFIG_SEED_INFO_NIDS_COUNT(Utils::get_json(config, "seedInfoNidsCount", ROUTING_SEED_INFO_NIDS_COUNT)),
+    CONFIG_SEED_NEXT_POSITION(Utils::get_json(config, "seedNextPosition", ROUTING_SEED_NEXT_POSITION)),
     CONFIG_UPDATE_PERIOD(Utils::get_json(config, "updatePeriod", ROUTING_UPDATE_PERIOD)),
-    CONFIG_FORCE_UPDATE_TIMES(Utils::get_json(config, "forceUpdateTimes", ROUTING_FORCE_UPDATE_TIMES)),
+
     delegate(routing_delegate),
     routing_1d(nullptr),
     routing_2d(nullptr),
     node_status(LinkStatus::OFFLINE),
     seed_status(LinkStatus::OFFLINE),
-    RANDOM_WAIT_SEED_CONNECTION(Utils::get_rnd_32() % ROUTING_SEED_RANDOM_WAIT),
-    passed_seed_connection(0),
-    routing_countdown(CONFIG_FORCE_UPDATE_TIMES) {
+    routing_countdown(CONFIG_FORCE_UPDATE_COUNT),
+    seed_online_timestamp(0) {
   routing_1d = new Routing1D(context, *this);
   algorithms.push_back(std::unique_ptr<RoutingAlgorithm>(routing_1d));
 
@@ -73,9 +82,6 @@ Routing::Routing(
     routing_2d = new Routing2D(context, *this, *coord_system);
     algorithms.push_back(std::unique_ptr<RoutingAlgorithm>(routing_2d));
   }
-
-  // set a watch.
-  distance_from_seed.insert(std::make_pair(NodeID::NONE, std::make_pair(NodeID::NONE, INT32_MAX)));
 
   // add task
   context.scheduler.add_interval_task(this, std::bind(&Routing::update, this), CONFIG_UPDATE_PERIOD);
@@ -98,10 +104,8 @@ const NodeID& Routing::get_relay_nid_2d(const Coordinate& dst) {
   return routing_2d->get_relay_nid(dst);
 }
 
-std::tuple<const NodeID&, const NodeID&, uint32_t> Routing::get_route_to_seed() {
-  return std::make_tuple(
-      std::ref(next_to_seed), std::ref(distance_from_seed.at(next_to_seed).first),
-      distance_from_seed.at(next_to_seed).second);
+const NodeID& Routing::get_route_to_seed() {
+  return next_to_seed;
 }
 
 bool Routing::is_direct_connect(const NodeID& nid) {
@@ -187,12 +191,25 @@ void Routing::recv_routing_info(std::unique_ptr<const Packet> packet) {
 void Routing::send_routing_info() {
   RoutingProtocol::RoutingInfo param;
 
-  NodeID seed_nid;
-  uint32_t distance;
-  std::tie(seed_nid, distance) = distance_from_seed.at(next_to_seed);
-
+  uint32_t distance = distance_from_seed.at(next_to_seed);
   param.set_seed_distance(distance + 1);
-  seed_nid.to_pb(param.mutable_seed_nid());
+
+  int64_t current = Utils::get_current_msec();
+  std::multimap<int64_t, NodeID> seed_nids;
+  for (auto& it : seed_timestamps) {
+    int64_t link_duration = current - it.second;
+    if (link_duration < CONFIG_SEED_DISCONNECT_THREATHOLD) {
+      seed_nids.insert(std::make_pair(link_duration, it.first));
+    }
+  }
+  int idx = 0;
+  for (auto& it : seed_nids) {
+    if (idx >= CONFIG_SEED_INFO_NIDS_COUNT) {
+      break;
+    }
+    it.second.to_pb(param.add_seed_nids());
+    idx++;
+  }
 
   for (auto& algorithm : algorithms) {
     algorithm->send_routing_info(&param);
@@ -220,7 +237,7 @@ void Routing::update() {
 
     if (routing_countdown <= 0) {
       send_routing_info();
-      routing_countdown = CONFIG_FORCE_UPDATE_TIMES;
+      routing_countdown = CONFIG_FORCE_UPDATE_COUNT;
     } else {
       routing_countdown -= 1;
     }
@@ -252,36 +269,87 @@ void Routing::update_node_connection() {
 }
 
 void Routing::update_seed_connection() {
-  uint32_t distance = distance_from_seed.at(next_to_seed).second;
+  int64_t current = Utils::get_current_msec();
 
-  if (node_status == LinkStatus::ONLINE && seed_status == LinkStatus::ONLINE &&
-      distance < ROUTING_SEED_DISCONNECT_STEP) {
-    passed_seed_connection += 1000;
-    if (passed_seed_connection > RANDOM_WAIT_SEED_CONNECTION) {
+  if (seed_status == LinkStatus::ONLINE) {
+    if (seed_online_timestamp == 0) {
+      seed_online_timestamp = Utils::get_current_msec();
+      logi("force routing");
+      routing_countdown = 0;
+    }
+
+    distance_from_seed[context.local_nid] = 1;
+    seed_timestamps[context.local_nid]    = current;
+
+    int64_t online_duration = current - seed_online_timestamp;
+    if (online_duration > CONFIG_SEED_DISCONNECT_THREATHOLD) {
       delegate.routing_do_disconnect_seed(*this);
     }
 
-  } else if (seed_status == LinkStatus::OFFLINE && distance > ROUTING_SEED_CONNECT_STEP) {
-    passed_seed_connection -= 1000;
-    if (passed_seed_connection < -RANDOM_WAIT_SEED_CONNECTION) {
-      delegate.routing_do_connect_seed(*this);
+  } else {  // OFFLINE
+    if (seed_online_timestamp != 0) {
+      seed_online_timestamp = 0;
+      logi("force routing");
+      routing_countdown = 0;
     }
-
-  } else {
-    passed_seed_connection = 0;
+    if (distance_from_seed.find(context.local_nid) != distance_from_seed.end()) {
+      distance_from_seed.erase(context.local_nid);
+    }
+    if (seed_timestamps.find(context.local_nid) != seed_timestamps.end()) {
+      seed_timestamps.erase(context.local_nid);
+    }
+    int count            = 0;
+    int64_t min_duration = INT64_MAX;
+    NodeID min_nid;
+    for (auto& it : seed_timestamps) {
+      int64_t duration = current - it.second;
+      if (duration < CONFIG_SEED_DISCONNECT_THREATHOLD) {
+        count++;
+      }
+      if (duration < min_duration) {
+        min_duration = duration;
+        min_nid      = it.first;
+      }
+    }
+    if (count == 0) {
+      if (Utils::get_rnd_32() * CONFIG_SEED_CONNECT_RATE == 0) {
+        delegate.routing_do_connect_seed(*this);
+      }
+      return;
+    }
+    NodeID target_nid = min_nid + NodeID::NID_MAX * CONFIG_SEED_NEXT_POSITION;
+    if (min_duration > CONFIG_SEED_CONNECT_INTERVAL && is_covered_range_1d(target_nid)) {
+      delegate.routing_do_connect_seed(*this);
+      return;
+    }
   }
 }
 
 void Routing::update_seed_route_by_info(const NodeID& src_nid, const RoutingProtocol::RoutingInfo& info) {
-  NodeID seed_nid   = NodeID::from_pb(info.seed_nid());
-  uint32_t distance = info.seed_distance();
+  const int64_t CURRENT       = Utils::get_current_msec();
+  uint32_t distance           = info.seed_distance();
+  distance_from_seed[src_nid] = distance;
 
-  distance_from_seed[src_nid] = std::make_pair(seed_nid, distance);
-
-  if (distance < distance_from_seed.at(next_to_seed).second) {
+  if (distance < distance_from_seed.at(next_to_seed)) {
     next_to_seed = src_nid;
     logi("force routing");
     routing_countdown = 0;
+  }
+
+  for (auto& it : info.seed_nids()) {
+    NodeID nid = NodeID::from_pb(it);
+    if (seed_timestamps.find(nid) == seed_timestamps.end()) {
+      seed_timestamps.insert(std::make_pair(nid, CURRENT));
+    }
+  }
+
+  auto it = seed_timestamps.begin();
+  while (it != seed_timestamps.end()) {
+    if (CURRENT - it->second >= CONFIG_SEED_INFO_KEEP_THREATHOLD) {
+      it = seed_timestamps.erase(it);
+    } else {
+      it++;
+    }
   }
 }
 
@@ -301,8 +369,8 @@ void Routing::update_seed_route_by_links() {
     next_to_seed = NodeID::NONE;
 
     for (auto& it : distance_from_seed) {
-      if (it.second.second < min) {
-        min          = it.second.second;
+      if (it.second < min) {
+        min          = it.second;
         next_to_seed = it.first;
       }
     }
@@ -314,8 +382,9 @@ void Routing::update_seed_route_by_links() {
 void Routing::update_seed_route_by_status() {
   if (seed_status == LinkStatus::ONLINE) {
     if (next_to_seed != context.local_nid) {
-      next_to_seed                     = context.local_nid;
-      distance_from_seed[next_to_seed] = std::make_pair(context.local_nid, 1);
+      seed_timestamps[context.local_nid] = Utils::get_current_msec();
+      next_to_seed                       = context.local_nid;
+      distance_from_seed[next_to_seed]   = 1;
       logi("force routing");
       routing_countdown = 0;
     }

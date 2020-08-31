@@ -149,23 +149,28 @@ static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MAX = 2000;  // [msec]
 
 static const unsigned int PUBSUB_2D_CACHE_TIME = 30000;  // [msec]
 
+static const unsigned int ROUTING_FORCE_UPDATE_COUNT         = 30;
+static const unsigned int ROUTING_SEED_CONNECT_INTERVAL      = 10000;  // [msec]
+static const unsigned int ROUTING_SEED_CONNECT_RATE          = 512;
+static const unsigned int ROUTING_SEED_DISCONNECT_THREATHOLD = 30000;  // [msec]
+static const unsigned int ROUTING_SEED_INFO_KEEP_THREATHOLD  = 60000;  // [msec]
+static const unsigned int ROUTING_SEED_TABLE_SIZE            = 10;
+static const unsigned int ROUTING_SEED_INFO_NIDS_COUNT       = 4;
+static const double ROUTING_SEED_NEXT_POSITION               = 0.71828;
+static const unsigned int ROUTING_UPDATE_PERIOD              = 1000;  // [msec]
+
 // fixed parameters
-static const uint32_t ORPHAN_NODES_MAX                 = 32;
-static const unsigned int PACKET_RETRY_COUNT_MAX       = 5;
-static const int64_t PACKET_RETRY_INTERVAL             = 10000;
-static const int64_t CONNECT_LINK_TIMEOUT              = 30000;
-static const unsigned int FIRST_LINK_RETRY_MAX         = 3;
-static const int64_t LINK_TRIAL_TIME_MIN               = 60000;
-static const unsigned int LINKS_MIN                    = 4;
-static const unsigned int LINKS_MAX                    = 24;
-static const unsigned int ROUTING_UPDATE_PERIOD        = 1000;
-static const unsigned int ROUTING_FORCE_UPDATE_TIMES   = 30;
-static const unsigned int ROUTING_SEED_RANDOM_WAIT     = 60000;
-static const unsigned int ROUTING_SEED_CONNECT_STEP    = 10;
-static const unsigned int ROUTING_SEED_DISCONNECT_STEP = 8;
-static const int64_t SEED_CONNECT_INTERVAL             = 10000;
-static const uint32_t PACKET_ID_NONE                   = 0x0;
-static const unsigned int EVENT_QUEUE_LIMIT            = 100;
+static const uint32_t ORPHAN_NODES_MAX           = 32;
+static const unsigned int PACKET_RETRY_COUNT_MAX = 5;
+static const int64_t PACKET_RETRY_INTERVAL       = 10000;
+static const int64_t CONNECT_LINK_TIMEOUT        = 30000;
+static const unsigned int FIRST_LINK_RETRY_MAX   = 3;
+static const int64_t LINK_TRIAL_TIME_MIN         = 60000;
+static const unsigned int LINKS_MIN              = 4;
+static const unsigned int LINKS_MAX              = 24;
+static const int64_t SEED_CONNECT_INTERVAL       = 10000;
+static const uint32_t PACKET_ID_NONE             = 0x0;
+static const unsigned int EVENT_QUEUE_LIMIT      = 100;
 
 // debug parameter
 static const int DEBUG_PRINT_PACKET_SIZE = 32;

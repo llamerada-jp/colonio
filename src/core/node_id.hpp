@@ -76,6 +76,7 @@ class NodeID {
   bool operator>(const NodeID& b) const;
   NodeID operator+(const NodeID& b) const;
   NodeID operator-(const NodeID& b) const;
+  NodeID operator*(double r) const;
 
   static NodeID center_mod(const NodeID& a, const NodeID& b);
 

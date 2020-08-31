@@ -301,9 +301,22 @@ NodeID NodeID::operator+(const NodeID& b) const {
 }
 
 NodeID NodeID::operator-(const NodeID& b) const {
+  assert(type == Type::NORMAL);
+  assert(b.type == Type::NORMAL);
+
   uint64_t c0, c1;
   std::tie(c0, c1) = add_mod(id[0], id[1], ~b.id[0], ~b.id[1]);
   std::tie(c0, c1) = add_mod(c0, c1, 0x0, 0x1);
+
+  return NodeID(c0, c1);
+}
+
+NodeID NodeID::operator*(double r) const {
+  assert(type == Type::NORMAL);
+  assert(0.0 <= r && r < 1.0);
+
+  uint64_t c0 = static_cast<uint64_t>(id[0] * r);
+  uint64_t c1 = static_cast<uint64_t>(id[1] * r);
 
   return NodeID(c0, c1);
 }
