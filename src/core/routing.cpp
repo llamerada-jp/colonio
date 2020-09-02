@@ -207,7 +207,9 @@ void Routing::send_routing_info() {
     if (idx >= CONFIG_SEED_INFO_NIDS_COUNT) {
       break;
     }
-    it.second.to_pb(param.add_seed_nids());
+    colonio::RoutingProtocol::SeedInfoOne* seed_info = param.add_seed_infos();
+    it.second.to_pb(seed_info->mutable_nid());
+    seed_info->set_duration(it.first);
     idx++;
   }
 
@@ -275,11 +277,11 @@ void Routing::update_seed_connection() {
     if (seed_online_timestamp == 0) {
       seed_online_timestamp = Utils::get_current_msec();
       logi("force routing");
-      routing_countdown = 0;
+      routing_countdown                  = 0;
+      seed_timestamps[context.local_nid] = current;
     }
 
     distance_from_seed[context.local_nid] = 1;
-    seed_timestamps[context.local_nid]    = current;
 
     int64_t online_duration = current - seed_online_timestamp;
     if (online_duration > CONFIG_SEED_DISCONNECT_THREATHOLD) {
@@ -295,9 +297,7 @@ void Routing::update_seed_connection() {
     if (distance_from_seed.find(context.local_nid) != distance_from_seed.end()) {
       distance_from_seed.erase(context.local_nid);
     }
-    if (seed_timestamps.find(context.local_nid) != seed_timestamps.end()) {
-      seed_timestamps.erase(context.local_nid);
-    }
+
     int count            = 0;
     int64_t min_duration = INT64_MAX;
     NodeID min_nid;
@@ -312,7 +312,7 @@ void Routing::update_seed_connection() {
       }
     }
     if (count == 0) {
-      if (Utils::get_rnd_32() * CONFIG_SEED_CONNECT_RATE == 0) {
+      if (Utils::get_rnd_32() % CONFIG_SEED_CONNECT_RATE == 0) {
         delegate.routing_do_connect_seed(*this);
       }
       return;
@@ -336,19 +336,23 @@ void Routing::update_seed_route_by_info(const NodeID& src_nid, const RoutingProt
     routing_countdown = 0;
   }
 
-  for (auto& it : info.seed_nids()) {
-    NodeID nid = NodeID::from_pb(it);
-    if (seed_timestamps.find(nid) == seed_timestamps.end()) {
-      seed_timestamps.insert(std::make_pair(nid, CURRENT));
-    }
-  }
-
   auto it = seed_timestamps.begin();
   while (it != seed_timestamps.end()) {
     if (CURRENT - it->second >= CONFIG_SEED_INFO_KEEP_THREATHOLD) {
       it = seed_timestamps.erase(it);
     } else {
       it++;
+    }
+  }
+
+  for (auto& seed_info : info.seed_infos()) {
+    NodeID nid       = NodeID::from_pb(seed_info.nid());
+    int64_t duration = seed_info.duration();
+    auto it          = seed_timestamps.find(nid);
+    if (it == seed_timestamps.end()) {
+      seed_timestamps.insert(std::make_pair(nid, CURRENT - duration));
+    } else if (CURRENT - duration < it->second) {
+      it->second = CURRENT - duration;
     }
   }
 }
@@ -382,9 +386,8 @@ void Routing::update_seed_route_by_links() {
 void Routing::update_seed_route_by_status() {
   if (seed_status == LinkStatus::ONLINE) {
     if (next_to_seed != context.local_nid) {
-      seed_timestamps[context.local_nid] = Utils::get_current_msec();
-      next_to_seed                       = context.local_nid;
-      distance_from_seed[next_to_seed]   = 1;
+      next_to_seed                     = context.local_nid;
+      distance_from_seed[next_to_seed] = 1;
       logi("force routing");
       routing_countdown = 0;
     }

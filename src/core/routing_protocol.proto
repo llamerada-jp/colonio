@@ -9,9 +9,14 @@ message RoutingInfoOne {
   core.Coordinate r2d_position = 2;
 }
 
+message SeedInfoOne {
+  core.NodeID nid = 1;
+  int64 duration = 2;
+}
+
 message RoutingInfo {
   uint32 seed_distance = 1;
-  repeated core.NodeID seed_nids = 2;
+  repeated SeedInfoOne seed_infos = 2;
   core.Coordinate r2d_position = 3;
   // Key type of map is string from node-id.
   map<string, RoutingInfoOne> nodes = 4;
