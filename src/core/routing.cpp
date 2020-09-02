@@ -288,7 +288,7 @@ void Routing::update_seed_connection() {
       delegate.routing_do_disconnect_seed(*this);
     }
 
-  } else {  // OFFLINE
+  } else if (seed_status == LinkStatus::OFFLINE) {
     if (seed_online_timestamp != 0) {
       seed_online_timestamp = 0;
       logi("force routing");
