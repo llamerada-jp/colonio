@@ -57,8 +57,14 @@ type ConfigIceServer struct {
 }
 
 type ConfigRouting struct {
-	UpdatePeriod     *uint32 `json:"updatePeriod,omitempty"`
-	ForceUpdateTimes *uint32 `json:"forceUpdateTimes,omitempty"`
+	ForceUpdateCount         *uint32  `json:"forceUpdateCount,omitempty"`
+	SeedConnectInterval      *uint32  `json:"seedConnectInterval,omitempty"`
+	SeedConnectRate          *uint32  `json:"seedConnectRate,omitempty"`
+	SeedDisconnectThreathold *uint32  `json:"seedDisconnectThreathold,omitempty"`
+	SeedInfoKeepThreathold   *uint32  `json:"seedInfoKeepThreathold,omitempty"`
+	SeedInfoNidsCount        *uint32  `json:"seedInfoNidsCount,omitempty"`
+	SeedNextPosition         *float64 `json:"seedNextPosition,omitempty"`
+	UpdatePeriod             *uint32  `json:"updatePeriod,omitempty"`
 }
 
 type ConfigModule struct {
