@@ -612,9 +612,10 @@ func (link *Link) recvPacketAuth(context *context, packet *proto.SeedAccessor) e
 		defer link.group.unlockMutex(context)
 	}
 
-	if l2, ok := link.group.nidMap[nidToString(packet.SrcNid)]; ok && l2 != link {
+	srcNidStr := nidToString(packet.SrcNid)
+	if l2, ok := link.group.nidMap[srcNidStr]; ok && l2 != link {
 		// IDが重複している
-		logger.W.Printf("Authenticate failed by duplicate nid (%s)\n", link.srcIP)
+		logger.W.Printf("Authenticate failed by duplicate nid (%s, %s)\n", link.srcIP, srcNidStr)
 		return link.sendFailure(context, packet, nil)
 
 	} else if content.Version != ProtocolVersion {
@@ -624,7 +625,7 @@ func (link *Link) recvPacketAuth(context *context, packet *proto.SeedAccessor) e
 
 	} else if link.nid == nil || link.nid.Type == NidTypeNone {
 		link.nid = packet.SrcNid
-		link.group.nidMap[nidToString(packet.SrcNid)] = link
+		link.group.nidMap[srcNidStr] = link
 		link.group.config.Node.Revision = link.group.config.Revision
 		configByte, err := json.Marshal(link.group.config.Node)
 		if err != nil {
@@ -634,7 +635,7 @@ func (link *Link) recvPacketAuth(context *context, packet *proto.SeedAccessor) e
 			Config: (string)(configByte),
 		}
 		if err := link.sendSuccess(context, packet, contentReply); err == nil {
-			logger.I.Printf("Authenticate success (%s)\n", link.srcIP)
+			logger.I.Printf("Authenticate success (%s, %s)\n", link.srcIP, srcNidStr)
 		} else {
 			return err
 		}
