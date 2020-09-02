@@ -57,7 +57,7 @@ Routing::Routing(
     const CoordSystem* coord_system, const picojson::object& config) :
     ModuleBase(context, module_delegate, channel, ModuleChannel::Colonio::SYSTEM_ROUTING),
 
-    CONFIG_FORCE_UPDATE_COUNT(Utils::get_json(config, "forceUpdateTimes", ROUTING_FORCE_UPDATE_COUNT)),
+    CONFIG_FORCE_UPDATE_COUNT(Utils::get_json(config, "forceUpdateCount", ROUTING_FORCE_UPDATE_COUNT)),
     CONFIG_SEED_CONNECT_INTERVAL(Utils::get_json(config, "seedConnectInterval", ROUTING_SEED_CONNECT_INTERVAL)),
     CONFIG_SEED_CONNECT_RATE(Utils::get_json(config, "seedConnectRate", ROUTING_SEED_CONNECT_RATE)),
     CONFIG_SEED_DISCONNECT_THREATHOLD(
