@@ -245,10 +245,10 @@ void NodeAccessor::CommandOffer::on_success(std::unique_ptr<const Packet> packet
       switch (type) {
         case OFFER_TYPE_FIRST: {
           if (!accessor.first_link) {
-            assert(!accessor.random_link);
-            assert(accessor.links.empty());
             return;
           }
+          assert(accessor.links.empty());
+
           link                     = accessor.first_link.get();
           accessor.first_link->nid = second_nid;
           assert(accessor.links.find(second_nid) == accessor.links.end());
