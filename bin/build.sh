@@ -392,7 +392,7 @@ setup_seed() {
       git pull
     else
       cd ${LOCAL_ENV_PATH}/src
-      git clone https://github.com/colonio/colonio-seed.git
+      git clone https://github.com/llamerada-jp/colonio-seed.git
     fi
     readonly COLONIO_SEED_GIT_PATH=${LOCAL_ENV_PATH}/src/colonio-seed
   fi
