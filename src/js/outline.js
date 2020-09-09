@@ -19,8 +19,6 @@
 let logd = console.log;
 
 const ID_MAX = 2147483647;
-const CB_ON_SUCCESS = 0;
-const CB_ON_FAILURE = 1;
 
 /* Push/Pop object
  * TODO release when disconnect
@@ -240,11 +238,11 @@ class Colonio {
     addFuncAfterLoad(() => {
       // initialize
       let setPositionOnSuccess = Module.addFunction((id, newX, newY) => {
-        popObject(id)[CB_ON_SUCCESS](newX, newY);
+        popObject(id).onSuccess(newX, newY);
       }, 'vidd');
 
       let setPositionOnFailure = Module.addFunction((id, errorPtr) => {
-        popObject(id)[CB_ON_FAILURE](convertError(errorPtr));
+        popObject(id).onFailure(convertError(errorPtr));
       }, 'vii');
 
       this._colonioPtr = ccall('js_init', 'number',
@@ -340,8 +338,8 @@ class Colonio {
   setPosition(x, y) {
     const promise = new Promise((resolve, reject) => {
       let id = pushObject({
-        CB_ON_SUCCESS: resolve,
-        CB_ON_FAILURE: reject,
+        onSuccess: resolve,
+        onFailure: reject,
       });
 
       ccall('js_set_position', 'null',
@@ -527,19 +525,19 @@ function convertValue(value) {
 function initializeMap() {
   let getValueOnSuccess = Module.addFunction((id, valuePtr) => {
     const val = new ColonioValue(valuePtr);
-    popObject(id)[CB_ON_SUCCESS](val.getJsValue());
+    popObject(id).onSuccess(val.getJsValue());
   }, 'vii');
 
   let getValueOnFailure = Module.addFunction((id, errorPtr) => {
-    popObject(id)[CB_ON_FAILURE](convertError(errorPtr));
+    popObject(id).onFailure(convertError(errorPtr));
   }, 'vii');
 
   let setValueOnSuccess = Module.addFunction((id) => {
-    popObject(id)[CB_ON_SUCCESS]();
+    popObject(id).onSuccess();
   }, 'vi');
 
   let setValueOnFailure = Module.addFunction((id, errorPtr) => {
-    popObject(id)[CB_ON_FAILURE](convertError(errorPtr));
+    popObject(id).onFailure(convertError(errorPtr));
   }, 'vii');
 
   ccall('js_map_init', 'null',
@@ -557,8 +555,8 @@ class ColonioMap {
       const keyValue = convertValue(key);
 
       let id = pushObject({
-        CB_ON_SUCCESS: resolve,
-        CB_ON_FAILURE: reject,
+        onSuccess: resolve,
+        onFailure: reject,
       });
 
       ccall('js_map_get_value', 'null',
@@ -577,8 +575,8 @@ class ColonioMap {
       const valValue = convertValue(val);
 
       let id = pushObject({
-        CB_ON_SUCCESS: resolve,
-        CB_ON_FAILURE: reject,
+        onSuccess: resolve,
+        onFailure: reject,
       });
 
       ccall('js_map_set_value', 'null',
@@ -595,11 +593,11 @@ class ColonioMap {
 
 function initializePubsub2D() {
   let publishOnSuccess = Module.addFunction((id) => {
-    popObject(id)[CB_ON_SUCCESS]();
+    popObject(id).onSuccess();
   }, 'vi');
 
   let publishOnFailure = Module.addFunction((id, errorPtr) => {
-    popObject(id)[CB_ON_FAILURE](convertError(errorPtr));
+    popObject(id).onFailure(convertError(errorPtr));
   }, 'vii');
 
   let onOn = Module.addFunction((id, valuePtr) => {
@@ -623,8 +621,8 @@ class Pubsub2D {
       const value = convertValue(val);
 
       let id = pushObject({
-        CB_ON_SUCCESS: resolve,
-        CB_ON_FAILURE: reject,
+        onSuccess: resolve,
+        onFailure: reject,
       });
 
       ccall('js_pubsub_2d_publish', 'null',
