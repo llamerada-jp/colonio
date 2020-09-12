@@ -145,7 +145,8 @@ void WebrtcLinkWasm::on_dco_close() {
 }
 
 void WebrtcLinkWasm::on_dco_error(const std::string& message) {
-  assert(false);  //
+  logw("dco error").map("message", message);
+  context.scheduler.add_timeout_task(this, std::bind(&WebrtcLinkWasm::on_error, this), 0);
 }
 
 void WebrtcLinkWasm::on_dco_message(const std::string& data) {

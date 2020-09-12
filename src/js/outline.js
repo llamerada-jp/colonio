@@ -780,10 +780,10 @@ function webrtcLinkInitialize(webrtcLink, isCreateDc) {
   logd('rtc initialize', webrtcLink);
 
   let setEvent = (dataChannel) => {
-    dataChannel.onerror = (error) => {
-      logd('rtc data error', webrtcLink, error);
+    dataChannel.onerror = (event) => {
+      logd('rtc data error', webrtcLink, event);
       if (webrtcLink in availableWebrtcLinks) {
-        let [messagePtr, messageSiz] = allocPtrString(error.message);
+        let [messagePtr, messageSiz] = allocPtrString(event.error.message);
         ccall('webrtc_link_on_dco_error', 'null',
           ['number', 'number', 'number'],
           [webrtcLink, messagePtr, messageSiz]);
