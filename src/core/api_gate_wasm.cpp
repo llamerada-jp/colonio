@@ -76,7 +76,7 @@ void APIGateWASM::call_async(
     return;
 
   } catch (const InternalException& ex) {
-    logE(controller, "internal exception").map("file", ex.file).map_int("line", ex.line).map("message", ex.message);
+    logW(controller, "internal exception").map("file", ex.file).map_int("line", ex.line).map("message", ex.message);
     reply_failure(id, ex.code, ex.message);
 
   } catch (const std::exception& ex) {
@@ -115,7 +115,23 @@ void APIGateWASM::call(uint32_t id) {
 }
 
 void APIGateWASM::invoke() {
-  unsigned int msec = controller.invoke();
+  unsigned int msec = 0;
+
+  try {
+    msec = controller.invoke();
+
+  } catch (const FatalException& ex) {
+    logE(controller, "fatal exception").map("file", ex.file).map_int("line", ex.line).map("message", ex.message);
+    // TODO stop
+
+  } catch (const InternalException& ex) {
+    logW(controller, "internal exception").map("file", ex.file).map_int("line", ex.line).map("message", ex.message);
+
+  } catch (const std::exception& ex) {
+    logE(controller, "exception").map("message", std::string(ex.what()));
+    // TODO stop
+  }
+
   api_gate_require_invoke(reinterpret_cast<COLONIO_PTR_T>(this), msec);
 }
 
