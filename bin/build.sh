@@ -5,7 +5,7 @@ set -eu
 readonly ASIO_VERSION='1.12.2'
 readonly ASIO_VERSION_STR='101202'
 readonly ASIO_VERSION_TAG='1-12-2'
-readonly EMSCRIPTEN_VERSION='1.39.4'
+readonly EMSCRIPTEN_VERSION='2.0.2'
 readonly GTEST_VERSION='1.10.0'
 readonly LIBUV_VERSION='1.12.0'
 readonly PICOJSON_VERSION='1.3.0'

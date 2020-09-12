@@ -28,8 +28,8 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
 
   # WebAssembly(emscripten) compile options.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s WASM=1")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s MODULARIZE_INSTANCE=1")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s EXPORT_NAME='colonio'")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s MODULARIZE=1")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s EXPORT_NAME='ColonioModule'")
   # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s EXPORT_ES6=1")
   # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s ALLOW_MEMORY_GROWTH=1")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s NO_EXIT_RUNTIME=1")
@@ -41,7 +41,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s USE_PTHREADS=1")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --pre-js ${CMAKE_CURRENT_SOURCE_DIR}/src/js/outline.js")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --js-library ${CMAKE_CURRENT_SOURCE_DIR}/src/js/api.js")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Oz --llvm-lto 1")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -flto")
 
   # Use -s ASSERTIONS=2 to get some useful information about the function pointer being called, and its type.
   # But, Its causes very slow to load wasm.

@@ -18,6 +18,8 @@
 
 #include <emscripten.h>
 
+#include <cassert>
+
 extern "C" {
 typedef unsigned long COLONIO_PTR_T;
 
