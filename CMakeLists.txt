@@ -46,7 +46,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   # Use -s ASSERTIONS=2 to get some useful information about the function pointer being called, and its type.
   # But, Its causes very slow to load wasm.
   # set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g4 --source-map-base http://localhost:6931/")
-  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -s EXCEPTION_DEBUG=1 -s DISABLE_EXCEPTION_CATCHING=0")
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -s EXCEPTION_DEBUG=1")
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -s ASSERTIONS=2")
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -s DEMANGLE_SUPPORT=1")
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2")
