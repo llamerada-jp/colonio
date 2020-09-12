@@ -829,6 +829,15 @@ function webrtcLinkInitialize(webrtcLink, isCreateDc) {
       }
     };
 
+    dataChannel.onclosing = () => {
+      logd('rtc data closing', webrtcLink);
+      if (webrtcLink in availableWebrtcLinks) {
+        ccall('webrtc_link_on_dco_closing', 'null',
+          ['number'],
+          [webrtcLink]);
+      }
+    }
+
     dataChannel.onclose = () => {
       logd('rtc data close', webrtcLink);
       if (webrtcLink in availableWebrtcLinks) {

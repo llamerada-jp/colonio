@@ -41,6 +41,7 @@ class WebrtcLinkWasm : public WebrtcLinkBase {
   void on_csd_failure();
   void on_csd_success(const std::string& sdp);
   void on_dco_close();
+  void on_dco_closing();
   void on_dco_error(const std::string& message);
   void on_dco_message(const std::string& data);
   void on_dco_open();

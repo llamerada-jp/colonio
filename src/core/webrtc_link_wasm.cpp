@@ -18,6 +18,7 @@
 #include <cassert>
 #include <sstream>
 
+#include "logger.hpp"
 #include "scheduler.hpp"
 #include "webrtc_link.hpp"
 
@@ -35,6 +36,7 @@ extern void webrtc_link_update_ice(COLONIO_PTR_T this_ptr, COLONIO_PTR_T ice_ptr
 EMSCRIPTEN_KEEPALIVE void webrtc_link_on_csd_failure(COLONIO_PTR_T this_ptr);
 EMSCRIPTEN_KEEPALIVE void webrtc_link_on_csd_success(COLONIO_PTR_T this_ptr, COLONIO_PTR_T sdp_ptr, int sdp_siz);
 EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_close(COLONIO_PTR_T this_ptr);
+EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_closing(COLONIO_PTR_T this_ptr);
 EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_error(COLONIO_PTR_T this_ptr, COLONIO_PTR_T message_ptr, int message_siz);
 EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_message(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, int data_siz);
 EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_open(COLONIO_PTR_T this_ptr);
@@ -63,6 +65,13 @@ void webrtc_link_on_dco_close(COLONIO_PTR_T this_ptr) {
   assert(THIS.debug_ptr == &THIS);
 
   THIS.on_dco_close();
+}
+
+void webrtc_link_on_dco_closing(COLONIO_PTR_T this_ptr) {
+  colonio::WebrtcLinkWasm& THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
+  assert(THIS.debug_ptr == &THIS);
+
+  THIS.on_dco_closing();
 }
 
 void webrtc_link_on_dco_error(COLONIO_PTR_T this_ptr, COLONIO_PTR_T message_ptr, int message_siz) {
@@ -140,6 +149,13 @@ void WebrtcLinkWasm::on_csd_success(const std::string& sdp) {
 void WebrtcLinkWasm::on_dco_close() {
   if (dco_status != LinkStatus::OFFLINE) {
     dco_status = LinkStatus::OFFLINE;
+    context.scheduler.add_timeout_task(this, std::bind(&WebrtcLinkWasm::on_change_status, this), 0);
+  }
+}
+
+void WebrtcLinkWasm::on_dco_closing() {
+  if (dco_status != LinkStatus::CLOSING) {
+    dco_status = LinkStatus::CLOSING;
     context.scheduler.add_timeout_task(this, std::bind(&WebrtcLinkWasm::on_change_status, this), 0);
   }
 }
