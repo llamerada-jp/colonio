@@ -203,7 +203,6 @@ void Colonio::disconnect(
   api::Call call;
   call.mutable_colonio_disconnect();
 
-  std::unique_ptr<api::Reply> reply = impl->api_gate.call_sync(APIChannel::COLONIO, call);
   impl->api_gate.call_async(APIChannel::COLONIO, call, [on_success, on_failure, this](const api::Reply& reply) {
     if (reply.has_success()) {
       impl->api_gate.quit();
