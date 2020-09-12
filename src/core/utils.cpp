@@ -61,10 +61,10 @@ static std::mt19937 rnd32(get_random_seed());
 static std::mt19937_64 rnd64(get_random_seed());
 #else
 extern "C" {
-extern int utils_get_random_seed();
+extern double utils_get_random_seed();
 }
-static std::mt19937 rnd32(utils_get_random_seed());
-static std::mt19937_64 rnd64(utils_get_random_seed());
+static std::mt19937 rnd32(INT_MAX* utils_get_random_seed());
+static std::mt19937_64 rnd64(INT_MAX* utils_get_random_seed());
 #endif
 
 static std::mutex mutex32;
