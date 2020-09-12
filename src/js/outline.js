@@ -714,6 +714,7 @@ function seedLinkWsSend(seedLink, dataPtr, dataSiz) {
   logd('socket send', seedLink);
   assert(seedLink in availableSeedLinks);
 
+  // avoid error : The provided ArrayBufferView value must not be shared.
   let data = new Uint8Array(dataSiz);
   for (let idx = 0; idx < dataSiz; idx++) {
     data[idx] = HEAPU8[dataPtr + idx];
@@ -999,7 +1000,13 @@ function webrtcLinkSend(webrtcLink, dataPtr, dataSiz) {
     let link = availableWebrtcLinks[webrtcLink];
     let dataChannel = link.dataChannel;
 
-    dataChannel.send(new Uint8Array(Module.HEAPU8.buffer, dataPtr, dataSiz));
+    // avoid error : The provided ArrayBufferView value must not be shared.
+    let data = new Uint8Array(dataSiz);
+    for (let idx = 0; idx < dataSiz; idx++) {
+      data[idx] = HEAPU8[dataPtr + idx];
+    }
+
+    dataChannel.send(data);
 
   } catch (e) {
     console.error(e);
