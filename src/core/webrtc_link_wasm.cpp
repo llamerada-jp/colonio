@@ -198,14 +198,18 @@ void WebrtcLinkWasm::on_pco_ice_candidate(const std::string& ice_str) {
 }
 
 void WebrtcLinkWasm::on_pco_state_change(const std::string& state) {
+  // https://w3c.github.io/webrtc-pc/#rtcicetransportstate
   LinkStatus::Type should;
   if (state == "new" || state == "checking") {
+    assert(pco_status == LinkStatus::CONNECTING);
     should = LinkStatus::CONNECTING;
 
   } else if (state == "connected" || state == "completed") {
+    assert(pco_status == LinkStatus::CONNECTING || pco_status == LinkStatus::ONLINE);
     should = LinkStatus::ONLINE;
 
   } else if (state == "disconnected") {
+    assert(pco_status != LinkStatus::OFFLINE);
     should = LinkStatus::CLOSING;
 
   } else if (state == "closed" || state == "failed") {
@@ -235,16 +239,9 @@ void WebrtcLinkWasm::get_local_sdp(std::function<void(const std::string&)> func)
 LinkStatus::Type WebrtcLinkWasm::get_status() {
   if (init_data) {
     return LinkStatus::CONNECTING;
-
-  } else if (dco_status == LinkStatus::ONLINE && pco_status == LinkStatus::ONLINE) {
-    return LinkStatus::ONLINE;
-
-  } else if (dco_status == LinkStatus::OFFLINE && pco_status == LinkStatus::OFFLINE) {
-    return LinkStatus::OFFLINE;
-
-  } else {
-    return LinkStatus::CLOSING;
   }
+
+  return dco_status;
 }
 
 bool WebrtcLinkWasm::send(const std::string& data) {
