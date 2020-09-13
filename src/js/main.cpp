@@ -71,8 +71,12 @@ EMSCRIPTEN_KEEPALIVE void js_pubsub_2d_on(
 EMSCRIPTEN_KEEPALIVE void js_pubsub_2d_off(COLONIO_PTR_T pubsub_2d_ptr, COLONIO_PTR_T name_ptr, unsigned int name_siz);
 }
 
-static std::map<std::string, colonio_map_t> map_cache;
-static std::map<std::string, colonio_pubsub_2d_t> pubsub_2d_cache;
+struct Cache {
+  std::map<std::string, colonio_map_t> map;
+  std::map<std::string, colonio_pubsub_2d_t> pubsub_2d;
+};
+
+static std::map<COLONIO_PTR_T, Cache> caches;
 
 std::function<void(COLONIO_ID_T, double, double)> set_position_on_success;
 std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> set_position_on_failure;
@@ -103,6 +107,8 @@ void js_connect(
 COLONIO_PTR_T js_access_map(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name, unsigned int name_siz) {
   std::string name_str(reinterpret_cast<const char*>(name), name_siz);
 
+  std::map<std::string, colonio_map_t>& map_cache = caches[colonio_ptr].map;
+
   if (map_cache.find(name_str) == map_cache.end()) {
     colonio_map_t handler =
         colonio_access_map(reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<const char*>(name), name_siz);
@@ -113,6 +119,8 @@ COLONIO_PTR_T js_access_map(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name, unsig
 
 COLONIO_PTR_T js_access_pubsub_2d(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name, unsigned int name_siz) {
   std::string name_str(reinterpret_cast<const char*>(name), name_siz);
+
+  std::map<std::string, colonio_pubsub_2d_t>& pubsub_2d_cache = caches[colonio_ptr].pubsub_2d;
 
   if (pubsub_2d_cache.find(name_str) == pubsub_2d_cache.end()) {
     colonio_pubsub_2d_t handler = colonio_access_pubsub_2d(
