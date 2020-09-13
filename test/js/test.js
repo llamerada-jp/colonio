@@ -2,8 +2,7 @@
 
 const URL = 'ws://localhost:8080/test';
 const TOKEN = '';
-const CHANNEL = 'ch';
-const KEY = 'key';
+const KEY = 'hoge';
 
 function test() {
   let node1;
@@ -60,7 +59,7 @@ function test() {
 
     return new Promise((resolve, reject) => {
       console.log('ps1 waiting data');
-      ps1.on(CHANNEL, (data) => {
+      ps1.on(KEY, (data) => {
         console.log('receive ps1', data);
         if (data === 'from ps2') {
           resolve();
@@ -73,7 +72,7 @@ function test() {
   }).then(() => {
     return new Promise((resolve, reject) => {
       console.log('ps2 waiting data');
-      ps2.on(CHANNEL, (data) => {
+      ps2.on(KEY, (data) => {
         console.log('receive ps2', data);
         if (data === 'from ps1') {
           resolve();
