@@ -26,9 +26,13 @@
             "radius": 6378137
         },
         "modules": {
-            "map": {
+            "mp": {
                 "type": "mapPaxos",
                 "channel": 256
+            },
+            "ps": {
+                "type": "pubsub2D",
+                "channel": 257
             }
         }
     }

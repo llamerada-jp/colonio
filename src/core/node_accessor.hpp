@@ -18,12 +18,14 @@
 #include <picojson.h>
 
 #include <functional>
+#include <list>
 #include <memory>
 #include <string>
 
 #include "command.hpp"
 #include "module_base.hpp"
 #include "node_id.hpp"
+#include "packet.hpp"
 #include "webrtc_context.hpp"
 #include "webrtc_link.hpp"
 

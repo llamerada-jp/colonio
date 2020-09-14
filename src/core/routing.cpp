@@ -284,7 +284,7 @@ void Routing::update_seed_connection() {
     distance_from_seed[context.local_nid] = 1;
 
     int64_t online_duration = current - seed_online_timestamp;
-    if (online_duration > CONFIG_SEED_DISCONNECT_THREATHOLD) {
+    if (online_duration > CONFIG_SEED_DISCONNECT_THREATHOLD && node_status == LinkStatus::ONLINE) {
       delegate.routing_do_disconnect_seed(*this);
     }
 
@@ -296,6 +296,10 @@ void Routing::update_seed_connection() {
     }
     if (distance_from_seed.find(context.local_nid) != distance_from_seed.end()) {
       distance_from_seed.erase(context.local_nid);
+    }
+
+    if (node_status != LinkStatus::ONLINE) {
+      delegate.routing_do_connect_seed(*this);
     }
 
     int count            = 0;

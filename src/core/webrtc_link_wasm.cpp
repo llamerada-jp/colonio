@@ -18,6 +18,7 @@
 #include <cassert>
 #include <sstream>
 
+#include "logger.hpp"
 #include "scheduler.hpp"
 #include "webrtc_link.hpp"
 
@@ -35,6 +36,7 @@ extern void webrtc_link_update_ice(COLONIO_PTR_T this_ptr, COLONIO_PTR_T ice_ptr
 EMSCRIPTEN_KEEPALIVE void webrtc_link_on_csd_failure(COLONIO_PTR_T this_ptr);
 EMSCRIPTEN_KEEPALIVE void webrtc_link_on_csd_success(COLONIO_PTR_T this_ptr, COLONIO_PTR_T sdp_ptr, int sdp_siz);
 EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_close(COLONIO_PTR_T this_ptr);
+EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_closing(COLONIO_PTR_T this_ptr);
 EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_error(COLONIO_PTR_T this_ptr, COLONIO_PTR_T message_ptr, int message_siz);
 EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_message(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, int data_siz);
 EMSCRIPTEN_KEEPALIVE void webrtc_link_on_dco_open(COLONIO_PTR_T this_ptr);
@@ -63,6 +65,13 @@ void webrtc_link_on_dco_close(COLONIO_PTR_T this_ptr) {
   assert(THIS.debug_ptr == &THIS);
 
   THIS.on_dco_close();
+}
+
+void webrtc_link_on_dco_closing(COLONIO_PTR_T this_ptr) {
+  colonio::WebrtcLinkWasm& THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
+  assert(THIS.debug_ptr == &THIS);
+
+  THIS.on_dco_closing();
 }
 
 void webrtc_link_on_dco_error(COLONIO_PTR_T this_ptr, COLONIO_PTR_T message_ptr, int message_siz) {
@@ -144,8 +153,16 @@ void WebrtcLinkWasm::on_dco_close() {
   }
 }
 
+void WebrtcLinkWasm::on_dco_closing() {
+  if (dco_status != LinkStatus::CLOSING) {
+    dco_status = LinkStatus::CLOSING;
+    context.scheduler.add_timeout_task(this, std::bind(&WebrtcLinkWasm::on_change_status, this), 0);
+  }
+}
+
 void WebrtcLinkWasm::on_dco_error(const std::string& message) {
-  assert(false);  //
+  logw("dco error").map("message", message);
+  context.scheduler.add_timeout_task(this, std::bind(&WebrtcLinkWasm::on_error, this), 0);
 }
 
 void WebrtcLinkWasm::on_dco_message(const std::string& data) {
@@ -181,14 +198,18 @@ void WebrtcLinkWasm::on_pco_ice_candidate(const std::string& ice_str) {
 }
 
 void WebrtcLinkWasm::on_pco_state_change(const std::string& state) {
+  // https://w3c.github.io/webrtc-pc/#rtcicetransportstate
   LinkStatus::Type should;
   if (state == "new" || state == "checking") {
+    assert(pco_status == LinkStatus::CONNECTING);
     should = LinkStatus::CONNECTING;
 
   } else if (state == "connected" || state == "completed") {
+    assert(pco_status == LinkStatus::CONNECTING || pco_status == LinkStatus::ONLINE);
     should = LinkStatus::ONLINE;
 
   } else if (state == "disconnected") {
+    assert(pco_status != LinkStatus::OFFLINE);
     should = LinkStatus::CLOSING;
 
   } else if (state == "closed" || state == "failed") {
@@ -218,16 +239,9 @@ void WebrtcLinkWasm::get_local_sdp(std::function<void(const std::string&)> func)
 LinkStatus::Type WebrtcLinkWasm::get_status() {
   if (init_data) {
     return LinkStatus::CONNECTING;
-
-  } else if (dco_status == LinkStatus::ONLINE && pco_status == LinkStatus::ONLINE) {
-    return LinkStatus::ONLINE;
-
-  } else if (dco_status == LinkStatus::OFFLINE && pco_status == LinkStatus::OFFLINE) {
-    return LinkStatus::OFFLINE;
-
-  } else {
-    return LinkStatus::CLOSING;
   }
+
+  return dco_status;
 }
 
 bool WebrtcLinkWasm::send(const std::string& data) {
