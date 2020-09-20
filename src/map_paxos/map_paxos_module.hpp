@@ -149,7 +149,7 @@ class MapPaxosModule : public Module1D {
       PAXOS_N i_max;
       uint32_t opt;
       MapPaxosModule& parent;
-      std::vector<Reply> replys;
+      std::vector<Reply> replies;
       bool is_finished;
       Info(
           MapPaxosModule& parent_, std::unique_ptr<const Packet> packet_reply_, std::unique_ptr<Value> key_,
@@ -187,7 +187,7 @@ class MapPaxosModule : public Module1D {
       PAXOS_N i_max;
       uint32_t opt;
       MapPaxosModule& parent;
-      std::vector<Reply> replys;
+      std::vector<Reply> replies;
       bool is_finished;
 
       Info(

@@ -131,7 +131,7 @@ void MapPaxosModule::CommandGet::postprocess() {
       int64_t interval =
           info->time_send +
           random.generate_u32(info->parent.CONF_RETRY_INTERVAL_MIN, info->parent.CONF_RETRY_INTERVAL_MAX) -
-                         Utils::get_current_msec();
+          Utils::get_current_msec();
       info->parent.send_packet_get(
           std::move(info->key), info->count_retry + 1, interval, info->cb_on_success, info->cb_on_failure);
     }
@@ -206,7 +206,7 @@ MapPaxosModule::CommandPrepare::CommandPrepare(std::shared_ptr<MapPaxosModule::C
 
 void MapPaxosModule::CommandPrepare::on_error(const std::string& message) {
   logD(info->parent.context, "error on packet of 'prepare'").map("message", message);
-  info->replys.push_back(Reply(NodeID::NONE, 0, 0, false));
+  info->replies.push_back(Reply(NodeID::NONE, 0, 0, false));
 
   postprocess();
 }
@@ -215,7 +215,7 @@ void MapPaxosModule::CommandPrepare::on_failure(std::unique_ptr<const Packet> pa
   MapPaxosProtocol::PrepareFailure content;
   packet->parse_content(&content);
 
-  info->replys.push_back(Reply(packet->src_nid, content.n(), 0, false));
+  info->replies.push_back(Reply(packet->src_nid, content.n(), 0, false));
 
   postprocess();
 }
@@ -224,7 +224,7 @@ void MapPaxosModule::CommandPrepare::on_success(std::unique_ptr<const Packet> pa
   MapPaxosProtocol::PrepareSuccess content;
   packet->parse_content(&content);
 
-  info->replys.push_back(Reply(packet->src_nid, content.n(), content.i(), true));
+  info->replies.push_back(Reply(packet->src_nid, content.n(), content.i(), true));
 
   postprocess();
 }
@@ -254,9 +254,9 @@ void MapPaxosModule::CommandPrepare::postprocess() {
   }
   ProposerInfo& proposer = proposer_it->second;
 
-  for (const auto& src : info->replys) {
+  for (const auto& src : info->replies) {
     if (src.is_success) {
-      for (auto& target : info->replys) {
+      for (auto& target : info->replies) {
         if (src.src_nid == target.src_nid && src.n == target.n) {
           target.is_success = true;
         }
@@ -265,7 +265,7 @@ void MapPaxosModule::CommandPrepare::postprocess() {
   }
   int count_ok = 0;
   int count_ng = 0;
-  for (const auto& it : info->replys) {
+  for (const auto& it : info->replies) {
     if (it.is_success) {
       count_ok++;
       if (it.i > info->i_max) {
@@ -329,7 +329,7 @@ MapPaxosModule::CommandAccept::CommandAccept(std::shared_ptr<MapPaxosModule::Com
 
 void MapPaxosModule::CommandAccept::on_error(const std::string& message) {
   logD(info->parent.context, "error on packet of 'accept'").map("message", message);
-  info->replys.push_back(Reply(NodeID::NONE, 0, 0, false));
+  info->replies.push_back(Reply(NodeID::NONE, 0, 0, false));
 
   postprocess();
 }
@@ -338,7 +338,7 @@ void MapPaxosModule::CommandAccept::on_failure(std::unique_ptr<const Packet> pac
   MapPaxosProtocol::AcceptFailure content;
   packet->parse_content(&content);
 
-  info->replys.push_back(Reply(packet->src_nid, content.n(), content.i(), false));
+  info->replies.push_back(Reply(packet->src_nid, content.n(), content.i(), false));
 
   postprocess();
 }
@@ -347,7 +347,7 @@ void MapPaxosModule::CommandAccept::on_success(std::unique_ptr<const Packet> pac
   MapPaxosProtocol::AcceptSuccess content;
   packet->parse_content(&content);
 
-  info->replys.push_back(Reply(packet->src_nid, content.n(), content.i(), true));
+  info->replies.push_back(Reply(packet->src_nid, content.n(), content.i(), true));
 
   postprocess();
 }
@@ -377,9 +377,9 @@ void MapPaxosModule::CommandAccept::postprocess() {
   }
   ProposerInfo& proposer = proposer_it->second;
 
-  for (const auto& src : info->replys) {
+  for (const auto& src : info->replies) {
     if (src.is_success) {
-      for (auto& target : info->replys) {
+      for (auto& target : info->replies) {
         if (src.src_nid == target.src_nid && src.n == target.n && src.i == target.i) {
           target.is_success = true;
         }
@@ -388,7 +388,7 @@ void MapPaxosModule::CommandAccept::postprocess() {
   }
   int count_ok = 0;
   int count_ng = 0;
-  for (const auto& it : info->replys) {
+  for (const auto& it : info->replies) {
     if (it.is_success) {
       count_ok++;
       if (it.i > info->i_max) {
@@ -705,7 +705,7 @@ void MapPaxosModule::recv_packet_get(std::unique_ptr<const Packet> packet) {
 
   auto acceptor_it = acceptor_infos.find(key);
   if (acceptor_it == acceptor_infos.end() || acceptor_it->second.na == 0) {
-    // TODO(llamerada.jp@gmail.com) Search data from another accetpors.
+    // TODO(llamerada.jp@gmail.com) Search data from another acceptors.
     send_failure(*packet, std::shared_ptr<std::string>());
 
   } else {
