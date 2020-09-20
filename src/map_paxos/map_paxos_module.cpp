@@ -52,8 +52,8 @@ MapPaxosModule::CommandGet::Info::Info(MapPaxosModule& parent_, std::unique_ptr<
 }
 
 /* class MapPaxosModule::CommandGet */
-MapPaxosModule::CommandGet::CommandGet(std::shared_ptr<Info> info_) :
-    Command(CommandID::MapPaxos::GET, PacketMode::NONE), info(info_) {
+MapPaxosModule::CommandGet::CommandGet(Random& random_, std::shared_ptr<Info> info_) :
+    random(random_), Command(CommandID::MapPaxos::GET, PacketMode::NONE), info(info_) {
 }
 
 void MapPaxosModule::CommandGet::on_error(const std::string& message) {
@@ -106,7 +106,7 @@ void MapPaxosModule::CommandGet::postprocess() {
       if (info->count_retry < info->parent.CONF_RETRY_MAX) {
         int64_t interval =
             info->time_send +
-            Utils::get_rnd_32(info->parent.CONF_RETRY_INTERVAL_MIN, info->parent.CONF_RETRY_INTERVAL_MAX) -
+            random.generate_u32(info->parent.CONF_RETRY_INTERVAL_MIN, info->parent.CONF_RETRY_INTERVAL_MAX) -
             Utils::get_current_msec();
         info->parent.send_packet_get(
             std::move(info->key), info->count_retry + 1, interval, info->cb_on_success, info->cb_on_failure);
@@ -128,8 +128,9 @@ void MapPaxosModule::CommandGet::postprocess() {
       }
 
       info->parent.send_packet_hint(*info->key, *value, n, i);
-      int64_t interval = info->time_send +
-                         Utils::get_rnd_32(info->parent.CONF_RETRY_INTERVAL_MIN, info->parent.CONF_RETRY_INTERVAL_MAX) -
+      int64_t interval =
+          info->time_send +
+          random.generate_u32(info->parent.CONF_RETRY_INTERVAL_MIN, info->parent.CONF_RETRY_INTERVAL_MAX) -
                          Utils::get_current_msec();
       info->parent.send_packet_get(
           std::move(info->key), info->count_retry + 1, interval, info->cb_on_success, info->cb_on_failure);
@@ -879,7 +880,7 @@ void MapPaxosModule::send_packet_get(
 
         for (int i = 0; i < NUM_ACCEPTOR; i++) {
           acceptor_nid += NodeID::QUARTER;
-          std::unique_ptr<Command> command = std::make_unique<CommandGet>(info);
+          std::unique_ptr<Command> command = std::make_unique<CommandGet>(context.random, info);
 
           send_packet(std::move(command), acceptor_nid, param_bin);
         }

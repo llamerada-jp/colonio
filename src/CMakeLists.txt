@@ -35,6 +35,7 @@ set(COLONIO_FILES
   core/pubsub_2d.cpp
   core/pubsub_2d_api.pb.cc
   core/pubsub_2d_impl.cpp
+  core/random.cpp
   core/routing.cpp
   core/routing_protocol.pb.cc
   core/routing_1d.cpp

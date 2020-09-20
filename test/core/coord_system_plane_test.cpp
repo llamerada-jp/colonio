@@ -18,6 +18,8 @@
 
 #include <gtest/gtest.h>
 
+#include "core/random.hpp"
+
 using namespace colonio;
 
 TEST(CoordSystemPlaneTest, test) {
@@ -28,7 +30,8 @@ TEST(CoordSystemPlaneTest, test) {
     std::cerr << err << std::endl;
     FAIL();
   }
-  CoordSystemPlane plane(v.get<picojson::object>());
+  Random random;
+  CoordSystemPlane plane(random, v.get<picojson::object>());
 
   EXPECT_FLOAT_EQ(plane.MIN_X, -1.0);
   EXPECT_FLOAT_EQ(plane.MAX_X, 1.0);

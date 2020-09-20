@@ -25,6 +25,7 @@ namespace colonio {
 namespace core {
 class NodeID;
 }  // namespace core
+class Random;
 
 /**
  * NodeID is the ID it assigned for each node process run in any devices.
@@ -63,7 +64,7 @@ class NodeID {
   static NodeID from_str(const std::string& str);
   static NodeID from_pb(const core::NodeID& pb);
   static NodeID make_hash_from_str(const std::string& str);
-  static NodeID make_random();
+  static NodeID make_random(Random& random);
 
   NodeID();
   NodeID(const NodeID& src);

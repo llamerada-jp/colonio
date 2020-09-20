@@ -110,10 +110,6 @@ std::string dump_binary(const std::string& bin);
 std::string dump_packet(const Packet& packet, unsigned int indent = 2);
 int64_t get_current_msec();
 std::string get_current_thread_id();
-uint32_t get_rnd_32();
-uint32_t get_rnd_32(uint32_t min, uint32_t max);
-uint64_t get_rnd_64();
-double get_rnd_double(double min, double max);
 
 template<typename T>
 const T* get_json_value(const picojson::object& parent, const std::string& key) {

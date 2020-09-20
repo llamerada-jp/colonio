@@ -20,9 +20,11 @@
 #include "coord_system.hpp"
 
 namespace colonio {
+class Random;
+
 class CoordSystemSphere : public CoordSystem {
  public:
-  CoordSystemSphere(const picojson::object& config);
+  CoordSystemSphere(Random& random, const picojson::object& config);
 
   // CoordSystem
   double get_distance(const Coordinate& p1, const Coordinate& p2) const override;

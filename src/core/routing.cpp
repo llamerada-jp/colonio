@@ -316,7 +316,7 @@ void Routing::update_seed_connection() {
       }
     }
     if (count == 0) {
-      if (Utils::get_rnd_32() % CONFIG_SEED_CONNECT_RATE == 0) {
+      if (context.random.generate_u32() % CONFIG_SEED_CONNECT_RATE == 0) {
         delegate.routing_do_connect_seed(*this);
       }
       return;

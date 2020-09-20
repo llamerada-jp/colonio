@@ -158,9 +158,9 @@ void Pubsub2DModule::CommandPass::on_success(std::unique_ptr<const Packet> packe
 }
 
 uint64_t Pubsub2DModule::assign_uid() {
-  uint64_t uid = Utils::get_rnd_64();
+  uint64_t uid = context.random.generate_u64();
   while (cache.find(uid) != cache.end()) {
-    uid = Utils::get_rnd_64();
+    uid = context.random.generate_u64();
   }
   return uid;
 }

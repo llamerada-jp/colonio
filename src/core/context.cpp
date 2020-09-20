@@ -22,8 +22,8 @@
 
 namespace colonio {
 
-Context::Context(Logger& logger_, Scheduler& scheduler_) :
-    logger(logger_), scheduler(scheduler_), local_nid(NodeID::make_random()) {
+Context::Context(Logger& logger_, Random& random_, Scheduler& scheduler_) :
+    logger(logger_), random(random_), scheduler(scheduler_), local_nid(NodeID::make_random(random)) {
 }
 
 Context::~Context() {

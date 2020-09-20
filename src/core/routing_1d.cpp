@@ -427,7 +427,7 @@ void Routing1D::update_required_nodes() {
     }
 
     if (need_connect && r_nids.size() > 0) {
-      int idx           = Utils::get_rnd_32() % r_nids.size();
+      int idx           = context.random.generate_u32() % r_nids.size();
       const NodeID& nid = r_nids[idx];
       required_nodes.insert(nid);
     }

@@ -26,6 +26,7 @@ const &
 #include "core/module_1d.hpp"
 
 namespace colonio {
+class Random;
 typedef uint32_t PAXOS_N;
 
 class MapPaxosModule : public Module1D {
@@ -91,9 +92,10 @@ class MapPaxosModule : public Module1D {
       Info(MapPaxosModule& parent_, std::unique_ptr<Value> key_, int count_retry_);
     };
 
+    Random& random;
     std::shared_ptr<Info> info;
 
-    CommandGet(std::shared_ptr<Info> info_);
+    CommandGet(Random& random_, std::shared_ptr<Info> info_);
 
     void on_error(const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;

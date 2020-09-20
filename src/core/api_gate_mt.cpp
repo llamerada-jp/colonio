@@ -18,10 +18,8 @@
 
 #include <cassert>
 #include <chrono>
-#include <random>
 
 #include "logger.hpp"
-#include "utils.hpp"
 
 namespace colonio {
 
@@ -53,7 +51,7 @@ void APIGateMultiThread::call_async(
   {
     std::lock_guard<std::mutex> lock(mtx_reply);
     do {
-      id = Utils::get_rnd_32();
+      id = random.generate_u32();
     } while (id != 0 && map_reply.find(id) != map_reply.end());
     map_reply.insert(std::make_pair(id, Reply(on_reply)));
   }
@@ -75,7 +73,7 @@ std::unique_ptr<api::Reply> APIGateMultiThread::call_sync(APIChannel::Type chann
   {
     std::lock_guard<std::mutex> lock(mtx_reply);
     do {
-      id = Utils::get_rnd_32();
+      id = random.generate_u32();
     } while (id != 0 && map_reply.find(id) != map_reply.end());
     map_reply.insert(std::make_pair(id, Reply()));
   }

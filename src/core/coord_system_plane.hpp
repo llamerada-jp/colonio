@@ -20,9 +20,11 @@
 #include "coord_system.hpp"
 
 namespace colonio {
+class Random;
+
 class CoordSystemPlane : public CoordSystem {
  public:
-  CoordSystemPlane(const picojson::object& config);
+  CoordSystemPlane(Random& random, const picojson::object& config);
 
   // CoordSystem
   double get_distance(const Coordinate& p1, const Coordinate& p2) const override;

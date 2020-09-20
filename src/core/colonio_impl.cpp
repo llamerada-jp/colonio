@@ -166,9 +166,9 @@ void ColonioImpl::seed_accessor_on_recv_config(SeedAccessor& sa, const picojson:
     if (Utils::check_json_optional(config, "coordSystem2D", &cs2d_config)) {
       const std::string& type = Utils::get_json<std::string>(cs2d_config, "type");
       if (type == "sphere") {
-        coord_system = std::make_unique<CoordSystemSphere>(cs2d_config);
+        coord_system = std::make_unique<CoordSystemSphere>(context.random, cs2d_config);
       } else if (type == "plane") {
-        coord_system = std::make_unique<CoordSystemPlane>(cs2d_config);
+        coord_system = std::make_unique<CoordSystemPlane>(context.random, cs2d_config);
       }
     }
 

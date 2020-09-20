@@ -19,6 +19,7 @@
 #include "colonio_impl.hpp"
 #include "context.hpp"
 #include "logger.hpp"
+#include "random.hpp"
 #include "scheduler.hpp"
 
 namespace colonio {
@@ -44,6 +45,7 @@ class Controller : public LoggerDelegate, public SchedulerDelegate, public APIDe
 
  private:
   ControllerDelegate& delegate;
+  Random random;
   Scheduler scheduler;
   Context context;
   APIBundler bundler;
