@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2019-2020 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -503,8 +503,7 @@ func (group *Group) isOnlyOne(context *context, link *Link) bool {
 		defer group.unlockMutex(context)
 	}
 
-	_, ok := group.assigned[nidToString(link.nid)]
-	return len(group.assigned) == 0 || (len(group.assigned) == 1 && ok)
+	return len(group.links) == 1
 }
 
 func (group *Group) lockMutex(context *context) bool {
@@ -652,7 +651,11 @@ func (link *Link) recvPacketAuth(context *context, packet *proto.SeedAccessor) e
 	}
 
 	// if hint of assigned is ON, bind node-id as assigned it yet
-	if (content.Hint&HintAssigned) != 0 || link.group.isOnlyOne(context, link) {
+	if link.group.lockMutex(context) {
+		defer link.group.unlockMutex(context)
+	}
+
+	if (content.Hint&HintAssigned) != 0 || len(link.group.assigned) == 0 {
 		link.assigned = true
 		link.group.assigned[nidToString(packet.SrcNid)] = struct{}{}
 	}
