@@ -64,24 +64,51 @@ bool Routing2D::update_routing_info(
   // update connected_nodes
   connected_nodes = online_links;
 
-  // update known_nodes
-  known_nodes.clear();
-  known_nodes.insert(std::make_pair(context.local_nid, coord_system.get_local_position()));
+  {
+    auto it = routing_info_cache.begin();
+    while (it != routing_info_cache.end()) {
+      // erase the entry to refresh by a new one.
+      if (routing_infos.find(it->first) != routing_infos.end()) {
+        it = routing_info_cache.erase(it);
+        continue;
+      }
 
-  for (auto& it : routing_infos) {
-    const RoutingProtocol::RoutingInfo& routing_info = std::get<1>(it.second);
-    if (routing_info.has_r2d_position()) {
-      Coordinate coord = Coordinate::from_pb(routing_info.r2d_position());
-      known_nodes.insert(std::make_pair(it.first, coord));
+      // erase the entry because link disconnected.
+      if (connected_nodes.find(it->first) == connected_nodes.end()) {
+        it = routing_info_cache.erase(it);
+        continue;
+      }
+
+      it++;
     }
   }
 
   for (auto& it1 : routing_infos) {
     const RoutingProtocol::RoutingInfo& routing_info = std::get<1>(it1.second);
-    for (auto& it2 : routing_info.nodes()) {
-      if (it2.second.has_r2d_position()) {
-        known_nodes.insert(std::make_pair(NodeID::from_str(it2.first), Coordinate::from_pb(it2.second.r2d_position())));
+    if (routing_info.has_r2d_position()) {
+      RoutingInfo& new_info = routing_info_cache[it1.first];
+      new_info.timestamp    = Utils::get_current_msec();
+      new_info.position     = Coordinate::from_pb(routing_info.r2d_position());
+      for (auto& it2 : routing_info.nodes()) {
+        if (it2.second.has_r2d_position()) {
+          new_info.nodes.insert(
+              std::make_pair(NodeID::from_str(it2.first), Coordinate::from_pb(it2.second.r2d_position())));
+        }
       }
+    }
+  }
+
+  // update known_nodes
+  known_nodes.clear();
+  known_nodes.insert(std::make_pair(context.local_nid, coord_system.get_local_position()));
+
+  for (auto& it : routing_info_cache) {
+    known_nodes.insert(std::make_pair(it.first, it.second.position));
+  }
+
+  for (auto& it1 : routing_info_cache) {
+    for (auto& it2 : it1.second.nodes) {
+      known_nodes.insert(std::make_pair(it2.first, it2.second));
     }
   }
 

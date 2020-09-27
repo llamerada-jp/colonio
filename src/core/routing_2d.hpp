@@ -37,6 +37,11 @@ class Routing2D : public RoutingAlgorithm {
   const NodeID& get_relay_nid(const Coordinate& position);
 
  private:
+  struct RoutingInfo {
+    int64_t timestamp;
+    Coordinate position;
+    std::map<NodeID, Coordinate> nodes;
+  };
   Context& context;
   RoutingAlgorithm2DDelegate& delegate;
   const CoordSystem& coord_system;
@@ -45,6 +50,7 @@ class Routing2D : public RoutingAlgorithm {
   std::set<NodeID> nearby_nids;
   std::map<NodeID, Coordinate> nearby_nodes;
   std::map<NodeID, Coordinate> known_nodes;
+  std::map<NodeID, RoutingInfo> routing_info_cache;
 
   void check_duplicate_point(const std::vector<NodeID>& nids, std::vector<double>* x_vec, std::vector<double>* y_vec);
   void shift_duplicate_point(const NodeID& nid, double* x, double* y);
