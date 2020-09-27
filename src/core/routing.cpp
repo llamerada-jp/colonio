@@ -191,8 +191,16 @@ void Routing::recv_routing_info(std::unique_ptr<const Packet> packet) {
 void Routing::send_routing_info() {
   RoutingProtocol::RoutingInfo param;
 
-  uint32_t distance = distance_from_seed.at(next_to_seed);
-  param.set_seed_distance(distance + 1);
+  {
+    auto it = distance_from_seed.find(next_to_seed);
+    if (it == distance_from_seed.end()) {
+      param.set_seed_distance(UINT32_MAX);
+
+    } else {
+      uint32_t distance = it->second;
+      param.set_seed_distance(distance + 1);
+    }
+  }
 
   int64_t current = Utils::get_current_msec();
   std::multimap<int64_t, NodeID> seed_nids;
@@ -334,7 +342,8 @@ void Routing::update_seed_route_by_info(const NodeID& src_nid, const RoutingProt
   uint32_t distance           = info.seed_distance();
   distance_from_seed[src_nid] = distance;
 
-  if (distance < distance_from_seed.at(next_to_seed)) {
+  if (distance_from_seed.find(next_to_seed) == distance_from_seed.end() ||
+      distance < distance_from_seed.at(next_to_seed)) {
     next_to_seed = src_nid;
     logi("force routing");
     routing_countdown = 0;
