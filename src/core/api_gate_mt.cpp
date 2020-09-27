@@ -262,7 +262,7 @@ void APIGateMultiThread::loop_controller() {
           reply_failure(call->id(), ex.code, ex.message);
 
         }
-#ifndef NDEBUG
+#ifdef NDEBUG
         catch (const std::exception& ex) {
           logE(controller, "exception").map("message", std::string(ex.what()));
           reply_failure(call->id(), ErrorCode::UNDEFINED, ex.what());
@@ -290,7 +290,7 @@ void APIGateMultiThread::loop_controller() {
       logE(controller, "internal exception").map("file", ex.file).map_int("line", ex.line).map("message", ex.message);
 
     }
-#ifndef NDEBUG
+#ifdef NDEBUG
     catch (const std::exception& ex) {
       logE(controller, "exception").map("message", std::string(ex.what()));
       // TODO stop
