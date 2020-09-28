@@ -33,8 +33,6 @@
 #include <cstring>
 #include <iomanip>
 #include <memory>
-#include <mutex>
-#include <random>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -45,30 +43,6 @@
 #include "utils.hpp"
 
 namespace colonio {
-// Random value generator.
-#ifndef EMSCRIPTEN
-int get_random_seed() {
-  std::random_device seed_gen;
-  int seed = seed_gen();
-  // avoid WSL2 issue https://github.com/microsoft/WSL/issues/5767
-  if (seed = 0xFFFFFFFF) {
-    seed = static_cast<int>(clock());
-  }
-  return seed;
-}
-
-static std::mt19937 rnd32(get_random_seed());
-static std::mt19937_64 rnd64(get_random_seed());
-#else
-extern "C" {
-extern double utils_get_random_seed();
-}
-static std::mt19937 rnd32(INT_MAX* utils_get_random_seed());
-static std::mt19937_64 rnd64(INT_MAX* utils_get_random_seed());
-#endif
-
-static std::mutex mutex32;
-static std::mutex mutex64;
 
 template<>
 bool Utils::check_json_optional<unsigned int>(const picojson::object& obj, const std::string& key, unsigned int* dst) {
@@ -219,28 +193,6 @@ std::string Utils::file_dirname(const std::string& path) {
   buffer[path.size()] = '\0';
 
   return std::string(dirname(buffer.get()));
-}
-
-uint32_t Utils::get_rnd_32() {
-  std::lock_guard<std::mutex> guard(mutex32);
-  return rnd32();
-}
-
-uint32_t Utils::get_rnd_32(uint32_t min, uint32_t max) {
-  std::lock_guard<std::mutex> guard(mutex32);
-  std::uniform_int_distribution<uint32_t> dist(min, max);
-  return dist(rnd32);
-}
-
-uint64_t Utils::get_rnd_64() {
-  std::lock_guard<std::mutex> guard(mutex64);
-  return rnd64();
-}
-
-double Utils::get_rnd_double(double min, double max) {
-  std::lock_guard<std::mutex> guard(mutex32);
-  std::uniform_real_distribution<double> dist(min, max);
-  return dist(rnd32);
 }
 
 bool Utils::is_safevalue(double v) {

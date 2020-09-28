@@ -28,6 +28,7 @@ extern "C" {
 #include "definition.hpp"
 #include "internal_exception.hpp"
 #include "node_id.hpp"
+#include "random.hpp"
 #include "utils.hpp"
 
 namespace colonio {
@@ -223,8 +224,8 @@ NodeID NodeID::make_hash_from_str(const std::string& str) {
  * Make a rundom node-id.
  * @return A node-id.
  */
-NodeID NodeID::make_random() {
-  return NodeID(Utils::get_rnd_64(), Utils::get_rnd_64());
+NodeID NodeID::make_random(Random& random) {
+  return NodeID(random.generate_u64(), random.generate_u64());
 }
 
 NodeID& NodeID::operator=(const NodeID& src) {

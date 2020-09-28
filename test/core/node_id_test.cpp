@@ -20,6 +20,7 @@
 
 #include "core/core.pb.h"
 #include "core/internal_exception.hpp"
+#include "core/random.hpp"
 
 using namespace colonio;
 
@@ -126,9 +127,11 @@ TEST(NodeIDTest, make_hash_from_str) {
 }
 
 TEST(NodeIDTest, make_random) {
-  NodeID test00 = NodeID::make_random();
-  NodeID test01 = NodeID::make_random();
-  NodeID test02 = NodeID::make_random();
+  Random random;
+
+  NodeID test00 = NodeID::make_random(random);
+  NodeID test01 = NodeID::make_random(random);
+  NodeID test02 = NodeID::make_random(random);
 
   EXPECT_NE(test00, test01);
   EXPECT_NE(test01, test02);
@@ -136,8 +139,10 @@ TEST(NodeIDTest, make_random) {
 }
 
 TEST(NodeIDTest, eq) {
+  Random random;
+
   NodeID test00;
-  NodeID test01 = NodeID::make_random();
+  NodeID test01 = NodeID::make_random(random);
 
   test00 = test01;
   EXPECT_NE(test00, NodeID::NONE);
@@ -146,8 +151,10 @@ TEST(NodeIDTest, eq) {
 }
 
 TEST(NodeIDTest, pluseq) {
-  NodeID test0 = NodeID::make_random();
-  NodeID test1 = NodeID::make_random();
+  Random random;
+
+  NodeID test0 = NodeID::make_random(random);
+  NodeID test1 = NodeID::make_random(random);
   NodeID test2 = test0 + test1;
   NodeID test3 = test0;
   test3 += test1;

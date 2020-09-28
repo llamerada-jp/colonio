@@ -22,6 +22,7 @@
 
 #include "api_gate.hpp"
 #include "controller.hpp"
+#include "random.hpp"
 
 namespace colonio {
 class APIGateMultiThread : public APIGateBase, public ControllerDelegate {
@@ -60,6 +61,7 @@ class APIGateMultiThread : public APIGateBase, public ControllerDelegate {
   std::mutex mtx_end;
 
   Controller controller;
+  Random random;
 
   std::deque<std::unique_ptr<api::Call>> que_call;
   std::map<uint32_t, Reply> map_reply;

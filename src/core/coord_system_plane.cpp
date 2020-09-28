@@ -19,15 +19,16 @@
 #include <cmath>
 #include <limits>
 
+#include "random.hpp"
 #include "utils.hpp"
 
 namespace colonio {
-CoordSystemPlane::CoordSystemPlane(const picojson::object& config) :
+CoordSystemPlane::CoordSystemPlane(Random& random, const picojson::object& config) :
     CoordSystem(
         Utils::get_json<double>(config, "xMin"), Utils::get_json<double>(config, "yMin"),
         Utils::get_json<double>(config, "xMax"), Utils::get_json<double>(config, "yMax"),
         (Utils::get_json<double>(config, "xMax") - Utils::get_json<double>(config, "xMin")) / UINT32_MAX),
-    local_position(Coordinate(Utils::get_rnd_double(MIN_X, MAX_X), Utils::get_rnd_double(MIN_Y, MAX_Y))) {
+    local_position(Coordinate(random.generate_double(MIN_X, MAX_X), random.generate_double(MIN_Y, MAX_Y))) {
 }
 
 double CoordSystemPlane::get_distance(const Coordinate& p1, const Coordinate& p2) const {

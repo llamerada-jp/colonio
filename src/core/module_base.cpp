@@ -145,12 +145,12 @@ void ModuleBase::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Packe
  */
 void ModuleBase::send_packet(
     std::unique_ptr<Command> command, const NodeID& dst_nid, std::shared_ptr<const std::string> content) {
-  uint32_t packet_id = Utils::get_rnd_32();
+  uint32_t packet_id = context.random.generate_u32();
   std::unique_ptr<const Packet> packet;
   {
     std::lock_guard<std::mutex> guard(mutex_containers);
     while (packet_id == PACKET_ID_NONE || containers.find(packet_id) != containers.end()) {
-      packet_id = Utils::get_rnd_32();
+      packet_id = context.random.generate_u32();
     }
 
     std::tuple<CommandID::Type, PacketMode::Type> t = command->get_define();
@@ -181,11 +181,11 @@ void ModuleBase::send_packet(
 void ModuleBase::send_packet(
     const NodeID& dst_nid, PacketMode::Type mode, CommandID::Type command_id,
     std::shared_ptr<const std::string> content) {
-  uint32_t packet_id = Utils::get_rnd_32();
+  uint32_t packet_id = context.random.generate_u32();
   {
     std::lock_guard<std::mutex> guard(mutex_containers);
     while (packet_id == PACKET_ID_NONE || containers.find(packet_id) != containers.end()) {
-      packet_id = Utils::get_rnd_32();
+      packet_id = context.random.generate_u32();
     }
   }
 

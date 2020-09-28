@@ -15,25 +15,27 @@
  */
 #pragma once
 
-#include "node_id.hpp"
-#include "random.hpp"
+#include <cstdint>
+#include <random>
 
 namespace colonio {
-class Logger;
-class Scheduler;
 
-class Context {
+class Random {
  public:
-  Logger& logger;
-  Random& random;
-  Scheduler& scheduler;
-  const NodeID local_nid;
+  Random();
+  virtual ~Random();
 
-  Context(Logger& logger_, Random& random_, Scheduler& scheduler_);
-  virtual ~Context();
+  uint32_t generate_u32();
+  uint32_t generate_u32(uint32_t min, uint32_t max);
+  uint64_t generate_u64();
+  double generate_double(double min, double max);
 
  private:
-  Context(const Context&);
-  void operator=(const Context&);
+  std::mt19937 rnd32;
+  std::mt19937_64 rnd64;
+
+  Random(const Random&);
+  void operator=(const Random&);
 };
+
 }  // namespace colonio

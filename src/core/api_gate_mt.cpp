@@ -18,10 +18,8 @@
 
 #include <cassert>
 #include <chrono>
-#include <random>
 
 #include "logger.hpp"
-#include "utils.hpp"
 
 namespace colonio {
 
@@ -53,7 +51,7 @@ void APIGateMultiThread::call_async(
   {
     std::lock_guard<std::mutex> lock(mtx_reply);
     do {
-      id = Utils::get_rnd_32();
+      id = random.generate_u32();
     } while (id != 0 && map_reply.find(id) != map_reply.end());
     map_reply.insert(std::make_pair(id, Reply(on_reply)));
   }
@@ -75,7 +73,7 @@ std::unique_ptr<api::Reply> APIGateMultiThread::call_sync(APIChannel::Type chann
   {
     std::lock_guard<std::mutex> lock(mtx_reply);
     do {
-      id = Utils::get_rnd_32();
+      id = random.generate_u32();
     } while (id != 0 && map_reply.find(id) != map_reply.end());
     map_reply.insert(std::make_pair(id, Reply()));
   }
@@ -263,12 +261,15 @@ void APIGateMultiThread::loop_controller() {
               .map("message", ex.message);
           reply_failure(call->id(), ex.code, ex.message);
 
-        } catch (const std::exception& ex) {
+        }
+#ifdef NDEBUG
+        catch (const std::exception& ex) {
           logE(controller, "exception").map("message", std::string(ex.what()));
           reply_failure(call->id(), ErrorCode::UNDEFINED, ex.what());
           // TODO stop
           return;
         }
+#endif
       }
     }
 
@@ -288,11 +289,14 @@ void APIGateMultiThread::loop_controller() {
     } catch (const InternalException& ex) {
       logE(controller, "internal exception").map("file", ex.file).map_int("line", ex.line).map("message", ex.message);
 
-    } catch (const std::exception& ex) {
+    }
+#ifdef NDEBUG
+    catch (const std::exception& ex) {
       logE(controller, "exception").map("message", std::string(ex.what()));
       // TODO stop
       return;
     }
+#endif
   }
 }
 

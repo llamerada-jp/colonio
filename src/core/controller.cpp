@@ -21,7 +21,7 @@ ControllerDelegate::~ControllerDelegate() {
 }
 
 Controller::Controller(ControllerDelegate& delegate_) :
-    delegate(delegate_), logger(*this), scheduler(*this, logger), context(logger, scheduler) {
+    delegate(delegate_), logger(*this), scheduler(*this, logger), context(logger, random, scheduler) {
   colonio_impl = std::make_shared<ColonioImpl>(context, *this, bundler);
   bundler.registrate(colonio_impl);
 }

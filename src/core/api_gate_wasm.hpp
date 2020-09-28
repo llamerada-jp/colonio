@@ -38,6 +38,7 @@ class APIGateWASM : public APIGateBase, public ControllerDelegate {
 
  private:
   Controller controller;
+  Random random;
 
   std::map<uint32_t, std::function<void(const api::Reply&)>> map_reply;
   std::map<APIChannel::Type, std::function<void(const api::Event&)>> map_event;

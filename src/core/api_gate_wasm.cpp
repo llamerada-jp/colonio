@@ -58,7 +58,7 @@ void APIGateWASM::call_async(
     APIChannel::Type channel, const api::Call& c, std::function<void(const api::Reply&)> on_reply) {
   uint32_t id;
   do {
-    id = Utils::get_rnd_32();
+    id = random.generate_u32();
   } while (id != 0 && map_reply.find(id) != map_reply.end());
   map_reply.insert(std::make_pair(id, on_reply));
 
@@ -183,7 +183,7 @@ void APIGateWASM::call_reply(std::unique_ptr<api::Reply> reply, std::function<vo
 void APIGateWASM::push_call(std::function<void()> func) {
   uint32_t id;
   do {
-    id = Utils::get_rnd_32();
+    id = random.generate_u32();
   } while (id != 0 && map_call.find(id) != map_call.end());
   map_call.insert(std::make_pair(id, func));
   api_gate_require_call_after(reinterpret_cast<COLONIO_PTR_T>(this), static_cast<COLONIO_CALL_ID_T>(id));
