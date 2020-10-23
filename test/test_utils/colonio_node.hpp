@@ -21,7 +21,7 @@
 
 class ColonioNode : public colonio::Colonio {
  public:
-  ColonioNode(const std::string& node_name_) : Colonio(), node_name(node_name_) {
+  explicit ColonioNode(const std::string& node_name_) : Colonio(), node_name(node_name_) {
   }
 
  protected:

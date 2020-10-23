@@ -46,7 +46,7 @@ class APIBase {
   APIBase(Context& context_, APIDelegate& delegate_, APIChannel::Type channel_);
 
   void api_event(std::unique_ptr<api::Event> event);
-  void api_failure(uint32_t id, ErrorCode code, const std::string message);
+  void api_failure(uint32_t id, ErrorCode code, const std::string& message);
   void api_reply(std::unique_ptr<api::Reply> reply);
   void api_success(uint32_t id);
 

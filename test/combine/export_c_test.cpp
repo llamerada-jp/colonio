@@ -25,8 +25,8 @@ extern "C" {
 
 #include "test_utils/all.hpp"
 
-#define URL "http://localhost:8080/test"
-#define TOKEN ""
+const char URL[]   = "http://localhost:8080/test";
+const char TOKEN[] = "";
 
 struct TestData {
   AsyncHelper* helper;
