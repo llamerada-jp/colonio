@@ -45,15 +45,6 @@ template<>
 std::string int2str<uint8_t>(uint8_t num);
 
 /**
- * Convert virtual-address to string.
- * @param addr Virtual-address.
- * @return Virtual-address as string.
- */
-inline std::string vaddr2str(const vaddr_t& addr) {
-  return int2str<vaddr_t>(addr);
-}
-
-/**
  * Convert string to integer.
  * @param str A source string.
  * @return A converted integer.
@@ -67,15 +58,6 @@ T str2int(const std::string& str) {
 }
 template<>
 uint8_t str2int<uint8_t>(const std::string& str);
-
-/**
- * Convert virtual-address from string.
- * @param str string.
- * @return Virtual-address.
- */
-inline vaddr_t str2vaddr(const std::string& str) {
-  return str2int<vaddr_t>(str);
-}
 
 /**
  * Convert JSON to bool.
@@ -107,28 +89,6 @@ T json2int(const picojson::value& json) {
 std::time_t json2time(const picojson::value& json);
 
 /**
- * Convert a virtual address from JSON.
- * @param json Source JSON.
- * @return A virtual address.
- */
-inline vaddr_t json2vaddr(const picojson::value& json) {
-  return str2vaddr(json.get<std::string>());
-}
-
-/**
- * Convert a vector of virtual address from JSON.
- * @param json Source JSON.
- * @return A vector of virtual address.
- */
-inline std::vector<vaddr_t> json2vaddr_vector(const picojson::value& json) {
-  std::vector<vaddr_t> av;
-  for (auto& it : json.get<picojson::array>()) {
-    av.push_back(json2vaddr(it));
-  }
-  return av;
-}
-
-/**
  * Convert JSON to binary data.
  * It have JSON to contain binary data as hex string.
  * @param json Source JSON.
@@ -158,28 +118,6 @@ picojson::value int2json(T num) {
 template<class T>
 picojson::value enum2json(T e) {
   return picojson::value(int2json(static_cast<uint32_t>(e)));
-}
-
-/**
- * Convert virtual address to JSON.
- * @param addr Source virtual address.
- * @return Virtual address as JSON.
- */
-inline picojson::value vaddr2json(vaddr_t addr) {
-  return int2json<vaddr_t>(addr);
-}
-
-/**
- * Convert vector of virtual address to JSON.
- * @param av Source vector of virtual address.
- * @return Virtual address as JSON.
- */
-inline picojson::value vaddr_vector2json(const std::vector<vaddr_t> av) {
-  picojson::array json;
-  for (auto& it : av) {
-    json.push_back(vaddr2json(it));
-  }
-  return picojson::value(json);
 }
 
 /**

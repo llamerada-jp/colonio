@@ -79,7 +79,7 @@ void ColonioImpl::module_do_relay_packet(
   node_accessor->relay_packet(dst_nid, std::move(packet));
 }
 
-void ColonioImpl::node_accessor_on_change_online_links(NodeAccessor& na, const std::set<NodeID> nids) {
+void ColonioImpl::node_accessor_on_change_online_links(NodeAccessor& na, const std::set<NodeID>& nids) {
   if (routing) {
     routing->on_change_online_links(nids);
   }

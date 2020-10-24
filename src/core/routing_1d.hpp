@@ -63,7 +63,7 @@ class Routing1D : public RoutingAlgorithm {
     int odd_score;
     int raw_score;
 
-    ConnectedNode(int level_);
+    explicit ConnectedNode(int level_);
   };
   std::map<NodeID, ConnectedNode> connected_nodes;
 

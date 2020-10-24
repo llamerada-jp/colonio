@@ -34,7 +34,7 @@ LoggerDelegate::~LoggerDelegate() {
 }
 
 Logger::L::L(
-    Logger& logger_, const std::string file_, unsigned long line_, const std::string& level_,
+    Logger& logger_, const std::string& file_, unsigned long line_, const std::string& level_,
     const std::string& message_) :
     logger(logger_), file(file_), line(line_), level(level_), message(message_) {
 }

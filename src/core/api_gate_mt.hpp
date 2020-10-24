@@ -42,7 +42,7 @@ class APIGateMultiThread : public APIGateBase, public ControllerDelegate {
     std::function<void(const api::Reply&)> on_reply;
 
     Reply();
-    Reply(std::function<void(const api::Reply&)> on_reply_);
+    explicit Reply(std::function<void(const api::Reply&)> on_reply_);
   };
 
   class EventCall {

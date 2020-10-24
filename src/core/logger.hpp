@@ -51,7 +51,7 @@ class Logger {
  public:
   class L {
    public:
-    L(Logger& logger_, const std::string file_, unsigned long line_, const std::string& level_,
+    L(Logger& logger_, const std::string& file_, unsigned long line_, const std::string& level_,
       const std::string& message_);
     virtual ~L();
     L& map(const std::string& name, const std::string& value);
@@ -122,7 +122,7 @@ class Logger {
     }
   };
 
-  Logger(LoggerDelegate& delegate_);
+  explicit Logger(LoggerDelegate& delegate_);
   virtual ~Logger();
 
   L create(const std::string& file, unsigned long line, const std::string& level, const std::string& message);

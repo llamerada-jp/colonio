@@ -22,8 +22,6 @@
 
 namespace colonio {
 
-typedef uint64_t vaddr_t;
-
 static const char PROTOCOL_VERSION[] = "A1";
 
 typedef uint32_t CallID;

@@ -37,7 +37,7 @@ class Controller : public LoggerDelegate, public SchedulerDelegate, public APIDe
  public:
   Logger logger;
 
-  Controller(ControllerDelegate& delegate_);
+  explicit Controller(ControllerDelegate& delegate_);
   virtual ~Controller();
 
   void call(const api::Call& call);

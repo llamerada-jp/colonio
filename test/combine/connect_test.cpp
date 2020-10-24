@@ -52,8 +52,6 @@ TEST(ConnectTest, connect_multi) {
   const std::string URL      = "http://localhost:8080/test";
   const std::string TOKEN    = "";
   const std::string MAP_NAME = "map";
-  const std::string KEY_NAME = "key";
-  const std::string VALUE    = "test value";
 
   AsyncHelper helper;
   TestSeed seed;

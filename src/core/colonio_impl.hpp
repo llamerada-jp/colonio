@@ -67,7 +67,7 @@ class ColonioImpl : public APIBase,
   void module_do_send_packet(ModuleBase& module, std::unique_ptr<const Packet> packet) override;
   void module_do_relay_packet(ModuleBase& module, const NodeID& dst_nid, std::unique_ptr<const Packet> packet) override;
 
-  void node_accessor_on_change_online_links(NodeAccessor& na, const std::set<NodeID> nids) override;
+  void node_accessor_on_change_online_links(NodeAccessor& na, const std::set<NodeID>& nids) override;
   void node_accessor_on_change_status(NodeAccessor& na) override;
   void node_accessor_on_recv_packet(NodeAccessor& na, const NodeID& nid, std::unique_ptr<const Packet> packet) override;
 
