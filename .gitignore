@@ -1,6 +1,7 @@
-bin/simulate
 build/
+buildenv/Makefile
 local/
+output/
 test/js/colonio.js
 test/js/colonio.wasm
 *.pb.cc
