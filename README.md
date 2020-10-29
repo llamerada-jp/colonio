@@ -22,10 +22,10 @@ The purpose of Colonio is to make it more versatile and to make it easy for ever
 ### Build for C/C++ and JavaScript (WebAssembly)
 
 ```console
-// with docker
+// for linux using docker
 $ make build
 
-// without docker
+// for mac or for linux without docker
 $ make setup
 $ make build-native build-wasm
 ```

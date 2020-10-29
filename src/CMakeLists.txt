@@ -1,4 +1,19 @@
 ##
+## Protocol Buffer files.
+##
+file(GLOB_RECURSE PROTO_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.proto")
+foreach(PROTO_FILE in ${PROTO_FILES})
+  string(REGEX REPLACE "[.]proto$" ".pb.cc" OUTPUT_SOURCE ${PROTO_FILE})
+  add_custom_command(
+    OUTPUT ${OUTPUT_SOURCE}
+    COMMAND ${LOCAL_ENV_PATH}/bin/protoc --cpp_out=${CMAKE_CURRENT_BINARY_DIR} ${PROTO_FILE}
+    COMMAND ${LOCAL_ENV_PATH}/bin/protoc --cpp_out=${CMAKE_CURRENT_SOURCE_DIR} ${PROTO_FILE}
+    DEPENDS ${PROTO_FILE}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+endforeach()
+
+##
 ## Common core files.
 ##
 file(GLOB HEADER_FILES "*.hpp")

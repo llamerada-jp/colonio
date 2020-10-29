@@ -92,6 +92,10 @@ else()
   endif()
 
   # OpenSSL
+  if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    set(OPENSSL_CRYPTO_LIBRARY ${OPENSSL_ROOT_DIR}/lib/libcrypto.dylib CACHE FILEPATH "" FORCE)
+    set(OPENSSL_SSL_LIBRARY ${OPENSSL_ROOT_DIR}/lib/libssl.dylib CACHE FILEPATH "" FORCE)
+  endif()
   find_package(OpenSSL REQUIRED)
   include_directories(${OPENSSL_INCLUDE_DIR})
   list(APPEND webrtc_libs ${OPENSSL_LIBRARIES})

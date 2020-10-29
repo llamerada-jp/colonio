@@ -23,7 +23,7 @@ EMSCRIPTEN_VERSION = 2.0.2
 GTEST_VERSION = 1.10.0
 LIBUV_VERSION = 1.12.0
 ifeq ($(shell uname -s),Darwin)
-LIBWEBRTC_FILE = libwebrtc-83.0.4103.97-macos-amd64.zip
+LIBWEBRTC_FILE = libwebrtc-86.0.4240.80-macos-amd64.zip
 else ifeq ($(shell uname -s),Linux)
 LIBWEBRTC_FILE = libwebrtc-86.0.4240.75-linux-amd64.tar.gz
 endif
@@ -37,6 +37,10 @@ BUILD_TYPE ?= Release
 WITH_COVERAGE ?= OFF
 WITH_SAMPLE ?= OFF
 WITH_TEST ?= OFF
+
+ifeq ($(shell uname -s),Darwin)
+CMAKE_EXTRA_OPTS = -DOPENSSL_ROOT_DIR=$(shell brew --prefix openssl)
+endif
 
 .PHONY: all
 all: build
@@ -60,15 +64,15 @@ setup-linux:
 
 .PHONY: setup-macos
 setup-macos:
-	brew install cmake glog libuv pybind11
+	brew install autoconf automake cmake glog libtool libuv openssl pybind11
 	$(MAKE) setup-local
 
 .PHONY: setup-local
 setup-local:
 	mkdir -p $(LOCAL_ENV_PATH) $(WORK_PATH)
-	$(RM) -r $(WORK_PATH)/*
 	# asio
 	cd $(WORK_PATH) \
+	&& $(RM) -r asio \
 	&& git clone https://github.com/chriskohlhoff/asio.git \
 	&& cd asio \
 	&& git checkout refs/tags/$(ASIO_TAG) \
@@ -79,18 +83,21 @@ setup-local:
 	&& $(MAKE) install
 	# cpp_algorithms
 	cd $(WORK_PATH) \
+	&& $(RM) -r cpp_algorithms \
 	&& git clone https://github.com/hs-nazuna/cpp_algorithms.git \
 	&& cd cpp_algorithms \
 	&& git checkout $(CPP_ALGORITHMS_HASH) \
 	&& cp DelaunayTriangulation/delaunay_triangulation.hpp $(LOCAL_ENV_PATH)/include/
 	# emscripten
 	cd $(LOCAL_ENV_PATH) \
+	&& $(RM) -r emsdk \
 	&& git clone https://github.com/emscripten-core/emsdk.git \
 	&& cd emsdk \
 	&& ./emsdk install $(EMSCRIPTEN_VERSION) \
 	&& ./emsdk activate $(EMSCRIPTEN_VERSION)
 	# gtest
 	cd $(WORK_PATH) \
+	&& $(RM) -r googletest \
 	&& git clone https://github.com/google/googletest.git \
 	&& cd googletest \
 	&& git checkout refs/tags/release-$(GTEST_VERSION) \
@@ -110,15 +117,21 @@ setup-local:
 	# libwebrtc
 	cd $(WORK_PATH) \
 	&& curl -LOS https://github.com/llamerada-jp/libwebrtc/releases/download/$(LIBWEBRTC_VERSION)/$(LIBWEBRTC_FILE) \
-	&& tar zxf $(LIBWEBRTC_FILE) -C $(LOCAL_ENV_PATH)
+	&& if [ $(shell uname -s) = 'Linux' ]; then \
+		tar zxf -C $(LOCAL_ENV_PATH) $(LIBWEBRTC_FILE); \
+	elif [ $(shell uname -s) = 'Darwin' ]; then \
+		unzip -o -d $(LOCAL_ENV_PATH) $(LIBWEBRTC_FILE); \
+	fi
 	# picojson
 	cd $(WORK_PATH) \
+	&& $(RM) -r picojson \
 	&& git clone https://github.com/kazuho/picojson.git \
 	&& cd picojson \
 	&& git checkout refs/tags/v$(PICOJSON_VERSION) \
 	&& cp picojson.h $(LOCAL_ENV_PATH)/include/
 	# Protocol Buffers (native)
 	cd $(WORK_PATH) \
+	&& $(RM) -r protobuf \
 	&& git clone https://github.com/protocolbuffers/protobuf.git \
 	&& cd protobuf \
 	&& git checkout refs/tags/v$(PROTOBUF_VERSION) \
@@ -130,8 +143,9 @@ setup-local:
 	# Protocol Buffers (wasm)
 	cd $(WORK_PATH) \
 	&& source $(LOCAL_ENV_PATH)/emsdk/emsdk_env.sh \
-	&& mkdir em_cache \
+	&& mkdir -p em_cache \
 	&& export EM_CACHE=$(WORK_PATH)/em_cache \
+	&& $(RM) -r protobuf_wasm \
 	&& git clone https://github.com/protocolbuffers/protobuf.git protobuf_wasm \
 	&& cd protobuf_wasm \
 	&& git checkout refs/tags/v$(PROTOBUF_VERSION) \
@@ -142,6 +156,7 @@ setup-local:
 	&& emmake $(MAKE) install
 	# websocketpp
 	cd $(WORK_PATH) \
+	&& $(RM) -r websocketpp \
 	&& git clone https://github.com/zaphoyd/websocketpp.git \
 	&& cd websocketpp \
 	&& git checkout refs/tags/$(WEBSOCKETPP_VERSION) \
@@ -182,6 +197,7 @@ build-native:
 		-DWITH_COVERAGE=$(WITH_COVERAGE) \
 		-DWITH_SAMPLE=$(WITH_SAMPLE) \
 		-DWITH_TEST=$(WITH_TEST) \
+		$(CMAKE_EXTRA_OPTS) \
 		$(ROOT_PATH) \
 	&& $(MAKE) \
 	&& cp src/libcolonio.a $(OUTPUT_PATH) \
@@ -191,7 +207,7 @@ build-native:
 build-wasm:
 	mkdir -p $(WASM_BUILD_PATH) $(OUTPUT_PATH) \
 	&& source $(LOCAL_ENV_PATH)/emsdk/emsdk_env.sh \
-	&& mkdir /tmp/em_cache \
+	&& mkdir -p /tmp/em_cache \
 	&& export EM_CACHE=/tmp/em_cache \
 	&& cd $(WASM_BUILD_PATH) \
 	&& emcmake cmake -DLOCAL_ENV_PATH=$(LOCAL_ENV_PATH) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) $(ROOT_PATH) \
@@ -214,4 +230,8 @@ $(ROOT_PATH)/buildenv/Makefile: $(ROOT_PATH)/Makefile
 
 .PHONY: clean
 clean:
-	$(RM) -r $(NATIVE_BUILD_PATH) $(WASM_BUILD_PATH) $(BUILD_SEED_PATH) $(OUTPUT_PATH) $(ROOT_PATH)/buildenv/Makefile
+	$(RM) -r $(OUTPUT_PATH)
+
+.PHONY: deisclean
+deisclean: clean
+	$(RM) -r $(NATIVE_BUILD_PATH) $(WASM_BUILD_PATH) $(BUILD_SEED_PATH) $(ROOT_PATH)/buildenv/Makefile
