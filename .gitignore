@@ -1,5 +1,7 @@
 build/
+buildenv/dummy
 buildenv/Makefile
+buildenv/qemu-aarch64-static
 local/
 output/
 test/js/colonio.js

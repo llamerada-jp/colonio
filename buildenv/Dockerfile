@@ -1,4 +1,10 @@
-FROM ubuntu:20.04 as prebuilder
+ARG BASE_IMAGE
+ARG QEMU_FILE
+
+FROM ${BASE_IMAGE} as prebuilder
+LABEL org.opencontainers.image.source https://github.com/llamerada-jp/colonio
+
+COPY ${QEMU_FILE} /usr/bin/${QEMU_FILE}
 
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt update \

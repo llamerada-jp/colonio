@@ -1,7 +1,9 @@
 SHELL = /bin/bash
 
 # version (yyyymmdd)
-DOCKER_IMAGE = ghcr.io/llamerada-jp/colonio-buildenv:$(shell uname -m)-20201103
+DOCKER_IMAGE_VERSION = 20201103
+DOCKER_IMAGE_NAME = ghcr.io/llamerada-jp/colonio-buildenv
+DOCKER_IMAGE = $(DOCKER_IMAGE_NAME):$(shell uname -m)-$(DOCKER_IMAGE_VERSION)
 
 # paths
 ROOT_PATH := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
@@ -64,6 +66,7 @@ setup-linux:
 	$(SUDO) apt update
 	$(SUDO) apt -y install --no-install-recommends automake cmake build-essential ca-certificates curl git libcurl4-nss-dev libgoogle-glog-dev libssl-dev libtool pkg-config python3
 	$(MAKE) setup-local
+	if [ $(shell uname -m) = 'x86_64' ]; then $(MAKE) setup-wasm; fi
 
 .PHONY: setup-macos
 setup-macos:
@@ -91,13 +94,6 @@ setup-local:
 	&& cd cpp_algorithms \
 	&& git checkout $(CPP_ALGORITHMS_HASH) \
 	&& cp DelaunayTriangulation/delaunay_triangulation.hpp $(LOCAL_ENV_PATH)/include/
-	# emscripten
-	cd $(LOCAL_ENV_PATH) \
-	&& $(RM) -r emsdk \
-	&& git clone https://github.com/emscripten-core/emsdk.git \
-	&& cd emsdk \
-	&& ./emsdk install $(EMSCRIPTEN_VERSION) \
-	&& ./emsdk activate $(EMSCRIPTEN_VERSION)
 	# gtest
 	cd $(WORK_PATH) \
 	&& $(RM) -r googletest \
@@ -132,7 +128,7 @@ setup-local:
 	&& cd picojson \
 	&& git checkout refs/tags/v$(PICOJSON_VERSION) \
 	&& cp picojson.h $(LOCAL_ENV_PATH)/include/
-	# Protocol Buffers (native)
+	# Protocol Buffers
 	cd $(WORK_PATH) \
 	&& $(RM) -r protobuf \
 	&& git clone https://github.com/protocolbuffers/protobuf.git \
@@ -143,7 +139,27 @@ setup-local:
 	&& ./configure --prefix=$(LOCAL_ENV_PATH) \
 	&& $(MAKE) \
 	&& $(MAKE) install
-	# Protocol Buffers (wasm)
+	# websocketpp
+	cd $(WORK_PATH) \
+	&& $(RM) -r websocketpp \
+	&& git clone https://github.com/zaphoyd/websocketpp.git \
+	&& cd websocketpp \
+	&& git checkout refs/tags/$(WEBSOCKETPP_VERSION) \
+	&& cmake -DCMAKE_INSTALL_PREFIX=$(LOCAL_ENV_PATH) . \
+	&& $(MAKE) \
+	&& $(MAKE) install
+
+.PHONY: setup-wasm
+setup-wasm:
+	mkdir -p $(LOCAL_ENV_PATH) $(WORK_PATH)
+	# emscripten
+	cd $(LOCAL_ENV_PATH) \
+	&& $(RM) -r emsdk \
+	&& git clone https://github.com/emscripten-core/emsdk.git \
+	&& cd emsdk \
+	&& ./emsdk install $(EMSCRIPTEN_VERSION) \
+	&& ./emsdk activate $(EMSCRIPTEN_VERSION)
+	# Protocol Buffers
 	cd $(WORK_PATH) \
 	&& source $(LOCAL_ENV_PATH)/emsdk/emsdk_env.sh \
 	&& mkdir -p em_cache \
@@ -157,24 +173,20 @@ setup-local:
 	&& emconfigure ./configure --prefix=$(LOCAL_ENV_PATH)/wasm --disable-shared \
 	&& emmake $(MAKE) \
 	&& emmake $(MAKE) install
-	# websocketpp
-	cd $(WORK_PATH) \
-	&& $(RM) -r websocketpp \
-	&& git clone https://github.com/zaphoyd/websocketpp.git \
-	&& cd websocketpp \
-	&& git checkout refs/tags/$(WEBSOCKETPP_VERSION) \
-	&& cmake -DCMAKE_INSTALL_PREFIX=$(LOCAL_ENV_PATH) . \
-	&& $(MAKE) \
-	&& $(MAKE) install
 
 .PHONY: build
+ifeq ($(shell uname -m),x86_64)
+BUILD_TARGET = build-native build-wasm
+else ifeq ($(shell uname -m),aarch64)
+BUILD_TARGET = build-native
+endif
 build:
 	if [ $(shell uname -s) = 'Linux' ]; then \
 		docker run -v $(ROOT_PATH):$(ROOT_PATH):rw \
 			-u "$(shell id -u $(USER)):$(shell id -g $(USER))" \
 			$(DOCKER_IMAGE) \
 			-C $(ROOT_PATH) -j $(shell nproc) \
-			build-native build-wasm \
+			$(BUILD_TARGET) \
 			BUILD_TYPE=$(BUILD_TYPE) \
 			WITH_COVERAGE=$(WITH_COVERAGE) \
 			WITH_SAMPLE=$(WITH_SAMPLE) \
@@ -225,12 +237,22 @@ build-seed:
 	&& LOCAL_ENV_PATH=$(LOCAL_ENV_PATH) colonio-seed/build.sh \
 	&& cp colonio-seed/seed $(OUTPUT_PATH)
 
-.PHONY: build-docker
-build-docker: $(ROOT_PATH)/buildenv/Makefile
-	docker build $(ROOT_PATH)/buildenv -t $(DOCKER_IMAGE) --network host
+.PHONY: build-docker-x86_64
+build-docker-x86_64: $(ROOT_PATH)/buildenv/Makefile
+	touch $(ROOT_PATH)/buildenv/dummy
+	docker build $(ROOT_PATH)/buildenv/ -t $(DOCKER_IMAGE_NAME):x86_64-$(DOCKER_IMAGE_VERSION) --network host \
+		--build-arg BASE_IMAGE=ubuntu:20.04 --build-arg QEMU_FILE=dummy
+
+.PHONY: build-docker-aarch64
+build-docker-aarch64: $(ROOT_PATH)/buildenv/Makefile
+	sudo apt install qemu-user-static
+	cp /usr/bin/qemu-aarch64-static $(ROOT_PATH)/buildenv/
+	docker build $(ROOT_PATH)/buildenv/ -t $(DOCKER_IMAGE_NAME):aarch64-$(DOCKER_IMAGE_VERSION) --network host \
+		--build-arg BASE_IMAGE=ubuntu@sha256:65cd340c0735f062e84507c3c2298502b5446037cc282bc1f3ac720ef42fb137 \
+		--build-arg QEMU_FILE=qemu-aarch64-static
 
 $(ROOT_PATH)/buildenv/Makefile: $(ROOT_PATH)/Makefile
-	cp Makefile buildenv
+	cp Makefile $(ROOT_PATH)/buildenv
 
 .PHONY: clean
 clean:
@@ -238,4 +260,5 @@ clean:
 
 .PHONY: deisclean
 deisclean: clean
-	$(RM) -r $(NATIVE_BUILD_PATH) $(WASM_BUILD_PATH) $(BUILD_SEED_PATH) $(ROOT_PATH)/buildenv/Makefile
+	$(RM) -r $(NATIVE_BUILD_PATH) $(WASM_BUILD_PATH) $(BUILD_SEED_PATH)
+	$(RM) -r $(ROOT_PATH)/buildenv/Makefile $(ROOT_PATH)/buildenv/dummy $(ROOT_PATH)/buildenv/qemu-aarch64-static
