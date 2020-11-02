@@ -1,5 +1,8 @@
 SHELL = /bin/bash
 
+# version (yyyymmdd)
+DOCKER_IMAGE = ghcr.io/llamerada-jp/colonio-buildenv:$(shell uname -m)-20201103
+
 # paths
 ROOT_PATH := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 export LOCAL_ENV_PATH ?= $(ROOT_PATH)/local
@@ -118,7 +121,7 @@ setup-local:
 	cd $(WORK_PATH) \
 	&& curl -LOS https://github.com/llamerada-jp/libwebrtc/releases/download/$(LIBWEBRTC_VERSION)/$(LIBWEBRTC_FILE) \
 	&& if [ $(shell uname -s) = 'Linux' ]; then \
-		tar zxf -C $(LOCAL_ENV_PATH) $(LIBWEBRTC_FILE); \
+		tar -zx -C $(shell realpath $(LOCAL_ENV_PATH)) -f $(LIBWEBRTC_FILE); \
 	elif [ $(shell uname -s) = 'Darwin' ]; then \
 		unzip -o -d $(LOCAL_ENV_PATH) $(LIBWEBRTC_FILE); \
 	fi
@@ -169,7 +172,7 @@ build:
 	if [ $(shell uname -s) = 'Linux' ]; then \
 		docker run -v $(ROOT_PATH):$(ROOT_PATH):rw \
 			-u "$(shell id -u $(USER)):$(shell id -g $(USER))" \
-			colonio-buildenv:$(shell uname -m) \
+			$(DOCKER_IMAGE) \
 			-C $(ROOT_PATH) -j $(shell nproc) \
 			build-native build-wasm \
 			BUILD_TYPE=$(BUILD_TYPE) \
@@ -217,13 +220,14 @@ build-wasm:
 .PHONY: build-seed
 build-seed:
 	cd $(BUILD_SEED_PATH) \
+	&& $(RM) -r colonio-seed \
 	&& git clone https://github.com/llamerada-jp/colonio-seed.git \
 	&& LOCAL_ENV_PATH=$(LOCAL_ENV_PATH) colonio-seed/build.sh \
 	&& cp colonio-seed/seed $(OUTPUT_PATH)
 
 .PHONY: build-docker
 build-docker: $(ROOT_PATH)/buildenv/Makefile
-	docker build $(ROOT_PATH)/buildenv -t colonio-buildenv:$(shell uname -m) --network host
+	docker build $(ROOT_PATH)/buildenv -t $(DOCKER_IMAGE) --network host
 
 $(ROOT_PATH)/buildenv/Makefile: $(ROOT_PATH)/Makefile
 	cp Makefile buildenv

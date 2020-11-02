@@ -2,26 +2,24 @@ language: cpp
 
 matrix:
   include:
-    - os: linux
-      dist: focal
-      compiler: gcc
-      addons:
-        apt:
-          update: true
-          packages:
-            - valgrind
-            - libcurl4-nss-dev
-            - libgoogle-glog-dev
-            - libtool
-            - libx11-dev
+  - os: linux
+    dist: focal
+    compiler: gcc
+    addons:
+      apt:
+        update: true
+
+services:
+- docker
 
 install:
   - pip3 install --user cpp-coveralls
 
 script:
   - cd $TRAVIS_BUILD_DIR
-  - sh bin/build.sh -c
-  - make -C build/ubuntu_20.04_x86_64 test ARGS='-VV --timeout 180'
+  - make build WITH_TEST=ON
+  - make build-seed
+  - make test
 
 after_success:
-  - coveralls -b ./build/ubuntu_20.04_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/test -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'
+  - coveralls -b ./build/linux_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/test -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'
