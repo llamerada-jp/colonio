@@ -1,36 +1,20 @@
-language: cpp
+language: minimal
 
 matrix:
   include:
   - os: linux
-    arch: amd64
-    dist: focal
-    compiler: gcc
-    addons:
-      apt:
-        update: true
-    install:
-    - pip3 install --user cpp-coveralls
-    services:
-    - docker
-    script:
-    - cd $TRAVIS_BUILD_DIR
-    - make build WITH_TEST=ON WITH_COVERAGE=ON
-    - make build-seed
-    - make test
-    after_success:
-    - coveralls -b ./build/linux_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/test -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'
-  - os: linux
     arch: arm64
     dist: focal
-    compiler: gcc
-    addons:
-      apt:
-        update: true
     services:
     - docker
-    script:
-    - cd $TRAVIS_BUILD_DIR
-    - make build WITH_TEST=ON
-    - make build-seed
-    - make test
+  - os: osx
+
+git:
+  depth: 1
+
+notifications:
+  email: false
+
+script:
+- cd $TRAVIS_BUILD_DIR
+- sh ./ci.sh

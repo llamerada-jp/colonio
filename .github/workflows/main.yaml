@@ -1,0 +1,19 @@
+name: Main
+on:
+  pull_request:
+  push:
+    branches:
+    - master
+    - develop
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-20.04
+    with:
+
+    steps:
+    - uses: actions/checkout@v2
+    - shell: bash
+      env:
+        COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
+      run: ./ci.sh

@@ -1,7 +1,7 @@
-SHELL = /bin/bash
+SHELL = /bin/bash -o pipefail
 
 # version (yyyymmdd)
-DOCKER_IMAGE_VERSION = 20201103
+DOCKER_IMAGE_VERSION = 20201103b
 DOCKER_IMAGE_NAME = ghcr.io/llamerada-jp/colonio-buildenv
 DOCKER_IMAGE = $(DOCKER_IMAGE_NAME):$(shell uname -m)-$(DOCKER_IMAGE_VERSION)
 
@@ -30,7 +30,11 @@ LIBUV_VERSION = 1.12.0
 ifeq ($(shell uname -s),Darwin)
 LIBWEBRTC_FILE = libwebrtc-86.0.4240.80-macos-amd64.zip
 else ifeq ($(shell uname -s),Linux)
-LIBWEBRTC_FILE = libwebrtc-86.0.4240.75-linux-amd64.tar.gz
+	ifeq ($(shell uname -m),x86_64)
+	LIBWEBRTC_FILE = libwebrtc-86.0.4240.75-linux-amd64.tar.gz
+	else ifeq ($(shell uname -m),aarch64)
+	LIBWEBRTC_FILE = libwebrtc-86.0.4240.111-linux-arm64.tar.gz
+	endif
 endif
 LIBWEBRTC_VERSION = m86
 PICOJSON_VERSION = 1.3.0
@@ -70,7 +74,18 @@ setup-linux:
 
 .PHONY: setup-macos
 setup-macos:
-	brew install autoconf automake cmake glog libtool libuv openssl pybind11
+	mkdir -p $(WORK_PATH)
+	brew update
+	brew list > $(WORK_PATH)/BREW_PKGS
+	install_pkgs="" && upgrade_pkgs="" \
+	&& for p in autoconf automake cmake glog libtool libuv openssl pybind11; do \
+			if grep $${p} $(WORK_PATH)/BREW_PKGS; \
+			then upgrade_pkgs="$${upgrade_pkgs} $${p}"; \
+			else install_pkgs="$${install_pkgs} $${p}"; \
+			fi \
+		done \
+	&& if [ "$${upgrade_pkgs}" != '' ]; then brew upgrade $${upgrade_pkgs}; fi \
+	&& if [ "$${install_pkgs}" != '' ]; then brew install $${install_pkgs}; fi
 	$(MAKE) setup-local
 
 .PHONY: setup-local
@@ -216,7 +231,7 @@ build-native:
 		$(ROOT_PATH) \
 	&& $(MAKE) \
 	&& cp src/libcolonio.a $(OUTPUT_PATH) \
-	&& cp $(LOCAL_ENV_PATH)/lib/lib*.so.* $(OUTPUT_PATH)/lib
+	&& if [ $(shell uname -s) = 'Linux' ]; then cp $(LOCAL_ENV_PATH)/lib/lib*.so.* $(OUTPUT_PATH)/lib; fi
 
 .PHONY: build-wasm
 build-wasm:
@@ -234,7 +249,7 @@ build-seed:
 	cd $(BUILD_SEED_PATH) \
 	&& $(RM) -r colonio-seed \
 	&& git clone https://github.com/llamerada-jp/colonio-seed.git \
-	&& LOCAL_ENV_PATH=$(LOCAL_ENV_PATH) colonio-seed/build.sh \
+	&& LOCAL_ENV_PATH=$(LOCAL_ENV_PATH) $(MAKE) -C colonio-seed setup build \
 	&& cp colonio-seed/seed $(OUTPUT_PATH)
 
 .PHONY: build-docker-x86_64
@@ -256,6 +271,10 @@ $(ROOT_PATH)/buildenv/Makefile: $(ROOT_PATH)/Makefile
 
 .PHONY: clean
 clean:
+	$(MAKE) -C $(NATIVE_BUILD_PATH) clean
+	$(MAKE) -C $(WASM_BUILD_PATH) clean
+	$(MAKE) -C $(BUILD_SEED_PATH)/colonio-seed clean
+	find src -name *\.pb\.* -exec $(RM) {} \;
 	$(RM) -r $(OUTPUT_PATH)
 
 .PHONY: deisclean
