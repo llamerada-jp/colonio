@@ -1,14 +1,11 @@
-language: go
+language: minimal
 
 matrix:
   include:
-    - os: linux
-      dist: bionic
-
-go:
-  - 1.13.4
-
-env:  GO111MODULE=on
+  - os: linux
+    arch: arm64
+    dist: focal
+  - os: osx
 
 git:
   depth: 1
@@ -17,5 +14,5 @@ notifications:
   email: false
 
 script:
-  - cd $TRAVIS_BUILD_DIR
-  - ./build.sh
+- cd $TRAVIS_BUILD_DIR
+- make setup build

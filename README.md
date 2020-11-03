@@ -10,14 +10,15 @@ Information about Colonio is on [this web page](https://www.colonio.dev/).
 ## Supported environments
 
 - os
-  - Ubuntu 18.04 or later
+  - Ubuntu 20.04 or later
   - MacOS v10.14 (Mojave) or later
 - golang 1.13 or later
 
 ## How to build
 
 ```sh
-$ ./build.sh
+$ make setup
+$ make build
 ```
 
 ## Usage
