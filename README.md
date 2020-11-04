@@ -1,4 +1,4 @@
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/9fdd7ba69834413084cdc14cdb4eca55)](https://www.codacy.com/manual/llamerada-jp/colonio?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=llamerada-jp/colonio&amp;utm_campaign=Badge_Grade)
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/9fdd7ba69834413084cdc14cdb4eca55)](https://www.codacy.com/manual/llamerada-jp/colonio?utm_source=github.com&utm_medium=referral&utm_content=llamerada-jp/colonio&utm_campaign=Badge_Grade)
 [![Travis-CI](https://travis-ci.org/llamerada-jp/colonio.svg?branch=master)](https://travis-ci.org/llamerada-jp/colonio/branches)
 [![Coverage Status](https://coveralls.io/repos/github/llamerada-jp/colonio/badge.svg?branch=master)](https://coveralls.io/github/llamerada-jp/colonio?branch=master)
 
@@ -12,51 +12,51 @@ The purpose of Colonio is to make it more versatile and to make it easy for ever
 
 ## More information
 
-- The status of this project is experimental.
-- Please see [website](https://www.colonio.dev/) to get more information.
-- [colonio-seed](https://github.com/llamerada-jp/colonio-seed) is the seed program for colonio.
-- [libwebrtc](https://github.com/llamerada-jp/libwebrtc) is a depending library to use WebRTC on native environment.
+-   The status of this project is experimental.
+-   Please see [website](https://www.colonio.dev/) to get more information.
+-   [colonio-seed](https://github.com/llamerada-jp/colonio-seed) is the seed program for colonio.
+-   [libwebrtc](https://github.com/llamerada-jp/libwebrtc) is a depending library to use WebRTC on native environment.
 
 ## How to build the node library
 
-### Build for C/C++
+### Build for C/C++ and JavaScript (WebAssembly)
 
 ```console
-$ ./bin/build.sh
+// for linux using docker
+$ make build
+
+// for mac or for linux without docker
+$ make setup
+$ make build-native build-wasm
 ```
 
 There is an output file below.
 
-- `build/<path for each environment>/src/libcolonio.a`
+-   `output/libcolonio.a`: static link library for C/C++
+-   `output/lib/*`: depending shared library for C/C++
+-   `output/colonio.*`: wasm library for JavaScript
 
-### Build for JavaScript (WebAssembly)
+### Run test
 
 ```console
-$ ./bin/build.sh -w
+$ make build WITH_TEST=ON
+$ make build-seed
+$ make test
 ```
-
-There are output files below.
-
-- `build/webassembly/colonio.js`
-- `build/webassembly/colonio.wasm`
 
 Flags for build script are below.
 
-```
-Usage: ./bin/build.sh [-cdhwst]
-  -c : Build test with coverage.(Native only)
-  -d : Set build type to debug mode.
-  -h : Show this help.
-  -w : Build webassembly module.
-  -s : Build with sample programs.(Native only)
-  -t : Build test programs.(Native only)
-```
+| option          | values             | default   | description                                |
+| --------------- | ------------------ | --------- | ------------------------------------------ |
+| `BUILD_TYPE`    | `Release`, `Debug` | `Release` | build type option used as CMAKE_BUILD_TYPE |
+| `WITH_TEST`     | `ON`, `OFF`        | `OFF`     | build test program                         |
+| `WITH_COVERAGE` | `ON`, `OFF`        | `OFF`     | output coverage when run test programs     |
 
 ## How to build a C/C++ program using colonio
 
 ```console
 $ g++ -I<path to colonio>/src \
--L<path to libcolonio> -L<path to colonio>/local/lib \
+-L<path to libcolonio> -L<path to colonio>/output \
 -lcolonio -lwebrtc -lprotobuf -lpthread -lssl \
 <your source code>
 ```

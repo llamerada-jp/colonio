@@ -1,13 +1,12 @@
+
 ##
 ## Common core files.
 ##
 file(GLOB HEADER_FILES "*.hpp")
 set(COLONIO_FILES
-  core/api.pb.cc
   core/api_base.cpp
   core/api_bundler.cpp
   core/api_gate.cpp
-  core/colonio_api.pb.cc
   core/command.cpp
   core/context.cpp
   core/controller.cpp
@@ -16,32 +15,26 @@ set(COLONIO_FILES
   core/coord_system_plane.cpp
   core/coord_system_sphere.cpp
   core/coordinate.cpp
-  core/core.pb.cc
   core/error.cpp
   core/exception.cpp
   core/export_c.cpp
   core/internal_exception.cpp
   core/logger.cpp
   core/map.cpp
-  core/map_api.pb.cc
   core/map_impl.cpp
   core/module_1d.cpp
   core/module_2d.cpp
   core/module_base.cpp
   core/module_bundler.cpp
   core/node_accessor.cpp
-  core/node_accessor_protocol.pb.cc
   core/node_id.cpp
   core/pubsub_2d.cpp
-  core/pubsub_2d_api.pb.cc
   core/pubsub_2d_impl.cpp
   core/random.cpp
   core/routing.cpp
-  core/routing_protocol.pb.cc
   core/routing_1d.cpp
   core/routing_2d.cpp
   core/seed_accessor.cpp
-  core/seed_accessor_protocol.pb.cc
   core/seed_link.cpp
   core/scheduler.cpp
   core/utils.cpp
@@ -54,12 +47,30 @@ set(COLONIO_FILES
 
   map_paxos/map_paxos_api.cpp
   map_paxos/map_paxos_module.cpp
-  map_paxos/map_paxos_protocol.pb.cc
 
   pubsub_2d/pubsub_2d_api.cpp
   pubsub_2d/pubsub_2d_module.cpp
-  pubsub_2d/pubsub_2d_protocol.pb.cc
   )
+
+##
+## Protocol Buffer files.
+##
+file(GLOB_RECURSE PROTO_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.proto")
+message(STATUS "proto files: ${PROTO_FILES}")
+foreach(PROTO_FILE IN LISTS PROTO_FILES)
+  string(REGEX REPLACE "[.]proto$" ".pb.cc" OUTPUT_SOURCE ${PROTO_FILE})
+  string(REGEX REPLACE "[.]proto$" ".pb.h" OUTPUT_HEADER ${PROTO_FILE})
+  message(STATUS "custom command: ${PROTO_FILE} -> ${OUTPUT_SOURCE} ${OUTPUT_HEADER}")
+  add_custom_command(
+    OUTPUT ${OUTPUT_SOURCE} ${OUTPUT_HEADER}
+    COMMAND ${LOCAL_ENV_PATH}/bin/protoc --cpp_out=${CMAKE_CURRENT_BINARY_DIR} ${PROTO_FILE}
+    COMMAND ${LOCAL_ENV_PATH}/bin/protoc --cpp_out=${CMAKE_CURRENT_SOURCE_DIR} ${PROTO_FILE}
+    DEPENDS ${PROTO_FILE}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+  list(APPEND COLONIO_FILES ${OUTPUT_SOURCE})
+  list(APPEND HEADER_FILES ${OUTPUT_HEADER})
+endforeach()
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   ##
@@ -79,10 +90,10 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   target_link_libraries(colonio
     ${webassembly_libs}
     )
-  add_custom_target(install_colonio ALL
-    COMMAND "cp" "colonio.js" "colonio.wasm" "${PROJECT_SOURCE_DIR}/local/lib/"
-    DEPENDS colonio
-    )
+  # add_custom_target(install_colonio ALL
+  #   COMMAND "cp" "colonio.js" "colonio.wasm" "${PROJECT_SOURCE_DIR}/local/lib/"
+  #   DEPENDS colonio
+  #   )
 
 else()
   ##
@@ -98,10 +109,10 @@ else()
     ${HEADER_FILES}
     ${COLONIO_FILES}
     )
-  install(TARGETS colonio
-    RUNTIME DESTINATION ${PROJECT_SOURCE_DIR}/local/bin
-    LIBRARY DESTINATION ${PROJECT_SOURCE_DIR}/local/lib
-    ARCHIVE DESTINATION ${PROJECT_SOURCE_DIR}/local/lib)
+  # install(TARGETS colonio
+  #   RUNTIME DESTINATION ${PROJECT_SOURCE_DIR}/local/bin
+  #   LIBRARY DESTINATION ${PROJECT_SOURCE_DIR}/local/lib
+  #   ARCHIVE DESTINATION ${PROJECT_SOURCE_DIR}/local/lib)
 
   # Python
   if (WITH_PYTHON)
@@ -121,10 +132,10 @@ else()
       SUFFIX "${PYTHON_MODULE_EXTENSION}"
       )
 
-    install(TARGETS colonio_py
-      RUNTIME DESTINATION ${PROJECT_SOURCE_DIR}/local/bin
-      LIBRARY DESTINATION ${PROJECT_SOURCE_DIR}/local/lib
-      ARCHIVE DESTINATION ${PROJECT_SOURCE_DIR}/local/lib)
+    # install(TARGETS colonio_py
+    #   RUNTIME DESTINATION ${PROJECT_SOURCE_DIR}/local/bin
+    #   LIBRARY DESTINATION ${PROJECT_SOURCE_DIR}/local/lib
+    #   ARCHIVE DESTINATION ${PROJECT_SOURCE_DIR}/local/lib)
   endif()
 
   # Export file list for another module.

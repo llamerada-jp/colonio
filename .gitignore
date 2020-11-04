@@ -1,6 +1,9 @@
-bin/simulate
 build/
+buildenv/dummy
+buildenv/Makefile
+buildenv/qemu-aarch64-static
 local/
+output/
 test/js/colonio.js
 test/js/colonio.wasm
 *.pb.cc
