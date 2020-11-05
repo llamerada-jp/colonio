@@ -52,12 +52,12 @@ TEST(NodeIDTest, str) {
   EXPECT_STREQ(NodeID::NEXT.to_str().c_str(), "next");
 
   const NodeID out01 = NodeID::from_str("0123456789abcdefABCDEF0123456789");
-  EXPECT_EQ(ID0(out01), 0x0123456789abcdef);
-  EXPECT_EQ(ID1(out01), 0xABCDEF0123456789);
+  EXPECT_EQ(ID0(out01), static_cast<uint64_t>(0x0123456789abcdef));
+  EXPECT_EQ(ID1(out01), static_cast<uint64_t>(0xABCDEF0123456789));
 
   bool has_error = false;
   try {
-    const NodeID out02 = NodeID::from_str("0123456789abcdef0123456789ABCDEZ");
+    NodeID::from_str("0123456789abcdef0123456789ABCDEZ");
   } catch (InternalException& e) {
     has_error = true;
     EXPECT_STREQ(e.what(), "illegal node-id string. (string : 0123456789abcdef0123456789ABCDEZ)");
@@ -66,7 +66,7 @@ TEST(NodeIDTest, str) {
 
   has_error = false;
   try {
-    const NodeID out02 = NodeID::from_str("Z123456789abcdef0123456789ABCDE");
+    NodeID::from_str("Z123456789abcdef0123456789ABCDE");
   } catch (InternalException& e) {
     has_error = true;
     EXPECT_STREQ(e.what(), "illegal node-id string. (string : Z123456789abcdef0123456789ABCDE)");
@@ -85,10 +85,10 @@ TEST(NodeIDTest, pb) {
     EXPECT_EQ(otest00, NodeID::T);             \
   }
 
-  TEST00(NONE, 0);
-  TEST00(THIS, 2);
-  TEST00(SEED, 3);
-  TEST00(NEXT, 4);
+  TEST00(NONE, static_cast<unsigned int>(0));
+  TEST00(THIS, static_cast<unsigned int>(2));
+  TEST00(SEED, static_cast<unsigned int>(3));
+  TEST00(NEXT, static_cast<unsigned int>(4));
 #undef TEST00
 
   {
@@ -96,8 +96,8 @@ TEST(NodeIDTest, pb) {
     core::NodeID ptest01;
     itest01.to_pb(&ptest01);
     // EXPECT_EQ(ptest01.type(), Type::NORMAL);
-    EXPECT_EQ(ptest01.id0(), 0x0123456789ABCDEF);
-    EXPECT_EQ(ptest01.id1(), 0x9876543210ABCDEF);
+    EXPECT_EQ(ptest01.id0(), static_cast<uint64_t>(0x0123456789ABCDEF));
+    EXPECT_EQ(ptest01.id1(), static_cast<uint64_t>(0x9876543210ABCDEF));
     ptest01.set_id0(0x9876543210FEDCBA);
     ptest01.set_id1(0xFEDCBA9876543210);
     NodeID otest01 = NodeID::from_pb(ptest01);
@@ -110,7 +110,7 @@ TEST(NodeIDTest, pb) {
   try {
     core::NodeID ptest02;
     ptest02.set_type(5);
-    NodeID otest02 = NodeID::from_pb(ptest02);
+    NodeID::from_pb(ptest02);
 
   } catch (InternalException& e) {
     has_error = true;

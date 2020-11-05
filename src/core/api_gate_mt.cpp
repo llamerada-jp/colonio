@@ -38,6 +38,7 @@ APIGateMultiThread::EventCall::EventCall(std::unique_ptr<api::Event> event_) : e
 }
 
 APIGateMultiThread::APIGateMultiThread() :
+    flg_end(true),
     controller(*this),
     que_event_calls(std::make_unique<std::deque<EventCall>>()),
     tp(std::chrono::steady_clock::now()) {
@@ -95,7 +96,7 @@ std::unique_ptr<api::Reply> APIGateMultiThread::call_sync(APIChannel::Type chann
     if (r->second.value) {
       std::unique_ptr<api::Reply> reply = std::move(r->second.value);
       map_reply.erase(r);
-      return std::move(reply);
+      return reply;
     } else {
       // return null when disconnect.
       return nullptr;

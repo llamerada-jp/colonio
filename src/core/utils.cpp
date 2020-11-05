@@ -73,30 +73,29 @@ Utils::get_json<unsigned int>(const picojson::object& obj, const std::string& ke
   }
 }
 
-std::string Utils::dump_binary(const std::string& bin) {
-  if (&bin == nullptr) {
+std::string Utils::dump_binary(const std::string* bin) {
+  if (bin == nullptr) {
     return "null";
-
-  } else {
-    std::stringstream out;
-
-    out << std::hex;
-    for (int idx = 0; idx < bin.size(); idx++) {
-      if (idx != 0) {
-        out << " ";
-      }
-      out << std::setw(2) << std::setfill('0') << (0xFF & bin[idx]);
-    }
-
-    return out.str();
   }
+
+  std::stringstream out;
+
+  out << std::hex;
+  for (unsigned int idx = 0; idx < bin->size(); idx++) {
+    if (idx != 0) {
+      out << " ";
+    }
+    out << std::setw(2) << std::setfill('0') << (0xFF & (*bin)[idx]);
+  }
+
+  return out.str();
 }
 
 std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
   std::string is;
   std::stringstream out;
 
-  for (int i = 0; i < indent; i++) {
+  for (unsigned int i = 0; i < indent; i++) {
     is += " ";
   }
 
@@ -107,7 +106,7 @@ std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
   out << is << "channel : " << Convert::int2str(packet.channel) << std::endl;
   out << is << "module_channel : " << Convert::int2str(packet.module_channel) << std::endl;
   out << is << "command_id : " << Convert::int2str(packet.command_id) << std::endl;
-  out << is << "content : " << dump_binary(*packet.content);
+  out << is << "content : " << dump_binary(packet.content.get());
 
   return out.str();
 }
@@ -215,7 +214,7 @@ void Utils::output_assert(
     const std::string& func, const std::string& file, unsigned long line, const std::string& exp,
     const std::string& message) {
   printf(
-      "Assersion failed: (%s) func: %s, file: %s, line: %ld\n%s\n", exp.c_str(), func.c_str(), file.c_str(), line,
+      "Assersion failed: (%s) func: %s, file: %s, line: %lu\n%s\n", exp.c_str(), func.c_str(), file.c_str(), line,
       message.c_str());
   exit(EXIT_FAILURE);
 }

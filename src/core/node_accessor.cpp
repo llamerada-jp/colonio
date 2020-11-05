@@ -692,8 +692,7 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
 void NodeAccessor::recv_ice(std::unique_ptr<const Packet> packet) {
   NodeAccessorProtocol::ICE content;
   packet->parse_content(&content);
-  NodeID local_nid  = NodeID::from_pb(content.local_nid());
-  NodeID remote_nid = NodeID::from_pb(content.remote_nid());
+  NodeID local_nid = NodeID::from_pb(content.local_nid());
   picojson::value v;
   const std::string err = picojson::parse(v, content.ice());
   if (err.empty() == false) {
@@ -702,7 +701,7 @@ void NodeAccessor::recv_ice(std::unique_ptr<const Packet> packet) {
   }
   picojson::array ice_array = v.get<picojson::array>();
 
-  assert(remote_nid == context.local_nid);
+  assert(NodeID::from_pb(content.remote_nid()) == context.local_nid);
 
   auto it = links.find(local_nid);
   if (it != links.end()) {
@@ -829,17 +828,17 @@ bool NodeAccessor::send_packet_list(const NodeID& dst_nid, bool is_all) {
         it = sb.erase(it);
         continue;
       }
-      const int content_size = it->content ? it->content->size() : 0;
+      unsigned const int content_size = it->content ? it->content->size() : 0;
       // Split large packet to send it.
-      const int num = (ESTIMATED_HEAD_SIZE + content_size) / CONFIG_PACKET_SIZE +
-                      ((ESTIMATED_HEAD_SIZE + content_size) % CONFIG_PACKET_SIZE == 0 ? 0 : 1);
-      int size_send = 0;
-      bool result   = true;
+      unsigned const int num = (ESTIMATED_HEAD_SIZE + content_size) / CONFIG_PACKET_SIZE +
+                               ((ESTIMATED_HEAD_SIZE + content_size) % CONFIG_PACKET_SIZE == 0 ? 0 : 1);
+      unsigned int size_send = 0;
+      bool result            = true;
       for (int idx = num - 1; result && idx >= 0; idx--) {
         NodeAccessorProtocol::Carrier ca;
         NodeAccessorProtocol::Packet* packet = ca.add_packet();
         // Append header data for only the first packet.
-        if (idx == num - 1) {
+        if (idx == static_cast<int>(num) - 1) {
           NodeAccessorProtocol::Head* head = packet->mutable_head();
           if (it->dst_nid == NodeID::NEXT) {
             dst_nid.to_pb(head->mutable_dst_nid());
@@ -857,8 +856,8 @@ bool NodeAccessor::send_packet_list(const NodeID& dst_nid, bool is_all) {
         packet->set_index(idx);
 
         // Calc content_size in the packet.
-        int packet_content_size;
-        if (idx == num - 1) {
+        unsigned int packet_content_size;
+        if (idx == static_cast<int>(num) - 1) {
           packet_content_size = CONFIG_PACKET_SIZE - ESTIMATED_HEAD_SIZE;
           assert(size_send + packet_content_size < content_size);
         } else if (idx == 0) {
@@ -898,7 +897,7 @@ bool NodeAccessor::try_send(const NodeID& dst_nid, const Packet& packet) {
 
   } else {
     // Estimating packet size.
-    int estimated_size = 0;
+    unsigned int estimated_size = 0;
     for (auto& it : it_buffer->second) {
       if (it.content) {
         estimated_size += ESTIMATED_HEAD_SIZE + it.content->size();

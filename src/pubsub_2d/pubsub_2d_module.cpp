@@ -38,8 +38,8 @@ Pubsub2DModule::Pubsub2DModule(
     Pubsub2DModuleDelegate& delegate_, const CoordSystem& coord_system, APIChannel::Type channel,
     ModuleChannel::Type module_channel, uint32_t cache_time) :
     Module2D(context, module_delegate, module_2d_delegate, coord_system, channel, module_channel),
-    delegate(delegate_),
-    CONF_CACHE_TIME(cache_time) {
+    CONF_CACHE_TIME(cache_time),
+    delegate(delegate_) {
   context.scheduler.add_interval_task(this, std::bind(&Pubsub2DModule::clear_cache, this), 1000);
 }
 
@@ -234,8 +234,10 @@ void Pubsub2DModule::recv_packet_pass(std::unique_ptr<const Packet> packet) {
   if (cache.find(uid) == cache.end()) {
     const Cache& c = cache
                          .insert(std::make_pair(
-                             uid, Cache{content.name(), center, content.r(), uid, Utils::get_current_msec(),
-                                        ValueImpl::from_pb(content.data()), opt}))
+                             uid,
+                             Cache{
+                                 content.name(), center, content.r(), uid, Utils::get_current_msec(),
+                                 ValueImpl::from_pb(content.data()), opt}))
                          .first->second;
     if (coord_system.get_distance(center, coord_system.get_local_position()) < c.r) {
       if (c.data.get_type() == Value::STRING_T) {

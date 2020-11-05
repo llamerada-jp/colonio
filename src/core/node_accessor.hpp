@@ -15,7 +15,14 @@
  */
 #pragma once
 
-#include <picojson.h>
+#ifdef __clang__
+#  include <picojson.h>
+#else
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#  include <picojson.h>
+#  pragma GCC diagnostic pop
+#endif
 
 #include <functional>
 #include <list>
@@ -114,7 +121,7 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
   /** Waiting buffer of packets to recv. */
   struct RecvBuffer {
     std::unique_ptr<Packet> packet;
-    int last_index;
+    unsigned int last_index;
     std::list<std::shared_ptr<const std::string>> content_list;
   };
   std::map<NodeID, RecvBuffer> recv_buffers;

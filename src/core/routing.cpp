@@ -210,7 +210,7 @@ void Routing::send_routing_info() {
       seed_nids.insert(std::make_pair(link_duration, it.first));
     }
   }
-  int idx = 0;
+  unsigned int idx = 0;
   for (auto& it : seed_nids) {
     if (idx >= CONFIG_SEED_INFO_NIDS_COUNT) {
       break;

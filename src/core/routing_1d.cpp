@@ -236,7 +236,7 @@ bool Routing1D::is_orphan(unsigned int nodes_count) {
 int Routing1D::get_level(const NodeID& nid) {
   NodeID sub = nid - context.local_nid;
 
-  for (int i = 0; i < sizeof(LEVEL_RANGE) / sizeof(LEVEL_RANGE[0]); i++) {
+  for (int i = 0; i < static_cast<int>(sizeof(LEVEL_RANGE) / sizeof(LEVEL_RANGE[0])); i++) {
     if (sub < LEVEL_RANGE[i]) {
       return i;
     }

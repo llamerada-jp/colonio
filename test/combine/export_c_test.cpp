@@ -65,11 +65,11 @@ TEST(ExternC, connect_sync) {
   EXPECT_EQ(err, nullptr);
 
   {
-    char nid[COLONIO_NID_LENGTH + 1];
+    char nid[COLONIO_NID_LENGTH + 1] = {};
     unsigned int nid_str_len;
     colonio_get_local_nid(&colonio, nid, &nid_str_len);
-    EXPECT_EQ(strlen(nid), COLONIO_NID_LENGTH);
-    EXPECT_EQ(nid_str_len, COLONIO_NID_LENGTH);
+    EXPECT_EQ(strlen(nid), static_cast<unsigned int>(COLONIO_NID_LENGTH));
+    EXPECT_EQ(nid_str_len, static_cast<unsigned int>(COLONIO_NID_LENGTH));
   }
 
   err = colonio_disconnect(&colonio);

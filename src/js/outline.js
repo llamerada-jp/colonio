@@ -18,7 +18,7 @@
 // console.log((new Date()).toISOString(), __VA_ARGS__)
 let logd = console.log;
 
-const ID_MAX = 2147483647;
+const ID_MAX = Math.floor(Math.pow(2, 30));
 
 /* Push/Pop object
  * TODO release when disconnect
@@ -140,15 +140,15 @@ function convertPointerToString(ptr, length) {
   var hasUtf = 0;
   var t;
   var i = 0;
-  while (1) {
+  while (true) {
     t = HEAPU8[ptr + i >> 0]; // debug
     // t = ((SAFE_HEAP_LOAD((((ptr) + (i)) | 0), 1, 1)) | 0); // release
     hasUtf |= t;
-    if (t == 0 && !length) break;
+    if (t === 0 && !length) { break; }
     i++;
-    if (length && i == length) break;
+    if (length && i === length) { break; }
   }
-  if (!length) length = i;
+  if (!length) { length = i; }
 
   var ret = '';
 
@@ -179,20 +179,20 @@ function convertPointerToString(ptr, length) {
     while (1) {
       // For UTF8 byte structure, see http://en.wikipedia.org/wiki/UTF-8#Description and https://www.ietf.org/rfc/rfc2279.txt and https://tools.ietf.org/html/rfc3629
       u0 = u8Array[idx++];
-      if (!u0) return str;
+      if (!u0) { return str; }
       if (!(u0 & 0x80)) { str += String.fromCharCode(u0); continue; }
       u1 = u8Array[idx++] & 63;
-      if ((u0 & 0xE0) == 0xC0) { str += String.fromCharCode(((u0 & 31) << 6) | u1); continue; }
+      if ((u0 & 0xE0) === 0xC0) { str += String.fromCharCode(((u0 & 31) << 6) | u1); continue; }
       u2 = u8Array[idx++] & 63;
-      if ((u0 & 0xF0) == 0xE0) {
+      if ((u0 & 0xF0) === 0xE0) {
         u0 = ((u0 & 15) << 12) | (u1 << 6) | u2;
       } else {
         u3 = u8Array[idx++] & 63;
-        if ((u0 & 0xF8) == 0xF0) {
+        if ((u0 & 0xF8) === 0xF0) {
           u0 = ((u0 & 7) << 18) | (u1 << 12) | (u2 << 6) | u3;
         } else {
           u4 = u8Array[idx++] & 63;
-          if ((u0 & 0xFC) == 0xF8) {
+          if ((u0 & 0xFC) === 0xF8) {
             u0 = ((u0 & 3) << 24) | (u1 << 18) | (u2 << 12) | (u3 << 6) | u4;
           } else {
             u5 = u8Array[idx++] & 63;
@@ -736,8 +736,8 @@ function seedLinkWsFinalize(seedLink) {
   if (seedLink in availableSeedLinks) {
     // 2 : CLOSING
     // 3 : CLOSED
-    if (availableSeedLinks[seedLink].readyState != 2 &&
-      availableSeedLinks[seedLink].readyState != 3) {
+    if (availableSeedLinks[seedLink].readyState !== 2 &&
+      availableSeedLinks[seedLink].readyState !== 3) {
       availableSeedLinks[seedLink].close();
     }
 

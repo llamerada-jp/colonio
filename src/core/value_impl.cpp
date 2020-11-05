@@ -123,9 +123,6 @@ Value ValueImpl::from_pb(const core::Value& pb) {
 
 NodeID ValueImpl::to_hash(const Value& value, const std::string& salt) {
   switch (value.impl->type) {
-    case Value::NULL_T:
-      return NodeID::make_hash_from_str(salt + "n");
-
     case Value::BOOL_T:
       return NodeID::make_hash_from_str(salt + (value.impl->storage.bool_v ? "t" : "f"));
 
@@ -139,15 +136,13 @@ NodeID ValueImpl::to_hash(const Value& value, const std::string& salt) {
       return NodeID::make_hash_from_str(salt + *(value.impl->storage.string_v));
 
     default:
-      assert(false);
+      assert(value.impl->type == Value::NULL_T);
+      return NodeID::make_hash_from_str(salt + "n");
   }
 }
 
 std::string ValueImpl::to_str(const Value& value) {
   switch (value.impl->type) {
-    case Value::NULL_T:
-      return std::string("null");
-
     case Value::BOOL_T:
       return value.impl->storage.bool_v ? "true" : "false";
 
@@ -161,7 +156,8 @@ std::string ValueImpl::to_str(const Value& value) {
       return std::string("\"") + *(value.impl->storage.string_v) + std::string("\"");
 
     default:
-      assert(false);
+      assert(value.impl->type == Value::NULL_T);
+      return std::string("null");
   }
 }
 
@@ -171,9 +167,6 @@ bool ValueImpl::operator<(const ValueImpl& b) const {
 
   } else {
     switch (type) {
-      case Value::NULL_T:
-        return false;
-
       case Value::BOOL_T:
         return storage.bool_v < b.storage.bool_v;
 
@@ -187,8 +180,8 @@ bool ValueImpl::operator<(const ValueImpl& b) const {
         return *(storage.string_v) < *(b.storage.string_v);
 
       default:
-        assert(false);
-        break;
+        assert(type == Value::NULL_T);
+        return false;
     }
   }
 }

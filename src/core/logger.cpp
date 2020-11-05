@@ -102,7 +102,7 @@ Logger::L& Logger::L::map_bool(const std::string& name, bool value) {
 }
 
 Logger::L& Logger::L::map_dump(const std::string& name, const std::string& value) {
-  params.insert(std::make_pair(name, picojson::value(Utils::dump_binary(value))));
+  params.insert(std::make_pair(name, picojson::value(Utils::dump_binary(&value))));
   return *this;
 }
 
