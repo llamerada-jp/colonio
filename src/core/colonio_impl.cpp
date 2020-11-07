@@ -34,8 +34,8 @@ ColonioImpl::ColonioImpl(Context& context, APIDelegate& api_delegate_, APIBundle
     api_delegate(api_delegate_),
     api_bundler(api_bundler_),
     module_bundler(*this, *this, *this),
-    api_connect_id(0),
     enable_retry(true),
+    api_connect_id(0),
     node_accessor(nullptr),
     routing(nullptr),
     link_status(LinkStatus::OFFLINE) {
@@ -418,8 +418,8 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
     return;
 
   } else if (!dst_nid.is_special() || dst_nid == NodeID::NEXT) {
-    NodeID src_nid = packet->src_nid;
 #ifndef NDEBUG
+    NodeID src_nid    = packet->src_nid;
     const Packet copy = *packet;
 #endif
     if (node_accessor->relay_packet(dst_nid, std::move(packet))) {

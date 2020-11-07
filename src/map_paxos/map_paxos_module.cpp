@@ -53,7 +53,7 @@ MapPaxosModule::CommandGet::Info::Info(MapPaxosModule& parent_, std::unique_ptr<
 
 /* class MapPaxosModule::CommandGet */
 MapPaxosModule::CommandGet::CommandGet(Random& random_, std::shared_ptr<Info> info_) :
-    random(random_), Command(CommandID::MapPaxos::GET, PacketMode::NONE), info(info_) {
+    Command(CommandID::MapPaxos::GET, PacketMode::NONE), random(random_), info(info_) {
 }
 
 void MapPaxosModule::CommandGet::on_error(const std::string& message) {
@@ -142,7 +142,7 @@ void MapPaxosModule::CommandGet::postprocess() {
 MapPaxosModule::CommandSet::Info::Info(
     MapPaxosModule& parent_, const Value& key_, const Value& value_, const std::function<void()>& cb_on_success_,
     const std::function<void(ErrorCode)>& cb_on_failure_, const uint32_t& opt_) :
-    cb_on_success(cb_on_success_), cb_on_failure(cb_on_failure_), key(key_), value(value_), opt(opt_), parent(parent_) {
+    parent(parent_), key(key_), value(value_), cb_on_success(cb_on_success_), cb_on_failure(cb_on_failure_), opt(opt_) {
 }
 
 /* class MapPaxosModule::CommandSet */
@@ -263,8 +263,8 @@ void MapPaxosModule::CommandPrepare::postprocess() {
       }
     }
   }
-  int count_ok = 0;
-  int count_ng = 0;
+  unsigned int count_ok = 0;
+  unsigned int count_ng = 0;
   for (const auto& it : info->replies) {
     if (it.is_success) {
       count_ok++;
@@ -386,8 +386,8 @@ void MapPaxosModule::CommandAccept::postprocess() {
       }
     }
   }
-  int count_ok = 0;
-  int count_ng = 0;
+  unsigned int count_ok = 0;
+  unsigned int count_ng = 0;
   for (const auto& it : info->replies) {
     if (it.is_success) {
       count_ok++;
@@ -527,7 +527,7 @@ void MapPaxosModule::module_process_command(std::unique_ptr<const Packet> packet
 
 bool MapPaxosModule::check_key_acceptor(const Value& key) {
   NodeID hash = ValueImpl::to_hash(key, salt);
-  for (int i = 0; i < NUM_ACCEPTOR; i++) {
+  for (unsigned int i = 0; i < NUM_ACCEPTOR; i++) {
     hash += NodeID::QUARTER;
     if (module_1d_check_covered_range(hash)) {
       return true;
@@ -721,9 +721,10 @@ void MapPaxosModule::recv_packet_get(std::unique_ptr<const Packet> packet) {
 void MapPaxosModule::recv_packet_prepare(std::unique_ptr<const Packet> packet) {
   MapPaxosProtocol::Prepare content;
   packet->parse_content(&content);
-  Value key          = ValueImpl::from_pb(content.key());
-  const PAXOS_N n    = content.n();
-  const uint32_t opt = content.opt();
+  Value key       = ValueImpl::from_pb(content.key());
+  const PAXOS_N n = content.n();
+  // todo: implement opt
+  // const uint32_t opt = content.opt();
 
   auto acceptor_it = acceptor_infos.find(key);
   if (acceptor_it == acceptor_infos.end()) {
@@ -823,7 +824,7 @@ void MapPaxosModule::send_packet_accept(
   std::shared_ptr<const std::string> param_bin = serialize_pb(param);
 
   NodeID acceptor_nid = ValueImpl::to_hash(*accept_info->key, salt);
-  for (int i = 0; i < NUM_ACCEPTOR; i++) {
+  for (unsigned int i = 0; i < NUM_ACCEPTOR; i++) {
     acceptor_nid += NodeID::QUARTER;
     std::unique_ptr<Command> command = std::make_unique<CommandAccept>(accept_info);
     send_packet(std::move(command), acceptor_nid, param_bin);
@@ -840,7 +841,7 @@ void MapPaxosModule::send_packet_balance_acceptor(const Value& key, const Accept
   std::shared_ptr<const std::string> param_bin = serialize_pb(param);
 
   NodeID acceptor_nid = ValueImpl::to_hash(key, salt);
-  for (int i = 0; i < NUM_ACCEPTOR; i++) {
+  for (unsigned int i = 0; i < NUM_ACCEPTOR; i++) {
     acceptor_nid += NodeID::QUARTER;
     send_packet(acceptor_nid, PacketMode::ONE_WAY, CommandID::MapPaxos::BALANCE_ACCEPTOR, param_bin);
   }
@@ -878,7 +879,7 @@ void MapPaxosModule::send_packet_get(
 
         NodeID acceptor_nid = ValueImpl::to_hash(*info->key, salt);
 
-        for (int i = 0; i < NUM_ACCEPTOR; i++) {
+        for (unsigned int i = 0; i < NUM_ACCEPTOR; i++) {
           acceptor_nid += NodeID::QUARTER;
           std::unique_ptr<Command> command = std::make_unique<CommandGet>(context.random, info);
 
@@ -911,7 +912,7 @@ void MapPaxosModule::send_packet_prepare(
   std::shared_ptr<const std::string> param_bin = serialize_pb(param);
 
   NodeID acceptor_nid = ValueImpl::to_hash(*prepare_info->key, salt);
-  for (int i = 0; i < NUM_ACCEPTOR; i++) {
+  for (unsigned int i = 0; i < NUM_ACCEPTOR; i++) {
     acceptor_nid += NodeID::QUARTER;
     std::unique_ptr<Command> command = std::make_unique<CommandPrepare>(prepare_info);
     send_packet(std::move(command), acceptor_nid, param_bin);

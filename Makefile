@@ -250,6 +250,7 @@ build-seed:
 	&& $(RM) -r colonio-seed \
 	&& git clone https://github.com/llamerada-jp/colonio-seed.git \
 	&& LOCAL_ENV_PATH=$(LOCAL_ENV_PATH) $(MAKE) -C colonio-seed setup build \
+	&& mkdir -p $(OUTPUT_PATH) \
 	&& cp colonio-seed/seed $(OUTPUT_PATH)
 
 .PHONY: build-docker-x86_64

@@ -171,10 +171,10 @@ const NodeID& Routing2D::get_relay_nid(const Coordinate& position) {
 
 void Routing2D::check_duplicate_point(
     const std::vector<NodeID>& nids, std::vector<double>* x_vec, std::vector<double>* y_vec) {
-  std::map<Coordinate, int> checked;
-  std::set<int> duplicated;
+  std::map<Coordinate, unsigned int> checked;
+  std::set<unsigned int> duplicated;
 
-  for (int idx = 0; idx < nids.size(); idx++) {
+  for (unsigned int idx = 0; idx < nids.size(); idx++) {
     Coordinate coord(x_vec->at(idx), y_vec->at(idx));
     if (checked.find(coord) == checked.end()) {
       checked.insert(std::make_pair(coord, idx));
@@ -184,7 +184,7 @@ void Routing2D::check_duplicate_point(
     }
   }
 
-  for (int idx : duplicated) {
+  for (unsigned int idx : duplicated) {
     shift_duplicate_point(nids.at(idx), &x_vec->at(idx), &y_vec->at(idx));
   }
 }
@@ -205,9 +205,9 @@ void Routing2D::update_node_infos() {
   std::vector<double> y_shift_vec(known_nodes.size());
 
   // convert known nodes to coordinate vector & shift it
-  int idx         = 0;
-  int local_idx   = 0;
-  Coordinate base = coord_system.get_local_position();
+  unsigned int idx       = 0;
+  unsigned int local_idx = 0;
+  Coordinate base        = coord_system.get_local_position();
   for (auto& it : known_nodes) {
     if (it.first == context.local_nid) {
       local_idx = idx;

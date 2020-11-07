@@ -8,6 +8,9 @@ option(WITH_SAMPLE "Generate simulate program. (For native only)" OFF)
 option(WITH_TEST   "Generate test program. (For native only)" OFF)
 option(WITH_COVERAGE "Build test with coverage.(Native only)" OFF)
 
+# Common settings
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+
 if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   ##
   ## Build for WebAssembly environment.
@@ -89,6 +92,8 @@ else()
     # Linux
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWEBRTC_LINUX=1 -DWEBRTC_POSIX=1")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden -fvisibility-inlines-hidden")
+    # avoid warning caused by ABSL_MUST_USE_RESULT with GCC
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-attributes")
   endif()
 
   # OpenSSL

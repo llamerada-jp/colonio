@@ -45,10 +45,10 @@ TEST(Pubsub2DTest, pubsub_async) {
   printf("connect node1\n");
   node1.connect(
       URL, TOKEN,
-      [&URL, &TOKEN, &PUBSUB_2D_NAME, &node1, &node2, &helper](Colonio& _) {
+      [&URL, &TOKEN, &node2, &helper](Colonio& _) {
         printf("connect node2\n");
         node2.connect(
-            URL, TOKEN, [&PUBSUB_2D_NAME, &node1, &node2, &helper](Colonio& _) { helper.pass_signal("connect"); },
+            URL, TOKEN, [&helper](Colonio& _) { helper.pass_signal("connect"); },
             [](Colonio&, const Error& err) {
               std::cout << err.message << std::endl;
               ADD_FAILURE();
@@ -100,19 +100,19 @@ TEST(Pubsub2DTest, pubsub_async) {
   helper.wait_signal("pos2");
 
   printf("wait publishing\n");
-  helper.wait_signal("on1", [this, &helper, &ps2] {
+  helper.wait_signal("on1", [&ps2] {
     printf("publish position node2\n");
     ps2.publish(
-        "key", d2r(50), d2r(50), 10, Value("b"), 0, [&helper](Pubsub2D& _) {},
+        "key", d2r(50), d2r(50), 10, Value("b"), 0, [](Pubsub2D& _) {},
         [](Pubsub2D& _, const Error& err) {
           std::cout << err.message << std::endl;
           ADD_FAILURE();
         });
   });
-  helper.wait_signal("on2", [this, &helper, &ps1] {
+  helper.wait_signal("on2", [&ps1] {
     printf("publish position node1\n");
     ps1.publish(
-        "key", d2r(50), d2r(50), 10, Value("a"), 0, [&helper](Pubsub2D& _) {},
+        "key", d2r(50), d2r(50), 10, Value("a"), 0, [](Pubsub2D& _) {},
         [](Pubsub2D& _, const Error& err) {
           std::cout << err.message << std::endl;
           ADD_FAILURE();
@@ -175,7 +175,7 @@ TEST(Pubsub2DTest, multi_node) {
     node1.set_position(d2r(100), d2r(50));
     node2.set_position(d2r(50), d2r(50));
 
-    helper.wait_signal("on21", [this, &ps1] {
+    helper.wait_signal("on21", [&ps1] {
       printf("publish a\n");
       ps1.publish("key1", d2r(50), d2r(50), 10, Value("a"));  // 21a
     });
@@ -188,17 +188,17 @@ TEST(Pubsub2DTest, multi_node) {
 
     printf("publish c\n");
     ps1.publish("key1", d2r(50), d2r(50), 10, Value("c"));  // none
-    helper.wait_signal("on21", [this, &ps1] {
+    helper.wait_signal("on21", [&ps1] {
       printf("publish d\n");
       ps1.publish("key1", d2r(-20), d2r(10), 10, Value("d"));  // 21d
     });
-    helper.wait_signal("on22", [this, &ps1] {
+    helper.wait_signal("on22", [&ps1] {
       printf("publish e\n");
       ps1.publish("key2", d2r(-20), d2r(10), 10, Value("e"));  // 22e
     });
 
   } catch (colonio::Exception& ex) {
-    printf("exception code:%d: %s\n", static_cast<uint32_t>(ex.code), ex.message.c_str());
+    printf("exception code:%u: %s\n", static_cast<uint32_t>(ex.code), ex.message.c_str());
     ADD_FAILURE();
   }
 

@@ -74,9 +74,9 @@ class LoggerTest : public ::testing::Test {
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_STREQ("logger_test.cpp", context.file.c_str());
     EXPECT_EQ(LogLevel::INFO, context.level);
-    EXPECT_EQ(__LINE__ - 5, context.line);
+    EXPECT_EQ(__LINE__ - 5, static_cast<int>(context.line));
     EXPECT_STREQ("test0", context.message.c_str());
-    EXPECT_EQ(0, context.param.size());
+    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
     EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
 
     EXPECT_EQ(&context2.logger, context2.last_logger);
@@ -89,72 +89,72 @@ class LoggerTest : public ::testing::Test {
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_STREQ("logger_test.cpp", context.file.c_str());
     EXPECT_EQ(LogLevel::INFO, context.level);
-    EXPECT_EQ(__LINE__ - 4, context.line);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
     EXPECT_STREQ("test info 1", context.message.c_str());
-    EXPECT_EQ(0, context.param.size());
+    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
     EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
 
     logI(context, "test info 2");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_STREQ("logger_test.cpp", context.file.c_str());
     EXPECT_EQ(LogLevel::INFO, context.level);
-    EXPECT_EQ(__LINE__ - 4, context.line);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
     EXPECT_STREQ("test info 2", context.message.c_str());
-    EXPECT_EQ(0, context.param.size());
+    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
     EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
 
     logw("test warn 1");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_STREQ("logger_test.cpp", context.file.c_str());
     EXPECT_EQ(LogLevel::WARN, context.level);
-    EXPECT_EQ(__LINE__ - 4, context.line);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
     EXPECT_STREQ("test warn 1", context.message.c_str());
-    EXPECT_EQ(0, context.param.size());
+    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
     EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
 
     logW(context, "test warn 2");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_STREQ("logger_test.cpp", context.file.c_str());
     EXPECT_EQ(LogLevel::WARN, context.level);
-    EXPECT_EQ(__LINE__ - 4, context.line);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
     EXPECT_STREQ("test warn 2", context.message.c_str());
-    EXPECT_EQ(0, context.param.size());
+    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
     EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
 
     loge("test error 1");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_STREQ("logger_test.cpp", context.file.c_str());
     EXPECT_EQ(LogLevel::ERROR, context.level);
-    EXPECT_EQ(__LINE__ - 4, context.line);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
     EXPECT_STREQ("test error 1", context.message.c_str());
-    EXPECT_EQ(0, context.param.size());
+    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
     EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
 
     logE(context, "test error 2");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_STREQ("logger_test.cpp", context.file.c_str());
     EXPECT_EQ(LogLevel::ERROR, context.level);
-    EXPECT_EQ(__LINE__ - 4, context.line);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
     EXPECT_STREQ("test error 2", context.message.c_str());
-    EXPECT_EQ(0, context.param.size());
+    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
     EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
 
     logd("test debug 1");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_STREQ("logger_test.cpp", context.file.c_str());
     EXPECT_EQ(LogLevel::DEBUG, context.level);
-    EXPECT_EQ(__LINE__ - 4, context.line);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
     EXPECT_STREQ("test debug 1", context.message.c_str());
-    EXPECT_EQ(0, context.param.size());
+    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
     EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
 
     logD(context, "test debug 2");
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_STREQ("logger_test.cpp", context.file.c_str());
     EXPECT_EQ(LogLevel::DEBUG, context.level);
-    EXPECT_EQ(__LINE__ - 4, context.line);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
     EXPECT_STREQ("test debug 2", context.message.c_str());
-    EXPECT_EQ(0, context.param.size());
+    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
     EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
 
     Packet packet(
@@ -176,9 +176,9 @@ class LoggerTest : public ::testing::Test {
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_STREQ("logger_test.cpp", context.file.c_str());
     EXPECT_EQ(LogLevel::INFO, context.level);
-    EXPECT_EQ(__LINE__ - 15, context.line);
+    EXPECT_EQ(__LINE__ - 15, static_cast<int>(context.line));
     EXPECT_STREQ("test map", context.message.c_str());
-    EXPECT_EQ(11, context.param.size());
+    EXPECT_EQ(static_cast<unsigned int>(11), context.param.size());
     EXPECT_EQ("string value", context.param.at("string").get<std::string>());
     EXPECT_EQ(NodeID::THIS.to_str(), context.param.at("node id").get<std::string>());
     EXPECT_TRUE(context.param.at("packet").is<picojson::object>());
@@ -196,9 +196,9 @@ class LoggerTest : public ::testing::Test {
     EXPECT_EQ(&context.logger, context.last_logger);
     EXPECT_STREQ("logger_test.cpp", context.file.c_str());
     EXPECT_EQ(LogLevel::INFO, context.level);
-    EXPECT_EQ(__LINE__ - 4, context.line);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
     EXPECT_STREQ("test NodeID", context.message.c_str());
-    EXPECT_EQ(1, context.param.size());
+    EXPECT_EQ(static_cast<unsigned int>(1), context.param.size());
     EXPECT_EQ(NodeID::THIS.to_str(), context.param.at("key").get<std::string>());
     EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
   }

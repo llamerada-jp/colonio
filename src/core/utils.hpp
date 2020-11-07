@@ -15,7 +15,14 @@
  */
 #pragma once
 
-#include <picojson.h>
+#ifdef __clang__
+#  include <picojson.h>
+#else
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#  include <picojson.h>
+#  pragma GCC diagnostic pop
+#endif
 
 #include <cassert>
 #include <string>
@@ -106,7 +113,7 @@ template<>
 unsigned int
 get_json<unsigned int>(const picojson::object& obj, const std::string& key, const unsigned int& default_value);
 
-std::string dump_binary(const std::string& bin);
+std::string dump_binary(const std::string* bin);
 std::string dump_packet(const Packet& packet, unsigned int indent = 2);
 int64_t get_current_msec();
 std::string get_current_thread_id();

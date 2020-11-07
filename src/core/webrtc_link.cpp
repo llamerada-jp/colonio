@@ -25,10 +25,7 @@ WebrtcLinkDelegate::~WebrtcLinkDelegate() {
 }
 
 WebrtcLinkBase::InitData::InitData() :
-    is_by_seed(false),
-    is_changing_ice(false),
-    is_prime(false),
-    has_delete_func(false) {
+    is_by_seed(false), is_changing_ice(false), is_prime(false), has_delete_func(false), on_delete_v(nullptr) {
 }
 
 WebrtcLinkBase::InitData::~InitData() {
@@ -46,10 +43,7 @@ void WebrtcLinkBase::InitData::hook_on_delete(std::function<void(void*)> func, v
 }
 
 WebrtcLinkBase::WebrtcLinkBase(WebrtcLinkDelegate& delegate_, Context& context_, WebrtcContext& webrtc_context_) :
-    delegate(delegate_),
-    init_data(std::make_unique<InitData>()),
-    context(context_),
-    webrtc_context(webrtc_context_) {
+    delegate(delegate_), init_data(std::make_unique<InitData>()), context(context_), webrtc_context(webrtc_context_) {
 }
 
 WebrtcLinkBase::~WebrtcLinkBase() {

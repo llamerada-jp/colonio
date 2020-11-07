@@ -76,13 +76,13 @@ class MapPaxosModule : public Module1D {
      public:
       MapPaxosModule& parent;
       std::unique_ptr<Value> key;
-      int count_retry;
+      unsigned int count_retry;
       int64_t time_send;
 
       // (n, i), value
       std::map<std::tuple<PAXOS_N, PAXOS_N>, Value> ok_values;
       // (n, i), count
-      std::map<std::tuple<PAXOS_N, PAXOS_N>, int> ok_counts;
+      std::map<std::tuple<PAXOS_N, PAXOS_N>, unsigned int> ok_counts;
 
       int count_ng;
       bool is_finished;
@@ -111,10 +111,9 @@ class MapPaxosModule : public Module1D {
       MapPaxosModule& parent;
       const Value key;
       const Value value;
-      const uint32_t opt;
-
       std::function<void()> cb_on_success;
       std::function<void(ErrorCode)> cb_on_failure;
+      const uint32_t opt;
 
       Info(
           MapPaxosModule& parent_, const Value& key_, const Value& value_, const std::function<void()>& cb_on_success_,

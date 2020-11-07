@@ -18,12 +18,12 @@
 
 // Random value generator.
 #ifndef EMSCRIPTEN
-int generate_seed() {
+unsigned int generate_seed() {
   std::random_device seed_gen;
-  int seed = seed_gen();
+  unsigned int seed = seed_gen();
   // avoid WSL2 issue https://github.com/microsoft/WSL/issues/5767
-  if (seed = 0xFFFFFFFF) {
-    seed = static_cast<int>(clock());
+  if (seed == 0xFFFFFFFF) {
+    seed = static_cast<unsigned int>(clock());
   }
   return seed;
 }

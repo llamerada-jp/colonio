@@ -99,8 +99,8 @@ void js_connect(
   colonio_t* colonio = reinterpret_cast<colonio_t*>(colonio_ptr);
 
   colonio_connect_async(
-      reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<const char*>(url), url_siz,
-      reinterpret_cast<const char*>(token), token_siz, reinterpret_cast<void (*)(colonio_t*)>(on_success),
+      colonio, reinterpret_cast<const char*>(url), url_siz, reinterpret_cast<const char*>(token), token_siz,
+      reinterpret_cast<void (*)(colonio_t*)>(on_success),
       reinterpret_cast<void (*)(colonio_t*, const colonio_error_t*)>(on_failure));
 }
 

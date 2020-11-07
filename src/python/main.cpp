@@ -25,7 +25,7 @@ class PythonMap {
  public:
   colonio::Map& map;
 
-  PythonMap(colonio::Map& map_) : map(map_) {
+  explicit PythonMap(colonio::Map& map_) : map(map_) {
   }
 
   static colonio::Value convertValue(const py::object& src) {

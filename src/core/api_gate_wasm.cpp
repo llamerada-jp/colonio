@@ -177,7 +177,7 @@ void APIGateWASM::call_event(std::unique_ptr<api::Event> event) {
 
 void APIGateWASM::call_reply(std::unique_ptr<api::Reply> reply, std::function<void(const api::Reply&)> on_reply) {
   std::shared_ptr<api::Reply> shared_reply = std::move(reply);
-  push_call([this, shared_reply, on_reply]() { on_reply(*shared_reply); });
+  push_call([shared_reply, on_reply]() { on_reply(*shared_reply); });
 }
 
 void APIGateWASM::push_call(std::function<void()> func) {

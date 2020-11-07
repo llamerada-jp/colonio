@@ -350,7 +350,7 @@ void WebrtcLinkNative::on_dco_message(const webrtc::DataBuffer& buffer) {
  * @param status Data channel status.
  */
 void WebrtcLinkNative::on_dco_state_change(webrtc::DataChannelInterface::DataState status) {
-  LinkStatus::Type should;
+  LinkStatus::Type should = 0;
   switch (status) {
     case webrtc::DataChannelInterface::kConnecting:
       should = LinkStatus::CONNECTING;
@@ -391,7 +391,7 @@ void WebrtcLinkNative::on_dco_state_change(webrtc::DataChannelInterface::DataSta
  * @param status Peer connection status.
  */
 void WebrtcLinkNative::on_pco_connection_change(webrtc::PeerConnectionInterface::IceConnectionState status) {
-  LinkStatus::Type should;
+  LinkStatus::Type should = 0;
   switch (status) {
     case webrtc::PeerConnectionInterface::kIceConnectionNew:
     case webrtc::PeerConnectionInterface::kIceConnectionChecking:

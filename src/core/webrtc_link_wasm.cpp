@@ -199,7 +199,7 @@ void WebrtcLinkWasm::on_pco_ice_candidate(const std::string& ice_str) {
 
 void WebrtcLinkWasm::on_pco_state_change(const std::string& state) {
   // https://w3c.github.io/webrtc-pc/#rtcicetransportstate
-  LinkStatus::Type should;
+  LinkStatus::Type should = 0;
   if (state == "new" || state == "checking") {
     assert(pco_status == LinkStatus::CONNECTING);
     should = LinkStatus::CONNECTING;
