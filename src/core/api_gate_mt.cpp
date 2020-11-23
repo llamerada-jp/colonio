@@ -104,15 +104,19 @@ std::unique_ptr<api::Reply> APIGateMultiThread::call_sync(APIChannel::Type chann
   }
 }
 
-void APIGateMultiThread::init() {
+void APIGateMultiThread::init(bool explicit_event_thread, bool explicit_controller_thread) {
   assert(!th_event_call);
   assert(!th_controller);
   {
     std::lock_guard<std::mutex> lock(mtx_end);
     flg_end = false;
   }
-  th_event_call = std::make_unique<std::thread>(&APIGateMultiThread::loop_event_call, this);
-  th_controller = std::make_unique<std::thread>(&APIGateMultiThread::loop_controller, this);
+  if (!explicit_event_thread) {
+    th_event_call = std::make_unique<std::thread>(&APIGateMultiThread::loop_event_call, this);
+  }
+  if (!explicit_controller_thread) {
+    th_controller = std::make_unique<std::thread>(&APIGateMultiThread::loop_controller, this);
+  }
 }
 
 void APIGateMultiThread::quit() {
@@ -136,6 +140,14 @@ void APIGateMultiThread::set_event_hook(APIChannel::Type channel, std::function<
   std::lock_guard<std::mutex> lock(mtx_event);
   assert(map_event.find(channel) == map_event.end());
   map_event.insert(std::make_pair(channel, on_event));
+}
+
+void APIGateMultiThread::start_on_event_thread() {
+  loop_event_call();
+}
+
+void APIGateMultiThread::start_on_controller_thread() {
+  loop_controller();
 }
 
 void APIGateMultiThread::controller_on_event(Controller& sm, std::unique_ptr<api::Event> event) {

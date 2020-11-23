@@ -38,9 +38,11 @@ class APIGateBase : public LoggerDelegate {
   virtual void call_async(
       APIChannel::Type channel, const api::Call& call, std::function<void(const api::Reply&)> on_reply)    = 0;
   virtual std::unique_ptr<api::Reply> call_sync(APIChannel::Type channel, const api::Call& call)           = 0;
-  virtual void init()                                                                                      = 0;
+  virtual void init(bool explicit_event_thread, bool explicit_controller_thread)                           = 0;
   virtual void quit()                                                                                      = 0;
   virtual void set_event_hook(APIChannel::Type channel, std::function<void(const api::Event& e)> on_event) = 0;
+  virtual void start_on_event_thread();
+  virtual void start_on_controller_thread();
 };
 }  // namespace colonio
 

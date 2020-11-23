@@ -92,6 +92,9 @@ typedef enum COLONIO_ERROR_CODE {
   COLONIO_ERROR_CODE_NO_ONE_RECV,
 } COLONIO_ERROR_CODE;
 
+#define COLONIO_COLONIO_EXPLICIT_EVENT_THREAD 0x1
+#define COLONIO_COLONIO_EXPLICIT_CONTROLLER_THREAD 0x2
+
 #define COLONIO_MAP_ERROR_WITHOUT_EXIST 0x1
 /*
 #define COLONIO_MAP_ERROR_WITH_EXIST 0x2
@@ -134,7 +137,7 @@ typedef struct colonio_error_s {
   const char* message;
 } colonio_error_t;
 
-COLONIO_PUBLIC colonio_error_t* colonio_init(colonio_t* colonio);
+COLONIO_PUBLIC colonio_error_t* colonio_init(colonio_t* colonio, uint32_t opt);
 COLONIO_PUBLIC colonio_error_t* colonio_connect(
     colonio_t* colonio, const char* url, unsigned int url_siz, const char* token, unsigned int token_siz);
 COLONIO_PUBLIC void colonio_connect_async(
@@ -155,6 +158,8 @@ COLONIO_PUBLIC void colonio_set_position_async(
     colonio_t* colonio, double x, double y, void* ptr, void (*on_success)(colonio_t*, void*, double, double),
     void (*on_failure)(colonio_t*, void*, const colonio_error_t*));
 COLONIO_PUBLIC void colonio_set_on_output_log(colonio_t* colonio, void (*func)(colonio_t*, const char*, unsigned int));
+COLONIO_PUBLIC void colonio_start_on_event_thread(colonio_t* colonio);
+COLONIO_PUBLIC void colonio_start_on_controller_thread(colonio_t* colonio);
 COLONIO_PUBLIC colonio_error_t* colonio_quit(colonio_t* colonio);
 
 COLONIO_PUBLIC void colonio_value_init(colonio_value_t* value);

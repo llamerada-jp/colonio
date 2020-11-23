@@ -26,7 +26,7 @@ class ColonioC : public colonio::Colonio {
   colonio_t* colonio;
   void (*cb_on_output_log)(colonio_t*, const char*, unsigned int);
 
-  ColonioC() : colonio(nullptr), cb_on_output_log(nullptr) {
+  ColonioC(uint32_t opt) : Colonio(opt), colonio(nullptr), cb_on_output_log(nullptr) {
   }
 
  protected:
@@ -46,10 +46,10 @@ colonio_error_t* convert_exception(const colonio::Exception& e);
 void convert_value_c_to_cpp(colonio::Value* dst, const colonio_value_t* src);
 void convert_value_cpp_to_c(colonio_value_t* dst, const colonio::Value* src);
 
-colonio_error_t* colonio_init(colonio_t* colonio) {
+colonio_error_t* colonio_init(colonio_t* colonio, uint32_t opt) {
   try {
     memset(colonio, 0, sizeof(colonio_t));
-    colonio->impl                    = new colonio_export_c::ColonioC();
+    colonio->impl                    = new colonio_export_c::ColonioC(opt);
     colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
     impl->colonio                    = colonio;
 
@@ -164,6 +164,16 @@ void colonio_set_position_async(
 void colonio_set_on_output_log(colonio_t* colonio, void (*func)(colonio_t*, const char*, unsigned int)) {
   colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
   impl->cb_on_output_log           = func;
+}
+
+void colonio_start_on_event_thread(colonio_t* colonio) {
+  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
+  impl->start_on_event_thread();
+}
+
+void colonio_start_on_controller_thread(colonio_t* colonio) {
+  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
+  impl->start_on_controller_thread();
 }
 
 colonio_error_t* colonio_quit(colonio_t* colonio) {

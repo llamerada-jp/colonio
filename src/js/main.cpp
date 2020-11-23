@@ -85,7 +85,7 @@ COLONIO_PTR_T js_init(COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_
   colonio_t* colonio = new colonio_t();
 
   // TODO detect an error
-  colonio_init(colonio);
+  colonio_init(colonio, 0);
 
   set_position_on_success = reinterpret_cast<void (*)(COLONIO_ID_T, double, double)>(set_position_on_success_);
   set_position_on_failure = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(set_position_on_failure_);
