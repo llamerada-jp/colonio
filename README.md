@@ -1,5 +1,5 @@
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/9fdd7ba69834413084cdc14cdb4eca55)](https://www.codacy.com/manual/llamerada-jp/colonio?utm_source=github.com&utm_medium=referral&utm_content=llamerada-jp/colonio&utm_campaign=Badge_Grade)
-[![Travis-CI](https://travis-ci.org/llamerada-jp/colonio.svg?branch=master)](https://travis-ci.org/llamerada-jp/colonio/branches)
+[![CI](https://github.com/llamerada-jp/colonio/workflows/CI/badge.svg)](https://github.com/llamerada-jp/colonio/actions?query=workflow%3ACI)
 [![Coverage Status](https://coveralls.io/repos/github/llamerada-jp/colonio/badge.svg?branch=master)](https://coveralls.io/github/llamerada-jp/colonio?branch=master)
 
 # Colonio : Library let it easy to use distributed systems

@@ -5,12 +5,36 @@ on:
     branches:
     - master
 jobs:
-  test:
-    name: test
-    runs-on: ubuntu-20.04
+  native:
+    name: test on ${{ matrix.os }} amd64
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-20.04, macos-latest]
     steps:
     - uses: actions/checkout@v2
     - shell: bash
       env:
         COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
-      run: ./ci.sh
+      run: |
+        ./ci.sh
+  qemu:
+    name: test on ubuntu-20.04 arm64
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - uses: uraimo/run-on-arch-action@v2.0.5
+      name: run test
+      id: cmd
+      with:
+        arch: aarch64
+        distro: ubuntu20.04
+        githubToken: ${{ github.token }}
+        env: |
+          DEBIAN_FRONTEND: noninteractive
+        install: |
+          apt-get update -q -y
+          apt-get install -q -y cmake curl docker.io golang-1.14 make sudo systemctl unzip
+          systemctl enable --now docker
+        run: |
+          ./ci.sh
