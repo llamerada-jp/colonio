@@ -231,7 +231,7 @@ build-native:
 		$(ROOT_PATH) \
 	&& $(MAKE) \
 	&& cp src/libcolonio.a $(OUTPUT_PATH) \
-	&& if [ $(shell uname -s) = 'Linux' ]; then cp $(LOCAL_ENV_PATH)/lib/lib*.so.* $(OUTPUT_PATH)/lib; fi
+	&& if [ $(shell uname -s) = 'Linux' ]; then cp $(LOCAL_ENV_PATH)/lib/lib*.so.* $(LOCAL_ENV_PATH)/lib/lib*.a $(OUTPUT_PATH)/lib; fi
 
 .PHONY: build-wasm
 build-wasm:

@@ -93,7 +93,10 @@ std::unique_ptr<api::Reply> APIGateWASM::call_sync(APIChannel::Type channel, con
   return std::unique_ptr<api::Reply>();
 }
 
-void APIGateWASM::init() {
+void APIGateWASM::init(bool explicit_event_thread, bool explicit_controller_thread) {
+  assert(explicit_event_thread == false);
+  assert(explicit_controller_thread == false);
+
   api_gate_require_invoke(reinterpret_cast<COLONIO_PTR_T>(this), 100);
 }
 

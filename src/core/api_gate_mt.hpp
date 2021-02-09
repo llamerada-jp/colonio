@@ -32,9 +32,11 @@ class APIGateMultiThread : public APIGateBase, public ControllerDelegate {
   void call_async(
       APIChannel::Type channel, const api::Call& call, std::function<void(const api::Reply&)> on_reply) override;
   std::unique_ptr<api::Reply> call_sync(APIChannel::Type channel, const api::Call& call) override;
-  void init() override;
+  void init(bool explicit_event_thread, bool explicit_controller_thread) override;
   void quit() override;
   void set_event_hook(APIChannel::Type channel, std::function<void(const api::Event&)> on_event) override;
+  void start_on_event_thread() override;
+  void start_on_controller_thread() override;
 
  private:
   struct Reply {

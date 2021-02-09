@@ -23,6 +23,10 @@
 #include "pubsub_2d_impl.hpp"
 
 namespace colonio {
+
+const uint32_t Colonio::EXPLICIT_EVENT_THREAD;
+const uint32_t Colonio::EXPLICIT_CONTROLLER_THREAD;
+
 class Colonio::Impl {
  public:
   bool enabled;
@@ -35,7 +39,23 @@ class Colonio::Impl {
   }
 };
 
-Colonio::Colonio() : impl(std::make_unique<Colonio::Impl>()) {
+Colonio::Colonio(uint32_t opt) : impl(std::make_unique<Colonio::Impl>()) {
+  impl->api_gate.set_event_hook(APIChannel::COLONIO, [this](const api::Event& e) {
+    switch (e.param_case()) {
+      case api::Event::ParamCase::kColonioLog: {
+        const api::colonio::LogEvent& l = e.colonio_log();
+        on_output_log(l.json());
+      } break;
+
+      default:
+        assert(false);
+        break;
+    }
+  });
+
+  bool explicit_event_thread      = (opt & EXPLICIT_EVENT_THREAD) != 0;
+  bool explicit_controller_thread = (opt & EXPLICIT_CONTROLLER_THREAD) != 0;
+  impl->api_gate.init(explicit_event_thread, explicit_controller_thread);
 }
 
 Colonio::~Colonio() {
@@ -72,20 +92,6 @@ void Colonio::connect(const std::string& url, const std::string& token) {
   assert(!impl->enabled);
 
   impl->enabled = true;
-  impl->api_gate.set_event_hook(APIChannel::COLONIO, [this](const api::Event& e) {
-    switch (e.param_case()) {
-      case api::Event::ParamCase::kColonioLog: {
-        const api::colonio::LogEvent& l = e.colonio_log();
-        on_output_log(l.json());
-      } break;
-
-      default:
-        assert(false);
-        break;
-    }
-  });
-
-  impl->api_gate.init();
 
   api::Call call;
   api::colonio::Connect* api = call.mutable_colonio_connect();
@@ -126,22 +132,6 @@ void Colonio::connect(
     const std::string& url, const std::string& token, std::function<void(Colonio&)> on_success,
     std::function<void(Colonio&, const Error&)> on_failure) {
   assert(!impl->enabled);
-
-  impl = std::make_unique<Colonio::Impl>();
-  impl->api_gate.set_event_hook(APIChannel::COLONIO, [this](const api::Event& e) {
-    switch (e.param_case()) {
-      case api::Event::ParamCase::kColonioLog: {
-        const api::colonio::LogEvent& l = e.colonio_log();
-        on_output_log(l.json());
-      } break;
-
-      default:
-        assert(false);
-        break;
-    }
-  });
-
-  impl->api_gate.init();
 
   api::Call call;
   api::colonio::Connect* api = call.mutable_colonio_connect();
@@ -257,6 +247,14 @@ void Colonio::set_position(
       on_failure(*this, get_error(reply));
     }
   });
+}
+
+void Colonio::start_on_event_thread() {
+  impl->api_gate.start_on_event_thread();
+}
+
+void Colonio::start_on_controller_thread() {
+  impl->api_gate.start_on_controller_thread();
 }
 
 void Colonio::on_output_log(const std::string& json) {

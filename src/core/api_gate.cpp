@@ -15,6 +15,8 @@
  */
 #include "api_gate.hpp"
 
+#include <cassert>
+
 namespace colonio {
 
 Error get_error(const api::Reply& reply) {
@@ -37,5 +39,15 @@ APIGateBase::APIGateBase() : logger(*this) {
 }
 
 APIGateBase::~APIGateBase() {
+}
+
+void APIGateBase::start_on_event_thread() {
+  // implementation error, must not use Colonio::start_on_event_thread in current api-gate case.
+  assert(false);
+}
+
+void APIGateBase::start_on_controller_thread() {
+  // implementation error, must not use Colonio::start_on_controller_thread in current api-gate case.
+  assert(false);
 }
 }  // namespace colonio

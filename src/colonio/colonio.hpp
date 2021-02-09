@@ -36,10 +36,14 @@ namespace colonio {
  */
 class Colonio {
  public:
+  // options
+  static const uint32_t EXPLICIT_EVENT_THREAD      = 0x1;
+  static const uint32_t EXPLICIT_CONTROLLER_THREAD = 0x2;
+
   /**
    * @brief Construct a new Colonio object.
    */
-  Colonio();
+  Colonio(uint32_t opt = 0);
 
   /**
    * @brief Destroy the Colonio object.
@@ -180,6 +184,9 @@ class Colonio {
   void set_position(
       double x, double y, std::function<void(Colonio&, double, double)> on_success,
       std::function<void(Colonio&, const Error&)> on_failure);
+
+  void start_on_event_thread();
+  void start_on_controller_thread();
 
  protected:
   /**

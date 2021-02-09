@@ -34,6 +34,10 @@ struct TestData {
 };
 
 TEST(ExternC, definition) {
+  EXPECT_EQ(colonio::Colonio::EXPLICIT_EVENT_THREAD, static_cast<uint32_t>(COLONIO_COLONIO_EXPLICIT_EVENT_THREAD));
+  EXPECT_EQ(
+      colonio::Colonio::EXPLICIT_CONTROLLER_THREAD, static_cast<uint32_t>(COLONIO_COLONIO_EXPLICIT_CONTROLLER_THREAD));
+
   EXPECT_EQ(static_cast<int>(colonio::ErrorCode::UNDEFINED), COLONIO_ERROR_CODE_UNDEFINED);
   EXPECT_EQ(static_cast<int>(colonio::ErrorCode::SYSTEM_ERROR), COLONIO_ERROR_CODE_SYSTEM_ERROR);
   EXPECT_EQ(static_cast<int>(colonio::ErrorCode::OFFLINE), COLONIO_ERROR_CODE_OFFLINE);
@@ -58,7 +62,7 @@ TEST(ExternC, connect_sync) {
   colonio_t colonio;
   colonio_error_t* err;
 
-  err = colonio_init(&colonio);
+  err = colonio_init(&colonio, 0);
   EXPECT_EQ(err, nullptr);
 
   err = colonio_connect(&colonio, URL, strlen(URL), TOKEN, strlen(TOKEN));
@@ -97,7 +101,7 @@ TEST(ExternC, connect_async) {
   colonio_t colonio;
   colonio_error_t* err;
 
-  err = colonio_init(&colonio);
+  err = colonio_init(&colonio, 0);
   EXPECT_EQ(err, nullptr);
 
   data.helper  = &helper;
