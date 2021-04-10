@@ -122,8 +122,8 @@ else()
     find_package(pybind11 REQUIRED)
     add_library(colonio_py MODULE
       python/main.cpp
-    #  ${HEADER_FILES}
-    #  ${COLONIO_FILES}
+      ${HEADER_FILES}
+      ${COLONIO_FILES}
       )
     target_link_libraries(colonio_py PRIVATE
       pybind11::module

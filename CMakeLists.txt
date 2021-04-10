@@ -3,10 +3,11 @@ project(colonio)
 find_package(PkgConfig)
 
 # Read options.
-option(WITH_PYTHON "Generate library for python. (For native only)" OFF)
-option(WITH_SAMPLE "Generate simulate program. (For native only)" OFF)
-option(WITH_TEST   "Generate test program. (For native only)" OFF)
-option(WITH_COVERAGE "Build test with coverage.(Native only)" OFF)
+option(WITH_COVERAGE "Build test with coverage. (For native only)" OFF)
+option(WITH_GPROF    "Enable build option for gprof. (For native only)" OFF)
+option(WITH_PYTHON   "Generate library for python. (For native only)" OFF)
+option(WITH_SAMPLE   "Generate simulate program. (For native only)" OFF)
+option(WITH_TEST     "Generate test program. (For native only)" OFF)
 
 # Common settings
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
@@ -128,6 +129,12 @@ else()
 
   # ProtocolBuffers
   list(APPEND extra_libs "protobuf")
+
+  # gprof
+  if(WITH_GPROF)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pg -fno-omit-frame-pointer")
+    set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} -pg")
+  endif()
 
   # Build core library.
   add_subdirectory(${PROJECT_SOURCE_DIR}/src)
