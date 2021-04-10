@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "core";
+option go_package = "github.com/colonio/colonio-seed/pkg/seed/core";
 
 import "core/core.proto";
 

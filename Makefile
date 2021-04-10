@@ -9,8 +9,8 @@ export WORK_PATH ?= /tmp/work
 export SUDO ?= sudo
 
 # the versions of depending packages
-PROTOBUF_VERSION = 3.10.1
-GO_PROTOBUF_VERSION = 1.3.2
+PROTOBUF_VERSION = 3.15.8
+GO_PROTOBUF_VERSION = 1.5.2
 ifeq ($(shell uname -s),Darwin)
 PROTOBUF_FNAME = protoc-$(PROTOBUF_VERSION)-osx-x86_64.zip
 else ifeq ($(shell uname -s),Linux)
@@ -38,7 +38,7 @@ setup:
 setup-linux:
 	export DEBIAN_FRONTEND=noninteractive \
 	&& $(SUDO) apt update \
-	&& $(SUDO) apt -y install golang-1.14 unzip
+	&& $(SUDO) apt -y install cmake curl golang-1.14 unzip
 
 .PHONY: setup-macos
 setup-macos:
@@ -46,7 +46,9 @@ setup-macos:
 	brew list > $(WORK_PATH)/brew_pkgs
 	brew update
 	cat $(WORK_PATH)/brew_pkgs
-	if grep ^go$$ $(WORK_PATH)/brew_pkgs; then \
+	if grep ^go@1.15$$ $(WORK_PATH)/brew_pkgs; then \
+		echo "skip upgrade go"; \
+	elif grep ^go$$ $(WORK_PATH)/brew_pkgs; then \
 		brew upgrade go; \
 	else \
 		brew install go; \
