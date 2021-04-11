@@ -12,10 +12,10 @@ The purpose of Colonio is to make it more versatile and to make it easy for ever
 
 ## More information
 
--   The status of this project is experimental.
--   Please see [website](https://www.colonio.dev/) to get more information.
--   [colonio-seed](https://github.com/llamerada-jp/colonio-seed) is the seed program for colonio.
--   [libwebrtc](https://github.com/llamerada-jp/libwebrtc) is a depending library to use WebRTC on native environment.
+- The status of this project is experimental.
+- Please see [website](https://www.colonio.dev/) to get more information.
+- [colonio-seed](https://github.com/llamerada-jp/colonio-seed) is the seed program for colonio.
+- [libwebrtc](https://github.com/llamerada-jp/libwebrtc) is a depending library to use WebRTC on native environment.
 
 ## How to build the node library
 
@@ -32,9 +32,9 @@ $ make build-native build-wasm
 
 There is an output file below.
 
--   `output/libcolonio.a`: static link library for C/C++
--   `output/lib/*`: depending shared library for C/C++
--   `output/colonio.*`: wasm library for JavaScript
+- `output/libcolonio.a`: static link library for C/C++
+- `output/lib/*`: depending shared library for C/C++
+- `output/colonio.*`: wasm library for JavaScript
 
 ### Run test
 
@@ -49,8 +49,11 @@ Flags for build script are below.
 | option          | values             | default   | description                                |
 | --------------- | ------------------ | --------- | ------------------------------------------ |
 | `BUILD_TYPE`    | `Release`, `Debug` | `Release` | build type option used as CMAKE_BUILD_TYPE |
-| `WITH_TEST`     | `ON`, `OFF`        | `OFF`     | build test program                         |
 | `WITH_COVERAGE` | `ON`, `OFF`        | `OFF`     | output coverage when run test programs     |
+| `WITH_GPROF`    | `ON`, `OFF`        | `OFF`     | enable build option for gprof              |
+| `WITH_PYTHON`   | `ON`, `OFF`        | `ON`      | enable build for python                    |
+| `WITH_SAMPLE`   | `ON`, `OFF`        | `OFF`     | build sample programs                      |
+| `WITH_TEST`     | `ON`, `OFF`        | `OFF`     | build test programs                        |
 
 ## How to build a C/C++ program using colonio
 

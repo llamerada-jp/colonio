@@ -16,7 +16,10 @@
 #include <pybind11/functional.h>
 #include <pybind11/pybind11.h>
 
-#include "colonio/colonio_libuv.hpp"
+#include <map>
+#include <memory>
+
+#include "colonio/colonio.hpp"
 #include "colonio/map.hpp"
 
 namespace py = pybind11;
@@ -29,16 +32,16 @@ class PythonMap {
   }
 
   static colonio::Value convertValue(const py::object& src) {
-    if (py::bool_::check_(src)) {
+    if (py::isinstance<py::bool_>(src)) {
       return colonio::Value(src.cast<bool>());
 
-    } else if (py::int_::check_(src)) {
+    } else if (py::isinstance<py::int_>(src)) {
       return colonio::Value(static_cast<int64_t>(src.cast<int>()));
 
-    } else if (py::float_::check_(src)) {
+    } else if (py::isinstance<py::float_>(src)) {
       return colonio::Value(src.cast<double>());
 
-    } else if (py::str::check_(src)) {
+    } else if (py::isinstance<py::str>(src)) {
       return colonio::Value(src.cast<std::string>());
 
     } else {
@@ -67,92 +70,95 @@ class PythonMap {
   }
 
   void get(
-      const py::object key, const std::function<void(py::object&)>& on_success,
-      const std::function<void(colonio::Error)>& on_failure) {
+      const py::object key, const std::function<void(PythonMap&, py::object&)>& on_success,
+      const std::function<void(PythonMap&, colonio::Error)>& on_failure) {
     colonio::Value key_value = convertValue(key);
     map.get(
         key_value,
-        [on_success](const colonio::Value& value) {
+        [this, on_success](colonio::Map&, const colonio::Value& value) {
           std::unique_ptr<py::object> val = std::move(convertValue(value));
-          on_success(*val);
+          on_success(*this, *val);
         },
-        on_failure);
+        [this, on_failure](colonio::Map&, const colonio::Error& err) { on_failure(*this, err); });
   }
 
   void set(
-      const py::object key, const py::object val, const std::function<void()>& on_success,
-      const std::function<void(colonio::Error)>& on_failure) {
+      const py::object key, const py::object val, unsigned int opt, const std::function<void(PythonMap&)>& on_success,
+      const std::function<void(PythonMap&, colonio::Error)>& on_failure) {
     colonio::Value key_value = convertValue(key);
     colonio::Value val_value = convertValue(val);
-    map.set(key_value, val_value, on_success, on_failure);
+    map.set(
+        key_value, val_value, static_cast<uint32_t>(opt), [this, on_success](colonio::Map&) { on_success(*this); },
+        [this, on_failure](colonio::Map&, const colonio::Error& err) { on_failure(*this, err); });
   }
 };
 
-class PythonColonio : public colonio_helper::ColonioLibuv {
+class PythonColonio : public colonio::Colonio {
  public:
-  enum RUN_MODE {
-    DEFAULT,
-    ONCE,
-    NOWAIT,
-  };
-
-  PythonColonio() : ColonioLibuv(nullptr) {
+  PythonMap& _access_map(const std::string& name) {
+    auto it = map_cache.find(name);
+    if (it == map_cache.end()) {
+      it = map_cache.insert(std::make_pair(name, std::make_unique<PythonMap>(access_map(name)))).first;
+    }
+    return *(it->second);
   }
 
   void _connect(
       const std::string& url, const std::string& token, std::function<void(PythonColonio&)> on_success,
-      std::function<void(PythonColonio&)> on_failure) {
+      std::function<void(PythonColonio&, colonio::Error)> on_failure) {
     on_connect_success = on_success;
     on_connect_failure = on_failure;
-    connect(
-        url, token, [this](colonio::Colonio&) { on_connect_success(*this); },
-        [this](colonio::Colonio&) { on_connect_failure(*this); });
-  }
 
-  void _run(RUN_MODE mode) {
-    switch (mode) {
-      case DEFAULT:
-        run(UV_RUN_DEFAULT);
-        break;
-      case ONCE:
-        run(UV_RUN_ONCE);
-        break;
-      case NOWAIT:
-        run(UV_RUN_NOWAIT);
-        break;
-    }
+    connect(
+        url, token, [this](colonio::Colonio&) { this->on_connect_success(*this); },
+        [this](colonio::Colonio&, const colonio::Error& err) { this->on_connect_failure(*this, err); });
   }
 
  private:
   std::function<void(PythonColonio&)> on_connect_success;
-  std::function<void(PythonColonio&)> on_connect_failure;
+  std::function<void(PythonColonio&, colonio::Error)> on_connect_failure;
+
+  std::map<const std::string, std::unique_ptr<PythonMap>> map_cache;
 };
 
 PYBIND11_MODULE(colonio, m) {
   m.doc() = "colonio module";
+
+  // ErrorCode
+  py::enum_<colonio::ErrorCode>(m, "ErrorCode")
+      .value("UNDEFINED", colonio::ErrorCode::UNDEFINED)
+      .value("SYSTEM_ERROR", colonio::ErrorCode::SYSTEM_ERROR)
+      .value("OFFLINE", colonio::ErrorCode::OFFLINE)
+      .value("INCORRECT_DATA_FORMAT", colonio::ErrorCode::INCORRECT_DATA_FORMAT)
+      .value("CONFLICT_WITH_SETTING", colonio::ErrorCode::CONFLICT_WITH_SETTING)
+      .value("NOT_EXIST_KEY", colonio::ErrorCode::NOT_EXIST_KEY)
+      .value("EXIST_KEY", colonio::ErrorCode::EXIST_KEY)
+      .value("CHANGED_PROPOSER", colonio::ErrorCode::CHANGED_PROPOSER)
+      .value("COLLISION_LATE", colonio::ErrorCode::COLLISION_LATE)
+      .value("NO_ONE_RECV", colonio::ErrorCode::NO_ONE_RECV)
+      .export_values();
+
+  // Error
+  py::class_<colonio::Error> Error(m, "Error");
+  Error.def(py::init<colonio::ErrorCode, const std::string&>())
+      .def_readonly("code", &colonio::Error::code)
+      .def_readonly("message", &colonio::Error::message);
+
   // Map
   py::class_<PythonMap> Map(m, "Map");
-  Map.def("get", &PythonMap::get).def("set", &PythonMap::set);
-
-  py::enum_<colonio::Error>(Map, "FailureReason")
-      .value("NONE", colonio::Error::NONE)
-      .value("SYSTEM_ERROR", colonio::Error::SYSTEM_ERROR)
-      .value("NOT_EXIST_KEY", colonio::Error::NOT_EXIST_KEY)
-      .value("CHANGED_PROPOSER", colonio::Error::CHANGED_PROPOSER)
-      .export_values();
+  Map.def_readonly_static("ERROR_WITHOUT_EXIST", &colonio::Map::ERROR_WITHOUT_EXIST)
+      .def_readonly_static("ERROR_WITH_EXIST", &colonio::Map::ERROR_WITH_EXIST)
+      .def_readonly_static("TRY_LOCK", &colonio::Map::TRY_LOCK)
+      .def("get", &PythonMap::get)
+      .def("set", &PythonMap::set);
 
   // Colonio
   py::class_<PythonColonio> Colonio(m, "Colonio");
-
   Colonio.def(py::init<>())
+      .def_readonly_static("EXPLICIT_EVENT_THREAD", &colonio::Colonio::EXPLICIT_EVENT_THREAD)
+      .def_readonly_static("EXPLICIT_CONTROLLER_THREAD", &colonio::Colonio::EXPLICIT_CONTROLLER_THREAD)
+      .def("accessMap", &PythonColonio::_access_map)
       .def("connect", &PythonColonio::_connect)
-      .def("run", &PythonColonio::_run)
       .def("disconnect", &PythonColonio::disconnect)
       .def("getLocalNid", &PythonColonio::get_local_nid);
-
-  py::enum_<PythonColonio::RUN_MODE>(Colonio, "RunMode")
-      .value("DEFAULT", PythonColonio::RUN_MODE::DEFAULT)
-      .value("ONCE", PythonColonio::RUN_MODE::ONCE)
-      .value("NOWAIT", PythonColonio::RUN_MODE::NOWAIT)
-      .export_values();
 }
