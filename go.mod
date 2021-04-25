@@ -1,4 +1,4 @@
-module github.com/colonio/colonio-seed
+module github.com/llamerada-jp/colonio-seed
 
 go 1.16
 
