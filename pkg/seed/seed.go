@@ -53,7 +53,11 @@ type Seed struct {
 }
 
 const (
+	maxMessageSize   = 1024 * 1024
+	pingPeriod       = 30 * time.Second
+	pongWait         = 60 * time.Second
 	socketBufferSize = 1024
+	writeWait        = 10 * time.Second
 )
 
 var upgrader = &websocket.Upgrader{
@@ -173,8 +177,34 @@ func (seed *Seed) execEachTick() {
 }
 
 func (node *Node) start() error {
+	node.socket.SetReadLimit(maxMessageSize)
+	node.socket.SetReadDeadline(time.Now().Add(pongWait))
+	node.socket.SetPongHandler(func(string) error {
+		node.socket.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
+	ticker := time.NewTicker(pingPeriod)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				node.socket.SetWriteDeadline(time.Now().Add(writeWait))
+				if err := node.socket.WriteMessage(websocket.PingMessage, nil); err != nil {
+					glog.Warning(err)
+					node.close()
+					return
+				}
+			}
+		}
+	}()
+
+	defer func() {
+		ticker.Stop()
+		node.close()
+	}()
+
 	for {
-		glog.Info("wait")
 		messageType, message, err := node.socket.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
@@ -194,8 +224,6 @@ func (node *Node) start() error {
 		node.mutex.Lock()
 		node.timeLastRecv = time.Now()
 		node.mutex.Unlock()
-
-		glog.Info("recv")
 
 		if packet.DstNid.Type == NidTypeSeed {
 			if err := node.receivePacket(packet); err != nil {
@@ -460,6 +488,7 @@ func (node *Node) sendPacket(packet *proto.SeedAccessor) error {
 		glog.Fatal(err)
 	}
 	defer glog.Info("send packet.")
+	node.socket.SetWriteDeadline(time.Now().Add(writeWait))
 	return node.socket.WriteMessage(websocket.BinaryMessage, packetBin)
 }
 
