@@ -27,9 +27,7 @@ $ ./seed [flags] -config <config file>
 
 | Flag     | Parameter type | Description                     |
 | -------- | -------------- | ------------------------------- |
-| -config  | string         | Specify the configuration file. |
-| -syslog  |                | Output log using `syslog`.      |
-| -verbose |                | Output verbose logs.            |
+| --config  | string         | Specify the configuration file. |
 
 ## License
 

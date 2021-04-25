@@ -1,3 +1,4 @@
-seed
 /.vscode
 /local
+/pkg/seed/github.com
+/seed
