@@ -16,7 +16,7 @@
 
 package main
 
-import "github.com/colonio/colonio-seed/cmd"
+import "github.com/llamerada-jp/colonio-seed/cmd"
 
 func main() {
 	cmd.Execute()
