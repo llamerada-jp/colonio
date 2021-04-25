@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2019-2021 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,34 +13,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package seed
 
-type Pool struct {
-	work chan func()
-	sem  chan struct{}
-}
+import (
+	"fmt"
 
-func NewPool(size int) *Pool {
-	return &Pool{
-		work: make(chan func()),
-		sem:  make(chan struct{}, size),
-	}
-}
+	proto "github.com/colonio/colonio-seed/pkg/seed/core"
+)
 
-func (p *Pool) Schedule(task func()) error {
-	select {
-	case p.work <- task:
-	case p.sem <- struct{}{}:
-		go p.worker(task)
-	}
-	return nil
-}
+func nidToString(nid *proto.NodeID) string {
+	switch nid.Type {
+	//case NidTypeNone:
+	//	return NidNone
 
-func (p *Pool) worker(task func()) {
-	defer func() { <-p.sem }()
-	for {
-		task()
-		task = <-p.work
+	case NidTypeNormal:
+		return fmt.Sprintf("%016x%016x", nid.Id0, nid.Id1)
+
+	case NidTypeThis:
+		return NidStrThis
+
+	case NidTypeSeed:
+		return NidStrSeed
+
+	case NidTypeNext:
+		return NidStrNext
 	}
+
+	return NidStrNone
 }
