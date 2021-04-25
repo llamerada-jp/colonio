@@ -24,8 +24,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/colonio/colonio-seed/pkg/seed"
 	"github.com/golang/glog"
+	"github.com/llamerada-jp/colonio-seed/pkg/seed"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

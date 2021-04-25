@@ -26,10 +26,10 @@ import (
 	"sync"
 	"time"
 
-	proto "github.com/colonio/colonio-seed/pkg/seed/core"
 	"github.com/golang/glog"
 	proto3 "github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
+	proto "github.com/llamerada-jp/colonio-seed/pkg/seed/core"
 )
 
 type Node struct {
