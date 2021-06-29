@@ -24,10 +24,12 @@ The purpose of Colonio is to make it more versatile and to make it easy for ever
 ```console
 // for linux using docker
 $ make build
+$ sudo make install
 
 // for mac or for linux without docker
 $ make setup
 $ make build-native build-wasm
+$ sudo make install
 ```
 
 There is an output file below.
@@ -46,14 +48,15 @@ $ make test
 
 Flags for build script are below.
 
-| option          | values             | default   | description                                |
-| --------------- | ------------------ | --------- | ------------------------------------------ |
-| `BUILD_TYPE`    | `Release`, `Debug` | `Release` | build type option used as CMAKE_BUILD_TYPE |
-| `WITH_COVERAGE` | `ON`, `OFF`        | `OFF`     | output coverage when run test programs     |
-| `WITH_GPROF`    | `ON`, `OFF`        | `OFF`     | enable build option for gprof              |
-| `WITH_PYTHON`   | `ON`, `OFF`        | `ON`      | enable build for python                    |
-| `WITH_SAMPLE`   | `ON`, `OFF`        | `OFF`     | build sample programs                      |
-| `WITH_TEST`     | `ON`, `OFF`        | `OFF`     | build test programs                        |
+| option          | values             | default      | description                                                 |
+| --------------- | ------------------ | ------------ | ----------------------------------------------------------- |
+| `BUILD_TYPE`    | `Release`, `Debug` | `Release`    | build type option used as CMAKE_BUILD_TYPE                  |
+| `DESTDIR`       | path               | `/usr/local` | destination path to install native library and header files |
+| `WITH_COVERAGE` | `ON`, `OFF`        | `OFF`        | output coverage when run test programs                      |
+| `WITH_GPROF`    | `ON`, `OFF`        | `OFF`        | enable build option for gprof                               |
+| `WITH_PYTHON`   | `ON`, `OFF`        | `ON`         | enable build for python                                     |
+| `WITH_SAMPLE`   | `ON`, `OFF`        | `OFF`        | build sample programs                                       |
+| `WITH_TEST`     | `ON`, `OFF`        | `OFF`        | build test programs                                         |
 
 ## How to build a C/C++ program using colonio
 

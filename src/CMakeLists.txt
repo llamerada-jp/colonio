@@ -112,11 +112,15 @@ else()
     ${HEADER_FILES}
     ${COLONIO_FILES}
     )
-  # install(TARGETS colonio
-  #   RUNTIME DESTINATION ${PROJECT_SOURCE_DIR}/local/bin
-  #   LIBRARY DESTINATION ${PROJECT_SOURCE_DIR}/local/lib
-  #   ARCHIVE DESTINATION ${PROJECT_SOURCE_DIR}/local/lib)
 
+  file(GLOB PUBLIC_HEADER_FILES "colonio/*.h" "colonio/*.hpp")
+  set_target_properties(colonio PROPERTIES PUBLIC_HEADER "${PUBLIC_HEADER_FILES}")
+  install(TARGETS colonio
+    LIBRARY       DESTINATION lib
+    INCLUDES      DESTINATION include
+    PUBLIC_HEADER DESTINATION include/colonio
+    )
+  
   # Python
   if (WITH_PYTHON)
     find_package(pybind11 REQUIRED)

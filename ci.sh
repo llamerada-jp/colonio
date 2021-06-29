@@ -14,6 +14,7 @@ if [ ${OS} = 'Linux' ]; then
     make build BUILD_TYPE=Debug WITH_TEST=ON WITH_COVERAGE=ON
     make build-seed
     make test
+    sudo make install
     export PATH=$PATH:$(python3 -m site --user-base)/bin
     coveralls -b ./build/linux_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/test -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'
     exit 0
@@ -34,6 +35,7 @@ elif [ ${OS} = 'Darwin' ]; then
   make build BUILT_TYPE=Debug WITH_TEST=ON
   make build-seed
   make test
+  sudo make install
   exit 0
 fi
 
