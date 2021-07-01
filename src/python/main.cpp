@@ -52,9 +52,6 @@ class PythonMap {
 
   static std::unique_ptr<py::object> convertValue(const colonio::Value& src) {
     switch (src.get_type()) {
-      case colonio::Value::NULL_T:
-        return std::unique_ptr<py::object>(new py::none());
-
       case colonio::Value::BOOL_T:
         return std::unique_ptr<py::object>(new py::bool_(src.get<bool>()));
 
@@ -66,6 +63,10 @@ class PythonMap {
 
       case colonio::Value::STRING_T:
         return std::unique_ptr<py::object>(new py::str(src.get<std::string>()));
+
+      default:
+        assert(src.get_type() == colonio::Value::NULL_T);
+        return std::unique_ptr<py::object>(new py::none());
     }
   }
 
