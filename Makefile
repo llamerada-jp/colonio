@@ -1,9 +1,9 @@
-SHELL = /bin/bash -o pipefail
+SHELL := /bin/bash -o pipefail
 
 # version (yyyymmdd)
-DOCKER_IMAGE_VERSION = 20210409a
-DOCKER_IMAGE_NAME = ghcr.io/llamerada-jp/colonio-buildenv
-DOCKER_IMAGE = $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_VERSION)
+DOCKER_IMAGE_VERSION := 20210409a
+DOCKER_IMAGE_NAME := ghcr.io/llamerada-jp/colonio-buildenv
+DOCKER_IMAGE := $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_VERSION)
 
 # paths
 ROOT_PATH := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
@@ -22,26 +22,27 @@ WASM_BUILD_PATH := $(ROOT_PATH)/build/webassembly
 export SUDO ?= sudo
 
 # the versions of depending packages
-ASIO_TAG = asio-1-18-1
-CPP_ALGORITHMS_HASH = 5de21c513796a39f31e1db02a62fdb8dcc8ea775
-EMSCRIPTEN_VERSION = 2.0.16
-GTEST_VERSION = 1.10.0
-LIBUV_VERSION = 1.41.0
+ASIO_TAG := asio-1-18-1
+CPP_ALGORITHMS_HASH := 5de21c513796a39f31e1db02a62fdb8dcc8ea775
+EMSCRIPTEN_VERSION := 2.0.16
+GTEST_VERSION := 1.10.0
+LIBUV_VERSION := 1.41.0
 ifeq ($(shell uname -s),Darwin)
-LIBWEBRTC_URL = "https://github.com/llamerada-jp/libwebrtc/releases/download/m89/libwebrtc-89.0.4389.114-macos-amd64.zip"
+LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m89/libwebrtc-89.0.4389.114-macos-amd64.zip"
 else ifeq ($(shell uname -s),Linux)
 	ifeq ($(shell uname -m),x86_64)
-	LIBWEBRTC_URL = "https://github.com/llamerada-jp/libwebrtc/releases/download/m89.2/libwebrtc-89.0.4389.114-linux-amd64.tar.gz"
+	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m89.2/libwebrtc-89.0.4389.114-linux-amd64.tar.gz"
 	else ifeq ($(shell uname -m),aarch64)
-	LIBWEBRTC_URL = "https://github.com/llamerada-jp/libwebrtc/releases/download/m89/libwebrtc-89.0.4389.114-linux-arm64.tar.gz"
+	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m89/libwebrtc-89.0.4389.114-linux-arm64.tar.gz"
 	endif
 endif
-PICOJSON_VERSION = 1.3.0
-PROTOBUF_VERSION = 3.15.8
-WEBSOCKETPP_VERSION = 0.8.2
+PICOJSON_VERSION := 1.3.0
+PROTOBUF_VERSION := 3.15.8
+WEBSOCKETPP_VERSION := 0.8.2
 
 # build options
 BUILD_TYPE ?= Release
+DESTDIR ?= /usr/local
 WITH_COVERAGE ?= OFF
 WITH_GPROF ?= OFF
 WITH_PYTHON ?= ON
@@ -95,10 +96,8 @@ setup-local:
 	# asio
 	cd $(WORK_PATH) \
 	&& $(RM) -r asio \
-	&& git clone https://github.com/chriskohlhoff/asio.git \
-	&& cd asio \
-	&& git checkout refs/tags/$(ASIO_TAG) \
-	&& cd asio \
+	&& git clone --depth=1 --branch $(ASIO_TAG) https://github.com/chriskohlhoff/asio.git \
+	&& cd asio/asio \
 	&& ./autogen.sh \
 	&& ./configure --prefix=$(LOCAL_ENV_PATH) --without-boost \
 	&& $(MAKE) \
@@ -113,9 +112,8 @@ setup-local:
 	# gtest
 	cd $(WORK_PATH) \
 	&& $(RM) -r googletest \
-	&& git clone https://github.com/google/googletest.git \
+	&& git clone --depth=1 --branch release-$(GTEST_VERSION) https://github.com/google/googletest.git \
 	&& cd googletest \
-	&& git checkout refs/tags/release-$(GTEST_VERSION) \
 	&& git submodule update --init --recursive \
 	&& cmake -DCMAKE_INSTALL_PREFIX=$(LOCAL_ENV_PATH) . \
 	&& $(MAKE) \
@@ -140,16 +138,14 @@ setup-local:
 	# picojson
 	cd $(WORK_PATH) \
 	&& $(RM) -r picojson \
-	&& git clone https://github.com/kazuho/picojson.git \
+	&& git clone --depth=1 --branch v$(PICOJSON_VERSION) https://github.com/kazuho/picojson.git \
 	&& cd picojson \
-	&& git checkout refs/tags/v$(PICOJSON_VERSION) \
 	&& cp picojson.h $(LOCAL_ENV_PATH)/include/
 	# Protocol Buffers
 	cd $(WORK_PATH) \
 	&& $(RM) -r protobuf \
-	&& git clone https://github.com/protocolbuffers/protobuf.git \
+	&& git clone --depth=1 --branch v$(PROTOBUF_VERSION) https://github.com/protocolbuffers/protobuf.git \
 	&& cd protobuf \
-	&& git checkout refs/tags/v$(PROTOBUF_VERSION) \
 	&& git submodule update --init --recursive \
 	&& ./autogen.sh \
 	&& ./configure --prefix=$(LOCAL_ENV_PATH) \
@@ -158,9 +154,8 @@ setup-local:
 	# websocketpp
 	cd $(WORK_PATH) \
 	&& $(RM) -r websocketpp \
-	&& git clone https://github.com/zaphoyd/websocketpp.git \
+	&& git clone --depth=1 --branch $(WEBSOCKETPP_VERSION) https://github.com/zaphoyd/websocketpp.git \
 	&& cd websocketpp \
-	&& git checkout refs/tags/$(WEBSOCKETPP_VERSION) \
 	&& cmake -DCMAKE_INSTALL_PREFIX=$(LOCAL_ENV_PATH) . \
 	&& $(MAKE) \
 	&& $(MAKE) install
@@ -181,9 +176,8 @@ setup-wasm:
 	&& mkdir -p em_cache \
 	&& export EM_CACHE=$(WORK_PATH)/em_cache \
 	&& $(RM) -r protobuf_wasm \
-	&& git clone https://github.com/protocolbuffers/protobuf.git protobuf_wasm \
+	&& git clone --depth=1 --branch v$(PROTOBUF_VERSION) https://github.com/protocolbuffers/protobuf.git protobuf_wasm \
 	&& cd protobuf_wasm \
-	&& git checkout refs/tags/v$(PROTOBUF_VERSION) \
 	&& git submodule update --init --recursive \
 	&& ./autogen.sh \
 	&& emconfigure ./configure --prefix=$(LOCAL_ENV_PATH)/wasm --disable-shared \
@@ -226,6 +220,7 @@ build-native:
 	&& PKG_CONFIG_PATH=$(LOCAL_ENV_PATH)/lib/pkgconfig/ \
 		cmake -DLOCAL_ENV_PATH=$(LOCAL_ENV_PATH) \
 		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		-DCMAKE_INSTALL_PREFIX=$(DESTDIR) \
 		-DCOLONIO_SEED_BIN_PATH=$(OUTPUT_PATH)/seed \
 		-DWITH_COVERAGE=$(WITH_COVERAGE) \
 		-DWITH_GPROF=$(WITH_GPROF) \
@@ -246,14 +241,14 @@ build-wasm:
 	&& export EM_CACHE=/tmp/em_cache \
 	&& cd $(WASM_BUILD_PATH) \
 	&& emcmake cmake -DLOCAL_ENV_PATH=$(LOCAL_ENV_PATH) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) $(ROOT_PATH) \
-  && emmake $(MAKE) \
+  	&& emmake $(MAKE) \
 	&& cp src/colonio.* $(OUTPUT_PATH)
 
 .PHONY: build-seed
 build-seed:
 	cd $(BUILD_SEED_PATH) \
 	&& $(RM) -r colonio-seed \
-	&& git clone https://github.com/llamerada-jp/colonio-seed.git \
+	&& git clone --depth=1 https://github.com/llamerada-jp/colonio-seed.git \
 	&& LOCAL_ENV_PATH=$(LOCAL_ENV_PATH) $(MAKE) -C colonio-seed setup build \
 	&& mkdir -p $(OUTPUT_PATH) \
 	&& cp colonio-seed/seed $(OUTPUT_PATH)
