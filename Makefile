@@ -211,7 +211,10 @@ build:
 
 .PHONY: test
 test:
+	# C/C++
 	LD_LIBRARY_PATH=$(OUTPUT_PATH)/lib $(MAKE) -C $(NATIVE_BUILD_PATH) test
+	# Golang
+	COLONIO_SEED_BIN_PATH=$(PWD)/output/seed CGO_LDFLAGS="-L$(PWD)/output -L$(PWD)/output/lib -L$(LOCAL_ENV_PATH)/lib" go test -v test/go/*.go
 
 .PHONY: build-native
 build-native:

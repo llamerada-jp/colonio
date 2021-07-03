@@ -1,0 +1,31 @@
+{
+  "node": {
+    "coordSystem2D": {
+      "type": "sphere",
+      "radius": 6378137
+    },
+    "iceServers": [
+      {
+        "urls": [
+          "stun:stun.l.google.com:19302"
+        ]
+      }
+    ],
+    "modules": {
+      "ps": {
+        "cacheTime": 100,
+        "channel": 256,
+        "type": "pubsub2D"
+      }
+    },
+    "routing": {
+      "forceUpdateTimes": 20,
+      "updatePeriod": 500
+    }
+  },
+  "path": "/test",
+  "pingInterval": 20000,
+  "port": 8080,
+  "revision": 20201121.1,
+  "timeout": 30000
+}
