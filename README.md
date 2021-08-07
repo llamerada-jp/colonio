@@ -1,5 +1,5 @@
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/4b8bc767bd934017b5a17e172b511286)](https://app.codacy.com/manual/llamerada-jp/colonio-seed?utm_source=github.com&utm_medium=referral&utm_content=llamerada-jp/colonio-seed&utm_campaign=Badge_Grade_Dashboard)
-[![Travis-CI](https://travis-ci.org/llamerada-jp/colonio-seed.svg?branch=master)](https://travis-ci.org/llamerada-jp/colonio-seed)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/95b9505c5cef4218ac548e4b60fc7638)](https://www.codacy.com/gh/llamerada-jp/colonio-seed/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=llamerada-jp/colonio-seed&amp;utm_campaign=Badge_Grade)
+[![test](https://github.com/llamerada-jp/colonio-seed/actions/workflows/ci.yaml/badge.svg)](https://github.com/llamerada-jp/colonio-seed/actions/workflows/ci.yaml)
 
 # Colonio seed
 
