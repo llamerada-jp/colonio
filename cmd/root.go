@@ -13,8 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-package cmd
+package main
 
 import (
 	"encoding/json"
@@ -30,7 +29,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-type SeedConfig struct {
+type seedConfig struct {
 	seed.Config
 	Host string `json:"host"`
 	Port int    `json:"port"`
@@ -53,7 +52,7 @@ var rootCmd = &cobra.Command{
 			glog.Fatal(err)
 		}
 
-		config := &SeedConfig{}
+		config := &seedConfig{}
 		if err := json.Unmarshal(f, config); err != nil {
 			glog.Fatal(err)
 		}
@@ -82,7 +81,7 @@ func init() {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 }
 
-func Execute() {
+func main() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

@@ -39,7 +39,7 @@ setup:
 setup-linux:
 	export DEBIAN_FRONTEND=noninteractive \
 	&& $(SUDO) apt update \
-	&& $(SUDO) apt -y install cmake curl unzip
+	&& $(SUDO) apt -y --no-install-recommends install cmake curl unzip
 
 .PHONY: setup-local
 setup-local:
@@ -61,7 +61,7 @@ setup-local:
 .PHONY: build
 build: seed/core/core.pb.go seed/core/node_accessor_protocol.pb.go seed/core/seed_accessor_protocol.pb.go
 	mkdir -p bin
-	go build -o bin/seed
+	CGO_ENABLED=0 go build -o bin/seed cmd/*
 
 seed/core/core.pb.go: api/core/core.proto
 	PATH="$(LOCAL_ENV_PATH)/bin:$(PATH)" $(PROTOC) -I api --go_out=module=github.com/llamerada-jp/colonio-seed:. $<
