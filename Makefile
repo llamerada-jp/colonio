@@ -3,21 +3,22 @@ SHELL = /bin/bash -o pipefail
 # paths
 ROOT_PATH := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 export LOCAL_ENV_PATH ?= $(ROOT_PATH)/local
-export WORK_PATH ?= /tmp/work
+export WORK_PATH := /tmp/work
 
 # commands
-export SUDO ?= sudo
+export SUDO := sudo
+export PROTOC := $(LOCAL_ENV_PATH)/bin/protoc
 
 # the versions of depending packages
-PROTOBUF_VERSION = 3.15.8
-GO_PROTOBUF_VERSION = 1.5.2
+PROTOBUF_VERSION := 3.15.8
+GO_PROTOBUF_VERSION := 1.5.2
 ifeq ($(shell uname -s),Darwin)
-PROTOBUF_FNAME = protoc-$(PROTOBUF_VERSION)-osx-x86_64.zip
+PROTOBUF_FNAME := protoc-$(PROTOBUF_VERSION)-osx-x86_64.zip
 else ifeq ($(shell uname -s),Linux)
 	ifeq ($(shell uname -m),x86_64)
-	PROTOBUF_FNAME = protoc-$(PROTOBUF_VERSION)-linux-x86_64.zip
+	PROTOBUF_FNAME := protoc-$(PROTOBUF_VERSION)-linux-x86_64.zip
 	else ifeq ($(shell uname -m),aarch64)
-	PROTOBUF_FNAME = protoc-$(PROTOBUF_VERSION)-linux-aarch_64.zip
+	PROTOBUF_FNAME := protoc-$(PROTOBUF_VERSION)-linux-aarch_64.zip
 	endif
 endif
 
@@ -29,7 +30,7 @@ setup:
 	if [ $(shell uname -s) = 'Linux' ]; then \
 		$(MAKE) setup-linux setup-local; \
 	elif [ $(shell uname -s) = 'Darwin' ]; then \
-		$(MAKE) setup-macos setup-local; \
+		$(MAKE) setup-local; \
 	else \
 		echo "this platform is not supported yet."; \
 	fi
@@ -38,21 +39,7 @@ setup:
 setup-linux:
 	export DEBIAN_FRONTEND=noninteractive \
 	&& $(SUDO) apt update \
-	&& $(SUDO) apt -y install cmake curl golang-1.14 unzip
-
-.PHONY: setup-macos
-setup-macos:
-	mkdir -p $(WORK_PATH)
-	brew list > $(WORK_PATH)/brew_pkgs
-	brew update
-	cat $(WORK_PATH)/brew_pkgs
-	if grep ^go@1.15$$ $(WORK_PATH)/brew_pkgs; then \
-		echo "skip upgrade go"; \
-	elif grep ^go$$ $(WORK_PATH)/brew_pkgs; then \
-		brew upgrade go; \
-	else \
-		brew install go; \
-	fi
+	&& $(SUDO) apt -y install cmake curl unzip
 
 .PHONY: setup-local
 setup-local:
@@ -65,29 +52,29 @@ setup-local:
 	# Protocol Buffers go
 	cd $(WORK_PATH) \
 	&& $(RM) -r protobuf \
-	&& git clone https://github.com/golang/protobuf.git \
+	&& git clone -b v$(GO_PROTOBUF_VERSION) --depth=1 https://github.com/golang/protobuf.git \
 	&& cd protobuf \
-	&& git checkout refs/tags/v$(GO_PROTOBUF_VERSION) \
-	&& export GO111MODULE=on \
 	&& export GOPATH=$(LOCAL_ENV_PATH) \
 	&& unset GOROOT \
-	&& export "PATH=/usr/lib/go-1.14/bin:$(PATH)" \
 	&& go install ./protoc-gen-go
 
 .PHONY: build
-PROTOC = $(LOCAL_ENV_PATH)/bin/protoc
-build:
-	cd $(ROOT_PATH) \
-	&& unset GOROOT \
-	&& export PATH="/usr/lib/go-1.14/bin:$(LOCAL_ENV_PATH)/bin:$(PATH)" \
-	&& $(PROTOC) -I$(ROOT_PATH)/api --go_out=$(ROOT_PATH)/pkg/seed $(ROOT_PATH)/api/core/core.proto \
-	&& $(PROTOC) -I$(ROOT_PATH)/api --go_out=$(ROOT_PATH)/pkg/seed $(ROOT_PATH)/api/core/node_accessor_protocol.proto \
-	&& $(PROTOC) -I$(ROOT_PATH)/api --go_out=$(ROOT_PATH)/pkg/seed $(ROOT_PATH)/api/core/seed_accessor_protocol.proto \
-	&& GO111MODULE=on go build -o seed
+build: seed/core/core.pb.go seed/core/node_accessor_protocol.pb.go seed/core/seed_accessor_protocol.pb.go
+	mkdir -p bin
+	go build -o bin/seed
+
+seed/core/core.pb.go: api/core/core.proto
+	PATH="$(LOCAL_ENV_PATH)/bin:$(PATH)" $(PROTOC) -I api --go_out=module=github.com/llamerada-jp/colonio-seed:. $<
+
+seed/core/node_accessor_protocol.pb.go: api/core/node_accessor_protocol.proto
+	PATH="$(LOCAL_ENV_PATH)/bin:$(PATH)" $(PROTOC) -I api --go_out=module=github.com/llamerada-jp/colonio-seed:. $<
+
+seed/core/seed_accessor_protocol.pb.go: api/core/seed_accessor_protocol.proto
+	PATH="$(LOCAL_ENV_PATH)/bin:$(PATH)" $(PROTOC) -I api --go_out=module=github.com/llamerada-jp/colonio-seed:. $<
 
 .PHONY: clean
 clean:
-	$(RM) $(ROOT_PATH)/seed
+	$(RM) $(ROOT_PATH)/bin/seed
 
 .PHONY: deisclean
 deisclean: clean

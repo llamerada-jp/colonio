@@ -25,7 +25,7 @@ import (
 	"os"
 
 	"github.com/golang/glog"
-	"github.com/llamerada-jp/colonio-seed/pkg/seed"
+	"github.com/llamerada-jp/colonio-seed/seed"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

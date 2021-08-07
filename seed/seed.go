@@ -29,7 +29,7 @@ import (
 	"github.com/golang/glog"
 	proto3 "github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
-	proto "github.com/llamerada-jp/colonio-seed/pkg/seed/core"
+	proto "github.com/llamerada-jp/colonio-seed/seed/core"
 )
 
 type Node struct {
@@ -50,6 +50,7 @@ type Seed struct {
 	nidMap   map[string]*Node
 	assigned map[string]struct{}
 	config   *Config
+	upgrader *websocket.Upgrader
 }
 
 const (
@@ -60,14 +61,14 @@ const (
 	writeWait        = 10 * time.Second
 )
 
-var upgrader = &websocket.Upgrader{
-	ReadBufferSize:  socketBufferSize,
-	WriteBufferSize: socketBufferSize,
-}
-
 func NewSeed(config *Config) (*Seed, error) {
 	if err := config.validate(); err != nil {
 		return nil, err
+	}
+
+	upgrader := &websocket.Upgrader{
+		ReadBufferSize:  socketBufferSize,
+		WriteBufferSize: socketBufferSize,
 	}
 
 	return &Seed{
@@ -75,14 +76,16 @@ func NewSeed(config *Config) (*Seed, error) {
 		nidMap:   make(map[string]*Node),
 		assigned: make(map[string]struct{}),
 		config:   config,
+		upgrader: upgrader,
 	}, nil
 }
 
 func (seed *Seed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Upgrading to WebSocket.
-	socket, err := upgrader.Upgrade(w, r, nil)
+	socket, err := seed.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		glog.Warning("Failed upgrading to WebSocket")
+		return
 	}
 
 	node := seed.newNode(socket)
@@ -96,10 +99,8 @@ func (seed *Seed) Start() error {
 		ticker := time.NewTicker(time.Duration(seed.config.PingInterval) * time.Millisecond)
 
 		for {
-			select {
-			case <-ticker.C:
-				seed.execEachTick()
-			}
+			<-ticker.C
+			seed.execEachTick()
 		}
 
 		// ticker.Stop()
@@ -128,12 +129,8 @@ func (seed *Seed) deleteNode(node *Node) {
 
 	if node.nid != nil && node.nid.Type != NidTypeNone {
 		nidStr := nidToString(node.nid)
-		if _, ok := seed.nidMap[nidStr]; ok {
-			delete(seed.nidMap, nidStr)
-		}
-		if _, ok := seed.assigned[nidStr]; ok {
-			delete(seed.assigned, nidStr)
-		}
+		delete(seed.nidMap, nidStr)
+		delete(seed.assigned, nidStr)
 	}
 	delete(seed.nodes, node)
 }
@@ -187,14 +184,12 @@ func (node *Node) start() error {
 	ticker := time.NewTicker(pingPeriod)
 	go func() {
 		for {
-			select {
-			case <-ticker.C:
-				node.socket.SetWriteDeadline(time.Now().Add(writeWait))
-				if err := node.socket.WriteMessage(websocket.PingMessage, nil); err != nil {
-					glog.Warning(err)
-					node.close()
-					return
-				}
+			<-ticker.C
+			node.socket.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := node.socket.WriteMessage(websocket.PingMessage, nil); err != nil {
+				glog.Warning(err)
+				node.close()
+				return
 			}
 		}
 	}()

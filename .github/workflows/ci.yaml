@@ -5,12 +5,15 @@ on:
     branches:
     - master
 jobs:
-  test:
-    name: test on ${{ matrix.os }}
+  build:
+    name: build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-20.04, macos-latest]
     steps:
     - uses: actions/checkout@v2
+    - uses: actions/setup-go@v2
+      with:
+        go-version: 1.16
     - run: make setup build
