@@ -1,3 +1,5 @@
+// +build !js
+
 package colonio
 
 /*
@@ -50,8 +52,6 @@ import (
 	"reflect"
 	"sync"
 	"unsafe"
-
-	"github.com/llamerada-jp/colonio/pkg/interfaces"
 )
 
 type colonioImpl struct {
@@ -75,7 +75,7 @@ type mapImpl struct {
 type pubsub2dImpl struct {
 	cInstance C.struct_colonio_pubsub_2d_s
 	cbMutex   sync.RWMutex
-	cbMap     map[*string]func(interfaces.Value)
+	cbMap     map[*string]func(Value)
 }
 
 var pubsub2DMutex sync.RWMutex
@@ -91,7 +91,7 @@ func convertError(err *C.struct_colonio_error_s) error {
 }
 
 // NewColonio creates a new initialized instance.
-func NewColonio() (interfaces.Colonio, error) {
+func NewColonio() (Colonio, error) {
 	instance := &colonioImpl{
 		mapCache:      make(map[string]*mapImpl),
 		pubsub2DCache: make(map[string]*pubsub2dImpl),
@@ -124,7 +124,7 @@ func (c *colonioImpl) Disconnect() error {
 	return nil
 }
 
-func (c *colonioImpl) AccessMap(name string) interfaces.Map {
+func (c *colonioImpl) AccessMap(name string) Map {
 	if ret, ok := c.mapCache[name]; ok {
 		return ret
 	}
@@ -137,7 +137,7 @@ func (c *colonioImpl) AccessMap(name string) interfaces.Map {
 	return instance
 }
 
-func (c *colonioImpl) AccessPubsub2D(name string) interfaces.Pubsub2D {
+func (c *colonioImpl) AccessPubsub2D(name string) Pubsub2D {
 	if ret, ok := c.pubsub2DCache[name]; ok {
 		return ret
 	}
@@ -145,7 +145,7 @@ func (c *colonioImpl) AccessPubsub2D(name string) interfaces.Pubsub2D {
 	instance := &pubsub2dImpl{
 		cInstance: C.cgo_colonio_access_pubsub_2d(&c.cInstance, name),
 		cbMutex:   sync.RWMutex{},
-		cbMap:     make(map[*string]func(interfaces.Value)),
+		cbMap:     make(map[*string]func(Value)),
 	}
 	pubsub2DMutex.Lock()
 	defer pubsub2DMutex.Unlock()
@@ -185,7 +185,7 @@ func (c *colonioImpl) Quit() error {
 	return nil
 }
 
-func newValue(cValue *C.struct_colonio_value_s) interfaces.Value {
+func newValue(cValue *C.struct_colonio_value_s) Value {
 	valueType := C.enum_COLONIO_VALUE_TYPE(C.colonio_value_get_type(cValue))
 	switch valueType {
 	case C.COLONIO_VALUE_TYPE_BOOL:
@@ -222,7 +222,7 @@ func newValue(cValue *C.struct_colonio_value_s) interfaces.Value {
 	}
 }
 
-func NewValue(v interface{}) (interfaces.Value, error) {
+func NewValue(v interface{}) (Value, error) {
 	val := &valueImpl{}
 	err := val.Set(v)
 	if err != nil {
@@ -279,6 +279,10 @@ func (v *valueImpl) Set(val interface{}) error {
 		v.valueType = C.COLONIO_VALUE_TYPE_STRING
 		v.vString = val
 		return nil
+
+	case *valueImpl:
+		*v = *val
+		return nil
 	}
 
 	return fmt.Errorf("unsupported value type")
@@ -312,7 +316,7 @@ func (v *valueImpl) GetString() (string, error) {
 	return v.vString, nil
 }
 
-func writeOut(cValue *C.struct_colonio_value_s, value interfaces.Value) {
+func writeOut(cValue *C.struct_colonio_value_s, value Value) {
 	if value.IsBool() {
 		v, _ := value.GetBool()
 		C.colonio_value_set_bool(cValue, C.bool(v))
@@ -340,7 +344,7 @@ func writeOut(cValue *C.struct_colonio_value_s, value interfaces.Value) {
 	C.colonio_value_free(cValue)
 }
 
-func (m *mapImpl) Get(key interface{}) (interfaces.Value, error) {
+func (m *mapImpl) Get(key interface{}) (Value, error) {
 	// key
 	vKey, err := NewValue(key)
 	if err != nil {
@@ -426,7 +430,7 @@ func cgoCbPubsub2DOn(cInstancePtr *C.struct_colonio_pubsub_2d_s, ptr unsafe.Poin
 		}
 	}
 
-	var cb func(interfaces.Value)
+	var cb func(Value)
 	{
 		ps2.cbMutex.RLock()
 		defer ps2.cbMutex.RUnlock()
@@ -440,7 +444,7 @@ func cgoCbPubsub2DOn(cInstancePtr *C.struct_colonio_pubsub_2d_s, ptr unsafe.Poin
 	cb(value)
 }
 
-func (p *pubsub2dImpl) On(name string, cb func(interfaces.Value)) {
+func (p *pubsub2dImpl) On(name string, cb func(Value)) {
 	p.cbMutex.Lock()
 	defer p.cbMutex.Unlock()
 	p.cbMap[&name] = cb

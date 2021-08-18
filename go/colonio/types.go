@@ -1,4 +1,4 @@
-package interfaces
+package colonio
 
 // Colonio is an interface. It is equivalent to one node.
 type Colonio interface {

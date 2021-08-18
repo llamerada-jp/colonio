@@ -1,4 +1,11 @@
 {
+  "documentRoot": ".",
+  "overrides": {
+      "/colonio.js": "../../output/",
+      "/colonio.wasm": "../../output/",
+      "/colonio_golang.js": "../../src/js/"
+  },
+  
   "node": {
     "coordSystem2D": {
       "type": "sphere",

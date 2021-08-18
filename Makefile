@@ -80,7 +80,7 @@ setup-macos:
 	brew update
 	brew list > $(WORK_PATH)/BREW_PKGS
 	install_pkgs="" && upgrade_pkgs="" \
-	&& for p in autoconf automake cmake glog libtool libuv openssl pybind11; do \
+	&& for p in autoconf automake cmake glog libtool libuv openssl pkg-config pybind11; do \
 			if grep $${p} $(WORK_PATH)/BREW_PKGS; \
 			then upgrade_pkgs="$${upgrade_pkgs} $${p}"; \
 			else install_pkgs="$${install_pkgs} $${p}"; \
@@ -213,9 +213,9 @@ build:
 test:
 	# C/C++
 	LD_LIBRARY_PATH=$(OUTPUT_PATH)/lib $(MAKE) -C $(NATIVE_BUILD_PATH) test
-	# Golang
-	COLONIO_SEED_BIN_PATH=$(PWD)/output/seed CGO_LDFLAGS="-L$(PWD)/output -L$(PWD)/output/lib -L$(LOCAL_ENV_PATH)/lib" go test -v test/go/*.go
-
+	# golang
+	$(MAKE) -C go test_native
+	
 .PHONY: build-native
 build-native:
 	mkdir -p $(NATIVE_BUILD_PATH) $(OUTPUT_PATH)/lib \
@@ -234,7 +234,8 @@ build-native:
 		$(ROOT_PATH) \
 	&& $(MAKE) \
 	&& cp src/libcolonio.a $(OUTPUT_PATH) \
-	&& if [ $(shell uname -s) = 'Linux' ]; then cp $(LOCAL_ENV_PATH)/lib/lib*.so.* $(LOCAL_ENV_PATH)/lib/lib*.a $(OUTPUT_PATH)/lib; fi
+	&& if [ $(shell uname -s) = 'Linux' ]; then cp $(LOCAL_ENV_PATH)/lib/lib*.so.* $(LOCAL_ENV_PATH)/lib/lib*.a $(OUTPUT_PATH)/lib; fi \
+	&& if [ $(shell uname -s) = 'Darwin' ]; then cp $(LOCAL_ENV_PATH)/lib/lib*.a $(OUTPUT_PATH)/lib; fi
 
 .PHONY: build-wasm
 build-wasm:
@@ -249,12 +250,7 @@ build-wasm:
 
 .PHONY: build-seed
 build-seed:
-	cd $(BUILD_SEED_PATH) \
-	&& $(RM) -r colonio-seed \
-	&& git clone --depth=1 https://github.com/llamerada-jp/colonio-seed.git \
-	&& LOCAL_ENV_PATH=$(LOCAL_ENV_PATH) $(MAKE) -C colonio-seed setup build \
-	&& mkdir -p $(OUTPUT_PATH) \
-	&& cp colonio-seed/seed $(OUTPUT_PATH)
+	$(MAKE) -C go build_seed
 
 .PHONY: build-docker
 build-docker: $(ROOT_PATH)/buildenv/Makefile

@@ -4,32 +4,36 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
+	"runtime"
 	"time"
 
-	"github.com/llamerada-jp/colonio/pkg/colonio"
-	colonio_if "github.com/llamerada-jp/colonio/pkg/interfaces"
+	"github.com/llamerada-jp/colonio/go/colonio"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
-func testE2E() {
+func E2e(generator func() (colonio.Colonio, error)) {
 	It("does E2E test", func() {
-		By("starting seed for test")
-		cur, _ := os.Getwd()
-		cmd := exec.Command(os.Getenv("COLONIO_SEED_BIN_PATH"), "--config", cur+"/seed_config.json")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err := cmd.Start()
-		Expect(err).ShouldNot(HaveOccurred())
-		defer func() {
-			err = cmd.Process.Kill()
+		if runtime.GOOS != "js" {
+			By("starting seed for test")
+			cur, _ := os.Getwd()
+			cmd := exec.Command(os.Getenv("COLONIO_SEED_BIN_PATH"), "--config", path.Join(cur, "seed.json"))
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			err := cmd.Start()
 			Expect(err).ShouldNot(HaveOccurred())
-		}()
+			defer func() {
+				err = cmd.Process.Kill()
+				Expect(err).ShouldNot(HaveOccurred())
+			}()
+		}
 
 		By("creating a new colonio instance")
-		node1, err := colonio.NewColonio()
-		node2, err := colonio.NewColonio()
+		node1, err := generator()
+		Expect(err).ShouldNot(HaveOccurred())
+		node2, err := generator()
 		Expect(err).ShouldNot(HaveOccurred())
 
 		By("node1 connect to seed")
@@ -48,8 +52,9 @@ func testE2E() {
 		By("node2 setup 2D info")
 		node2.SetPosition(2.0, 0.0)
 		ps2 := node2.AccessPubsub2D("ps")
-		recv := make(chan string)
-		ps2.On("hoge", func(v colonio_if.Value) {
+		// set 1 to avoid dead-lock caused by ps1.Publish waits finish of ps2.On.
+		recv := make(chan string, 1)
+		ps2.On("hoge", func(v colonio.Value) {
 			str, err := v.GetString()
 			Expect(err).ShouldNot(HaveOccurred())
 			recv <- str

@@ -50,7 +50,7 @@ void cgo_colonio_value_set_string(colonio_value_t *value, _GoString_ s) {
 colonio_error_t *cgo_colonio_pubsub_2d_publish(
     colonio_pubsub_2d_t *pubsub_2d, _GoString_ name, double x, double y, double r, const colonio_value_t *value,
     uint32_t opt) {
-  colonio_pubsub_2d_publish(pubsub_2d, _GoStringPtr(name), _GoStringLen(name), x, y, r, value, opt);
+  return colonio_pubsub_2d_publish(pubsub_2d, _GoStringPtr(name), _GoStringLen(name), x, y, r, value, opt);
 }
 
 void cgo_cb_colonio_pubsub_2d_on(colonio_pubsub_2d_t *pubsub_2d, void *ptr, const colonio_value_t *val) {
