@@ -238,7 +238,10 @@ class Colonio {
     addFuncAfterLoad(() => {
       // initialize
       let setPositionOnSuccess = Module.addFunction((id, newX, newY) => {
-        popObject(id).onSuccess(newX, newY);
+        popObject(id).onSuccess({
+          x: newX,
+          y: newY
+        });
       }, 'vidd');
 
       let setPositionOnFailure = Module.addFunction((id, errorPtr) => {
@@ -295,7 +298,7 @@ class Colonio {
   accessPubsub2D(name) {
     if (!(name in this._instanceCache)) {
       let [namePtr, nameSiz] = allocPtrString(name);
-      this._instanceCache[name] = new Pubsub2D(ccall('js_access_pubsub_2d', 'number',
+      this._instanceCache[name] = new ColonioPubsub2D(ccall('js_access_pubsub_2d', 'number',
         ['number', 'number', 'number'],
         [this._colonioPtr, namePtr, nameSiz]));
       freePtr(namePtr);
@@ -456,10 +459,14 @@ class ColonioValue {
     this._valuePtr = valuePtr;
   }
 
+  getType() {
+    return ccall('js_value_get_type', 'number', ['number'], [this._valuePtr]);
+  }
+
   getJsValue() {
     assert(this.isEnable(), 'Released value.');
 
-    switch (ccall('js_value_get_type', 'number', ['number'], [this._valuePtr])) {
+    switch (this.getType()) {
       case 0: // this.VALUE_TYPE_NULL:
         return null;
 
@@ -524,8 +531,7 @@ function convertValue(value) {
 
 function initializeMap() {
   let getValueOnSuccess = Module.addFunction((id, valuePtr) => {
-    const val = new ColonioValue(valuePtr);
-    popObject(id).onSuccess(val.getJsValue());
+    popObject(id).onSuccess(new ColonioValue(valuePtr));
   }, 'vii');
 
   let getValueOnFailure = Module.addFunction((id, errorPtr) => {
@@ -551,6 +557,18 @@ class ColonioMap {
   }
 
   getValue(key) {
+    let promise = new Promise((resolve, reject) => {
+      this.getRawValue(key).then(val => {
+        resolve(val.getJsValue());
+      }, () => {
+        reject();
+      });
+    });
+
+    return promise;
+  }
+
+  getRawValue(key) {
     let promise = new Promise((resolve, reject) => {
       const keyValue = convertValue(key);
 
@@ -601,8 +619,7 @@ function initializePubsub2D() {
   }, 'vii');
 
   let onOn = Module.addFunction((id, valuePtr) => {
-    const val = new ColonioValue(valuePtr);
-    getObject(id)(val.getJsValue());
+    getObject(id)(new ColonioValue(valuePtr));
   }, 'vii');
 
   ccall('js_pubsub_2d_init', 'null',
@@ -610,7 +627,7 @@ function initializePubsub2D() {
     [publishOnSuccess, publishOnFailure, onOn]);
 }
 
-class Pubsub2D {
+class ColonioPubsub2D {
   constructor(pubsub2DPtr) {
     this._pubsub2DPtr = pubsub2DPtr;
   }
@@ -637,6 +654,12 @@ class Pubsub2D {
   }
 
   on(name, cb) {
+    this.onRaw(name, val => {
+      cb(val.getJsValue());
+    });
+  }
+
+  onRaw(name, cb) {
     let id = pushObject(cb);
 
     let [namePtr, nameSiz] = allocPtrString(name);
@@ -657,7 +680,7 @@ class Pubsub2D {
 
     freePtr(namePtr);
   }
-}  // class Pubsub2D
+}  // class ColonioPubsub2D
 
 /* SeedLinkWebsocket */
 let availableSeedLinks = {};
@@ -1072,4 +1095,7 @@ Module['printErr'] = function (text) {
   console.error(text);
 };
 
-Module['Colonio'] = Colonio;
+Module['Colonio']  = Colonio;
+Module['Value']    = ColonioValue;
+Module['Map']      = ColonioMap;
+Module['Pubsub2D'] = ColonioPubsub2D;

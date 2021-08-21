@@ -1,5 +1,9 @@
 'use strict';
 
+// const WebSocket = require('ws');
+// const { RTCPeerConnection, RTCSessionDescription } = require('wrtc');
+// const ColonioModule = require('./colonio');
+
 const URL = 'ws://localhost:8080/test';
 const TOKEN = '';
 const KEY = 'hoge';
@@ -44,12 +48,29 @@ function test() {
     return node2.connect(URL, TOKEN);
 
   }).then(() => {
+    console.log('node1.setPosition');
+    return node1.setPosition(0, 0);
+
+  }).then(pos => {
+    // check result
+    if (pos.x !== 0 || pos.y !== 0) {
+      console.error("result", pos);
+      throw new Error('wrong result from node1.setPosition');
+    }
+
+    console.log('node2.setPosition');
+    return node2.setPosition(0, 0);
+
+  }).then(pos => {
+    // check result
+    if (pos.x !== 0 || pos.y !== 0) {
+      console.error("result", pos);
+      throw new Error('wrong result from node1.setPosition');
+    }
+
     console.log('get accessor');
     ps1 = node1.accessPubsub2D('ps');
-    node1.setPosition(0, 0);
-
     ps2 = node2.accessPubsub2D('ps');
-    node2.setPosition(0, 0);
 
     timer = setInterval(() => {
       console.log('publish data');
@@ -99,7 +120,7 @@ function test() {
   }).catch((e) => {
     let result = document.getElementById('result');
     result.innerText = "FAILURE";
-    console.log(e);
+    console.error(e);
   });
 }
 

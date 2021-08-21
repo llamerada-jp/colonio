@@ -1,8 +1,14 @@
 {
     "revision": 20200401.1,
-    "host": "",
+
+    "documentRoot": ".",
+    "overrides": {
+        "/colonio.js": "../../output/",
+        "/colonio.wasm": "../../output/"
+    },
     "port": 8080,
     "path": "/test",
+
     "pingInterval": 10000,
     "timeout": 30000,
     "node": {
