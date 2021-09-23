@@ -186,6 +186,7 @@ MapPaxosModule::CommandPrepare::Info::Info(
     i_max(0),
     opt(opt_),
     parent(parent_),
+    has_value(false),
     is_finished(false) {
 }
 
@@ -216,6 +217,7 @@ void MapPaxosModule::CommandPrepare::on_failure(std::unique_ptr<const Packet> pa
   packet->parse_content(&content);
 
   info->replies.push_back(Reply(packet->src_nid, content.n(), 0, false));
+  info->has_value = true;
 
   postprocess();
 }
@@ -231,6 +233,13 @@ void MapPaxosModule::CommandPrepare::on_success(std::unique_ptr<const Packet> pa
 
 void MapPaxosModule::CommandPrepare::postprocess() {
   if (info->is_finished) {
+    return;
+  }
+
+  if ((info->opt & Map::ERROR_WITH_EXIST) != 0 && info->has_value) {
+    MapPaxosProtocol::SetFailure param;
+    param.set_reason(static_cast<uint32_t>(ErrorCode::EXIST_KEY));
+    info->parent.send_failure(*info->packet_reply, ModuleBase::serialize_pb(param));
     return;
   }
 
@@ -309,6 +318,7 @@ MapPaxosModule::CommandAccept::Info::Info(
     i_max(0),
     opt(opt_),
     parent(parent_),
+    has_value(false),
     is_finished(false) {
 }
 
@@ -339,6 +349,7 @@ void MapPaxosModule::CommandAccept::on_failure(std::unique_ptr<const Packet> pac
   packet->parse_content(&content);
 
   info->replies.push_back(Reply(packet->src_nid, content.n(), content.i(), false));
+  info->has_value = true;
 
   postprocess();
 }
@@ -354,6 +365,13 @@ void MapPaxosModule::CommandAccept::on_success(std::unique_ptr<const Packet> pac
 
 void MapPaxosModule::CommandAccept::postprocess() {
   if (info->is_finished) {
+    return;
+  }
+
+  if ((info->opt & Map::ERROR_WITH_EXIST) != 0 && info->has_value) {
+    MapPaxosProtocol::SetFailure param;
+    param.set_reason(static_cast<uint32_t>(ErrorCode::EXIST_KEY));
+    info->parent.send_failure(*info->packet_reply, ModuleBase::serialize_pb(param));
     return;
   }
 
@@ -462,9 +480,9 @@ void MapPaxosModule::set(
 void MapPaxosModule::module_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) {
   auto acceptor_it = acceptor_infos.begin();
   while (acceptor_it != acceptor_infos.end()) {
-    const Value& key = acceptor_it->first;
-    if (!check_key_acceptor(key)) {
-      send_packet_balance_acceptor(key, acceptor_it->second);
+    const auto k_m = acceptor_it->first;
+    if (!check_key_acceptor(k_m.first, k_m.second)) {
+      send_packet_balance_acceptor(k_m.first, k_m.second, acceptor_it->second);
       acceptor_it = acceptor_infos.erase(acceptor_it);
 
     } else {
@@ -525,15 +543,17 @@ void MapPaxosModule::module_process_command(std::unique_ptr<const Packet> packet
   }
 }
 
-bool MapPaxosModule::check_key_acceptor(const Value& key) {
+const NodeID MEMBER_DIFF[3] = {
+  NodeID::QUARTER,
+  NodeID::QUARTER + NodeID::QUARTER,
+  NodeID::QUARTER + NodeID::QUARTER + NodeID::QUARTER,
+};
+
+bool MapPaxosModule::check_key_acceptor(const Value& key, uint32_t member_idx) {
   NodeID hash = ValueImpl::to_hash(key, salt);
-  for (unsigned int i = 0; i < NUM_ACCEPTOR; i++) {
-    hash += NodeID::QUARTER;
-    if (module_1d_check_covered_range(hash)) {
-      return true;
-    }
-  }
-  return false;
+  assert(member_idx < (sizeof(MEMBER_DIFF) / sizeof(MEMBER_DIFF[0])));
+  hash += MEMBER_DIFF[member_idx];
+  return module_1d_check_covered_range(hash);
 }
 
 bool MapPaxosModule::check_key_proposer(const Value& key) {
@@ -559,16 +579,18 @@ void MapPaxosModule::debug_on_change_set() {
 void MapPaxosModule::recv_packet_accept(std::unique_ptr<const Packet> packet) {
   MapPaxosProtocol::Accept content;
   packet->parse_content(&content);
-  Value key       = ValueImpl::from_pb(content.key());
-  Value value     = ValueImpl::from_pb(content.value());
-  const PAXOS_N n = content.n();
-  const PAXOS_N i = content.i();
+  const uint32_t opt        = content.opt();
+  Value key                 = ValueImpl::from_pb(content.key());
+  const uint32_t member_idx = content.member_idx();
+  Value value               = ValueImpl::from_pb(content.value());
+  const PAXOS_N n           = content.n();
+  const PAXOS_N i           = content.i();
 
-  auto acceptor_it = acceptor_infos.find(key);
+  auto acceptor_it = acceptor_infos.find(std::make_pair(key, member_idx));
   if (acceptor_it == acceptor_infos.end()) {
-    if (check_key_acceptor(key)) {
+    if (check_key_acceptor(key, member_idx)) {
       bool r;
-      std::tie(acceptor_it, r) = acceptor_infos.insert(std::make_pair(key, AcceptorInfo()));
+      std::tie(acceptor_it, r) = acceptor_infos.insert(std::make_pair(std::make_pair(key, member_idx), AcceptorInfo()));
 #ifndef NDEBUG
       debug_on_change_set();
 #endif
@@ -646,16 +668,17 @@ void MapPaxosModule::recv_packet_hint(std::unique_ptr<const Packet> packet) {
 void MapPaxosModule::recv_packet_balance_acceptor(std::unique_ptr<const Packet> packet) {
   MapPaxosProtocol::BalanceAcceptor content;
   packet->parse_content(&content);
-  Value key        = ValueImpl::from_pb(content.key());
-  Value value      = ValueImpl::from_pb(content.value());
-  const PAXOS_N na = content.na();
-  const PAXOS_N np = content.np();
-  const PAXOS_N ia = content.ia();
+  Value key                 = ValueImpl::from_pb(content.key());
+  const uint32_t member_idx = content.member_idx();
+  Value value               = ValueImpl::from_pb(content.value());
+  const PAXOS_N na          = content.na();
+  const PAXOS_N np          = content.np();
+  const PAXOS_N ia          = content.ia();
 
-  if (check_key_acceptor(key)) {
-    auto acceptor_it = acceptor_infos.find(key);
+  if (check_key_acceptor(key, member_idx)) {
+    auto acceptor_it = acceptor_infos.find(std::make_pair(key, member_idx));
     if (acceptor_it == acceptor_infos.end()) {
-      acceptor_infos.insert(std::make_pair(key, AcceptorInfo(na, np, ia, value)));
+      acceptor_infos.insert(std::make_pair(std::make_pair(key, member_idx), AcceptorInfo(na, np, ia, value)));
 
     } else {
       AcceptorInfo& acceptor = acceptor_it->second;
@@ -701,9 +724,10 @@ void MapPaxosModule::recv_packet_balance_proposer(std::unique_ptr<const Packet> 
 void MapPaxosModule::recv_packet_get(std::unique_ptr<const Packet> packet) {
   MapPaxosProtocol::Get content;
   packet->parse_content(&content);
-  Value key = ValueImpl::from_pb(content.key());
+  Value key                 = ValueImpl::from_pb(content.key());
+  const uint32_t member_idx = content.member_idx();
 
-  auto acceptor_it = acceptor_infos.find(key);
+  auto acceptor_it = acceptor_infos.find(std::make_pair(key, member_idx));
   if (acceptor_it == acceptor_infos.end() || acceptor_it->second.na == 0) {
     // TODO(llamerada.jp@gmail.com) Search data from another acceptors.
     send_failure(*packet, std::shared_ptr<std::string>());
@@ -721,27 +745,34 @@ void MapPaxosModule::recv_packet_get(std::unique_ptr<const Packet> packet) {
 void MapPaxosModule::recv_packet_prepare(std::unique_ptr<const Packet> packet) {
   MapPaxosProtocol::Prepare content;
   packet->parse_content(&content);
-  Value key       = ValueImpl::from_pb(content.key());
-  const PAXOS_N n = content.n();
-  // todo: implement opt
-  // const uint32_t opt = content.opt();
-
-  auto acceptor_it = acceptor_infos.find(key);
+  const uint32_t opt        = content.opt();
+  Value key                 = ValueImpl::from_pb(content.key());
+  const uint32_t member_idx = content.member_idx();
+  const PAXOS_N n           = content.n();
+  
+  auto acceptor_it = acceptor_infos.find(std::make_pair(key, member_idx));
   if (acceptor_it == acceptor_infos.end()) {
-    if (check_key_acceptor(key)) {
+    if (check_key_acceptor(key, member_idx)) {
       bool r;
-      std::tie(acceptor_it, r) = acceptor_infos.insert(std::make_pair(key, AcceptorInfo()));
+      std::tie(acceptor_it, r) = acceptor_infos.insert(std::make_pair(std::make_pair(key, member_idx), AcceptorInfo()));
       assert(r);
 
     } else {
-      // ignore
+      // dont reply success or failure packet when the node doesn't have any value.
       logd("receive 'prepare' packet at wrong node").map("key", key);
       return;
     }
+
+  } else if ((opt & Map::ERROR_WITH_EXIST) != 0) {
+    // This algorithm is not perfect to detect existing value.
+    AcceptorInfo& acceptor = acceptor_it->second;
+    MapPaxosProtocol::PrepareFailure param;
+    param.set_n(acceptor.np);
+    send_failure(*packet, serialize_pb(param));
+    return;
   }
 
   AcceptorInfo& acceptor = acceptor_it->second;
-
   if (n > acceptor.np) {
     acceptor.np = n;
     PAXOS_N i;
@@ -786,6 +817,12 @@ void MapPaxosModule::recv_packet_set(std::unique_ptr<const Packet> packet) {
       logd("receive 'set' packet at wrong node").map("key", key);
       return;
     }
+
+  } else if ((opt & Map::ERROR_WITH_EXIST) != 0) {
+    MapPaxosProtocol::SetFailure param;
+    param.set_reason(static_cast<uint32_t>(ErrorCode::EXIST_KEY));
+    send_failure(*packet, serialize_pb(param));
+    return;
   }
 
   ProposerInfo& proposer = proposer_it->second;
@@ -816,24 +853,27 @@ void MapPaxosModule::send_packet_accept(
   std::shared_ptr<CommandAccept::Info> accept_info =
       std::make_shared<CommandAccept::Info>(*this, std::move(packet_reply), std::move(key), opt);
 
-  MapPaxosProtocol::Accept param;
-  ValueImpl::to_pb(param.mutable_key(), *accept_info->key);
-  ValueImpl::to_pb(param.mutable_value(), proposer.value);
-  param.set_n(proposer.np);
-  param.set_i(proposer.ip);
-  std::shared_ptr<const std::string> param_bin = serialize_pb(param);
-
   NodeID acceptor_nid = ValueImpl::to_hash(*accept_info->key, salt);
   for (unsigned int i = 0; i < NUM_ACCEPTOR; i++) {
+    MapPaxosProtocol::Accept param;
+    ValueImpl::to_pb(param.mutable_key(), *accept_info->key);
+    param.set_member_idx(i);
+    ValueImpl::to_pb(param.mutable_value(), proposer.value);
+    param.set_n(proposer.np);
+    param.set_i(proposer.ip);
+    param.set_opt(opt);
+    std::shared_ptr<const std::string> param_bin = serialize_pb(param);
+
     acceptor_nid += NodeID::QUARTER;
     std::unique_ptr<Command> command = std::make_unique<CommandAccept>(accept_info);
     send_packet(std::move(command), acceptor_nid, param_bin);
   }
 }
 
-void MapPaxosModule::send_packet_balance_acceptor(const Value& key, const AcceptorInfo& acceptor) {
+void MapPaxosModule::send_packet_balance_acceptor(const Value& key, uint32_t member_idx, const AcceptorInfo& acceptor) {
   MapPaxosProtocol::BalanceAcceptor param;
   ValueImpl::to_pb(param.mutable_key(), key);
+  param.set_member_idx(member_idx);
   ValueImpl::to_pb(param.mutable_value(), acceptor.value);
   param.set_na(acceptor.na);
   param.set_np(acceptor.np);
@@ -841,10 +881,9 @@ void MapPaxosModule::send_packet_balance_acceptor(const Value& key, const Accept
   std::shared_ptr<const std::string> param_bin = serialize_pb(param);
 
   NodeID acceptor_nid = ValueImpl::to_hash(key, salt);
-  for (unsigned int i = 0; i < NUM_ACCEPTOR; i++) {
-    acceptor_nid += NodeID::QUARTER;
-    send_packet(acceptor_nid, PacketMode::ONE_WAY, CommandID::MapPaxos::BALANCE_ACCEPTOR, param_bin);
-  }
+  assert(member_idx < (sizeof(MEMBER_DIFF) / sizeof(MEMBER_DIFF[0])));
+  acceptor_nid += MEMBER_DIFF[member_idx];
+  send_packet(acceptor_nid, PacketMode::ONE_WAY, CommandID::MapPaxos::BALANCE_ACCEPTOR, param_bin);
 }
 
 void MapPaxosModule::send_packet_balance_proposer(const Value& key, const ProposerInfo& proposer) {
@@ -871,15 +910,17 @@ void MapPaxosModule::send_packet_get(
   context.scheduler.add_timeout_task(
       this,
       [this, info]() {
-        MapPaxosProtocol::Get param;
-        ValueImpl::to_pb(param.mutable_key(), *info->key);
-        std::shared_ptr<const std::string> param_bin = serialize_pb(param);
-
         info->time_send = Utils::get_current_msec();
 
         NodeID acceptor_nid = ValueImpl::to_hash(*info->key, salt);
 
         for (unsigned int i = 0; i < NUM_ACCEPTOR; i++) {
+          MapPaxosProtocol::Get param;
+          ValueImpl::to_pb(param.mutable_key(), *info->key);
+          param.set_member_idx(i);
+          std::shared_ptr<const std::string> param_bin = serialize_pb(param);
+
+
           acceptor_nid += NodeID::QUARTER;
           std::unique_ptr<Command> command = std::make_unique<CommandGet>(context.random, info);
 
@@ -905,14 +946,15 @@ void MapPaxosModule::send_packet_prepare(
   std::shared_ptr<CommandPrepare::Info> prepare_info =
       std::make_unique<CommandPrepare::Info>(*this, std::move(packet_reply), std::move(key), opt);
 
-  MapPaxosProtocol::Prepare param;
-  ValueImpl::to_pb(param.mutable_key(), *prepare_info->key);
-  param.set_n(proposer.np);
-  param.set_opt(opt);
-  std::shared_ptr<const std::string> param_bin = serialize_pb(param);
-
   NodeID acceptor_nid = ValueImpl::to_hash(*prepare_info->key, salt);
   for (unsigned int i = 0; i < NUM_ACCEPTOR; i++) {
+    MapPaxosProtocol::Prepare param;
+    ValueImpl::to_pb(param.mutable_key(), *prepare_info->key);
+    param.set_member_idx(i);
+    param.set_n(proposer.np);
+    param.set_opt(opt);
+    std::shared_ptr<const std::string> param_bin = serialize_pb(param);
+
     acceptor_nid += NodeID::QUARTER;
     std::unique_ptr<Command> command = std::make_unique<CommandPrepare>(prepare_info);
     send_packet(std::move(command), acceptor_nid, param_bin);

@@ -126,11 +126,13 @@ TEST(MapTest, set_get_async) {
 }
 
 TEST(MapTest, set_get_multi) {
-  const std::string URL      = "http://localhost:8080/test";
-  const std::string TOKEN    = "";
-  const std::string MAP_NAME = "map";
-  const std::string KEY_NAME = "key";
-  const std::string VALUE    = "test value";
+  const std::string URL       = "http://localhost:8080/test";
+  const std::string TOKEN     = "";
+  const std::string MAP_NAME  = "map";
+  const std::string KEY_NAME1 = "key1";
+  const std::string KEY_NAME2 = "key2";
+  const std::string VALUE1    = "test value 1";
+  const std::string VALUE2    = "test value 2";
 
   AsyncHelper helper;
   TestSeed seed;
@@ -153,7 +155,7 @@ TEST(MapTest, set_get_multi) {
   // get(key) @ node1
   printf("get a not existed value.\n");
   try {
-    map1.get(Value(KEY_NAME));
+    map1.get(Value(KEY_NAME1));
     ADD_FAILURE();
 
   } catch (const Exception& e) {
@@ -164,7 +166,7 @@ TEST(MapTest, set_get_multi) {
   // get(key) @ node2
   printf("get a not existed value.\n");
   try {
-    map2.get(Value(KEY_NAME));
+    map2.get(Value(KEY_NAME1));
     ADD_FAILURE();
 
   } catch (const Exception& e) {
@@ -174,21 +176,56 @@ TEST(MapTest, set_get_multi) {
 
   // set(key, val) @ node1
   printf("set a value.\n");
-  map1.set(Value(KEY_NAME), Value(VALUE));
+  map1.set(Value(KEY_NAME1), Value(VALUE1));
 
   // get(key) @ node2
   printf("get a existed value.\n");
-  Value v1 = map2.get(Value(KEY_NAME));
-  EXPECT_EQ(v1.get<std::string>(), VALUE);
+  Value v1 = map2.get(Value(KEY_NAME1));
+  EXPECT_EQ(v1.get<std::string>(), VALUE1);
 
   // get(key) @ node1
   printf("get a existed value.\n");
-  Value v2 = map1.get(Value(KEY_NAME));
-  EXPECT_EQ(v2.get<std::string>(), VALUE);
+  Value v2 = map1.get(Value(KEY_NAME1));
+  EXPECT_EQ(v2.get<std::string>(), VALUE1);
+
+  // overwrite value
+  printf("overwrite value.\n");
+  map1.set(Value(KEY_NAME1), Value(VALUE2));
+  bool pass = false;
+  for (int i = 0; i < 10; i++) {
+    Value v2 = map2.get(Value(KEY_NAME1));
+    if (v2.get<std::string>() == VALUE2) {
+      pass = true;
+      break;
+    } else {
+      sleep(1);
+    }
+  }
+  EXPECT_TRUE(pass);
+
+  // set value with exist check
+  printf("set value with exist check.\n");
+  try {
+    map1.set(Value(KEY_NAME2), Value(VALUE1), Map::ERROR_WITH_EXIST);
+  } catch (const Exception& e) {
+    printf("%d %s\n", e.code, e.message.c_str());
+    ADD_FAILURE();
+  }
+
+  // overwrite with exist check
+  printf("overwrite value with exist check.\n");
+  try {
+    map2.set(Value(KEY_NAME2), Value(VALUE2), Map::ERROR_WITH_EXIST);
+    ADD_FAILURE();
+
+  } catch (const Exception& e) {
+    EXPECT_EQ(e.code, ErrorCode::EXIST_KEY);
+    helper.mark("c");
+  }
 
   printf("disconnect.\n");
   node2.disconnect();
   node1.disconnect();
 
-  EXPECT_THAT(helper.get_route(), MatchesRegex("^ab$"));
+  EXPECT_THAT(helper.get_route(), MatchesRegex("^abc$"));
 }
