@@ -52,7 +52,7 @@ void MapImpl::get(
   });
 }
 
-void MapImpl ::set(const Value& key, const Value& value, uint32_t opt) {
+void MapImpl::set(const Value& key, const Value& value, uint32_t opt) {
   api::Call call;
   api::map_api::Set* api = call.mutable_map_set();
   ValueImpl::to_pb(api->mutable_key(), key);

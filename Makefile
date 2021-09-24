@@ -50,7 +50,7 @@ WITH_SAMPLE ?= OFF
 WITH_TEST ?= OFF
 
 ifeq ($(shell uname -s),Darwin)
-CMAKE_EXTRA_OPTS = -DOPENSSL_ROOT_DIR=$(shell brew --prefix openssl)
+CMAKE_EXTRA_OPTS = -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl
 endif
 
 .PHONY: all
@@ -80,7 +80,7 @@ setup-macos:
 	brew update
 	brew list > $(WORK_PATH)/BREW_PKGS
 	install_pkgs="" && upgrade_pkgs="" \
-	&& for p in autoconf automake cmake glog libtool libuv openssl pkg-config pybind11; do \
+	&& for p in autoconf automake cmake glog libtool libuv openssl@1.1 pkg-config pybind11; do \
 			if grep $${p} $(WORK_PATH)/BREW_PKGS; \
 			then upgrade_pkgs="$${upgrade_pkgs} $${p}"; \
 			else install_pkgs="$${install_pkgs} $${p}"; \

@@ -149,6 +149,7 @@ class MapPaxosModule : public Module1D {
       uint32_t opt;
       MapPaxosModule& parent;
       std::vector<Reply> replies;
+      bool has_value;
       bool is_finished;
       Info(
           MapPaxosModule& parent_, std::unique_ptr<const Packet> packet_reply_, std::unique_ptr<Value> key_,
@@ -187,6 +188,7 @@ class MapPaxosModule : public Module1D {
       uint32_t opt;
       MapPaxosModule& parent;
       std::vector<Reply> replies;
+      bool has_value;
       bool is_finished;
 
       Info(
@@ -210,7 +212,7 @@ class MapPaxosModule : public Module1D {
   const uint32_t CONF_RETRY_INTERVAL_MAX;
 
   std::string salt;
-  std::map<Value, AcceptorInfo> acceptor_infos;
+  std::map<std::pair<Value, uint32_t>, AcceptorInfo> acceptor_infos;
   std::map<Value, ProposerInfo> proposer_infos;
 
   MapPaxosModule(const MapPaxosModule&);
@@ -218,7 +220,7 @@ class MapPaxosModule : public Module1D {
 
   void module_process_command(std::unique_ptr<const Packet> packet) override;
 
-  bool check_key_acceptor(const Value& key);
+  bool check_key_acceptor(const Value& key, uint32_t member_idx);
   bool check_key_proposer(const Value& key);
   void recv_packet_accept(std::unique_ptr<const Packet> packet);
   void recv_packet_balance_acceptor(std::unique_ptr<const Packet> packet);
@@ -229,7 +231,7 @@ class MapPaxosModule : public Module1D {
   void recv_packet_set(std::unique_ptr<const Packet> packet);
   void send_packet_accept(
       ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply, std::unique_ptr<Value> key, uint32_t opt);
-  void send_packet_balance_acceptor(const Value& key, const AcceptorInfo& acceptor);
+  void send_packet_balance_acceptor(const Value& key, uint32_t member_idx, const AcceptorInfo& acceptor);
   void send_packet_balance_proposer(const Value& key, const ProposerInfo& proposer);
   void send_packet_get(
       std::unique_ptr<Value> key, int count_retry, int64_t interval,

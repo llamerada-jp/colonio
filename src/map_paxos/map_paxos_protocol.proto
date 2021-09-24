@@ -5,10 +5,12 @@ import "core/core.proto";
 package colonio.MapPaxosProtocol;
 
 message Accept {
-  uint32 n = 1;
-  uint32 i = 2;
-  core.Value key = 3;
-  core.Value value = 4;
+  uint32 opt = 1;
+  uint32 n = 2;
+  uint32 i = 3;
+  uint32 member_idx = 4;
+  core.Value key = 5;
+  core.Value value = 6;
 }
 
 message AcceptSuccess {
@@ -26,8 +28,9 @@ message BalanceAcceptor {
   uint32 na = 1;
   uint32 np = 2;
   uint32 ia = 3;
-  core.Value key = 4;
-  core.Value value = 5;
+  uint32 member_idx = 4;
+  core.Value key = 5;
+  core.Value value = 6;
 }
 
 //
@@ -40,7 +43,8 @@ message BalanceProposer {
 
 //
 message Get {
-  core.Value key = 1;
+  uint32 member_idx = 1;
+  core.Value key = 2;
 }
 
 message GetSuccess {
@@ -61,8 +65,8 @@ message Hint {
 message Prepare {
   uint32 opt = 1;
   uint32 n = 2;
-  core.Value key = 3;
-
+  uint32 member_idx = 3;
+  core.Value key = 4;
 }
 
 message PrepareSuccess {

@@ -33,7 +33,7 @@ enum class ErrorCode : uint32_t {
   CONFLICT_WITH_SETTING,  ///< The calling method or setting parameter was inconsistent with the configuration in the
                           ///< seed.
   NOT_EXIST_KEY,          ///< Tried to get a value for a key that doesn't exist.
-  EXIST_KEY,              ///< Under developing.
+  EXIST_KEY,              ///< An error occurs when overwriting the value for an existing key.
   CHANGED_PROPOSER,       ///< Under developing.
   COLLISION_LATE,         ///< Under developing.
   NO_ONE_RECV,            ///< There was no node receiving the message.
