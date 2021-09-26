@@ -101,6 +101,8 @@ typedef enum COLONIO_ERROR_CODE {
 #define COLONIO_MAP_TRY_LOCK 0x4
 */
 
+#define COLONIO_PUBSUB_2D_RAISE_NO_ONE_RECV 0x1
+
 typedef struct colonio_s {
   COLONIO_HANDLE_FIELDS
   /* private */
@@ -135,6 +137,7 @@ typedef struct colonio_value_s {
 typedef struct colonio_error_s {
   COLONIO_ERROR_CODE code;
   const char* message;
+  unsigned int message_siz;
 } colonio_error_t;
 
 COLONIO_PUBLIC colonio_error_t* colonio_init(colonio_t* colonio, uint32_t opt);

@@ -63,12 +63,7 @@ func checkJsError(v js.Value) error {
 		return nil
 	}
 
-	errStr := v.String()
-	if len(errStr) == 0 {
-		panic("wasm module returns empty error message")
-	}
-
-	return fmt.Errorf(errStr)
+	return newErr(uint32(v.Get("code").Int()), v.Get("message").String())
 }
 
 func assignEventReceiver(f func(js.Value)) (key uint32) {
@@ -334,7 +329,7 @@ func (m *mapImpl) Get(key interface{}) (Value, error) {
 	rKey, respChannel := assignRespChannel()
 	defer deleteRespChannel(rKey)
 
-	m.jsModule.Call("get", rKey, js.ValueOf(keyImpl.value))
+	m.jsModule.Call("get", rKey, keyImpl.valueType, js.ValueOf(keyImpl.value))
 
 	resp := <-respChannel
 	err := checkJsError(resp.Get("err"))
@@ -362,7 +357,7 @@ func (m *mapImpl) Set(key, val interface{}, opt uint32) error {
 	rKey, respChannel := assignRespChannel()
 	defer deleteRespChannel(rKey)
 
-	m.jsModule.Call("set", rKey, js.ValueOf(keyImpl.value), js.ValueOf(valImpl.value), opt)
+	m.jsModule.Call("set", rKey, keyImpl.valueType, js.ValueOf(keyImpl.value), valImpl.valueType, js.ValueOf(valImpl.value), opt)
 
 	return checkJsError(<-respChannel)
 }

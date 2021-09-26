@@ -26,6 +26,10 @@ typedef unsigned long COLONIO_ID_T;
 
 extern void js_on_output_log(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T json_ptr, int json_siz);
 
+EMSCRIPTEN_KEEPALIVE unsigned int js_error_get_code(COLONIO_PTR_T err);
+EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_error_get_message(COLONIO_PTR_T err);
+EMSCRIPTEN_KEEPALIVE int js_error_get_message_length(COLONIO_PTR_T err);
+
 EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T
 js_init(COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_position_on_failure_);
 EMSCRIPTEN_KEEPALIVE void js_connect(
@@ -80,6 +84,21 @@ static std::map<COLONIO_PTR_T, Cache> caches;
 
 std::function<void(COLONIO_ID_T, double, double)> set_position_on_success;
 std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> set_position_on_failure;
+
+unsigned int js_error_get_code(COLONIO_PTR_T err) {
+  colonio_error_t* e = reinterpret_cast<colonio_error_t*>(err);
+  return e->code;
+}
+
+COLONIO_PTR_T js_error_get_message(COLONIO_PTR_T err) {
+  colonio_error_t* e = reinterpret_cast<colonio_error_t*>(err);
+  return reinterpret_cast<COLONIO_PTR_T>(e->message);
+}
+
+int js_error_get_message_length(COLONIO_PTR_T err) {
+  colonio_error_t* e = reinterpret_cast<colonio_error_t*>(err);
+  return e->message_siz;
+}
 
 COLONIO_PTR_T js_init(COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_position_on_failure_) {
   colonio_t* colonio = new colonio_t();
@@ -251,7 +270,7 @@ void wrap_map_get_on_success(colonio_map_t* map, void* ptr, const colonio_value_
 }
 
 void wrap_map_get_on_failure(colonio_map_t* map, void* ptr, const colonio_error_t* errorPtr) {
-  map_get_on_success(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(errorPtr));
+  map_get_on_failure(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(errorPtr));
 }
 
 void js_map_get_value(COLONIO_PTR_T map_ptr, COLONIO_PTR_T key_ptr, COLONIO_ID_T id) {
