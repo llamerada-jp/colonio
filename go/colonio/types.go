@@ -25,10 +25,19 @@ type Value interface {
 	GetString() (string, error)
 }
 
+const (
+	MAP_ERROR_WITHOUT_EXIST uint32 = 0x1
+	MAP_ERROR_WITH_EXIST    uint32 = 0x2
+)
+
 type Map interface {
 	Get(key interface{}) (Value, error)
 	Set(key, val interface{}, opt uint32) error
 }
+
+const (
+	PUBSUB_2D_RAISE_NO_ONE_RECV uint32 = 0x1
+)
 
 type Pubsub2D interface {
 	Publish(name string, x, y, r float64, val interface{}, opt uint32) error

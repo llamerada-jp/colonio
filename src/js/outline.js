@@ -124,8 +124,17 @@ function getEventFuncs(ptr, clazz, type) {
 }
 
 function convertError(ptr) {
-  // TODO
-  return {};
+  if (!ptr) {
+    return null;
+  }
+
+  return {
+    code: ccall('js_error_get_code', 'number', ['number'], [ptr]),
+    message: convertPointerToString(
+      ccall('js_error_get_message', 'number', ['number'], [ptr]),
+      ccall('js_error_get_message_length', 'number', ['number'], [ptr])
+    )
+  };
 }
 
 /**
@@ -224,10 +233,10 @@ class Colonio {
   static get ERROR_CODE_INCORRECT_DATA_FORMAT() { return 3; }
   static get ERROR_CODE_CONFLICT_WITH_SETTING() { return 4; }
   static get ERROR_CODE_NOT_EXIST_KEY() { return 5; }
-  /* static get ERROR_CODE_EXIST_KEY() { return 6; } */
-  static get ERROR_CODE_CHANGED_PROPOSER() { return 6; }
-  static get ERROR_CODE_COLLISION_LATE() { return 7; }
-  static get ERROR_CODE_NO_ONE_RECV() { return 8; }
+  static get ERROR_CODE_EXIST_KEY() { return 6; }
+  static get ERROR_CODE_CHANGED_PROPOSER() { return 7; }
+  static get ERROR_CODE_COLLISION_LATE() { return 8; }
+  static get ERROR_CODE_NO_ONE_RECV() { return 9; }
 
   static get NID_THIS() { return '.'; }
 
@@ -418,7 +427,7 @@ class ColonioValue {
 
   static Null() {
     let valuePtr = ccall('js_value_init', 'number', []);
-    return new ColonioValue(valuePtr);
+    return new ColonioValue(valuePtr, false);
   }
 
   static Bool(value) {
@@ -426,7 +435,7 @@ class ColonioValue {
     ccall('js_value_set_bool', 'null',
       ['number', 'boolean'],
       [valuePtr, value]);
-    return new ColonioValue(valuePtr);
+    return new ColonioValue(valuePtr, false);
   }
 
   static Int(value) {
@@ -434,7 +443,7 @@ class ColonioValue {
     ccall('js_value_set_int', 'null',
       ['number', 'number'],
       [valuePtr, value]);
-    return new ColonioValue(valuePtr);
+    return new ColonioValue(valuePtr, false);
   }
 
   static Double(value) {
@@ -442,7 +451,7 @@ class ColonioValue {
     ccall('js_value_set_double', 'null',
       ['number', 'number'],
       [valuePtr, value]);
-    return new ColonioValue(valuePtr);
+    return new ColonioValue(valuePtr, false);
   }
 
   static String(value) {
@@ -452,38 +461,22 @@ class ColonioValue {
       ['number', 'number', 'number'],
       [valuePtr, stringPtr, stringSiz]);
     freePtr(stringPtr);
-    return new ColonioValue(valuePtr);
+    return new ColonioValue(valuePtr, false);
   }
 
-  constructor(valuePtr) {
+  constructor(valuePtr, load = true) {
     this._valuePtr = valuePtr;
+    if (load) {
+      this.reload();
+    }
   }
 
   getType() {
-    return ccall('js_value_get_type', 'number', ['number'], [this._valuePtr]);
+    return this._type;
   }
 
   getJsValue() {
-    assert(this.isEnable(), 'Released value.');
-
-    switch (this.getType()) {
-      case 0: // this.VALUE_TYPE_NULL:
-        return null;
-
-      case 1: // this.VALUE_TYPE_BOOL:
-        return ccall('js_value_get_bool', 'boolean', ['number'], [this._valuePtr]);
-
-      case 2: // this.VALUE_TYPE_INT:
-        return ccall('js_value_get_int', 'number', ['number'], [this._valuePtr]);
-
-      case 3: // this.VALUE_TYPE_DOUBLE:
-        return ccall('js_value_get_double', 'number', ['number'], [this._valuePtr]);
-
-      case 4: // this.VALUE_TYPE_STRING:
-        let length = ccall('js_value_get_string_length', 'number', ['number'], [this._valuePtr]);
-        let stringPtr = ccall('js_value_get_string', 'number', ['number'], [this._valuePtr]);
-        return convertPointerToString(stringPtr, length);
-    }
+    return this._value;
   }
 
   isEnable() {
@@ -495,6 +488,31 @@ class ColonioValue {
 
     ccall('js_value_free', 'null', ['number'], [this._valuePtr]);
     this._valuePtr = NaN;
+  }
+
+  reload() {
+    assert(this.isEnable(), 'Released value.');
+
+    this._type = ccall('js_value_get_type', 'number', ['number'], [this._valuePtr]);
+    
+    switch (this.getType()) {
+      case 0: // this.VALUE_TYPE_NULL:
+        this._value = null;
+
+      case 1: // this.VALUE_TYPE_BOOL:
+        this._value = ccall('js_value_get_bool', 'boolean', ['number'], [this._valuePtr]);
+
+      case 2: // this.VALUE_TYPE_INT:
+        this._value = ccall('js_value_get_int', 'number', ['number'], [this._valuePtr]);
+
+      case 3: // this.VALUE_TYPE_DOUBLE:
+        this._value = ccall('js_value_get_double', 'number', ['number'], [this._valuePtr]);
+
+      case 4: // this.VALUE_TYPE_STRING:
+        let length = ccall('js_value_get_string_length', 'number', ['number'], [this._valuePtr]);
+        let stringPtr = ccall('js_value_get_string', 'number', ['number'], [this._valuePtr]);
+        this._value = convertPointerToString(stringPtr, length);
+    }
   }
 }
 
@@ -552,6 +570,9 @@ function initializeMap() {
 }
 
 class ColonioMap {
+  static get ERROR_WITHOUT_EXIST() { return 0x1; }
+  static get ERROR_WITH_EXIST() { return 0x2; }
+
   constructor(mapPtr) {
     this._mapPtr = mapPtr;
   }
@@ -628,6 +649,8 @@ function initializePubsub2D() {
 }
 
 class ColonioPubsub2D {
+  static get RAISE_NO_ONE_RECV() { return 0x1; }
+
   constructor(pubsub2DPtr) {
     this._pubsub2DPtr = pubsub2DPtr;
   }
@@ -1095,7 +1118,7 @@ Module['printErr'] = function (text) {
   console.error(text);
 };
 
-Module['Colonio']  = Colonio;
-Module['Value']    = ColonioValue;
-Module['Map']      = ColonioMap;
+Module['Colonio'] = Colonio;
+Module['Value'] = ColonioValue;
+Module['Map'] = ColonioMap;
 Module['Pubsub2D'] = ColonioPubsub2D;

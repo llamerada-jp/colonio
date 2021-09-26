@@ -369,16 +369,18 @@ void colonio_pubsub_2d_off(colonio_pubsub_2d_t* pubsub_2d, const char* name, uns
 }
 
 colonio_error_t* convert_error(const colonio::Error& e) {
-  error_message      = e.message;
-  last_error.code    = static_cast<COLONIO_ERROR_CODE>(e.code);
-  last_error.message = error_message.c_str();
+  error_message          = e.message;
+  last_error.code        = static_cast<COLONIO_ERROR_CODE>(e.code);
+  last_error.message     = error_message.c_str();
+  last_error.message_siz = error_message.size();
   return &last_error;
 }
 
 colonio_error_t* convert_exception(const colonio::Exception& e) {
-  error_message      = e.message;
-  last_error.code    = static_cast<COLONIO_ERROR_CODE>(e.code);
-  last_error.message = error_message.c_str();
+  error_message          = e.message;
+  last_error.code        = static_cast<COLONIO_ERROR_CODE>(e.code);
+  last_error.message     = error_message.c_str();
+  last_error.message_siz = error_message.size();
   return &last_error;
 }
 

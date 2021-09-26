@@ -16,6 +16,7 @@ test_wasm:
 	cp $(shell go env GOROOT)/misc/wasm/wasm_exec.js ./test
 	GOOS=js GOARCH=wasm ginkgo build ./test/
 	mv ./test/test.test ./test/test.wasm
+	$(OUTPUT_PATH)/seed -c $(ROOT_PATH)/go/test/seed.json
 
 .PHONY: setup
 setup:

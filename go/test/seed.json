@@ -23,7 +23,12 @@
         "cacheTime": 100,
         "channel": 256,
         "type": "pubsub2D"
+      },
+      "map": {
+        "channel": 255,
+        "type": "mapPaxos"
       }
+
     },
     "routing": {
       "forceUpdateTimes": 20,

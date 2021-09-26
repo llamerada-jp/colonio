@@ -87,7 +87,7 @@ func init() {
 }
 
 func convertError(err *C.struct_colonio_error_s) error {
-	return fmt.Errorf("colonio error")
+	return newErr(uint32(err.code), C.GoString(err.message))
 }
 
 // NewColonio creates a new initialized instance.
