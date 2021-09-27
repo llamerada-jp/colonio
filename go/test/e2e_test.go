@@ -82,14 +82,14 @@ func E2e(generator func() (colonio.Colonio, error)) {
 		_, err = map1.Get("key1")
 		Expect(err).Should(MatchError(colonio.ErrNotExistKey))
 
-		err = map2.Set("key1", "val1", colonio.MAP_ERROR_WITH_EXIST)
+		err = map2.Set("key1", "val1", colonio.MapErrorWithExist)
 		Expect(err).ShouldNot(HaveOccurred())
 
 		v, err := map1.Get("key1")
 		Expect(v.GetString()).Should(Equal("val1"))
 		Expect(err).ShouldNot(HaveOccurred())
 
-		err = map2.Set("key1", "val2", colonio.MAP_ERROR_WITH_EXIST)
+		err = map2.Set("key1", "val2", colonio.MapErrorWithExist)
 		Expect(err).Should(MatchError(colonio.ErrExistKey))
 
 		By("node1 disconnect from seed")

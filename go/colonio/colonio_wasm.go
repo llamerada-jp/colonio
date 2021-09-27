@@ -35,16 +35,16 @@ type pubsub2dImpl struct {
 }
 
 const (
-	JS_MODULE_NAME    = "colonioSuite"
-	VALUE_TYPE_NULL   = 0
-	VALUE_TYPE_BOOL   = 1
-	VALUE_TYPE_INT    = 2
-	VALUE_TYPE_DOUBLE = 3
-	VALUE_TYPE_STRING = 4
+	jsModuleName    = "colonioSuite"
+	valueTypeNull   = 0
+	valueTypeBool   = 1
+	valueTypeInt    = 2
+	valueTypeDouble = 3
+	valueTypeString = 4
 )
 
 var (
-	jsSuite = js.Global().Get(JS_MODULE_NAME)
+	jsSuite = js.Global().Get(jsModuleName)
 
 	eventReceivers    = make(map[uint32]func(js.Value))
 	eventReceiversMtx sync.Mutex
@@ -145,6 +145,7 @@ func onResponse(_ js.Value, args []js.Value) interface{} {
 	return nil
 }
 
+// NewColonio creates a new instance of colonio object.
 func NewColonio() (Colonio, error) {
 	impl := &colonioImpl{
 		jsModule:  jsSuite.Call("newColonio"),
@@ -155,6 +156,7 @@ func NewColonio() (Colonio, error) {
 	return impl, nil
 }
 
+// Connect to seed and join the cluster.
 func (c *colonioImpl) Connect(url, token string) error {
 	key, respChannel := assignRespChannel()
 	defer deleteRespChannel(key)
@@ -164,6 +166,7 @@ func (c *colonioImpl) Connect(url, token string) error {
 	return checkJsError(<-respChannel)
 }
 
+// Disconnect from the cluster and the seed.
 func (c *colonioImpl) Disconnect() error {
 	key, respChannel := assignRespChannel()
 	defer deleteRespChannel(key)
@@ -173,6 +176,7 @@ func (c *colonioImpl) Disconnect() error {
 	return checkJsError(<-respChannel)
 }
 
+// Get Map accessor associated with the name.
 func (c *colonioImpl) AccessMap(name string) Map {
 	c.childrenMtx.Lock()
 	defer c.childrenMtx.Unlock()
@@ -189,6 +193,7 @@ func (c *colonioImpl) AccessMap(name string) Map {
 	return impl
 }
 
+// Get Pubsub2D accessor associated with the name.
 func (c *colonioImpl) AccessPubsub2D(name string) Pubsub2D {
 	c.childrenMtx.Lock()
 	defer c.childrenMtx.Unlock()
@@ -206,10 +211,12 @@ func (c *colonioImpl) AccessPubsub2D(name string) Pubsub2D {
 	return impl
 }
 
+// Get the node-id of this node.
 func (c *colonioImpl) GetLocalNid() string {
 	return c.jsModule.Call("getLocalNid").String()
 }
 
+// Sets the current position of the node.
 func (c *colonioImpl) SetPosition(x, y float64) (float64, float64, error) {
 	key, respChannel := assignRespChannel()
 	defer deleteRespChannel(key)
@@ -223,6 +230,7 @@ func (c *colonioImpl) SetPosition(x, y float64) (float64, float64, error) {
 	return newX, newY, err
 }
 
+// Release some resources used by colonio object.
 func (c *colonioImpl) Quit() error {
 	// release binded events for pubsub2d
 	for _, p := range c.pubsub2ds {
@@ -237,50 +245,50 @@ func (c *colonioImpl) Quit() error {
 }
 
 func (v *valueImpl) IsNil() bool {
-	return v.valueType == VALUE_TYPE_NULL
+	return v.valueType == valueTypeNull
 }
 
 func (v *valueImpl) IsBool() bool {
-	return v.valueType == VALUE_TYPE_BOOL
+	return v.valueType == valueTypeBool
 }
 
 func (v *valueImpl) IsInt() bool {
-	return v.valueType == VALUE_TYPE_INT
+	return v.valueType == valueTypeInt
 }
 
 func (v *valueImpl) IsDouble() bool {
-	return v.valueType == VALUE_TYPE_DOUBLE
+	return v.valueType == valueTypeDouble
 }
 
 func (v *valueImpl) IsString() bool {
-	return v.valueType == VALUE_TYPE_STRING
+	return v.valueType == valueTypeString
 }
 
 func (v *valueImpl) Set(val interface{}) error {
 	if reflect.ValueOf(v).IsNil() {
-		v.valueType = VALUE_TYPE_NULL
+		v.valueType = valueTypeNull
 		v.value = js.Null()
 		return nil
 	}
 
 	switch val := val.(type) {
 	case bool:
-		v.valueType = VALUE_TYPE_BOOL
+		v.valueType = valueTypeBool
 		v.value = js.ValueOf(val)
 		return nil
 
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32:
-		v.valueType = VALUE_TYPE_INT
+		v.valueType = valueTypeInt
 		v.value = js.ValueOf(val)
 		return nil
 
 	case float32, float64:
-		v.valueType = VALUE_TYPE_DOUBLE
+		v.valueType = valueTypeDouble
 		v.value = js.ValueOf(val)
 		return nil
 
 	case string:
-		v.valueType = VALUE_TYPE_STRING
+		v.valueType = valueTypeString
 		v.value = js.ValueOf(val)
 		return nil
 
@@ -293,28 +301,28 @@ func (v *valueImpl) Set(val interface{}) error {
 }
 
 func (v *valueImpl) GetBool() (bool, error) {
-	if v.valueType != VALUE_TYPE_BOOL {
+	if v.valueType != valueTypeBool {
 		return false, fmt.Errorf("type mismatch")
 	}
 	return v.value.Bool(), nil
 }
 
 func (v *valueImpl) GetInt() (int64, error) {
-	if v.valueType != VALUE_TYPE_INT {
+	if v.valueType != valueTypeInt {
 		return 0, fmt.Errorf("type mismatch")
 	}
 	return int64(v.value.Int()), nil
 }
 
 func (v *valueImpl) GetDouble() (float64, error) {
-	if v.valueType != VALUE_TYPE_DOUBLE {
+	if v.valueType != valueTypeDouble {
 		return 0.0, fmt.Errorf("type mismatch")
 	}
 	return v.value.Float(), nil
 }
 
 func (v *valueImpl) GetString() (string, error) {
-	if v.valueType != VALUE_TYPE_STRING {
+	if v.valueType != valueTypeString {
 		return "", fmt.Errorf("type mismatch")
 	}
 	return v.value.String(), nil
