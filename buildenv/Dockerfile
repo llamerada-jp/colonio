@@ -7,7 +7,7 @@ RUN apt update \
 
 WORKDIR /work
 COPY Makefile /work/
-RUN LOCAL_ENV_PATH=/local SUDO= WORK_PATH=/work make -C /work setup -j $(nproc)\
+RUN LOCAL_ENV_PATH=/local SUDO="" WORK_PATH=/work make -C /work setup -j "$(nproc)"\
   && rm -rf /work \
   && rm -rf /var/lib/apt/lists/*
 
