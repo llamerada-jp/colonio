@@ -5,8 +5,8 @@ set -eux
 readonly ARCH=$(uname -m)
 readonly OS=$(uname -s)
 
-if [ ${OS} = 'Linux' ]; then
-  if [ ${ARCH} = 'x86_64' ]; then
+if [ "${OS}" = "Linux" ]; then
+  if [ "${ARCH}" = "x86_64" ]; then
     # linux x86_64
     sudo apt install cmake
     pip3 install --user cpp-coveralls
@@ -18,7 +18,7 @@ if [ ${OS} = 'Linux' ]; then
     coveralls -b ./build/linux_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/test -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'
     exit 0
 
-  elif [ ${ARCH} = 'aarch64' ]; then
+  elif [ "${ARCH}" = "aarch64" ]; then
     # linux aarch64
     make build BUILT_TYPE=Release
     make build BUILT_TYPE=Debug WITH_TEST=ON
@@ -27,7 +27,7 @@ if [ ${OS} = 'Linux' ]; then
     exit 0
   fi
 
-elif [ ${OS} = 'Darwin' ]; then
+elif [ "${OS}" = "Darwin" ]; then
   # macos x86_64
   make setup
   make build BUILT_TYPE=Release
