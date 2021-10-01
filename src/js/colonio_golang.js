@@ -1,6 +1,11 @@
 //@ts-check
 "use strict";
 
+// eslint-disable-next-line no-console
+const logD = console.log;
+// eslint-disable-next-line no-console
+const logE = console.error;
+
 function convertError(err) {
     return err;
 }
@@ -34,19 +39,19 @@ class ColonioSuite {
                 return V.String(value);
 
             default:
-                console.error("unsupported value type", type, value);
+                logE("unsupported value type", type, value);
                 return V.Null();
         }
     }
 
     // this method will be override by golang
     onEvent(key, resp) {
-        console.error("onEvent method must by override by golang");
+        logE("onEvent method must by override by golang");
     }
 
     // this method will be override by golang
     onResponse(key, resp) {
-        console.error("onResponse method must by override by golang");
+        logE("onResponse method must by override by golang");
     }
 }
 
@@ -59,7 +64,7 @@ class ColonioWrap {
     connect(key, url, token) {
         this.c.connect(url, token).then(() => {
             this.suite.onResponse(key);
-        }, err => {
+        }, (err) => {
             this.suite.onResponse(key, convertError(err));
         });
     }
@@ -67,9 +72,9 @@ class ColonioWrap {
     disconnect(key) {
         this.c.disconnect().then(() => {
             this.suite.onResponse(key);
-        }, err => {
+        }, (err) => {
             this.suite.onResponse(key, convertError(err));
-        })
+        });
     }
 
     accessMap(name) {
@@ -85,19 +90,19 @@ class ColonioWrap {
     }
 
     setPosition(key, x, y) {
-        this.c.setPosition(x, y).then(pos => {
+        this.c.setPosition(x, y).then((pos) => {
             this.suite.onResponse(key, {
                 x: pos.x,
                 y: pos.y,
                 err: null
             });
-        }, err => {
+        }, (err) => {
             this.suite.onResponse(key, {
                 x: 0,
                 y: 0,
                 err: convertError(err)
             });
-        })
+        });
     }
 }
 
@@ -108,13 +113,13 @@ class ColonioMapWrap {
     }
 
     get(key, keyType, keyValue) {
-        this.m.getRawValue(this.suite.newValue(keyType, keyValue)).then(value => {
+        this.m.getRawValue(this.suite.newValue(keyType, keyValue)).then((value) => {
             this.suite.onResponse(key, {
                 type: value.getType(),
                 value: value.getJsValue(),
                 err: null
             });
-        }, err => {
+        }, (err) => {
             this.suite.onResponse(key, {
                 value: null,
                 err: convertError(err)
@@ -126,7 +131,7 @@ class ColonioMapWrap {
         this.m.setValue(this.suite.newValue(keyType, keyValue),
             this.suite.newValue(valueType, valueValue), opt).then(() => {
                 this.suite.onResponse(key);
-            }, err => {
+            }, (err) => {
                 this.suite.onResponse(key, convertError(err));
             });
     }
@@ -141,9 +146,9 @@ class ColonioPubusb2DWrap {
     publish(key, name, x, y, r, valueType, valueValue, opt) {
         this.p.publish(name, x, y, r, this.suite.newValue(valueType, valueValue), opt).then(() => {
             this.suite.onResponse(key);
-        }, err => {
+        }, (err) => {
             this.suite.onResponse(key, convertError(err));
-        })
+        });
     }
 
     on(key, name) {

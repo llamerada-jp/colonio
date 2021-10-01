@@ -15,38 +15,41 @@
  */
 "use strict";
 
-// console.log((new Date()).toISOString(), __VA_ARGS__)
-let logd = console.log;
+/*global _free, _malloc, HEAP8, HEAPU8, Module, UTF8ToString, addFunction, assert, ccall, lengthBytesUTF8, removeFunction, stringToUTF8*/
+// eslint-disable-next-line no-console
+const logD = console.log;
+// eslint-disable-next-line no-console
+const logE = console.error;
 
 const ID_MAX = Math.floor(Math.pow(2, 30));
 
 /* Push/Pop object
  * TODO release when disconnect
  */
-let idObjectPair = new Object();
+let idObjectPair = new Map();
 
 function pushObject(obj) {
   let id = Math.floor(Math.random() * ID_MAX);
-  if (id in idObjectPair) {
+  if (idObjectPair.has(id)) {
     id = Math.floor(Math.random() * ID_MAX);
   }
-  idObjectPair[id] = obj;
+  idObjectPair.set(id, obj);
   return id;
 }
 
 function popObject(id) {
-  assert((id in idObjectPair), 'Wrong id :' + id);
-  let obj = idObjectPair[id];
-  delete idObjectPair[id];
+  assert(idObjectPair.has(id), "Wrong id :" + id);
+  let obj = idObjectPair.get(id);
+  idObjectPair.delete(id);
   return obj;
 }
 
 function getObject(id) {
-  assert((id in idObjectPair), 'Wrong id :' + id);
-  return idObjectPair[id];
+  assert(idObjectPair.has(id), "Wrong id :" + id);
+  return idObjectPair.get(id);
 }
 
-let funcsAfterLoad = [];
+let funcsAfterLoad = new Array();
 
 function addFuncAfterLoad(func) {
   if (funcsAfterLoad === null) {
@@ -61,8 +64,8 @@ function execFuncsAfterLoad() {
   let execFuncs = funcsAfterLoad;
   funcsAfterLoad = null;
 
-  for (let idx = 0; idx < execFuncs.length; idx++) {
-    execFuncs[idx]();
+  while (execFuncs.length > 0) {
+    execFuncs.shift()();
   }
 }
 
@@ -71,7 +74,7 @@ function allocPtr(siz) {
 }
 
 function allocPtrString(str) {
-  assert(typeof (str) === 'string');
+  assert(typeof (str) === "string");
   let siz = lengthBytesUTF8(str);
   let ptr = allocPtr(siz + 1);
   stringToUTF8(str, ptr, siz + 1);
@@ -91,36 +94,36 @@ function freePtr(ptr) {
   _free(ptr);
 }
 
-// [<ptr or id>]['<class>/<event type>'][]
-let eventFuncs = {};
+// [<ptr or id>]["<class>/<event type>"][]
+let eventFuncs = new Map();
 
 function setEventFunc(ptr, clazz, type, func) {
   assert(ptr !== null);
 
   // ptr = String(ptr);
 
-  if (!(ptr in eventFuncs)) {
-    eventFuncs[ptr] = {};
+  if (!eventFuncs.has(ptr)) {
+    eventFuncs.set(ptr, new Map());
   }
+  let ptrFuncs = eventFuncs.get(ptr);
 
-  let key = clazz + '/' + type;
-  if (!(key in eventFuncs[ptr])) {
-    eventFuncs[ptr][key] = [];
+  let key = clazz + "/" + type;
+  if (!ptrFuncs.has(key)) {
+    ptrFuncs.set(key, new Array());
   }
-
-  eventFuncs[ptr][key].push(func);
+  ptrFuncs.get(key).push(func);
 }
 
 function getEventFuncs(ptr, clazz, type) {
   //ptr = String(ptr);
-  let key = clazz + '/' + type;
-  if (ptr in eventFuncs &&
-    key in eventFuncs[ptr]) {
-    return eventFuncs[ptr][key];
-
-  } else {
-    return [];
+  let key = clazz + "/" + type;
+  if (eventFuncs.has(ptr)) {
+    let ptrFuncs = eventFuncs.get(ptr);
+    if (ptrFuncs.has(key)) {
+      return ptrFuncs.get(key);
+    }
   }
+  return null;
 }
 
 function convertError(ptr) {
@@ -129,102 +132,20 @@ function convertError(ptr) {
   }
 
   return {
-    code: ccall('js_error_get_code', 'number', ['number'], [ptr]),
-    message: convertPointerToString(
-      ccall('js_error_get_message', 'number', ['number'], [ptr]),
-      ccall('js_error_get_message_length', 'number', ['number'], [ptr])
+    code: ccall("js_error_get_code", "number", ["number"], [ptr]),
+    message: UTF8ToString(
+      ccall("js_error_get_message", "number", ["number"], [ptr]),
+      ccall("js_error_get_message_length", "number", ["number"], [ptr])
     )
   };
 }
 
-/**
- * This function replaces Pointer_stringify.
- * Pointer_strinfigy has a bug. It return wrong string when pass the value
- * that contain multi byte string and not have 0-terminate.
- * Pointer_stringify ignore length when use it with multi byte string.
- */
-function convertPointerToString(ptr, length) {
-  if (length === 0 || !ptr) return '';
-  // Find the length, and check for UTF while doing so
-  var hasUtf = 0;
-  var t;
-  var i = 0;
-  while (true) {
-    t = HEAPU8[ptr + i >> 0]; // debug
-    // t = ((SAFE_HEAP_LOAD((((ptr) + (i)) | 0), 1, 1)) | 0); // release
-    hasUtf |= t;
-    if (t === 0 && !length) { break; }
-    i++;
-    if (length && i === length) { break; }
-  }
-  if (!length) { length = i; }
-
-  var ret = '';
-
-  if (hasUtf < 128) {
-    var MAX_CHUNK = 1024; // split up into chunks, because .apply on a huge string can overflow the stack
-    var curr;
-    while (length > 0) {
-      curr = String.fromCharCode.apply(String, HEAPU8.subarray(ptr, ptr + Math.min(length, MAX_CHUNK)));
-      ret = ret ? ret + curr : curr;
-      ptr += MAX_CHUNK;
-      length -= MAX_CHUNK;
-    }
-    return ret;
-  }
-
-  let u8Array = Module.HEAPU8;
-  let idx = ptr;
-  var endPtr = idx + length;
-  // TextDecoder needs to know the byte length in advance, it doesn't stop on null terminator by itself.
-  // Also, use the length info to avoid running tiny strings through TextDecoder, since .subarray() allocates garbage.
-
-  if (endPtr - idx > 16 && u8Array.subarray && UTF8Decoder) {
-    return UTF8Decoder.decode(u8Array.subarray(idx, endPtr));
-  } else {
-    var u0, u1, u2, u3, u4, u5;
-
-    var str = '';
-    while (1) {
-      // For UTF8 byte structure, see http://en.wikipedia.org/wiki/UTF-8#Description and https://www.ietf.org/rfc/rfc2279.txt and https://tools.ietf.org/html/rfc3629
-      u0 = u8Array[idx++];
-      if (!u0) { return str; }
-      if (!(u0 & 0x80)) { str += String.fromCharCode(u0); continue; }
-      u1 = u8Array[idx++] & 63;
-      if ((u0 & 0xE0) === 0xC0) { str += String.fromCharCode(((u0 & 31) << 6) | u1); continue; }
-      u2 = u8Array[idx++] & 63;
-      if ((u0 & 0xF0) === 0xE0) {
-        u0 = ((u0 & 15) << 12) | (u1 << 6) | u2;
-      } else {
-        u3 = u8Array[idx++] & 63;
-        if ((u0 & 0xF8) === 0xF0) {
-          u0 = ((u0 & 7) << 18) | (u1 << 12) | (u2 << 6) | u3;
-        } else {
-          u4 = u8Array[idx++] & 63;
-          if ((u0 & 0xFC) === 0xF8) {
-            u0 = ((u0 & 3) << 24) | (u1 << 18) | (u2 << 12) | (u3 << 6) | u4;
-          } else {
-            u5 = u8Array[idx++] & 63;
-            u0 = ((u0 & 1) << 30) | (u1 << 24) | (u2 << 18) | (u3 << 12) | (u4 << 6) | u5;
-          }
-        }
-      }
-      if (u0 < 0x10000) {
-        str += String.fromCharCode(u0);
-      } else {
-        var ch = u0 - 0x10000;
-        str += String.fromCharCode(0xD800 | (ch >> 10), 0xDC00 | (ch & 0x3FF));
-      }
-    }
-  }
-}
-
 class Colonio {
   // ATTENTION: Use same value with another languages.
-  static get LOG_LEVEL_INFO() { return 'info'; }
-  static get LOG_LEVEL_WARN() { return 'warn'; }
-  static get LOG_LEVEL_ERROR() { return 'error'; }
-  static get LOG_LEVEL_DEBUG() { return 'debug'; }
+  static get LOG_LEVEL_INFO() { return "info"; }
+  static get LOG_LEVEL_WARN() { return "warn"; }
+  static get LOG_LEVEL_ERROR() { return "error"; }
+  static get LOG_LEVEL_DEBUG() { return "debug"; }
 
   // ATTENTION: Use same value with another languages.
   static get ERROR_CODE_UNDEFINED() { return 0; }
@@ -238,11 +159,11 @@ class Colonio {
   static get ERROR_CODE_COLLISION_LATE() { return 8; }
   static get ERROR_CODE_NO_ONE_RECV() { return 9; }
 
-  static get NID_THIS() { return '.'; }
+  static get NID_THIS() { return "."; }
 
   constructor() {
     this._colonioPtr = null;
-    this._instanceCache = new Object();
+    this._instanceCache = new Map();
 
     addFuncAfterLoad(() => {
       // initialize
@@ -251,14 +172,14 @@ class Colonio {
           x: newX,
           y: newY
         });
-      }, 'vidd');
+      }, "vidd");
 
       let setPositionOnFailure = Module.addFunction((id, errorPtr) => {
         popObject(id).onFailure(convertError(errorPtr));
-      }, 'vii');
+      }, "vii");
 
-      this._colonioPtr = ccall('js_init', 'number',
-        ['number', 'number'],
+      this._colonioPtr = ccall("js_init", "number",
+        ["number", "number"],
         [setPositionOnSuccess, setPositionOnFailure]);
     });
   }
@@ -270,19 +191,19 @@ class Colonio {
           resolve();
           removeFunction(onSuccess);
           removeFunction(onFailure);
-        }, 'vi');
+        }, "vi");
 
         var onFailure = Module.addFunction((colonioPtr, errorPtr) => {
           reject(convertError(errorPtr));
           removeFunction(onSuccess);
           removeFunction(onFailure);
-        }, 'vii');
+        }, "vii");
 
         let [urlPtr, urlSiz] = allocPtrString(url);
         let [tokenPtr, tokenSiz] = allocPtrString(token);
 
-        ccall('js_connect', 'null',
-          ['number', 'number', 'number', 'number', 'number', 'number', 'number'],
+        ccall("js_connect", "null",
+          ["number", "number", "number", "number", "number", "number", "number"],
           [this._colonioPtr, urlPtr, urlSiz, tokenPtr, tokenSiz, onSuccess, onFailure]);
 
         freePtr(url);
@@ -294,25 +215,25 @@ class Colonio {
   }
 
   accessMap(name) {
-    if (!(name in this._instanceCache)) {
+    if (!this._instanceCache.has(name)) {
       let [namePtr, nameSiz] = allocPtrString(name);
-      this._instanceCache[name] = new ColonioMap(ccall('js_access_map', 'number',
-        ['number', 'number', 'number'],
-        [this._colonioPtr, namePtr, nameSiz]));
+      this._instanceCache.set(name, new ColonioMap(ccall("js_access_map", "number",
+        ["number", "number", "number"],
+        [this._colonioPtr, namePtr, nameSiz])));
       freePtr(namePtr);
     }
-    return this._instanceCache[name];
+    return this._instanceCache.get(name);
   }
 
   accessPubsub2D(name) {
-    if (!(name in this._instanceCache)) {
+    if (!this._instanceCache.has(name)) {
       let [namePtr, nameSiz] = allocPtrString(name);
-      this._instanceCache[name] = new ColonioPubsub2D(ccall('js_access_pubsub_2d', 'number',
-        ['number', 'number', 'number'],
-        [this._colonioPtr, namePtr, nameSiz]));
+      this._instanceCache.set(name, new ColonioPubsub2D(ccall("js_access_pubsub_2d", "number",
+        ["number", "number", "number"],
+        [this._colonioPtr, namePtr, nameSiz])));
       freePtr(namePtr);
     }
-    return this._instanceCache[name];
+    return this._instanceCache.get(name);
   }
 
   disconnect() {
@@ -322,19 +243,19 @@ class Colonio {
         removeFunction(onFailure);
 
         setTimeout(() => {
-          ccall('js_quit', 'null', ['number'], [this._colonioPtr]);
-          delete this._instanceCache;
+          ccall("js_quit", "null", ["number"], [this._colonioPtr]);
+          this._instanceCache = null;
           resolve();
         }, 0);
-      }, 'vi');
+      }, "vi");
 
       var onFailure = Module.addFunction((colonioPtr, errorPtr) => {
         reject(convertError(errorPtr));
         removeFunction(onSuccess);
         removeFunction(onFailure);
-      }, 'vii');
+      }, "vii");
 
-      ccall('js_disconnect', 'null', ['number', 'number', 'number'], [this._colonioPtr, onSuccess, onFailure]);
+      ccall("js_disconnect", "null", ["number", "number", "number"], [this._colonioPtr, onSuccess, onFailure]);
     });
 
     return promise;
@@ -342,7 +263,7 @@ class Colonio {
 
   getLocalNid() {
     let nidPtr = allocPtr(32 + 1);
-    ccall('js_get_local_nid', 'null', ['number', 'number'], [this._colonioPtr, nidPtr]);
+    ccall("js_get_local_nid", "null", ["number", "number"], [this._colonioPtr, nidPtr]);
     let nid = UTF8ToString(nidPtr);
     return nid;
   }
@@ -354,8 +275,8 @@ class Colonio {
         onFailure: reject,
       });
 
-      ccall('js_set_position', 'null',
-        ['number', 'number', 'number', 'number'],
+      ccall("js_set_position", "null",
+        ["number", "number", "number", "number"],
         [this._colonioPtr, x, y, id]);
     });
 
@@ -364,54 +285,57 @@ class Colonio {
 
   on(type, func) {
     addFuncAfterLoad(() => {
-      const TYPES = ['log'];
+      const TYPES = ["log"];
       assert(TYPES.indexOf(type) >= 0);
 
       switch (type) {
-        case 'log':
-          ccall('js_enable_output_log', 'null', ['number'], [this._colonioPtr]);
+        case "log":
+          ccall("js_enable_output_log", "null", ["number"], [this._colonioPtr]);
           break;
       }
 
-      setEventFunc(this._colonioPtr, 'colonio', type, func);
+      setEventFunc(this._colonioPtr, "colonio", type, func);
     });
   }
-};
+}
 
 /* log */
 function jsOnOutputLog(colonioPtr, jsonPtr, jsonSiz) {
-  let json = convertPointerToString(jsonPtr, jsonSiz);
-  let funcs = getEventFuncs(colonioPtr, 'colonio', 'log');
+  let json = UTF8ToString(jsonPtr, jsonSiz);
+  let funcs = getEventFuncs(colonioPtr, "colonio", "log");
+  if (funcs === null) {
+    return;
+  }
   for (let idx = 0; idx < funcs.length; idx++) {
     funcs[idx](JSON.parse(json));
   }
 }
 
 /* APIGate */
-let gateTimers = {};
+let gateTimers = new Map();
 
 function apiGateRelease(gatePtr) {
-  if (gatePtr in gateTimers) {
-    clearTimeout(gateTimers[gatePtr]);
-    delete gateTimers[gatePtr];
+  if (gateTimers.has(gatePtr)) {
+    clearTimeout(gateTimers.get(gatePtr));
+    gateTimers.delete(gatePtr);
   }
 }
 
 function apiGateRequireCallAfter(gatePtr, id) {
   setTimeout(() => {
-    if (gatePtr in gateTimers) {
-      ccall('api_gate_call', 'null', ['number', 'number'], [gatePtr, id]);
+    if (gateTimers.has(gatePtr)) {
+      ccall("api_gate_call", "null", ["number", "number"], [gatePtr, id]);
     }
   }, 0);
 }
 
 function apiGateRequireInvoke(gatePtr, msec) {
-  if (gatePtr in gateTimers) {
-    clearTimeout(gateTimers[gatePtr]);
+  if (gateTimers.has(gatePtr)) {
+    clearTimeout(gateTimers.get(gatePtr));
   }
-  gateTimers[gatePtr] = setTimeout(() => {
-    ccall('api_gate_invoke', 'null', ['number'], [gatePtr]);
-  }, msec);
+  gateTimers.set(gatePtr, setTimeout(() => {
+    ccall("api_gate_invoke", "null", ["number"], [gatePtr]);
+  }, msec));
 }
 
 /**
@@ -426,39 +350,39 @@ class ColonioValue {
   static get VALUE_TYPE_STRING() { return 4; }
 
   static Null() {
-    let valuePtr = ccall('js_value_init', 'number', []);
+    let valuePtr = ccall("js_value_init", "number", []);
     return new ColonioValue(valuePtr, false);
   }
 
   static Bool(value) {
-    let valuePtr = ccall('js_value_init', 'number', []);
-    ccall('js_value_set_bool', 'null',
-      ['number', 'boolean'],
+    let valuePtr = ccall("js_value_init", "number", []);
+    ccall("js_value_set_bool", "null",
+      ["number", "boolean"],
       [valuePtr, value]);
     return new ColonioValue(valuePtr, false);
   }
 
   static Int(value) {
-    let valuePtr = ccall('js_value_init', 'number', []);
-    ccall('js_value_set_int', 'null',
-      ['number', 'number'],
+    let valuePtr = ccall("js_value_init", "number", []);
+    ccall("js_value_set_int", "null",
+      ["number", "number"],
       [valuePtr, value]);
     return new ColonioValue(valuePtr, false);
   }
 
   static Double(value) {
-    let valuePtr = ccall('js_value_init', 'number', []);
-    ccall('js_value_set_double', 'null',
-      ['number', 'number'],
+    let valuePtr = ccall("js_value_init", "number", []);
+    ccall("js_value_set_double", "null",
+      ["number", "number"],
       [valuePtr, value]);
     return new ColonioValue(valuePtr, false);
   }
 
   static String(value) {
-    let valuePtr = ccall('js_value_init', 'number', []);
+    let valuePtr = ccall("js_value_init", "number", []);
     let [stringPtr, stringSiz] = allocPtrString(value);
-    ccall('js_value_set_string', 'null',
-      ['number', 'number', 'number'],
+    ccall("js_value_set_string", "null",
+      ["number", "number", "number"],
       [valuePtr, stringPtr, stringSiz]);
     freePtr(stringPtr);
     return new ColonioValue(valuePtr, false);
@@ -484,34 +408,39 @@ class ColonioValue {
   }
 
   release() {
-    assert(this.isEnable(), 'Double release error.');
+    assert(this.isEnable(), "Double release error.");
 
-    ccall('js_value_free', 'null', ['number'], [this._valuePtr]);
+    ccall("js_value_free", "null", ["number"], [this._valuePtr]);
     this._valuePtr = NaN;
   }
 
   reload() {
-    assert(this.isEnable(), 'Released value.');
+    assert(this.isEnable(), "Released value.");
 
-    this._type = ccall('js_value_get_type', 'number', ['number'], [this._valuePtr]);
+    this._type = ccall("js_value_get_type", "number", ["number"], [this._valuePtr]);
     
     switch (this.getType()) {
       case 0: // this.VALUE_TYPE_NULL:
         this._value = null;
+        break;
 
       case 1: // this.VALUE_TYPE_BOOL:
-        this._value = ccall('js_value_get_bool', 'boolean', ['number'], [this._valuePtr]);
+        this._value = ccall("js_value_get_bool", "boolean", ["number"], [this._valuePtr]);
+        break;
 
       case 2: // this.VALUE_TYPE_INT:
-        this._value = ccall('js_value_get_int', 'number', ['number'], [this._valuePtr]);
+        this._value = ccall("js_value_get_int", "number", ["number"], [this._valuePtr]);
+        break;
 
       case 3: // this.VALUE_TYPE_DOUBLE:
-        this._value = ccall('js_value_get_double', 'number', ['number'], [this._valuePtr]);
+        this._value = ccall("js_value_get_double", "number", ["number"], [this._valuePtr]);
+        break;
 
       case 4: // this.VALUE_TYPE_STRING:
-        let length = ccall('js_value_get_string_length', 'number', ['number'], [this._valuePtr]);
-        let stringPtr = ccall('js_value_get_string', 'number', ['number'], [this._valuePtr]);
-        this._value = convertPointerToString(stringPtr, length);
+        let length = ccall("js_value_get_string_length", "number", ["number"], [this._valuePtr]);
+        let stringPtr = ccall("js_value_get_string", "number", ["number"], [this._valuePtr]);
+        this._value = UTF8ToString(stringPtr, length);
+        break;
     }
   }
 }
@@ -523,26 +452,26 @@ function typeOf(obj) {
 
 function convertValue(value) {
   if (value instanceof ColonioValue) {
-    assert(value.isEnable(), 'Value is released.');
+    assert(value.isEnable(), "Value is released.");
     return value;
   }
 
   switch (typeOf(value)) {
-    case 'null':
+    case "null":
       return ColonioValue.Null();
 
-    case 'boolean':
-      return ColonioValue.Bool(value)
+    case "boolean":
+      return ColonioValue.Bool(value);
 
-    case 'string':
+    case "string":
       return ColonioValue.String(value);
 
-    case 'number':
-      assert(false, 'Number is not explicit value type. Please use ColonioValue::Int or ColonioValue::Double.');
+    case "number":
+      assert(false, "Number is not explicit value type. Please use ColonioValue::Int or ColonioValue::Double.");
       break;
 
     default:
-      assert(false, 'Unsupported value type');
+      assert(false, "Unsupported value type");
       break;
   }
 }
@@ -550,22 +479,22 @@ function convertValue(value) {
 function initializeMap() {
   let getValueOnSuccess = Module.addFunction((id, valuePtr) => {
     popObject(id).onSuccess(new ColonioValue(valuePtr));
-  }, 'vii');
+  }, "vii");
 
   let getValueOnFailure = Module.addFunction((id, errorPtr) => {
     popObject(id).onFailure(convertError(errorPtr));
-  }, 'vii');
+  }, "vii");
 
   let setValueOnSuccess = Module.addFunction((id) => {
     popObject(id).onSuccess();
-  }, 'vi');
+  }, "vi");
 
   let setValueOnFailure = Module.addFunction((id, errorPtr) => {
     popObject(id).onFailure(convertError(errorPtr));
-  }, 'vii');
+  }, "vii");
 
-  ccall('js_map_init', 'null',
-    ['number', 'number', 'number', 'number'],
+  ccall("js_map_init", "null",
+    ["number", "number", "number", "number"],
     [getValueOnSuccess, getValueOnFailure, setValueOnSuccess, setValueOnFailure]);
 }
 
@@ -579,7 +508,7 @@ class ColonioMap {
 
   getValue(key) {
     let promise = new Promise((resolve, reject) => {
-      this.getRawValue(key).then(val => {
+      this.getRawValue(key).then((val) => {
         resolve(val.getJsValue());
       }, () => {
         reject();
@@ -598,8 +527,8 @@ class ColonioMap {
         onFailure: reject,
       });
 
-      ccall('js_map_get_value', 'null',
-        ['number', 'number', 'number'],
+      ccall("js_map_get_value", "null",
+        ["number", "number", "number"],
         [this._mapPtr, keyValue._valuePtr, id]);
 
       keyValue.release();
@@ -618,8 +547,8 @@ class ColonioMap {
         onFailure: reject,
       });
 
-      ccall('js_map_set_value', 'null',
-        ['number', 'number', 'number', 'number', 'number'],
+      ccall("js_map_set_value", "null",
+        ["number", "number", "number", "number", "number"],
         [this._mapPtr, keyValue._valuePtr, valValue._valuePtr, opt, id]);
 
       keyValue.release();
@@ -633,18 +562,18 @@ class ColonioMap {
 function initializePubsub2D() {
   let publishOnSuccess = Module.addFunction((id) => {
     popObject(id).onSuccess();
-  }, 'vi');
+  }, "vi");
 
   let publishOnFailure = Module.addFunction((id, errorPtr) => {
     popObject(id).onFailure(convertError(errorPtr));
-  }, 'vii');
+  }, "vii");
 
   let onOn = Module.addFunction((id, valuePtr) => {
     getObject(id)(new ColonioValue(valuePtr));
-  }, 'vii');
+  }, "vii");
 
-  ccall('js_pubsub_2d_init', 'null',
-    ['number', 'number', 'number'],
+  ccall("js_pubsub_2d_init", "null",
+    ["number", "number", "number"],
     [publishOnSuccess, publishOnFailure, onOn]);
 }
 
@@ -665,8 +594,8 @@ class ColonioPubsub2D {
         onFailure: reject,
       });
 
-      ccall('js_pubsub_2d_publish', 'null',
-        ['number', 'number', 'number', 'number', 'number', 'number', 'number', 'number', 'number'],
+      ccall("js_pubsub_2d_publish", "null",
+        ["number", "number", "number", "number", "number", "number", "number", "number", "number"],
         [this._pubsub2DPtr, namePtr, nameSiz, x, y, r, value._valuePtr, opt, id]);
 
       freePtr(namePtr);
@@ -677,7 +606,7 @@ class ColonioPubsub2D {
   }
 
   on(name, cb) {
-    this.onRaw(name, val => {
+    this.onRaw(name, (val) => {
       cb(val.getJsValue());
     });
   }
@@ -687,8 +616,8 @@ class ColonioPubsub2D {
 
     let [namePtr, nameSiz] = allocPtrString(name);
 
-    ccall('js_pubsub_2d_on', 'null',
-      ['number', 'number', 'number', 'number'],
+    ccall("js_pubsub_2d_on", "null",
+      ["number", "number", "number", "number"],
       [this._pubsub2DPtr, namePtr, nameSiz, id]);
 
     freePtr(namePtr);
@@ -697,8 +626,8 @@ class ColonioPubsub2D {
   off(name) {
     let [namePtr, nameSiz] = allocPtrString(name);
 
-    ccall('js_pubsub_2d_off', 'null',
-      ['number', 'number', 'number'],
+    ccall("js_pubsub_2d_off", "null",
+      ["number", "number", "number"],
       [this._pubsub2DPtr, namePtr, nameSiz]);
 
     freePtr(namePtr);
@@ -706,29 +635,29 @@ class ColonioPubsub2D {
 }  // class ColonioPubsub2D
 
 /* SeedLinkWebsocket */
-let availableSeedLinks = {};
+let availableSeedLinks = new Map();
 
 function seedLinkWsConnect(seedLink, urlPtr, urlSiz) {
-  let url = convertPointerToString(urlPtr, urlSiz);
-  logd('socket connect', seedLink, url);
+  let url = UTF8ToString(urlPtr, urlSiz);
+  logD("socket connect", seedLink, url);
   let socket = new WebSocket(url);
-  socket.binaryType = 'arraybuffer';
-  availableSeedLinks[seedLink] = socket;
+  socket.binaryType = "arraybuffer";
+  availableSeedLinks.set(seedLink, socket);
 
   socket.onopen = () => {
-    logd('socket open', seedLink);
-    if (seedLink in availableSeedLinks) {
-      ccall('seed_link_ws_on_connect', 'null', ['number'], [seedLink]);
+    logD("socket open", seedLink);
+    if (availableSeedLinks.has(seedLink)) {
+      ccall("seed_link_ws_on_connect", "null", ["number"], [seedLink]);
     }
   };
 
   socket.onerror = (error) => {
-    logd('socket error', seedLink, error);
-    if (seedLink in availableSeedLinks) {
+    logD("socket error", seedLink, error);
+    if (availableSeedLinks.has(seedLink)) {
       let [msgPtr, msgSiz] = allocPtrString(JSON.stringify(error));
 
-      ccall('seed_link_ws_on_error', 'null',
-        ['number', 'number', 'number'],
+      ccall("seed_link_ws_on_error", "null",
+        ["number", "number", "number"],
         [seedLink, msgPtr, msgSiz]);
 
       freePtr(msgPtr);
@@ -736,12 +665,12 @@ function seedLinkWsConnect(seedLink, urlPtr, urlSiz) {
   };
 
   socket.onmessage = (e) => {
-    logd('socket message', seedLink /*, dumpPacket(e.data) */);
-    if (seedLink in availableSeedLinks) {
+    logD("socket message", seedLink /*, dumpPacket(e.data) */);
+    if (availableSeedLinks.has(seedLink)) {
       let [dataPtr, dataSiz] = allocPtrArrayBuffer(e.data);
 
-      ccall('seed_link_ws_on_recv', 'null',
-        ['number', 'number', 'number'],
+      ccall("seed_link_ws_on_recv", "null",
+        ["number", "number", "number"],
         [seedLink, dataPtr, dataSiz]);
 
       freePtr(dataPtr);
@@ -749,47 +678,47 @@ function seedLinkWsConnect(seedLink, urlPtr, urlSiz) {
   };
 
   socket.onclose = () => {
-    logd('socket close', seedLink);
-    if (seedLink in availableSeedLinks) {
-      ccall('seed_link_ws_on_disconnect', 'null', ['number'], [seedLink]);
+    logD("socket close", seedLink);
+    if (availableSeedLinks.has(seedLink)) {
+      ccall("seed_link_ws_on_disconnect", "null", ["number"], [seedLink]);
     }
-  }
+  };
 }
 
 function seedLinkWsSend(seedLink, dataPtr, dataSiz) {
-  logd('socket send', seedLink);
-  assert(seedLink in availableSeedLinks);
+  logD("socket send", seedLink);
+  assert(availableSeedLinks.has(seedLink));
 
   // avoid error : The provided ArrayBufferView value must not be shared.
   let data = new Uint8Array(dataSiz);
   for (let idx = 0; idx < dataSiz; idx++) {
     data[idx] = HEAPU8[dataPtr + idx];
   }
-  availableSeedLinks[seedLink].send(new Uint8Array(data));
+  availableSeedLinks.get(seedLink).send(new Uint8Array(data));
 }
 
 function seedLinkWsDisconnect(seedLink) {
-  logd('socket, disconnect', seedLink);
-  if (seedLink in availableSeedLinks) {
-    availableSeedLinks[seedLink].close();
+  logD("socket, disconnect", seedLink);
+  if (availableSeedLinks.has(seedLink)) {
+    availableSeedLinks.get(seedLink).close();
   } else {
-    logd('double disconnect', seedLink);
+    logD("double disconnect", seedLink);
   }
 }
 
 function seedLinkWsFinalize(seedLink) {
-  logd('socket finalize', seedLink);
-  if (seedLink in availableSeedLinks) {
+  logD("socket finalize", seedLink);
+  if (availableSeedLinks.has(seedLink)) {
     // 2 : CLOSING
     // 3 : CLOSED
-    if (availableSeedLinks[seedLink].readyState !== 2 &&
-      availableSeedLinks[seedLink].readyState !== 3) {
-      availableSeedLinks[seedLink].close();
+    let l = availableSeedLinks.get(seedLink);
+    if (l.readyState !== 2 && l.readyState !== 3) {
+      l.close();
     }
 
-    delete availableSeedLinks[seedLink];
+    availableSeedLinks.delete(seedLink);
   } else {
-    logd('double finalize', seedLink);
+    logD("double finalize", seedLink);
   }
 }
 
@@ -815,80 +744,79 @@ function webrtcContextInitialize() {
 
 function webrtcContextAddIceServer(strPtr, strSiz) {
   webrtcContextPcConfig.iceServers.push(
-    JSON.parse(convertPointerToString(strPtr, strSiz))
+    JSON.parse(UTF8ToString(strPtr, strSiz))
   );
 }
 
 /* WebrtcLink */
-let availableWebrtcLinks = {};
+let availableWebrtcLinks = new Map();
 
 function webrtcLinkInitialize(webrtcLink, isCreateDc) {
-  logd('rtc initialize', webrtcLink);
+  logD("rtc initialize", webrtcLink);
 
   let setEvent = (dataChannel) => {
     dataChannel.onerror = (event) => {
-      logd('rtc data error', webrtcLink, event);
-      if (webrtcLink in availableWebrtcLinks) {
+      logD("rtc data error", webrtcLink, event);
+      if (availableWebrtcLinks.has(webrtcLink)) {
         let [messagePtr, messageSiz] = allocPtrString(event.error.message);
-        ccall('webrtc_link_on_dco_error', 'null',
-          ['number', 'number', 'number'],
+        ccall("webrtc_link_on_dco_error", "null",
+          ["number", "number", "number"],
           [webrtcLink, messagePtr, messageSiz]);
         freePtr(messagePtr);
       }
     };
 
     dataChannel.onmessage = (event) => {
-      if (webrtcLink in availableWebrtcLinks) {
+      if (availableWebrtcLinks.has(webrtcLink)) {
         if (event.data instanceof ArrayBuffer) {
-          // logd('rtc data recv', webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(event.data)));
+          // logD("rtc data recv", webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(event.data)));
           let [dataPtr, dataSiz] = allocPtrArrayBuffer(event.data);
-          ccall('webrtc_link_on_dco_message', 'null',
-            ['number', 'number', 'number'],
+          ccall("webrtc_link_on_dco_message", "null",
+            ["number", "number", "number"],
             [webrtcLink, dataPtr, dataSiz]);
           freePtr(dataPtr);
 
         } else if (event.data instanceof Blob) {
           let reader = new FileReader();
           reader.onload = () => {
-            // logd('rtc data recv', webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(reader.result)));
+            // logD("rtc data recv", webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(reader.result)));
             let [dataPtr, dataSiz] = allocPtrArrayBuffer(reader.result);
-            ccall('webrtc_link_on_dco_message', 'null',
-              ['number', 'number', 'number'],
+            ccall("webrtc_link_on_dco_message", "null",
+              ["number", "number", "number"],
               [webrtcLink, dataPtr, dataSiz]);
             freePtr(dataPtr);
           };
           reader.readAsArrayBuffer(event.data);
 
         } else {
-          console.error("Unsupported type of message.");
-          console.error(event.data);
+          logE("Unsupported type of message.", event.data);
         }
       }
     };
 
     dataChannel.onopen = () => {
-      logd('rtc data open', webrtcLink);
-      if (webrtcLink in availableWebrtcLinks) {
-        ccall('webrtc_link_on_dco_open', 'null',
-          ['number'],
+      logD("rtc data open", webrtcLink);
+      if (availableWebrtcLinks.has(webrtcLink)) {
+        ccall("webrtc_link_on_dco_open", "null",
+          ["number"],
           [webrtcLink]);
       }
     };
 
     dataChannel.onclosing = () => {
-      logd('rtc data closing', webrtcLink);
-      if (webrtcLink in availableWebrtcLinks) {
-        ccall('webrtc_link_on_dco_closing', 'null',
-          ['number'],
+      logD("rtc data closing", webrtcLink);
+      if (availableWebrtcLinks.has(webrtcLink)) {
+        ccall("webrtc_link_on_dco_closing", "null",
+          ["number"],
           [webrtcLink]);
       }
-    }
+    };
 
     dataChannel.onclose = () => {
-      logd('rtc data close', webrtcLink);
-      if (webrtcLink in availableWebrtcLinks) {
-        ccall('webrtc_link_on_dco_close', 'null',
-          ['number'],
+      logD("rtc data close", webrtcLink);
+      if (availableWebrtcLinks.has(webrtcLink)) {
+        ccall("webrtc_link_on_dco_close", "null",
+          ["number"],
           [webrtcLink]);
       }
     };
@@ -899,53 +827,50 @@ function webrtcLinkInitialize(webrtcLink, isCreateDc) {
     peer = new RTCPeerConnection(webrtcContextPcConfig);
 
   } catch (e) {
-    console.error(e);
+    logE(e);
     peer = null;
   }
 
   if (peer === null) {
-    console.error('RTCPeerConnection');
+    logE("RTCPeerConnection");
   }
 
   let dataChannel = null;
   if (isCreateDc) {
-    dataChannel = peer.createDataChannel('data_channel',
+    dataChannel = peer.createDataChannel("data_channel",
       webrtcContextDcConfig);
     setEvent(dataChannel);
   }
 
-  availableWebrtcLinks[webrtcLink] = {
-    peer: peer,
-    dataChannel: dataChannel
-  };
+  availableWebrtcLinks.set(webrtcLink, { peer, dataChannel });
 
   peer.onicecandidate = (event) => {
-    logd('rtc on ice candidate', webrtcLink);
-    if (webrtcLink in availableWebrtcLinks) {
+    logD("rtc on ice candidate", webrtcLink);
+    if (availableWebrtcLinks.has(webrtcLink)) {
       let ice;
       if (event.candidate) {
         ice = JSON.stringify(event.candidate);
       } else {
-        ice = '';
+        ice = "";
       }
 
       let [icePtr, iceSiz] = allocPtrString(ice);
-      ccall('webrtc_link_on_pco_ice_candidate', 'null',
-        ['number', 'number', 'number'],
+      ccall("webrtc_link_on_pco_ice_candidate", "null",
+        ["number", "number", "number"],
         [webrtcLink, icePtr, iceSiz]);
       freePtr(icePtr);
     }
   };
 
   peer.ondatachannel = (event) => {
-    logd('rtc peer datachannel', webrtcLink);
-    if (webrtcLink in availableWebrtcLinks) {
-      let link = availableWebrtcLinks[webrtcLink];
+    logD("rtc peer datachannel", webrtcLink);
+    if (availableWebrtcLinks.has(webrtcLink)) {
+      let link = availableWebrtcLinks.get(webrtcLink);
 
       if (link.dataChannel !== null) {
         let [messagePtr, messageSiz] = allocPtrString("duplicate data channel.");
-        ccall('webrtc_link_on_dco_error', 'null',
-          ['number', 'number', 'number'],
+        ccall("webrtc_link_on_dco_error", "null",
+          ["number", "number", "number"],
           [webrtcLink, messagePtr, messageSiz]);
         freePtr(messagePtr);
       }
@@ -956,13 +881,13 @@ function webrtcLinkInitialize(webrtcLink, isCreateDc) {
   };
 
   peer.oniceconnectionstatechange = (event) => {
-    logd('rtc peer state', webrtcLink, peer.iceConnectionState);
-    if (webrtcLink in availableWebrtcLinks) {
-      let link = availableWebrtcLinks[webrtcLink];
+    logD("rtc peer state", webrtcLink, peer.iceConnectionState);
+    if (availableWebrtcLinks.has(webrtcLink)) {
+      let link = availableWebrtcLinks.get(webrtcLink);
       let peer = link.peer;
       let [statePtr, stateSiz] = allocPtrString(peer.iceConnectionState);
-      ccall('webrtc_link_on_pco_state_change', 'null',
-        ['number', 'number', 'number'],
+      ccall("webrtc_link_on_pco_state_change", "null",
+        ["number", "number", "number"],
         [webrtcLink, statePtr, stateSiz]);
       freePtr(statePtr);
     }
@@ -970,36 +895,38 @@ function webrtcLinkInitialize(webrtcLink, isCreateDc) {
 }
 
 function webrtcLinkFinalize(webrtcLink) {
-  logd('rtc finalize', webrtcLink);
-  assert((webrtcLink in availableWebrtcLinks));
-  delete availableWebrtcLinks[webrtcLink];
+  logD("rtc finalize", webrtcLink);
+  assert(availableWebrtcLinks.has(webrtcLink));
+  availableWebrtcLinks.delete(webrtcLink);
 }
 
 function webrtcLinkDisconnect(webrtcLink) {
-  logd('rtc disconnect', webrtcLink);
-  assert((webrtcLink in availableWebrtcLinks));
+  logD("rtc disconnect", webrtcLink);
+  assert(availableWebrtcLinks.has(webrtcLink));
 
-  if (webrtcLink in availableWebrtcLinks) try {
-    let link = availableWebrtcLinks[webrtcLink];
+  if (availableWebrtcLinks.has(webrtcLink)) {
+    try {
+      let link = availableWebrtcLinks.get(webrtcLink);
 
-    if (link.dataChannel !== null) {
-      link.dataChannel.close();
+      if (link.dataChannel !== null) {
+        link.dataChannel.close();
+      }
+
+      if (link.peer !== null) {
+        link.peer.close();
+      }
+    } catch (e) {
+      logE(e);
     }
-
-    if (link.peer !== null) {
-      link.peer.close();
-    }
-  } catch (e) {
-    console.error(e);
   }
 }
 
 function webrtcLinkGetLocalSdp(webrtcLink, isRemoteSdpSet) {
-  logd('rtc getLocalSdp', webrtcLink);
-  assert((webrtcLink in availableWebrtcLinks));
+  logD("rtc getLocalSdp", webrtcLink);
+  assert(availableWebrtcLinks.has(webrtcLink));
 
   try {
-    let link = availableWebrtcLinks[webrtcLink];
+    let link = availableWebrtcLinks.get(webrtcLink);
     let peer = link.peer;
     let description;
 
@@ -1009,17 +936,17 @@ function webrtcLinkGetLocalSdp(webrtcLink, isRemoteSdpSet) {
         return peer.setLocalDescription(sessionDescription);
 
       }).then(() => {
-        logd('rtc createAnswer', webrtcLink);
+        logD("rtc createAnswer", webrtcLink);
         let [sdpPtr, sdpSiz] = allocPtrString(description.sdp);
-        ccall('webrtc_link_on_csd_success', 'null',
-          ['number', 'number', 'number'],
+        ccall("webrtc_link_on_csd_success", "null",
+          ["number", "number", "number"],
           [webrtcLink, sdpPtr, sdpSiz]);
         freePtr(sdpPtr);
 
       }).catch((e) => {
-        logd('rtc createAnswer error', webrtcLink, e);
-        ccall('webrtc_link_on_csd_failure', 'null',
-          ['number'],
+        logD("rtc createAnswer error", webrtcLink, e);
+        ccall("webrtc_link_on_csd_failure", "null",
+          ["number"],
           [webrtcLink]);
       });
 
@@ -1029,30 +956,30 @@ function webrtcLinkGetLocalSdp(webrtcLink, isRemoteSdpSet) {
         return peer.setLocalDescription(sessionDescription);
 
       }).then(() => {
-        logd('rtc createOffer', webrtcLink);
+        logD("rtc createOffer", webrtcLink);
         let [sdpPtr, sdpSiz] = allocPtrString(description.sdp);
-        ccall('webrtc_link_on_csd_success', 'null',
-          ['number', 'number', 'number'],
+        ccall("webrtc_link_on_csd_success", "null",
+          ["number", "number", "number"],
           [webrtcLink, sdpPtr, sdpSiz]);
         freePtr(sdpPtr);
 
       }).catch((e) => {
-        console.error(e);
-        ccall('webrtc_link_on_csd_failure', 'null',
-          ['number'],
+        logE(e);
+        ccall("webrtc_link_on_csd_failure", "null",
+          ["number"],
           [webrtcLink]);
       });
     }
 
   } catch (e) {
-    console.error(e);
+    logE(e);
   }
 }
 
 function webrtcLinkSend(webrtcLink, dataPtr, dataSiz) {
-  logd('rtc data send', webrtcLink);
+  logD("rtc data send", webrtcLink);
   try {
-    let link = availableWebrtcLinks[webrtcLink];
+    let link = availableWebrtcLinks.get(webrtcLink);
     let dataChannel = link.dataChannel;
 
     // avoid error : The provided ArrayBufferView value must not be shared.
@@ -1064,61 +991,61 @@ function webrtcLinkSend(webrtcLink, dataPtr, dataSiz) {
     dataChannel.send(data);
 
   } catch (e) {
-    console.error(e);
+    logE(e);
   }
 }
 
 function webrtcLinkSetRemoteSdp(webrtcLink, sdpPtr, sdpSiz, isOffer) {
   try {
-    let link = availableWebrtcLinks[webrtcLink];
+    let link = availableWebrtcLinks.get(webrtcLink);
     let peer = link.peer;
     let sdp = {
-      type: (isOffer ? 'offer' : 'answer'),
-      sdp: convertPointerToString(sdpPtr, sdpSiz)
+      type: (isOffer ? "offer" : "answer"),
+      sdp: UTF8ToString(sdpPtr, sdpSiz)
     };
     peer.setRemoteDescription(new RTCSessionDescription(sdp));
 
   } catch (e) {
-    console.error(e);
+    logE(e);
   }
 }
 
 function webrtcLinkUpdateIce(webrtcLink, icePtr, iceSiz) {
   try {
-    let link = availableWebrtcLinks[webrtcLink];
+    let link = availableWebrtcLinks.get(webrtcLink);
     let peer = link.peer;
-    let ice = JSON.parse(convertPointerToString(icePtr, iceSiz));
+    let ice = JSON.parse(UTF8ToString(icePtr, iceSiz));
 
     peer.addIceCandidate(new RTCIceCandidate(ice));
 
   } catch (e) {
-    console.error(e);
+    logE(e);
   }
 }
 
 /* Module object for emscripten. */
-Module['preRun'] = [];
-Module['postRun'] = [
+Module["preRun"] = [];
+Module["postRun"] = [
   initializeMap,
   initializePubsub2D,
   execFuncsAfterLoad
 ];
 
-Module['print'] = function (text) {
+Module["print"] = function (text) {
   if (arguments.length > 1) {
-    text = Array.prototype.slice.call(arguments).join(' ');
+    text = Array.prototype.slice.call(arguments).join(" ");
   }
-  console.log(text);
+  logD(text);
 };
 
-Module['printErr'] = function (text) {
+Module["printErr"] = function (text) {
   if (arguments.length > 1) {
-    text = Array.prototype.slice.call(arguments).join(' ');
+    text = Array.prototype.slice.call(arguments).join(" ");
   }
-  console.error(text);
+  logE(text);
 };
 
-Module['Colonio'] = Colonio;
-Module['Value'] = ColonioValue;
-Module['Map'] = ColonioMap;
-Module['Pubsub2D'] = ColonioPubsub2D;
+Module["Colonio"] = Colonio;
+Module["Value"] = ColonioValue;
+Module["Map"] = ColonioMap;
+Module["Pubsub2D"] = ColonioPubsub2D;
