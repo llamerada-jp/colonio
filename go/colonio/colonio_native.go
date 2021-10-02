@@ -222,6 +222,7 @@ func newValue(cValue *C.struct_colonio_value_s) Value {
 	}
 }
 
+// NewValue create a value instance managed by colonio
 func NewValue(v interface{}) (Value, error) {
 	val := &valueImpl{}
 	err := val.Set(v)

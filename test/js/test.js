@@ -1,12 +1,20 @@
-'use strict';
+"use strict";
 
-// const WebSocket = require('ws');
-// const { RTCPeerConnection, RTCSessionDescription } = require('wrtc');
-// const ColonioModule = require('./colonio');
+// const WebSocket = require("ws");
+// const { RTCPeerConnection, RTCSessionDescription } = require("wrtc");
+// const ColonioModule = require("./colonio");
 
-const URL = 'ws://localhost:8080/test';
-const TOKEN = '';
-const KEY = 'hoge';
+const URL = "ws://localhost:8080/test";
+const TOKEN = "";
+const KEY = "hoge";
+
+/*global ColonioModule*/
+// eslint-disable-next-line no-console
+let logD = console.log;
+// eslint-disable-next-line no-console
+let logE = console.error;
+// eslint-disable-next-line no-console
+let assert = console.assert;
 
 function test() {
   let node1;
@@ -15,74 +23,74 @@ function test() {
   let ps2;
   let timer;
 
-  return ColonioModule().then(colonio => {
-    console.log('new node1');
+  return ColonioModule().then((colonio) => {
+    logD("new node1");
     node1 = new colonio.Colonio();
-    node1.on('log', (l) => {
-      l.node = 'node1';
+    node1.on("log", (l) => {
+      l.node = "node1";
       if (l.level === colonio.Colonio.LOG_LEVEL_ERROR ||
         l.level === colonio.Colonio.LOG_LEVEL_WARN) {
-        console.error(l);
+        logE(l);
       } else {
-        console.log(l);
+        logD(l);
       }
     })
 
-    console.log('new node2');
+    logD("new node2");
     node2 = new colonio.Colonio();
-    node2.on('log', (l) => {
-      l.node = 'node2';
+    node2.on("log", (l) => {
+      l.node = "node2";
       if (l.level === colonio.Colonio.LOG_LEVEL_ERROR ||
         l.level === colonio.Colonio.LOG_LEVEL_WARN) {
-        console.error(l);
+        logE(l);
       } else {
-        console.log(l);
+        logD(l);
       }
-    })
+    });
 
-    console.log('node1.connect');
+    logD("node1.connect");
     return node1.connect(URL, TOKEN);
 
   }).then(() => {
-    console.log('node2.connect');
+    logD("node2.connect");
     return node2.connect(URL, TOKEN);
 
   }).then(() => {
-    console.log('node1.setPosition');
+    logD("node1.setPosition");
     return node1.setPosition(0, 0);
 
-  }).then(pos => {
+  }).then((pos) => {
     // check result
     if (pos.x !== 0 || pos.y !== 0) {
-      console.error("result", pos);
-      throw new Error('wrong result from node1.setPosition');
+      logE("result", pos);
+      throw new Error("wrong result from node1.setPosition");
     }
 
-    console.log('node2.setPosition');
+    logD("node2.setPosition");
     return node2.setPosition(0, 0);
 
-  }).then(pos => {
+  }).then((pos) => {
     // check result
     if (pos.x !== 0 || pos.y !== 0) {
-      console.error("result", pos);
-      throw new Error('wrong result from node1.setPosition');
+      logE("result", pos);
+      throw new Error("wrong result from node1.setPosition");
     }
 
-    console.log('get accessor');
-    ps1 = node1.accessPubsub2D('ps');
-    ps2 = node2.accessPubsub2D('ps');
+    logD("get accessor");
+    ps1 = node1.accessPubsub2D("ps");
+    ps2 = node2.accessPubsub2D("ps");
 
     timer = setInterval(() => {
-      console.log('publish data');
-      ps1.publish(KEY, 0, 0, 1.0, 'from ps1');
-      ps2.publish(KEY, 0, 0, 1.0, 'from ps2');
+      logD("publish data");
+      ps1.publish(KEY, 0, 0, 1.0, "from ps1");
+      ps2.publish(KEY, 0, 0, 1.0, "from ps2");
     }, 1000);
 
     return new Promise((resolve, reject) => {
-      console.log('ps1 waiting data');
+      logD("ps1 waiting data");
       ps1.on(KEY, (data) => {
-        console.log('receive ps1', data);
-        if (data === 'from ps2') {
+        logD("receive ps1", data);
+        if (data === "from ps2") {
           resolve();
         } else {
           reject();
@@ -92,10 +100,10 @@ function test() {
 
   }).then(() => {
     return new Promise((resolve, reject) => {
-      console.log('ps2 waiting data');
+      logD("ps2 waiting data");
       ps2.on(KEY, (data) => {
-        console.log('receive ps2', data);
-        if (data === 'from ps1') {
+        logD("receive ps2", data);
+        if (data === "from ps1") {
           resolve();
         } else {
           reject();
@@ -106,21 +114,21 @@ function test() {
   }).then(() => {
     clearInterval(timer);
 
-    console.log('node1.disconnect');
+    logD("node1.disconnect");
     return node1.disconnect();
 
   }).then(() => {
-    console.log('node2.disconnect');
+    logD("node2.disconnect");
     return node2.disconnect();
 
   }).then(() => {
-    let result = document.getElementById('result');
+    let result = document.getElementById("result");
     result.innerText = "SUCCESS";
 
   }).catch((e) => {
-    let result = document.getElementById('result');
+    let result = document.getElementById("result");
     result.innerText = "FAILURE";
-    console.error(e);
+    logE(e);
   });
 }
 

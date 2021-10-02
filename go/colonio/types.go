@@ -25,20 +25,24 @@ type Value interface {
 	GetString() (string, error)
 }
 
+// Options for Map interface's opt parameter
 const (
-	MAP_ERROR_WITHOUT_EXIST uint32 = 0x1
-	MAP_ERROR_WITH_EXIST    uint32 = 0x2
+	MapErrorWithoutExist uint32 = 0x1 // for del, unlock
+	MapErrorWithExist    uint32 = 0x2 // for set (haven't done enough testing)
 )
 
+// Map is an interface to use key-value-store.
 type Map interface {
 	Get(key interface{}) (Value, error)
 	Set(key, val interface{}, opt uint32) error
 }
 
+// Options for Pubsub2D interface's opt parameter
 const (
-	PUBSUB_2D_RAISE_NO_ONE_RECV uint32 = 0x1
+	Pubsub2DRaiseNoOneRecv uint32 = 0x1
 )
 
+// Pubsub2D is an interface to using publish–subscribe with 2D coordinate information.
 type Pubsub2D interface {
 	Publish(name string, x, y, r float64, val interface{}, opt uint32) error
 	On(name string, cb func(Value))

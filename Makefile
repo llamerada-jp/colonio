@@ -58,9 +58,9 @@ all: build
 
 .PHONY: setup
 setup:
-	if [ $(shell uname -s) = 'Linux' ]; then \
+	if [ $(shell uname -s) = "Linux" ]; then \
 		$(MAKE) setup-linux; \
-	elif [ $(shell uname -s) = 'Darwin' ]; then \
+	elif [ $(shell uname -s) = "Darwin" ]; then \
 		$(MAKE) setup-macos; \
 	else \
 		echo "this platform is not supported yet."; \
@@ -72,7 +72,7 @@ setup-linux:
 	$(SUDO) apt update
 	$(SUDO) apt -y install --no-install-recommends automake cmake build-essential ca-certificates curl git libcurl4-nss-dev libgoogle-glog-dev libpython3-dev libssl-dev libtool pkg-config pybind11-dev python3 python3-distutils python3-pybind11
 	$(MAKE) setup-local
-	if [ $(shell uname -m) = 'x86_64' ]; then $(MAKE) setup-wasm; fi
+	if [ $(shell uname -m) = "x86_64" ]; then $(MAKE) setup-wasm; fi
 
 .PHONY: setup-macos
 setup-macos:
@@ -80,14 +80,15 @@ setup-macos:
 	brew update
 	brew list > $(WORK_PATH)/BREW_PKGS
 	install_pkgs="" && upgrade_pkgs="" \
-	&& for p in autoconf automake cmake glog libtool libuv openssl@1.1 pkg-config pybind11; do \
-			if grep $${p} $(WORK_PATH)/BREW_PKGS; \
+	&& for p in autoconf automake cmake glog libtool libuv openssl@3 pkg-config pybind11; do \
+			if grep "$${p}" "$(WORK_PATH)/BREW_PKGS"; \
 			then upgrade_pkgs="$${upgrade_pkgs} $${p}"; \
 			else install_pkgs="$${install_pkgs} $${p}"; \
 			fi \
 		done \
-	&& if [ "$${upgrade_pkgs}" != '' ]; then brew upgrade $${upgrade_pkgs}; fi \
-	&& if [ "$${install_pkgs}" != '' ]; then brew install $${install_pkgs}; fi
+	&& if [ "$${upgrade_pkgs}" != "" ]; then brew upgrade $${upgrade_pkgs}; fi \
+	&& if [ "$${install_pkgs}" != "" ]; then brew install $${install_pkgs}; fi \
+	&& brew link --force openssl
 	$(MAKE) setup-local
 
 .PHONY: setup-local
@@ -130,9 +131,9 @@ setup-local:
 	# libwebrtc
 	cd $(WORK_PATH) \
 	&& curl -LOS $(LIBWEBRTC_URL) \
-	&& if [ $(shell uname -s) = 'Linux' ]; then \
+	&& if [ $(shell uname -s) = "Linux" ]; then \
 		tar -zx -C $(shell realpath $(LOCAL_ENV_PATH)) -f $(shell basename $(LIBWEBRTC_URL)); \
-	elif [ $(shell uname -s) = 'Darwin' ]; then \
+	elif [ $(shell uname -s) = "Darwin" ]; then \
 		unzip -o -d $(LOCAL_ENV_PATH) $(shell basename $(LIBWEBRTC_URL)); \
 	fi
 	# picojson
@@ -191,7 +192,7 @@ else ifeq ($(shell uname -m),aarch64)
 BUILD_TARGET = build-native
 endif
 build:
-	if [ $(shell uname -s) = 'Linux' ]; then \
+	if [ $(shell uname -s) = "Linux" ]; then \
 		docker run -v $(ROOT_PATH):$(ROOT_PATH):rw \
 			-u "$(shell id -u $(USER)):$(shell id -g $(USER))" \
 			$(DOCKER_IMAGE) \
@@ -203,7 +204,7 @@ build:
 			WITH_PYTHON=$(WITH_PYTHON) \
 			WITH_SAMPLE=$(WITH_SAMPLE) \
 			WITH_TEST=$(WITH_TEST); \
-	elif [ $(shell uname -s) = 'Darwin' ]; then \
+	elif [ $(shell uname -s) = "Darwin" ]; then \
 		$(MAKE) build-native; \
 	else \
 		echo "this platform is not supported yet."; \
@@ -234,8 +235,8 @@ build-native:
 		$(ROOT_PATH) \
 	&& $(MAKE) \
 	&& cp src/libcolonio.a $(OUTPUT_PATH) \
-	&& if [ $(shell uname -s) = 'Linux' ]; then cp $(LOCAL_ENV_PATH)/lib/lib*.so.* $(LOCAL_ENV_PATH)/lib/lib*.a $(OUTPUT_PATH)/lib; fi \
-	&& if [ $(shell uname -s) = 'Darwin' ]; then cp $(LOCAL_ENV_PATH)/lib/lib*.a $(OUTPUT_PATH)/lib; fi
+	&& if [ $(shell uname -s) = "Linux" ]; then cp $(LOCAL_ENV_PATH)/lib/lib*.so.* $(LOCAL_ENV_PATH)/lib/lib*.a $(OUTPUT_PATH)/lib; fi \
+	&& if [ $(shell uname -s) = "Darwin" ]; then cp $(LOCAL_ENV_PATH)/lib/lib*.a $(OUTPUT_PATH)/lib; fi
 
 .PHONY: build-wasm
 build-wasm:
