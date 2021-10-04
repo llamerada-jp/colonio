@@ -62,6 +62,10 @@ void ColonioImpl::api_on_recv_call(const api::Call& call) {
       api_set_position(call.id(), call.colonio_set_position());
       break;
 
+    case api::Call::ParamCase::kColonioSend:
+      api_send(call.id(), call.colonio_send());
+      break;
+
     default:
       colonio_fatal("Called incorrect colonio API entry : %d", call.param_case());
       break;
@@ -268,6 +272,10 @@ void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition&
   } else {
     api_failure(id, ErrorCode::CONFLICT_WITH_SETTING, "coordinate system was not enabled");
   }
+}
+
+void ColonioImpl::api_send(uint32_t id, const api::colonio::Send& param) {
+  send_packet();
 }
 
 void ColonioImpl::check_api_connect() {

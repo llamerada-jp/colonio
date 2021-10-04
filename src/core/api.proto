@@ -17,6 +17,7 @@ message Call {
     colonio.Connect colonio_connect = 1001;
     NoParam colonio_disconnect = 1002;
     colonio.SetPosition colonio_set_position = 1003;
+    colonio.Send colonio_send = 1004;
 
     map_api.Get map_get = 2001;
     map_api.Set map_set = 2002;
@@ -52,6 +53,7 @@ message Event {
 
   oneof param {
     colonio.LogEvent colonio_log = 1001;
+    colonio.OnReceive colonio_on_receive = 1002;
 
     pubsub_2d.OnEvent pubsub_2d_on = 3001;
   }

@@ -20,18 +20,25 @@
 #include "api.pb.h"
 #include "api_gate.hpp"
 #include "map_impl.hpp"
+#include "node_id.hpp"
 #include "pubsub_2d_impl.hpp"
+#include "value_impl.hpp"
 
 namespace colonio {
 
 const uint32_t Colonio::EXPLICIT_EVENT_THREAD;
 const uint32_t Colonio::EXPLICIT_CONTROLLER_THREAD;
 
+// options for send method
+const uint32_t Colonio::SEND_ACCEPT_NEARBY;
+const uint32_t Colonio::SEND_RAISE_NO_ONE_RECV;
+
 class Colonio::Impl {
  public:
   bool enabled;
   APIGate api_gate;
   NodeID local_nid;
+  std::map<std::string, std::function<void(const std::string&, const Value&)>> receivers;
   std::map<std::string, std::unique_ptr<Map>> maps;
   std::map<std::string, std::unique_ptr<Pubsub2D>> pubsub_2ds;
 
@@ -45,6 +52,14 @@ Colonio::Colonio(uint32_t opt) : impl(std::make_unique<Colonio::Impl>()) {
       case api::Event::ParamCase::kColonioLog: {
         const api::colonio::LogEvent& l = e.colonio_log();
         on_output_log(l.json());
+      } break;
+
+      case api::Event::ParamCase::kColonioOnReceive: {
+        const api::colonio::OnReceive& r = e.colonio_on_receive();
+        auto it                          = impl->receivers.find(r.name());
+        if (it != impl->receivers.end()) {
+          it->second(NodeID::from_pb(r.src_nid()).to_str(), ValueImpl::from_pb(r.value()));
+        }
       } break;
 
       default:
@@ -247,6 +262,56 @@ void Colonio::set_position(
       on_failure(*this, get_error(reply));
     }
   });
+}
+
+void Colonio::send(const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt) {
+  assert(impl);
+  api::Call call;
+  api::colonio::Send* api = call.mutable_colonio_send();
+  NodeID::from_str(dst_nid).to_pb(api->mutable_dst_nid());
+  api->set_name(name);
+  ValueImpl::to_pb(api->mutable_value(), value);
+  api->set_opt(opt);
+
+  std::unique_ptr<api::Reply> reply = impl->api_gate.call_sync(APIChannel::COLONIO, call);
+  if (!reply->has_success()) {
+    throw get_exception(*reply);
+  }
+}
+
+void Colonio::send(
+    const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt,
+    std::function<void(Colonio&)> on_success, std::function<void(Colonio&, const Error&)> on_failure) {
+  assert(impl);
+  api::Call call;
+  api::colonio::Send* api = call.mutable_colonio_send();
+  NodeID::from_str(dst_nid).to_pb(api->mutable_dst_nid());
+  api->set_name(name);
+  ValueImpl::to_pb(api->mutable_value(), value);
+  api->set_opt(opt);
+
+  impl->api_gate.call_async(APIChannel::COLONIO, call, [on_success, on_failure, this](const api::Reply& reply) {
+    if (reply.has_success()) {
+      on_success(*this);
+    } else {
+      on_failure(*this, get_error(reply));
+    }
+  });
+}
+
+void Colonio::on(const std::string& name, const std::function<void(const std::string&, const Value&)>& receiver) {
+  assert(impl);
+
+  impl->receivers.insert(std::make_pair(name, receiver));
+}
+
+void Colonio::off(const std::string& name) {
+  assert(impl);
+
+  auto it = impl->receivers.find(name);
+  if (it != impl->receivers.end()) {
+    impl->receivers.erase(it);
+  }
 }
 
 void Colonio::start_on_event_thread() {

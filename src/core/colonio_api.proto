@@ -32,6 +32,19 @@ message SetPositionReply {
   core.Coordinate position = 1;
 }
 
+message Send {
+  core.NodeID dst_nid = 1;
+  string name = 2;
+  core.Value value = 3;
+  uint32 opt = 4;
+}
+
+message OnReceive {
+  string name = 1;
+  core.NodeID src_nid = 2;
+  core.Value value = 3;
+}
+
 message LogEvent {
   string json  = 1;
 }

@@ -34,6 +34,7 @@ class Context;
 
 class ColonioImpl : public APIBase,
                     public ModuleDelegate,
+                    public ModuleBase,
                     public NodeAccessorDelegate,
                     public RoutingDelegate,
                     public SeedAccessorDelegate,
@@ -92,6 +93,7 @@ class ColonioImpl : public APIBase,
   void api_connect(uint32_t id, const api::colonio::Connect& param);
   void api_disconnect(uint32_t id);
   void api_set_position(uint32_t id, const api::colonio::SetPosition& param);
+  void api_send(uint32_t id, const api::colonio::Send& param);
   void check_api_connect();
   void initialize_algorithms();
   void on_change_accessor_status();

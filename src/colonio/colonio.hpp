@@ -185,6 +185,17 @@ class Colonio {
       double x, double y, std::function<void(Colonio&, double, double)> on_success,
       std::function<void(Colonio&, const Error&)> on_failure);
 
+  // options
+  static const uint32_t SEND_ACCEPT_NEARBY     = 0x01;
+  static const uint32_t SEND_RAISE_NO_ONE_RECV = 0x02;
+
+  void send(const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt = 0x00);
+  void send(
+      const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt,
+      std::function<void(Colonio&)> on_success, std::function<void(Colonio&, const Error&)> on_failure);
+  void on(const std::string& name, const std::function<void(const std::string&, const Value&)>& receiver);
+  void off(const std::string& name);
+
   void start_on_event_thread();
   void start_on_controller_thread();
 
