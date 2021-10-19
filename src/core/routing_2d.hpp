@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,10 @@
 
 namespace colonio {
 class CoordSystem;
-class Context;
 
 class Routing2D : public RoutingAlgorithm {
  public:
-  Routing2D(Context& context_, RoutingAlgorithm2DDelegate& delegate_, const CoordSystem& coord_system_);
+  Routing2D(ModuleParam& param, RoutingAlgorithm2DDelegate& delegate_, const CoordSystem& coord_system_);
 
   const std::set<NodeID>& get_required_nodes() override;
   void on_change_local_position(const Coordinate& position) override;
@@ -42,7 +41,9 @@ class Routing2D : public RoutingAlgorithm {
     Coordinate position;
     std::map<NodeID, Coordinate> nodes;
   };
-  Context& context;
+
+  Logger& logger;
+  const NodeID& local_nid;
   RoutingAlgorithm2DDelegate& delegate;
   const CoordSystem& coord_system;
 

@@ -1,7 +1,7 @@
 SHELL := /bin/bash -o pipefail
 
 # version (yyyymmdd)
-DOCKER_IMAGE_VERSION := 20210409a
+DOCKER_IMAGE_VERSION := 20211117a
 DOCKER_IMAGE_NAME := ghcr.io/llamerada-jp/colonio-buildenv
 DOCKER_IMAGE := $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_VERSION)
 
@@ -22,18 +22,22 @@ WASM_BUILD_PATH := $(ROOT_PATH)/build/webassembly
 export SUDO ?= sudo
 
 # the versions of depending packages
-ASIO_TAG := asio-1-18-1
-CPP_ALGORITHMS_HASH := 5de21c513796a39f31e1db02a62fdb8dcc8ea775
-EMSCRIPTEN_VERSION := 2.0.16
-GTEST_VERSION := 1.10.0
-LIBUV_VERSION := 1.41.0
+ASIO_TAG := asio-1-21-0
+CPP_ALGORITHMS_HASH := 1ba3fde9c4b1d067986f5243a0f03daffa501ae2
+EMSCRIPTEN_VERSION := 2.0.34
+GTEST_VERSION := 1.11.0
+LIBUV_VERSION := 1.42.0
 ifeq ($(shell uname -s),Darwin)
-LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m89/libwebrtc-89.0.4389.114-macos-amd64.zip"
+LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m96/libwebrtc-96.0.4664.45-macos-amd64.zip"
 else ifeq ($(shell uname -s),Linux)
 	ifeq ($(shell uname -m),x86_64)
-	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m89.2/libwebrtc-89.0.4389.114-linux-amd64.tar.gz"
+	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m96/libwebrtc-96.0.4664.45-linux-amd64.tar.gz"
 	else ifeq ($(shell uname -m),aarch64)
-	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m89/libwebrtc-89.0.4389.114-linux-arm64.tar.gz"
+	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m96/libwebrtc-96.0.4664.45-linux-arm64.tar.gz"
+	else ifeq ($(shell uname -m),arm)
+	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m96/libwebrtc-96.0.4664.45-linux-armhf.tar.gz"
+	else
+	exit 1
 	endif
 endif
 PICOJSON_VERSION := 1.3.0
@@ -42,7 +46,9 @@ WEBSOCKETPP_VERSION := 0.8.2
 
 # build options
 BUILD_TYPE ?= Release
+CTEST_ARGS ?= ""
 DESTDIR ?= /usr/local
+SKIP_SETUP_LOCAL ?= OFF
 WITH_COVERAGE ?= OFF
 WITH_GPROF ?= OFF
 WITH_PYTHON ?= ON
@@ -70,9 +76,9 @@ setup:
 setup-linux:
 	export DEBIAN_FRONTEND=noninteractive
 	$(SUDO) apt update
-	$(SUDO) apt -y install --no-install-recommends automake cmake build-essential ca-certificates curl git libcurl4-nss-dev libgoogle-glog-dev libpython3-dev libssl-dev libtool pkg-config pybind11-dev python3 python3-distutils python3-pybind11
-	$(MAKE) setup-local
-	if [ $(shell uname -m) = "x86_64" ]; then $(MAKE) setup-wasm; fi
+	$(SUDO) apt -y install --no-install-recommends automake cmake build-essential ca-certificates curl git libcurl4-nss-dev libpython3-dev libssl-dev libtool pkg-config pybind11-dev python3 python3-distutils python3-pybind11
+	if [ $(SKIP_SETUP_LOCAL) = "OFF" ]; then $(MAKE) setup-local; fi
+	if [ $(SKIP_SETUP_LOCAL) = "OFF" -a $(shell uname -m) = "x86_64" ]; then $(MAKE) setup-wasm; fi
 
 .PHONY: setup-macos
 setup-macos:
@@ -80,7 +86,7 @@ setup-macos:
 	brew update
 	brew list > $(WORK_PATH)/BREW_PKGS
 	install_pkgs="" && upgrade_pkgs="" \
-	&& for p in autoconf automake cmake glog libtool libuv openssl@3 pkg-config pybind11; do \
+	&& for p in autoconf automake cmake libtool openssl@3 pkg-config pybind11; do \
 			if grep "$${p}" "$(WORK_PATH)/BREW_PKGS"; \
 			then upgrade_pkgs="$${upgrade_pkgs} $${p}"; \
 			else install_pkgs="$${install_pkgs} $${p}"; \
@@ -89,7 +95,7 @@ setup-macos:
 	&& if [ "$${upgrade_pkgs}" != "" ]; then brew upgrade $${upgrade_pkgs}; fi \
 	&& if [ "$${install_pkgs}" != "" ]; then brew install $${install_pkgs}; fi \
 	&& brew link --force openssl
-	$(MAKE) setup-local
+	if [ $(SKIP_SETUP_LOCAL) = "OFF" ]; then $(MAKE) setup-local; fi
 
 .PHONY: setup-local
 setup-local:
@@ -117,15 +123,6 @@ setup-local:
 	&& cd googletest \
 	&& git submodule update --init --recursive \
 	&& cmake -DCMAKE_INSTALL_PREFIX=$(LOCAL_ENV_PATH) . \
-	&& $(MAKE) \
-	&& $(MAKE) install
-	# libuv
-	cd $(WORK_PATH) \
-	&& curl -LOS http://dist.libuv.org/dist/v$(LIBUV_VERSION)/libuv-v$(LIBUV_VERSION).tar.gz \
-	&& tar zxf libuv-v$(LIBUV_VERSION).tar.gz \
-	&& cd libuv-v$(LIBUV_VERSION) \
-	&& sh autogen.sh \
-	&& ./configure --prefix=$(LOCAL_ENV_PATH) \
 	&& $(MAKE) \
 	&& $(MAKE) install
 	# libwebrtc
@@ -213,9 +210,13 @@ build:
 .PHONY: test
 test:
 	# C/C++
-	LD_LIBRARY_PATH=$(OUTPUT_PATH)/lib $(MAKE) -C $(NATIVE_BUILD_PATH) test
+	LD_LIBRARY_PATH=$(OUTPUT_PATH)/lib $(MAKE) -C $(NATIVE_BUILD_PATH) CTEST_OUTPUT_ON_FAILURE=1 test ARGS='$(CTEST_ARGS)'
 	# golang
 	$(MAKE) -C go test_native
+
+.PHONY: format-code
+format-code:
+	find {src,test} -name "*.cpp" -or -name "*.hpp" -exec clang-format -i {} \;
 	
 .PHONY: build-native
 build-native:

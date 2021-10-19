@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,18 +29,16 @@
 #include <string>
 #include <thread>
 
-#include "webrtc_context.hpp"
+#include "webrtc_link.hpp"
 
 namespace colonio {
-class Context;
-
-class WebrtcLinkNative : public WebrtcLinkBase {
+class WebrtcLinkNative : public WebrtcLink {
  public:
-  WebrtcLinkNative(WebrtcLinkDelegate& delegate_, Context& context_, WebrtcContext& webrtc_context, bool is_create_dc);
+  WebrtcLinkNative(WebrtcLinkParam& param, bool is_create_dc);
   virtual ~WebrtcLinkNative();
 
   void disconnect() override;
-  void get_local_sdp(std::function<void(const std::string&)> func) override;
+  void get_local_sdp(std::function<void(const std::string&)>&& func) override;
   LinkStatus::Type get_status() override;
   bool send(const std::string& data) override;
   void set_remote_sdp(const std::string& sdp) override;
@@ -119,16 +117,7 @@ class WebrtcLinkNative : public WebrtcLinkBase {
   LinkStatus::Type dco_status;
   LinkStatus::Type pco_status;
 
-  std::mutex mutex_ice;
-  std::deque<std::unique_ptr<picojson::object>> ice_que;
-
-  std::mutex mutex_data;
-  std::deque<std::unique_ptr<std::string>> data_que;
-
   void on_change_status();
-  void on_error();
-  void on_ice_candidate();
-  void on_recv_data();
 
   void on_csd_success(webrtc::SessionDescriptionInterface* desc);
   void on_csd_failure(const std::string& error);
@@ -138,6 +127,4 @@ class WebrtcLinkNative : public WebrtcLinkBase {
   void on_pco_ice_candidate(const webrtc::IceCandidateInterface* candidate);
   void on_ssd_failure(const std::string& error);
 };
-
-typedef WebrtcLinkNative WebrtcLink;
 }  // namespace colonio

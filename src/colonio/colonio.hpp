@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 
 #include <colonio/definition.hpp>
 #include <colonio/error.hpp>
-#include <colonio/exception.hpp>
 #include <colonio/map.hpp>
 #include <colonio/pubsub_2d.hpp>
 #include <colonio/value.hpp>
@@ -30,7 +29,6 @@
  * @brief All the functions of colonio are defined in the colonio namespace.
  */
 namespace colonio {
-
 /**
  * @brief Main class of colonio. One instance is equivalent to one node.
  */
@@ -39,11 +37,18 @@ class Colonio {
   // options
   static const uint32_t EXPLICIT_EVENT_THREAD      = 0x1;
   static const uint32_t EXPLICIT_CONTROLLER_THREAD = 0x2;
-
   /**
-   * @brief Construct a new Colonio object.
+   * Log messages in JSON format.
+   *
+   * json["file"]    : Log output file name.
+   * json["level"]   : The urgency of the log.
+   * json["line"]    : Log output line number.
+   * json["message"] : Readable log messages.
+   * json["param"]   : The parameters that attached for the log.
+   * json["time"]    : Log output time.
    */
-  Colonio(uint32_t opt = 0);
+  static Colonio* new_instance(
+      std::function<void(Colonio&, const std::string&)>&& log_receiver = nullptr, uint32_t opt = 0);
 
   /**
    * @brief Destroy the Colonio object.
@@ -65,11 +70,11 @@ class Colonio {
    * Get @ref Map accessor associated with the name.
    * If you get an ACCESSOR with the same name, the reference to the same instance will return.
    * Map's name and other parameters, pre-set to seed, are applied.
-   * If accessor is not set, @ref Exception will be throw.
+   * If accessor is not set, @ref Error will be throw.
    *
    * @sa Map
    */
-  Map& access_map(const std::string& name);
+  virtual Map& access_map(const std::string& name) = 0;
 
   /**
    * @brief Get a @ref Pubusb2D accessor.
@@ -80,11 +85,11 @@ class Colonio {
    * Get @ref Pubsub2D accessor associated with the name.
    * If you get an ACCESSOR with the same name, the reference to the same instance will return.
    * Pubsub2D's name and other parameters, pre-set to seed, are applied.
-   * If accessor is not set, @ref Exception will be throw.
+   * If accessor is not set, @ref Error will be throw.
    *
    * @sa Pubsub2D
    */
-  Pubsub2D& access_pubsub_2d(const std::string& name);
+  virtual Pubsub2D& access_pubsub_2d(const std::string& name) = 0;
 
   /**
    * @brief Connect to seed and join the cluster.
@@ -96,12 +101,12 @@ class Colonio {
    * This method works synchronously and waits for the connection to the cluster to be established.
    * If this method is successful, it will automatically reconnect until disconnect will be called.
    * If you want to work asynchronously, use a asynchronous connect method instead.
-   * This method throws @ref Exception when an error occurs. At successful completion, nothing is returned.
+   * This method throws @ref Error when an error occurs. At successful completion, nothing is returned.
    *
-   * @sa Colonio::connect(const std::string& url, const std::string& token, std::function<void(Colonio&)> on_success,
-   *     std::function<void(Colonio&, const Error&)> on_failure)
+   * @sa Colonio::connect(const std::string& url, const std::string& token, std::Exce<void(Colonio&)>&& on_success,
+   *     std::function<void(Colonio&, const Error&)>&& on_failure)
    */
-  void connect(const std::string& url, const std::string& token);
+  virtual void connect(const std::string& url, const std::string& token) = 0;
 
   /**
    * @brief Connect to seed and join the cluster asynchronously.
@@ -117,11 +122,10 @@ class Colonio {
    *
    * @sa connect(const std::string& url, const std::string& token)
    */
-  void connect(
-      const std::string& url, const std::string& token, std::function<void(Colonio&)> on_success,
-      std::function<void(Colonio&, const Error&)> on_failure);
+  virtual void connect(
+      const std::string& url, const std::string& token, std::function<void(Colonio&)>&& on_success,
+      std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
 
-#ifndef EMSCRIPTEN
   /**
    * @brief Disconnect from the cluster and the seed.
    *
@@ -129,12 +133,13 @@ class Colonio {
    * This method must not be used in any other callback in colonio because of stopping the thread and releasing
    * resources.
    * Once a disconnected colonio instance is reused, it is not guaranteed to work.
-   * This method throws @ref Exception when an error occurs. At successful completion, nothing is returned.
+   * This method throws @ref Error when an error occurs. At successful completion, nothing is returned.
    */
-  void disconnect();
-#else
-  void disconnect(std::function<void(Colonio&)> on_success, std::function<void(Colonio&, const Error&)> on_failure);
-#endif
+  virtual void disconnect() = 0;
+  virtual void disconnect(
+      std::function<void(Colonio&)>&& on_success, std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
+
+  virtual bool is_connected() = 0;
 
   /**
    * @brief Get the node-id of this node.
@@ -145,7 +150,7 @@ class Colonio {
    *
    * @return std::string The node-id of this node.
    */
-  std::string get_local_nid();
+  virtual std::string get_local_nid() = 0;
 
   /**
    * @brief Sets the current position of the node.
@@ -155,16 +160,16 @@ class Colonio {
    * This method works synchronously, If you want to work asynchronously, use a asynchronous set_position method
    * instead.
    *
-   * @param x Horizontal coordinate.
-   * @param y Vertical coordinate.
-   * @return std::tuple<double, double> The rounded coordinates will be returned to the input coordinates.
-   *
    * @sa Pubsub2D,
    *     set_position(
    *       double x, double y, std::function<void(Colonio&, double, double)> on_success,
    *       std::function<void(Colonio&, const Error&)> on_failure);
+   *
+   * @param x Horizontal coordinate.
+   * @param y Vertical coordinate.
+   * @return std::tuple<double, double> The rounded coordinates will be returned to the input coordinates.
    */
-  std::tuple<double, double> set_position(double x, double y);
+  virtual std::tuple<double, double> set_position(double x, double y) = 0;
 
   /**
    * @brief Sets the current position of the node asynchronously.
@@ -181,34 +186,31 @@ class Colonio {
    * @sa Pubsub2D,
    *     set_position(double x, double y)
    */
-  void set_position(
+  virtual void set_position(
       double x, double y, std::function<void(Colonio&, double, double)> on_success,
-      std::function<void(Colonio&, const Error&)> on_failure);
+      std::function<void(Colonio&, const Error&)> on_failure) = 0;
 
-  void start_on_event_thread();
-  void start_on_controller_thread();
+  // options
+  static const uint32_t SEND_ACCEPT_NEARBY      = 0x01;
+  static const uint32_t CONFIRM_RECEIVER_RESULT = 0x02;
+
+  virtual void send(const std::string& dst_nid, const Value& value, uint32_t opt = 0x00) = 0;
+  virtual void send(
+      const std::string& dst_nid, const Value& value, uint32_t opt, std::function<void(Colonio&)>&& on_success,
+      std::function<void(Colonio&, const Error&)>&& on_failure)           = 0;
+  virtual void on(std::function<void(Colonio&, const Value&)>&& receiver) = 0;
+  virtual void off()                                                      = 0;
+
+  virtual void start_on_event_thread()      = 0;
+  virtual void start_on_controller_thread() = 0;
 
  protected:
   /**
-   * @brief You can set the log output destination by overriding this method.
-   *
-   * json["file"]    : Log output file name.
-   * json["level"]   : The urgency of the log.
-   * json["line"]    : Log output line number.
-   * json["message"] : Readable log messages.
-   * json["param"]   : The parameters that attached for the log.
-   * json["time"]    : Log output time.
-   *
-   * This method is executed in a specific thread and must be exclusive if required.
-   *
-   * @param json Log messages in JSON format.
+   * @brief Construct a new Colonio object.
    */
-  virtual void on_output_log(const std::string& json);
+  Colonio();
 
  private:
-  class Impl;
-  std::unique_ptr<Impl> impl;
-
   Colonio(const Colonio&);
   Colonio& operator=(const Colonio&);
 };

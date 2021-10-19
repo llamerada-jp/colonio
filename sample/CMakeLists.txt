@@ -1,9 +1,4 @@
 ##
-## Common build option.
-##
-list(APPEND extra_libs "glog")
-
-##
 ## simple_cpp
 ##
 add_executable(simple_cpp
@@ -13,4 +8,5 @@ target_link_libraries(simple_cpp
   colonio
   ${webrtc_libs}
   ${extra_libs}
+  pthread
   )

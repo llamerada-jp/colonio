@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,24 +17,28 @@
 
 #include <picojson.h>
 
-#include <ctime>
 #include <functional>
+#include <memory>
 #include <string>
 
 #include "definition.hpp"
 #include "node_id.hpp"
-#include "webrtc_context.hpp"
 
 namespace colonio {
-class Context;
+class Logger;
+class Scheduler;
+class WebrtcContext;
+class WebrtcLink;
+class WebrtcLinkDelegate;
 
-#ifndef EMSCRIPTEN
-class WebrtcLinkNative;
-typedef WebrtcLinkNative WebrtcLink;
-#else
-class WebrtcLinkWasm;
-typedef WebrtcLinkWasm WebrtcLink;
-#endif
+struct WebrtcLinkParam {
+  WebrtcLinkDelegate& delegate;
+  Logger& logger;
+  Scheduler& scheduler;
+  WebrtcContext& context;
+
+  WebrtcLinkParam(WebrtcLinkDelegate& delegate_, Logger& logger_, Scheduler& scheduler_, WebrtcContext& context_);
+};
 
 class WebrtcLinkDelegate {
  public:
@@ -45,7 +49,7 @@ class WebrtcLinkDelegate {
   virtual void webrtc_link_on_recv_data(WebrtcLink& link, const std::string& data)      = 0;
 };
 
-class WebrtcLinkBase {
+class WebrtcLink {
  public:
   class InitData {
    public:
@@ -58,13 +62,14 @@ class WebrtcLinkBase {
     InitData();
     virtual ~InitData();
 
-    void hook_on_delete(std::function<void(void*)> func, void* v);
+    void hook_on_delete(std::function<void(void*)>&& func, void* v);
 
    private:
     bool has_delete_func;
     std::function<void(void*)> on_delete_func;
     void* on_delete_v;
   };
+
   /// Opposite peer's node-id.
   NodeID nid;
   /// Event handler.
@@ -72,24 +77,21 @@ class WebrtcLinkBase {
   ///
   std::unique_ptr<InitData> init_data;
 
-  WebrtcLinkBase(WebrtcLinkDelegate& delegate_, Context& context_, WebrtcContext& webrtc_context);
-  virtual ~WebrtcLinkBase();
+  static WebrtcLink* new_instance(WebrtcLinkParam& param, bool is_create_dc);
 
-  virtual void disconnect()                                                = 0;
-  virtual void get_local_sdp(std::function<void(const std::string&)> func) = 0;
-  virtual LinkStatus::Type get_status()                                    = 0;
-  virtual bool send(const std::string& data)                               = 0;
-  virtual void set_remote_sdp(const std::string& sdp)                      = 0;
-  virtual void update_ice(const picojson::object& ice)                     = 0;
+  WebrtcLink(WebrtcLinkParam& param);
+  virtual ~WebrtcLink();
+
+  virtual void disconnect()                                                  = 0;
+  virtual void get_local_sdp(std::function<void(const std::string&)>&& func) = 0;
+  virtual LinkStatus::Type get_status()                                      = 0;
+  virtual bool send(const std::string& data)                                 = 0;
+  virtual void set_remote_sdp(const std::string& sdp)                        = 0;
+  virtual void update_ice(const picojson::object& ice)                       = 0;
 
  protected:
-  Context& context;
+  Logger& logger;
+  Scheduler& scheduler;
   WebrtcContext& webrtc_context;
 };
 }  // namespace colonio
-
-#ifndef EMSCRIPTEN
-#  include "webrtc_link_native.hpp"
-#else
-#  include "webrtc_link_wasm.hpp"
-#endif

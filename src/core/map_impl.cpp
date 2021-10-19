@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,70 +16,90 @@
 
 #include "map_impl.hpp"
 
+#include "colonio/error.hpp"
+#include "map_base.hpp"
+#include "pipe.hpp"
+#include "scheduler.hpp"
 #include "value_impl.hpp"
 
 namespace colonio {
 
-MapImpl ::MapImpl(APIGate& api_gate_, APIChannel::Type channel_) : api_gate(api_gate_), channel(channel_) {
+MapImpl::MapImpl(MapBase& base_) : base(base_) {
 }
 
-Value MapImpl ::get(const Value& key) {
-  api::Call call;
-  api::map_api::Get* api = call.mutable_map_get();
-  ValueImpl::to_pb(api->mutable_key(), key);
-
-  std::unique_ptr<api::Reply> reply = api_gate.call_sync(channel, call);
-  if (reply->has_map_get()) {
-    return ValueImpl::from_pb(reply->map_get().value());
-  } else {
-    throw get_exception(*reply);
-  }
-}
-
-void MapImpl::get(
-    const Value& key, std::function<void(Map&, const Value&)> on_success,
-    std::function<void(Map&, const Error&)> on_failure) {
-  api::Call call;
-  api::map_api::Get* api = call.mutable_map_get();
-  ValueImpl::to_pb(api->mutable_key(), key);
-
-  api_gate.call_async(channel, call, [on_success, on_failure, this](const api::Reply& reply) {
-    if (reply.has_map_get()) {
-      on_success(*this, ValueImpl::from_pb(reply.map_get().value()));
-    } else {
-      on_failure(*this, get_error(reply));
-    }
+void MapImpl::each_local_value(std::function<void(Map&, const Value&, const Value&)>&& func) {
+  base.each_local_value([this, &func](const Value& key, const Value& value) {
+    func(*this, key, value);
   });
 }
 
-void MapImpl::set(const Value& key, const Value& value, uint32_t opt) {
-  api::Call call;
-  api::map_api::Set* api = call.mutable_map_set();
-  ValueImpl::to_pb(api->mutable_key(), key);
-  ValueImpl::to_pb(api->mutable_value(), value);
-  api->set_opt(opt);
+Value MapImpl::get(const Value& key) {
+  Pipe<Value> pipe;
 
-  std::unique_ptr<api::Reply> reply = api_gate.call_sync(channel, call);
-  if (!reply->has_success()) {
-    throw get_exception(*reply);
+  base.get(
+      key,
+      [&pipe](const Value& value) {
+        pipe.push(value);
+      },
+      [&pipe](const Error& error) {
+        pipe.pushError(error);
+      });
+
+  Value* value;
+  Error* e;
+  std::tie(value, e) = pipe.pop();
+
+  if (e != nullptr) {
+    throw *e;
+  }
+
+  return *value;
+}
+
+void MapImpl::get(
+    const Value& key, std::function<void(Map&, const Value&)>&& on_success,
+    std::function<void(Map&, const Error&)>&& on_failure) {
+  base.get(
+      key,
+      [this, on_success](const Value& value) {
+        on_success(*this, value);
+      },
+      [this, on_failure](const Error& error) {
+        on_failure(*this, error);
+      });
+}
+
+void MapImpl::set(const Value& key, const Value& value, uint32_t opt) {
+  Pipe<int> pipe;
+
+  base.set(
+      key, value, opt,
+      [&pipe]() {
+        pipe.push(1);
+      },
+      [&pipe](const Error& error) {
+        pipe.pushError(error);
+      });
+
+  int* dummy;
+  Error* e;
+  std::tie(dummy, e) = pipe.pop();
+
+  if (e != nullptr) {
+    throw *e;
   }
 }
 
 void MapImpl::set(
-    const Value& key, const Value& value, uint32_t opt, std::function<void(Map&)> on_success,
-    std::function<void(Map&, const Error&)> on_failure) {
-  api::Call call;
-  api::map_api::Set* api = call.mutable_map_set();
-  ValueImpl::to_pb(api->mutable_key(), key);
-  ValueImpl::to_pb(api->mutable_value(), value);
-  api->set_opt(opt);
-
-  api_gate.call_async(channel, call, [on_success, on_failure, this](const api::Reply& reply) {
-    if (reply.has_success()) {
-      on_success(*this);
-    } else {
-      on_failure(*this, get_error(reply));
-    }
-  });
+    const Value& key, const Value& value, uint32_t opt, std::function<void(Map&)>&& on_success,
+    std::function<void(Map&, const Error&)>&& on_failure) {
+  base.set(
+      key, value, opt,
+      [this, on_success]() {
+        on_success(*this);
+      },
+      [this, on_failure](const Error& error) {
+        on_failure(*this, error);
+      });
 }
 }  // namespace colonio

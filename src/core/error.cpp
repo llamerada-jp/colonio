@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,5 +18,9 @@
 
 namespace colonio {
 Error::Error(ErrorCode code_, const std::string& message_) : code(code_), message(message_) {
+}
+
+const char* Error::what() const noexcept {
+  return message.c_str();
 }
 }  // namespace colonio

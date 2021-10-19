@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,10 +22,21 @@
 #include "node_id.hpp"
 
 namespace colonio {
-class ModuleBase;
 class Command;
-class Context;
+class Logger;
+class ModuleBase;
+class ModuleDelegate;
 class Packet;
+class Random;
+class Scheduler;
+
+struct ModuleParam {
+  ModuleDelegate& delegate;
+  Logger& logger;
+  Random& random;
+  Scheduler& scheduler;
+  const NodeID& local_nid;
+};
 
 class ModuleDelegate {
  public:
@@ -37,8 +48,7 @@ class ModuleDelegate {
 
 class ModuleBase {
  public:
-  const APIChannel::Type channel;
-  const ModuleChannel::Type module_channel;
+  const Channel::Type channel;
 
   virtual ~ModuleBase();
 
@@ -50,10 +60,12 @@ class ModuleBase {
   void reset();
 
  protected:
-  Context& context;
+  Logger& logger;
+  Random& random;
+  Scheduler& scheduler;
+  const NodeID& local_nid;
 
-  ModuleBase(
-      Context& context_, ModuleDelegate& delegate_, APIChannel::Type channel_, ModuleChannel::Type module_channel_);
+  ModuleBase(ModuleParam& param, Channel::Type channel_);
 
   virtual void module_process_command(std::unique_ptr<const Packet> packet) = 0;
 
@@ -80,8 +92,7 @@ class ModuleBase {
     NodeID src_nid;
     uint32_t packet_id;
     PacketMode::Type mode;
-    APIChannel::Type channel;
-    ModuleChannel::Type module_channel;
+    // Channel::Type channel;
     CommandID::Type command_id;
     std::shared_ptr<const std::string> content;
 

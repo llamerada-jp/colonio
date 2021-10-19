@@ -4,6 +4,7 @@ AccessModifierOffset: -1
 AlignAfterOpenBracket: 'AlwaysBreak'
 AlignConsecutiveAssignments: true
 AllowShortFunctionsOnASingleLine: 'None'
+AllowShortLambdasOnASingleLine: 'Empty'
 AlwaysBreakAfterReturnType: 'None'
 AlwaysBreakTemplateDeclarations: true
 BreakConstructorInitializersBeforeComma: true

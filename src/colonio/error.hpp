@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,14 +22,14 @@
 namespace colonio {
 
 /**
- * @brief Error information. This is used when the asynchronous method calls a failed callback.
+ * @brief Error information. This is used when the asynchronous method calls a failed callback and is thrown when an
+ * error occurs in a synchronous method.
  *
  * The code and message are set to the same content as the Exception.
  *
- * @sa ErrorCode,
- *     Exception
+ * @sa ErrorCode
  */
-class Error {
+class Error : public std::exception {
  public:
   /// Code to indicate the cause of the error.
   const ErrorCode code;
@@ -43,5 +43,12 @@ class Error {
    * @param message_ A detailed message string for display or bug report.
    */
   explicit Error(ErrorCode code_, const std::string& message_);
+
+  /**
+   * @brief Override the standard method to output message.
+   *
+   * @return const char* The message is returned as it is.
+   */
+  const char* what() const noexcept override;
 };
 }  // namespace colonio

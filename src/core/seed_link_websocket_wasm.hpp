@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,13 @@
 #include "seed_link.hpp"
 
 namespace colonio {
-class SeedLinkWebsocketWasm : public SeedLinkBase {
+class SeedLinkWebsocketWasm : public SeedLink {
  public:
 #ifndef NDEBUG
   SeedLinkWebsocketWasm* debug_ptr;
 #endif
 
-  SeedLinkWebsocketWasm(SeedLinkDelegate& delegate_, Context& context_);
+  explicit SeedLinkWebsocketWasm(SeedLinkParam& param);
   virtual ~SeedLinkWebsocketWasm();
 
   // SeedlinkBase
@@ -32,6 +32,4 @@ class SeedLinkWebsocketWasm : public SeedLinkBase {
   void disconnect() override;
   void send(const std::string& data) override;
 };
-
-typedef SeedLinkWebsocketWasm SeedLink;
 }  // namespace colonio

@@ -13,6 +13,11 @@ jobs:
         os: [ubuntu-20.04, macos-latest]
     steps:
     - uses: actions/checkout@v2
+    - name: Cache setup files
+      uses: actions/cache@v2
+      with:
+        path: ci_cache
+        key: ${{ runner.os }}-${{ hashFiles('Makefile') }}
     - shell: bash
       env:
         COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}

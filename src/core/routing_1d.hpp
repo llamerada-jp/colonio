@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 namespace colonio {
 class Routing1D : public RoutingAlgorithm {
  public:
-  Routing1D(Context& context_, RoutingAlgorithm1DDelegate& delegate_);
+  Routing1D(ModuleParam& param, RoutingAlgorithm1DDelegate& delegate_);
 
   // RoutingAlgorithm
   const std::set<NodeID>& get_required_nodes() override;
@@ -42,7 +42,9 @@ class Routing1D : public RoutingAlgorithm {
   bool is_orphan(unsigned int nodes_count);
 
  private:
-  Context& context;
+  Logger& logger;
+  Random& random;
+  const NodeID& local_nid;
   RoutingAlgorithm1DDelegate& delegate;
   /** Most nearby nodes. */
   NodeID prev_nid;

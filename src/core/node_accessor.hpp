@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ class NodeAccessorDelegate {
 
 class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
  public:
-  NodeAccessor(Context& context, ModuleDelegate& module_delegate, NodeAccessorDelegate& na_delegate);
+  NodeAccessor(ModuleParam& param, NodeAccessorDelegate& na_delegate);
   virtual ~NodeAccessor();
 
   void connect_link(const NodeID& nid);
@@ -99,7 +99,7 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
   unsigned int CONFIG_PACKET_SIZE;
 
   NodeAccessorDelegate& delegate;
-  WebrtcContext webrtc_context;
+  std::unique_ptr<WebrtcContext> webrtc_context;
 
   /** Link pool. */
   std::unique_ptr<WebrtcLink> first_link;

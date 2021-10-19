@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 #endif
 
 #include <map>
+#include <memory>
 #include <queue>
 #include <string>
 #include <utility>
@@ -34,7 +35,8 @@
 #include "seed_link.hpp"
 
 namespace colonio {
-class Context;
+struct ModuleParam;
+class NodeID;
 class Packet;
 class SeedAccessor;
 
@@ -59,7 +61,7 @@ static const Type FAILURE = 2;
  */
 class SeedAccessor : public SeedLinkDelegate {
  public:
-  SeedAccessor(Context& context_, SeedAccessorDelegate& delegate_, const std::string& url_, const std::string& token_);
+  SeedAccessor(ModuleParam& param, SeedAccessorDelegate& delegate_, const std::string& url_, const std::string& token_);
   virtual ~SeedAccessor();
 
   void connect(unsigned int interval = SEED_CONNECT_INTERVAL);
@@ -70,14 +72,16 @@ class SeedAccessor : public SeedLinkDelegate {
   void relay_packet(std::unique_ptr<const Packet> packet);
 
  private:
-  Context& context;
+  Logger& logger;
+  Scheduler& scheduler;
+  const NodeID& local_nid;
   SeedAccessorDelegate& delegate;
 
   /** Server URL. */
   const std::string url;
   const std::string token;
   /** Connection to the server */
-  std::unique_ptr<SeedLinkBase> link;
+  std::unique_ptr<SeedLink> link;
   /** Last time of tried to connect to the server. */
   int64_t last_connect_time;
 
@@ -88,10 +92,10 @@ class SeedAccessor : public SeedLinkDelegate {
   SeedAccessor(const SeedAccessor&);
   SeedAccessor& operator=(const SeedAccessor&);
 
-  void seed_link_on_connect(SeedLinkBase& link) override;
-  void seed_link_on_disconnect(SeedLinkBase& link) override;
-  void seed_link_on_error(SeedLinkBase& link) override;
-  void seed_link_on_recv(SeedLinkBase& link, const std::string& data) override;
+  void seed_link_on_connect(SeedLink& link) override;
+  void seed_link_on_disconnect(SeedLink& link) override;
+  void seed_link_on_error(SeedLink& link) override;
+  void seed_link_on_recv(SeedLink& link, const std::string& data) override;
 
   void recv_auth_success(const Packet& packet);
   void recv_auth_failure(const Packet& packet);

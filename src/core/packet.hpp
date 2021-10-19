@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,16 +23,13 @@
 namespace colonio {
 class Packet {
  public:
-  static const unsigned int PACKET_HEAD_SIZE;
-
   const NodeID dst_nid;
   const NodeID src_nid;
   const uint32_t hop_count;
   const uint32_t id;
   std::shared_ptr<const std::string> content;
   const PacketMode::Type mode;
-  const APIChannel::Type channel;
-  const ModuleChannel::Type module_channel;
+  const Channel::Type channel;
   const CommandID::Type command_id;
 
   template<typename T>

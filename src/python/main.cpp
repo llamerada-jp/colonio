@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,8 +71,8 @@ class PythonMap {
   }
 
   void get(
-      const py::object key, const std::function<void(PythonMap&, py::object&)>& on_success,
-      const std::function<void(PythonMap&, colonio::Error)>& on_failure) {
+      const py::object key, const std::function<void(PythonMap&, py::object&)> on_success,
+      const std::function<void(PythonMap&, colonio::Error)> on_failure) {
     colonio::Value key_value = convertValue(key);
     map.get(
         key_value,
@@ -80,46 +80,80 @@ class PythonMap {
           std::unique_ptr<py::object> val = std::move(convertValue(value));
           on_success(*this, *val);
         },
-        [this, on_failure](colonio::Map&, const colonio::Error& err) { on_failure(*this, err); });
+        [this, on_failure](colonio::Map&, const colonio::Error& err) {
+          on_failure(*this, err);
+        });
   }
 
   void set(
-      const py::object key, const py::object val, unsigned int opt, const std::function<void(PythonMap&)>& on_success,
-      const std::function<void(PythonMap&, colonio::Error)>& on_failure) {
+      const py::object key, const py::object val, unsigned int opt, const std::function<void(PythonMap&)> on_success,
+      const std::function<void(PythonMap&, colonio::Error)> on_failure) {
     colonio::Value key_value = convertValue(key);
     colonio::Value val_value = convertValue(val);
     map.set(
-        key_value, val_value, static_cast<uint32_t>(opt), [this, on_success](colonio::Map&) { on_success(*this); },
-        [this, on_failure](colonio::Map&, const colonio::Error& err) { on_failure(*this, err); });
+        key_value, val_value, static_cast<uint32_t>(opt),
+        [this, on_success](colonio::Map&) {
+          on_success(*this);
+        },
+        [this, on_failure](colonio::Map&, const colonio::Error& err) {
+          on_failure(*this, err);
+        });
   }
 };
 
-class PythonColonio : public colonio::Colonio {
+class PythonColonio {
  public:
-  PythonMap& _access_map(const std::string& name) {
-    auto it = map_cache.find(name);
-    if (it == map_cache.end()) {
-      it = map_cache.insert(std::make_pair(name, std::make_unique<PythonMap>(access_map(name)))).first;
+  PythonColonio() : c(std::shared_ptr<C>()) {
+    c->instance.reset(colonio::Colonio::new_instance());
+  }
+
+  PythonColonio(std::function<void(const std::string&)> log_receiver, uint32_t opt) : c(std::shared_ptr<C>()) {
+    c->instance.reset(colonio::Colonio::new_instance(
+        [log_receiver](colonio::Colonio&, const std::string& message) {
+          log_receiver(message);
+        },
+        opt));
+  }
+
+  PythonColonio(const PythonColonio& src) : c(src.c) {
+  }
+
+  PythonMap& access_map(const std::string& name) {
+    auto it = c->map_cache.find(name);
+    if (it == c->map_cache.end()) {
+      it = c->map_cache.insert(std::make_pair(name, std::make_unique<PythonMap>(c->instance->access_map(name)))).first;
     }
     return *(it->second);
   }
 
-  void _connect(
+  void connect(
       const std::string& url, const std::string& token, std::function<void(PythonColonio&)> on_success,
       std::function<void(PythonColonio&, colonio::Error)> on_failure) {
-    on_connect_success = on_success;
-    on_connect_failure = on_failure;
+    c->instance->connect(
+        url, token,
+        [this, on_success](colonio::Colonio&) {
+          on_success(*this);
+        },
+        [this, on_failure](colonio::Colonio&, const colonio::Error& err) {
+          on_failure(*this, err);
+        });
+  }
 
-    connect(
-        url, token, [this](colonio::Colonio&) { this->on_connect_success(*this); },
-        [this](colonio::Colonio&, const colonio::Error& err) { this->on_connect_failure(*this, err); });
+  void disconnect() {
+    c->instance->disconnect();
+  }
+
+  std::string get_local_nid() {
+    return c->instance->get_local_nid();
   }
 
  private:
-  std::function<void(PythonColonio&)> on_connect_success;
-  std::function<void(PythonColonio&, colonio::Error)> on_connect_failure;
+  struct C {
+    std::unique_ptr<colonio::Colonio> instance;
+    std::map<const std::string, std::unique_ptr<PythonMap>> map_cache;
+  };
 
-  std::map<const std::string, std::unique_ptr<PythonMap>> map_cache;
+  std::shared_ptr<C> c;
 };
 
 PYBIND11_MODULE(colonio, m) {
@@ -129,6 +163,7 @@ PYBIND11_MODULE(colonio, m) {
   py::enum_<colonio::ErrorCode>(m, "ErrorCode")
       .value("UNDEFINED", colonio::ErrorCode::UNDEFINED)
       .value("SYSTEM_ERROR", colonio::ErrorCode::SYSTEM_ERROR)
+      .value("CONNECTION_FAILD", colonio::ErrorCode::CONNECTION_FAILD)
       .value("OFFLINE", colonio::ErrorCode::OFFLINE)
       .value("INCORRECT_DATA_FORMAT", colonio::ErrorCode::INCORRECT_DATA_FORMAT)
       .value("CONFLICT_WITH_SETTING", colonio::ErrorCode::CONFLICT_WITH_SETTING)
@@ -158,8 +193,8 @@ PYBIND11_MODULE(colonio, m) {
   Colonio.def(py::init<>())
       .def_readonly_static("EXPLICIT_EVENT_THREAD", &colonio::Colonio::EXPLICIT_EVENT_THREAD)
       .def_readonly_static("EXPLICIT_CONTROLLER_THREAD", &colonio::Colonio::EXPLICIT_CONTROLLER_THREAD)
-      .def("accessMap", &PythonColonio::_access_map)
-      .def("connect", &PythonColonio::_connect)
+      .def("accessMap", &PythonColonio::access_map)
+      .def("connect", &PythonColonio::connect)
       .def("disconnect", &PythonColonio::disconnect)
       .def("getLocalNid", &PythonColonio::get_local_nid);
 }

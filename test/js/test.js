@@ -25,26 +25,26 @@ function test() {
 
   return ColonioModule().then((colonio) => {
     logD("new node1");
-    node1 = new colonio.Colonio();
-    node1.on("log", (l) => {
-      l.node = "node1";
-      if (l.level === colonio.Colonio.LOG_LEVEL_ERROR ||
-        l.level === colonio.Colonio.LOG_LEVEL_WARN) {
-        logE(l);
+    node1 = new colonio.Colonio((str) => {
+      let j = JSON.parse(str);
+      j.node = "node1";
+      if (j.level === colonio.Colonio.LOG_LEVEL_ERROR ||
+        j.level === colonio.Colonio.LOG_LEVEL_WARN) {
+        logE(j);
       } else {
-        logD(l);
+        logD(j);
       }
-    })
+    });
 
     logD("new node2");
-    node2 = new colonio.Colonio();
-    node2.on("log", (l) => {
-      l.node = "node2";
-      if (l.level === colonio.Colonio.LOG_LEVEL_ERROR ||
-        l.level === colonio.Colonio.LOG_LEVEL_WARN) {
-        logE(l);
+    node2 = new colonio.Colonio((str) => {
+      let j = JSON.parse(str);
+      j.node = "node2";
+      if (j.level === colonio.Colonio.LOG_LEVEL_ERROR ||
+        j.level === colonio.Colonio.LOG_LEVEL_WARN) {
+        logE(j);
       } else {
-        logD(l);
+        logD(j);
       }
     });
 

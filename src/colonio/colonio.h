@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -82,6 +82,7 @@ typedef enum COLONIO_VALUE_TYPE {
 typedef enum COLONIO_ERROR_CODE {
   COLONIO_ERROR_CODE_UNDEFINED,
   COLONIO_ERROR_CODE_SYSTEM_ERROR,
+  COLONIO_ERROR_CODE_CONNECTION_FAILD,
   COLONIO_ERROR_CODE_OFFLINE,
   COLONIO_ERROR_CODE_INCORRECT_DATA_FORMAT,
   COLONIO_ERROR_CODE_CONFLICT_WITH_SETTING,
@@ -140,7 +141,8 @@ typedef struct colonio_error_s {
   unsigned int message_siz;
 } colonio_error_t;
 
-COLONIO_PUBLIC colonio_error_t* colonio_init(colonio_t* colonio, uint32_t opt);
+COLONIO_PUBLIC colonio_error_t* colonio_init(
+    colonio_t* colonio, void (*logger)(colonio_t*, const char*, unsigned int), uint32_t opt);
 COLONIO_PUBLIC colonio_error_t* colonio_connect(
     colonio_t* colonio, const char* url, unsigned int url_siz, const char* token, unsigned int token_siz);
 COLONIO_PUBLIC void colonio_connect_async(
@@ -152,6 +154,7 @@ COLONIO_PUBLIC colonio_error_t* colonio_disconnect(colonio_t* colonio);
 COLONIO_PUBLIC void colonio_disconnect_async(
     colonio_t* colonio, void (*on_success)(colonio_t*), void (*on_failure)(colonio_t*, const colonio_error_t*));
 #endif
+COLONIO_PUBLIC bool colonio_is_connected(colonio_t* colonio);
 COLONIO_PUBLIC colonio_map_t colonio_access_map(colonio_t* colonio, const char* name, unsigned int name_siz);
 COLONIO_PUBLIC colonio_pubsub_2d_t
 colonio_access_pubsub_2d(colonio_t* colonio, const char* name, unsigned int name_siz);
@@ -160,7 +163,6 @@ COLONIO_PUBLIC colonio_error_t* colonio_set_position(colonio_t* colonio, double*
 COLONIO_PUBLIC void colonio_set_position_async(
     colonio_t* colonio, double x, double y, void* ptr, void (*on_success)(colonio_t*, void*, double, double),
     void (*on_failure)(colonio_t*, void*, const colonio_error_t*));
-COLONIO_PUBLIC void colonio_set_on_output_log(colonio_t* colonio, void (*func)(colonio_t*, const char*, unsigned int));
 COLONIO_PUBLIC void colonio_start_on_event_thread(colonio_t* colonio);
 COLONIO_PUBLIC void colonio_start_on_controller_thread(colonio_t* colonio);
 COLONIO_PUBLIC colonio_error_t* colonio_quit(colonio_t* colonio);

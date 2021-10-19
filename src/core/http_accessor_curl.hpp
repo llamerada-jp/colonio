@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,4 @@ class HttpAccessorCurl : public HttpAccessorBase {
   CURL* curl;
   std::mutex mutex;
 };
-
-typedef HttpAccessorCurl HttpAccessor;
 }  // namespace colonio

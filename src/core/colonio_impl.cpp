@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,55 +17,280 @@
 
 #include <cassert>
 
-#include "context.hpp"
+#include "colonio_module.hpp"
 #include "convert.hpp"
 #include "coord_system_plane.hpp"
 #include "coord_system_sphere.hpp"
 #include "logger.hpp"
-#include "map_paxos/map_paxos_api.hpp"
-#include "pubsub_2d/pubsub_2d_api.hpp"
+#include "map_impl.hpp"
+#include "map_paxos/map_paxos_module.hpp"
+#include "packet.hpp"
+#include "pipe.hpp"
+#include "pubsub_2d/pubsub_2d_module.hpp"
+#include "pubsub_2d_impl.hpp"
 #include "routing_1d.hpp"
 #include "scheduler.hpp"
 #include "utils.hpp"
 
 namespace colonio {
-ColonioImpl::ColonioImpl(Context& context, APIDelegate& api_delegate_, APIBundler& api_bundler_) :
-    APIBase(context, api_delegate_, APIChannel::COLONIO),
-    api_delegate(api_delegate_),
-    api_bundler(api_bundler_),
-    module_bundler(*this, *this, *this),
+ColonioImpl::ColonioImpl(std::function<void(Colonio&, const std::string&)> log_receiver_, uint32_t opt) :
+    log_receiver(log_receiver_),
+    logger(*this),
+    scheduler(Scheduler::new_instance(logger, opt)),
+    local_nid(NodeID::make_random(random)),
+    module_param{*this, logger, random, *scheduler, local_nid},
     enable_retry(true),
-    api_connect_id(0),
     node_accessor(nullptr),
     routing(nullptr),
     link_status(LinkStatus::OFFLINE) {
 }
 
 ColonioImpl::~ColonioImpl() {
+  scheduler->remove_task(this);
 }
 
-LinkStatus::Type ColonioImpl::get_status() {
-  return link_status;
-}
+void ColonioImpl::connect(const std::string& url, const std::string& token) {
+  Pipe<int> pipe;
 
-void ColonioImpl::api_on_recv_call(const api::Call& call) {
-  switch (call.param_case()) {
-    case api::Call::ParamCase::kColonioConnect:
-      api_connect(call.id(), call.colonio_connect());
-      break;
+  connect(
+      url, token,
+      [&pipe](Colonio&) {
+        pipe.push(1);
+      },
+      [&pipe](Colonio&, const Error& error) {
+        pipe.pushError(error);
+      });
 
-    case api::Call::ParamCase::kColonioDisconnect:
-      api_disconnect(call.id());
-      break;
+  int* dummy;
+  Error* e;
+  std::tie(dummy, e) = pipe.pop();
 
-    case api::Call::ParamCase::kColonioSetPosition:
-      api_set_position(call.id(), call.colonio_set_position());
-      break;
-
-    default:
-      colonio_fatal("Called incorrect colonio API entry : %d", call.param_case());
-      break;
+  if (e != nullptr) {
+    throw *e;
   }
+}
+
+void ColonioImpl::connect(
+    const std::string& url, const std::string& token, std::function<void(Colonio&)>&& on_success,
+    std::function<void(Colonio&, const Error&)>&& on_failure) {
+  assert(!connect_cb);
+  connect_cb.reset(new std::pair<std::function<void(Colonio&)>, std::function<void(Colonio&, const Error&)>>(
+      on_success, on_failure));
+
+  try {
+    if (link_status != LinkStatus::OFFLINE && link_status != LinkStatus::CLOSING) {
+      loge("duplicate connection.");
+      scheduler->add_user_task(this, [this]() {
+        Error e(ErrorCode::CONNECTION_FAILD, "duplicate connectin.");
+        connect_cb->second(*this, e);
+        connect_cb.reset();
+      });
+
+    } else {
+      logi("connect start").map("url", url);
+    }
+
+    enable_retry = true;
+
+    seed_accessor = std::make_unique<SeedAccessor>(module_param, *this, url, token);
+    node_accessor = new NodeAccessor(module_param, *this);
+    register_module(node_accessor, nullptr, false, false);
+    colonio_module = new ColonioModule(module_param);
+    register_module(colonio_module, nullptr, false, false);
+
+    scheduler->add_controller_task(this, [this]() {
+      update_accessor_status();
+    });
+
+  } catch (Error& e) {
+    connect_cb.reset();
+    on_failure(*this, e);
+  }
+}
+
+void ColonioImpl::disconnect() {
+  Pipe<int> pipe;
+
+  disconnect(
+      [&pipe](Colonio&) {
+        pipe.push(1);
+      },
+      [&pipe](Colonio&, const Error& error) {
+        pipe.pushError(error);
+      });
+
+  int* dummy;
+  Error* e;
+  std::tie(dummy, e) = pipe.pop();
+
+  if (e != nullptr) {
+    throw *e;
+  }
+}
+
+void ColonioImpl::disconnect(
+    std::function<void(Colonio&)>&& on_success_, std::function<void(Colonio&, const Error&)>&& on_failure_) {
+  std::function<void(Colonio&)> on_success = on_success_;
+
+  scheduler->add_controller_task(this, [this, on_success] {
+    enable_retry = false;
+    seed_accessor->disconnect();
+    node_accessor->disconnect_all([this, on_success]() {
+      scheduler->add_controller_task(this, [this, on_success] {
+        link_status = LinkStatus::OFFLINE;
+        for (auto& module : modules) {
+          module.second->module_on_change_accessor_status(LinkStatus::OFFLINE, LinkStatus::OFFLINE);
+        }
+
+        clear_modules();
+
+        scheduler->remove_task(this, false);
+        scheduler->add_user_task(this, [this, on_success]() {
+          on_success(*this);
+        });
+      });
+    });
+  });
+}
+
+bool ColonioImpl::is_connected() {
+  return link_status == LinkStatus::ONLINE;
+}
+
+std::string ColonioImpl::get_local_nid() {
+  if (!is_connected()) {
+    return "";
+  }
+
+  return local_nid.to_str();
+}
+
+Map& ColonioImpl::access_map(const std::string& name) {
+  auto it = if_map.find(name);
+  if (it == if_map.end()) {
+    throw Error(ErrorCode::CONFLICT_WITH_SETTING, Utils::format_string("map module not found : ", 0, name.c_str()));
+  }
+
+  return *it->second;
+}
+
+Pubsub2D& ColonioImpl::access_pubsub_2d(const std::string& name) {
+  auto it = if_pubsub2d.find(name);
+  if (it == if_pubsub2d.end()) {
+    throw Error(ErrorCode::CONFLICT_WITH_SETTING, Utils::format_string("pubsub module not found : ", 0, name.c_str()));
+  }
+
+  return *it->second;
+}
+
+std::tuple<double, double> ColonioImpl::set_position(double x, double y) {
+  Pipe<std::tuple<double, double>> pipe;
+
+  set_position(
+      x, y,
+      [&pipe](Colonio&, double rx, double ry) {
+        pipe.push(std::make_tuple(rx, ry));
+      },
+      [&pipe](Colonio&, const Error& error) {
+        pipe.pushError(error);
+      });
+
+  std::tuple<double, double>* r;
+  Error* e;
+  std::tie(r, e) = pipe.pop();
+
+  if (e != nullptr) {
+    throw *e;
+  }
+  return *r;
+}
+
+void ColonioImpl::set_position(
+    double x, double y, std::function<void(Colonio&, double, double)> on_success,
+    std::function<void(Colonio&, const Error&)> on_failure) {
+  if (!coord_system) {
+    on_failure(*this, Error(ErrorCode::CONFLICT_WITH_SETTING, "coordinate system was not enabled"));
+  }
+
+  scheduler->add_controller_task(this, [this, x, y, on_success] {
+    Coordinate new_position(x, y);
+    Coordinate old_position = coord_system->get_local_position();
+    if (new_position != old_position) {
+      coord_system->set_local_position(new_position);
+      for (auto& it : modules_2d) {
+        it->module_2d_on_change_local_position(new_position);
+      }
+      routing->on_change_local_position(new_position);
+      logd("current position").map("coordinate", Convert::coordinate2json(new_position));
+    }
+
+    Coordinate ret_position = coord_system->get_local_position();
+
+    scheduler->add_user_task(this, [this, on_success, ret_position] {
+      on_success(*this, ret_position.x, ret_position.y);
+    });
+  });
+}
+
+void ColonioImpl::send(const std::string& dst_nid, const Value& value, uint32_t opt) {
+  Pipe<int> pipe;
+
+  send(
+      dst_nid, value, opt,
+      [&pipe](Colonio&) {
+        pipe.push(1);
+      },
+      [&pipe](Colonio&, const Error& error) {
+        pipe.pushError(error);
+      });
+
+  int* dummy;
+  Error* e;
+  std::tie(dummy, e) = pipe.pop();
+
+  if (e != nullptr) {
+    throw *e;
+  }
+}
+
+void ColonioImpl::send(
+    const std::string& dst_nid, const Value& value, uint32_t opt, std::function<void(Colonio&)>&& on_success,
+    std::function<void(Colonio&, const Error&)>&& on_failure) {
+  try {
+    colonio_module->send(
+        dst_nid, value, opt,
+        [this, on_success] {
+          on_success(*this);
+        },
+        [this, on_failure](const Error& err) {
+          on_failure(*this, err);
+        });
+  } catch (Error& e) {
+    connect_cb.reset();
+    on_failure(*this, e);
+  }
+}
+
+void ColonioImpl::on(std::function<void(Colonio&, const Value&)>&& receiver) {
+  colonio_module->on([this, receiver](const Value& value) {
+    receiver(*this, value);
+  });
+}
+
+void ColonioImpl::off() {
+  colonio_module->off();
+}
+
+void ColonioImpl::start_on_event_thread() {
+  scheduler->start_user_routine();
+}
+
+void ColonioImpl::start_on_controller_thread() {
+  scheduler->start_controller_routine();
+}
+
+void ColonioImpl::logger_on_output(Logger& logger, const std::string& json) {
+  log_receiver(*this, json);
 }
 
 void ColonioImpl::module_do_send_packet(ModuleBase& module, std::unique_ptr<const Packet> packet) {
@@ -96,8 +321,9 @@ void ColonioImpl::node_accessor_on_change_online_links(NodeAccessor& na, const s
 }
 
 void ColonioImpl::node_accessor_on_change_status(NodeAccessor& na) {
-  context.scheduler.add_timeout_task(
-      this, [this]() { on_change_accessor_status(); }, 0);
+  scheduler->add_controller_task(this, [this]() {
+    update_accessor_status();
+  });
 }
 
 void ColonioImpl::node_accessor_on_recv_packet(
@@ -131,8 +357,11 @@ void ColonioImpl::routing_do_disconnect_seed(Routing& route) {
 }
 
 void ColonioImpl::routing_on_module_1d_change_nearby(Routing& routing, const NodeID& prev_nid, const NodeID& next_nid) {
-  context.scheduler.add_timeout_task(
-      this, [this, prev_nid, next_nid]() { module_bundler.module_1d_on_change_nearby(prev_nid, next_nid); }, 0);
+  scheduler->add_controller_task(this, [this, prev_nid, next_nid]() {
+    for (auto& it : modules_1d) {
+      it->module_1d_on_change_nearby(prev_nid, next_nid);
+    }
+  });
 }
 
 const NodeID& ColonioImpl::module_2d_do_get_relay_nid(Module2D& module_2d, const Coordinate& position) {
@@ -140,19 +369,26 @@ const NodeID& ColonioImpl::module_2d_do_get_relay_nid(Module2D& module_2d, const
 }
 
 void ColonioImpl::routing_on_module_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids) {
-  context.scheduler.add_timeout_task(
-      this, [this, nids]() { module_bundler.module_2d_on_change_nearby(nids); }, 0);
+  scheduler->add_controller_task(this, [this, nids]() {
+    for (auto& it : modules_2d) {
+      it->module_2d_on_change_nearby(nids);
+    }
+  });
 }
 
 void ColonioImpl::routing_on_module_2d_change_nearby_position(
     Routing& routing, const std::map<NodeID, Coordinate>& positions) {
-  context.scheduler.add_timeout_task(
-      this, [this, positions]() { module_bundler.module_2d_on_change_nearby_position(positions); }, 0);
+  scheduler->add_controller_task(this, [this, positions]() {
+    for (auto& it : modules_2d) {
+      it->module_2d_on_change_nearby_position(positions);
+    }
+  });
 }
 
 void ColonioImpl::seed_accessor_on_change_status(SeedAccessor& sa) {
-  context.scheduler.add_timeout_task(
-      this, [this]() { on_change_accessor_status(); }, 0);
+  scheduler->add_controller_task(this, [this]() {
+    update_accessor_status();
+  });
 }
 
 void ColonioImpl::seed_accessor_on_recv_config(SeedAccessor& sa, const picojson::object& newconfig) {
@@ -166,17 +402,16 @@ void ColonioImpl::seed_accessor_on_recv_config(SeedAccessor& sa, const picojson:
     if (Utils::check_json_optional(config, "coordSystem2D", &cs2d_config)) {
       const std::string& type = Utils::get_json<std::string>(cs2d_config, "type");
       if (type == "sphere") {
-        coord_system = std::make_unique<CoordSystemSphere>(context.random, cs2d_config);
+        coord_system = std::make_unique<CoordSystemSphere>(random, cs2d_config);
       } else if (type == "plane") {
-        coord_system = std::make_unique<CoordSystemPlane>(context.random, cs2d_config);
+        coord_system = std::make_unique<CoordSystemPlane>(random, cs2d_config);
       }
     }
 
     // routing
-    routing = std::make_unique<Routing>(
-        context, *this, *this, APIChannel::COLONIO, coord_system.get(),
-        Utils::get_json<picojson::object>(config, "routing"));
-    module_bundler.registrate(routing.get(), false, false);
+    routing =
+        new Routing(module_param, *this, coord_system.get(), Utils::get_json<picojson::object>(config, "routing"));
+    register_module(routing, nullptr, false, false);
 
     // modules
     initialize_algorithms();
@@ -204,107 +439,69 @@ bool ColonioImpl::module_1d_do_check_covered_range(Module1D& module_1d, const No
   return routing->is_covered_range_1d(nid);
 }
 
-void ColonioImpl::api_connect(uint32_t id, const api::colonio::Connect& param) {
-  const std::string& url   = param.url();
-  const std::string& token = param.token();
-
-  if (link_status != LinkStatus::OFFLINE && link_status != LinkStatus::CLOSING) {
-    loge("duplicate connection.");
+void ColonioImpl::check_api_connect() {
+  if (!connect_cb || link_status != LinkStatus::ONLINE) {
     return;
-
-  } else {
-    logi("connect start").map("url", url);
   }
+  assert(seed_accessor->get_auth_status() == AuthStatus::SUCCESS);
 
-  api_connect_id = id;
-  enable_retry   = true;
-
-  seed_accessor = std::make_unique<SeedAccessor>(context, *this, url, token);
-  node_accessor = std::make_unique<NodeAccessor>(context, *this, *this);
-  module_bundler.registrate(node_accessor.get(), false, false);
-
-  context.scheduler.add_timeout_task(
-      this, [this]() { on_change_accessor_status(); }, 0);
-}
-
-void ColonioImpl::api_disconnect(uint32_t id) {
-  enable_retry = false;
-  seed_accessor->disconnect();
-  node_accessor->disconnect_all([this, id]() {
-    link_status = LinkStatus::OFFLINE;
-    module_bundler.on_change_accessor_status(LinkStatus::OFFLINE, LinkStatus::OFFLINE);
-
-    module_bundler.clear();
-
-    node_accessor.reset();
-    routing.reset();
-
-    seed_accessor.reset();
-
-    context.scheduler.remove_task(this);
-    api_success(id);
+  scheduler->add_user_task(this, [this]() {
+    if (connect_cb) {
+      connect_cb->first(*this);
+      connect_cb.reset();
+    }
   });
 }
 
-void ColonioImpl::api_set_position(uint32_t id, const api::colonio::SetPosition& param) {
-  if (coord_system) {
-    Coordinate new_position = Coordinate::from_pb(param.position());
-    Coordinate old_position = coord_system->get_local_position();
-    if (new_position != old_position) {
-      coord_system->set_local_position(new_position);
-      context.scheduler.add_timeout_task(
-          this, [this, new_position]() { this->routing->on_change_local_position(new_position); }, 0);
-      context.scheduler.add_timeout_task(
-          this, [this, new_position]() { module_bundler.module_2d_on_change_local_position(new_position); }, 0);
-      logd("current position").map("coordinate", Convert::coordinate2json(new_position));
-    }
+void ColonioImpl::clear_modules() {
+  if_map.clear();
+  if_pubsub2d.clear();
 
-    std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
-    reply->set_id(id);
-    api::colonio::SetPositionReply* reply_param = reply->mutable_colonio_set_position();
-    new_position.to_pb(reply_param->mutable_position());
-    api_reply(std::move(reply));
+  modules.clear();
+  modules_1d.clear();
+  modules_2d.clear();
 
-  } else {
-    api_failure(id, ErrorCode::CONFLICT_WITH_SETTING, "coordinate system was not enabled");
-  }
+  node_accessor = nullptr;
+  routing       = nullptr;
+
+  seed_accessor.reset();
 }
 
-void ColonioImpl::check_api_connect() {
-  if (api_connect_id != 0 && link_status == LinkStatus::ONLINE && api_connect_reply) {
-    assert(seed_accessor->get_auth_status() == AuthStatus::SUCCESS);
+void ColonioImpl::register_module(ModuleBase* module, const std::string* name, bool is_1d, bool is_2d) {
+  assert(module->channel != Channel::NONE);
+  assert(modules.find(module->channel) == modules.end());
+  assert(name == nullptr || module_names.find(*name) == module_names.end());
 
-    std::unique_ptr<api::Reply> reply = std::make_unique<api::Reply>();
-    reply->set_id(api_connect_id);
-    context.local_nid.to_pb(api_connect_reply->mutable_local_nid());
-    reply->set_allocated_colonio_connect(api_connect_reply.get());
-    api_connect_reply.release();
+  modules.insert(std::make_pair(module->channel, module));
 
-    api_reply(std::move(reply));
-    api_connect_id = 0;
+  if (name != nullptr) {
+    module_names.insert(std::make_pair(*name, module->channel));
+  }
+  if (is_1d) {
+    modules_1d.insert(dynamic_cast<Module1D*>(module));
+  }
+  if (is_2d) {
+    modules_2d.insert(dynamic_cast<Module2D*>(module));
   }
 }
 
 void ColonioImpl::initialize_algorithms() {
   const picojson::object& modules_config = Utils::get_json<picojson::object>(config, "modules", picojson::object());
-  api_connect_reply                      = std::make_unique<api::colonio::ConnectReply>();
 
   for (auto& it : modules_config) {
     const std::string& name               = it.first;
     const picojson::object& module_config = Utils::get_json<picojson::object>(modules_config, name);
     const std::string& type               = Utils::get_json<std::string>(module_config, "type");
 
-    api::colonio::ConnectReply_Module* module = api_connect_reply->add_modules();
-    module->set_channel(Utils::get_json<double>(module_config, "channel"));
-    module->set_name(name);
-
     if (type == "pubsub2D") {
-      Pubsub2DAPI::make_entry(context, api_bundler, api_delegate, module_bundler, *coord_system, module_config);
-      module->set_type(api::colonio::ConnectReply_ModuleType_PUBSUB_2D);
+      Pubsub2DModule* mod = Pubsub2DModule::new_instance(module_param, *this, *coord_system, module_config);
+      register_module(mod, &name, false, true);
+      if_pubsub2d.insert(std::make_pair(name, std::make_unique<Pubsub2DImpl>(*mod)));
 
     } else if (type == "mapPaxos") {
-      MapPaxosAPI::make_entry(context, api_bundler, api_delegate, module_bundler, module_config);
-      module->set_type(api::colonio::ConnectReply_ModuleType_MAP);
+      MapPaxosModule* mod = MapPaxosModule::new_instance(module_param, *this, module_config);
+      register_module(mod, &name, true, false);
+      if_map.insert(std::make_pair(name, std::make_unique<MapImpl>(*mod)));
 
     } else {
       colonio_fatal("unsupported algorithm(%s)", type.c_str());
@@ -314,7 +511,7 @@ void ColonioImpl::initialize_algorithms() {
   check_api_connect();
 }
 
-void ColonioImpl::on_change_accessor_status() {
+void ColonioImpl::update_accessor_status() {
   LinkStatus::Type seed_status = seed_accessor->get_status();
   LinkStatus::Type node_status = node_accessor->get_status();
 
@@ -354,13 +551,16 @@ void ColonioImpl::on_change_accessor_status() {
 
   } else if (seed_accessor->get_auth_status() == AuthStatus::FAILURE) {
     loge("connect failure");
-    if (api_connect_id != 0) {
-      api_failure(api_connect_id, ErrorCode::OFFLINE, "Connect failure.");
-      api_connect_id = 0;
+    if (connect_cb) {
+      scheduler->add_user_task(this, [this] {
+        connect_cb->second(*this, Error(ErrorCode::OFFLINE, "Connect failure."));
+        connect_cb.reset();
+      });
     }
 
-    context.scheduler.add_timeout_task(
-        this, [this]() { api_disconnect(0); }, 0);
+    scheduler->add_controller_task(this, [this]() {
+      disconnect();
+    });
     status = LinkStatus::OFFLINE;
 
   } else if (enable_retry) {
@@ -371,12 +571,13 @@ void ColonioImpl::on_change_accessor_status() {
   link_status = status;
   check_api_connect();
 
-  module_bundler.on_change_accessor_status(seed_status, node_status);
+  for (auto& module : modules) {
+    module.second->module_on_change_accessor_status(seed_status, node_status);
+  }
 }
 
 void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_from_seed) {
-  assert(packet->channel != APIChannel::NONE);
-  assert(packet->module_channel != ModuleChannel::NONE);
+  assert(packet->channel != Channel::NONE);
 
   if ((packet->mode & PacketMode::RELAY_SEED) != 0x0) {
     LinkStatus::Type seed_status = seed_accessor->get_status();
@@ -390,7 +591,7 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
       }
       return;
 
-    } else if (packet->src_nid == context.local_nid) {
+    } else if (packet->src_nid == local_nid) {
       if (seed_status == LinkStatus::ONLINE) {
         seed_accessor->relay_packet(std::move(packet));
       } else {
@@ -403,18 +604,24 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
   assert(routing);
   NodeID dst_nid = routing->get_relay_nid_1d(*packet);
 
-  if (dst_nid == NodeID::THIS || dst_nid == context.local_nid) {
+  if (dst_nid == NodeID::THIS || dst_nid == local_nid) {
     logd("receive packet").map("packet", *packet);
     // Pass a packet to the target module.
     const Packet* p = packet.get();
     packet.release();
-    context.scheduler.add_timeout_task(
-        this,
-        [this, p]() mutable {
-          assert(p != nullptr);
-          module_bundler.on_recv_packet(std::unique_ptr<const Packet>(p));
-        },
-        0);
+    scheduler->add_controller_task(this, [this, p]() mutable {
+      assert(p != nullptr);
+      std::unique_ptr<const Packet> packet(p);
+
+      auto module = modules.find(packet->channel);
+      if (module != modules.end()) {
+        module->second->on_recv_packet(std::move(packet));
+      } else {
+#warning dump-packet
+        colonio_throw(
+            ErrorCode::INCORRECT_DATA_FORMAT, "received incorrect packet entry", Utils::dump_packet(*packet).c_str());
+      }
+    });
     return;
 
   } else if (!dst_nid.is_special() || dst_nid == NodeID::NEXT) {
@@ -424,7 +631,7 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
 #endif
     if (node_accessor->relay_packet(dst_nid, std::move(packet))) {
 #ifndef NDEBUG
-      if (src_nid == context.local_nid) {
+      if (src_nid == local_nid) {
         logd("send packet").map("dst", dst_nid).map("packet", copy);
       } else {
         logd("relay packet").map("dst", dst_nid).map("packet", copy);

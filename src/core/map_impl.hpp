@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,25 +15,26 @@
  */
 #pragma once
 
-#include "api_gate.hpp"
 #include "colonio/map.hpp"
 
 namespace colonio {
+class MapBase;
+
 class MapImpl : public Map {
  public:
-  MapImpl(APIGate& api_gate_, APIChannel::Type channel_);
+  explicit MapImpl(MapBase& base_);
 
+  void each_local_value(std::function<void(Map&, const Value&, const Value&)>&& func) override;
   Value get(const Value& key) override;
   void get(
-      const Value& key, std::function<void(Map&, const Value&)> on_success,
-      std::function<void(Map&, const Error&)> on_failure) override;
+      const Value& key, std::function<void(Map&, const Value&)>&& on_success,
+      std::function<void(Map&, const Error&)>&& on_failure) override;
   void set(const Value& key, const Value& value, uint32_t opt) override;
   void set(
-      const Value& key, const Value& value, uint32_t opt, std::function<void(Map&)> on_success,
-      std::function<void(Map&, const Error&)> on_failure) override;
+      const Value& key, const Value& value, uint32_t opt, std::function<void(Map&)>&& on_success,
+      std::function<void(Map&, const Error&)>&& on_failure) override;
 
  private:
-  APIGate& api_gate;
-  APIChannel::Type channel;
+  MapBase& base;
 };
 }  // namespace colonio

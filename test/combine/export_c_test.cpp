@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ TEST(ExternC, definition) {
 
   EXPECT_EQ(static_cast<int>(colonio::ErrorCode::UNDEFINED), COLONIO_ERROR_CODE_UNDEFINED);
   EXPECT_EQ(static_cast<int>(colonio::ErrorCode::SYSTEM_ERROR), COLONIO_ERROR_CODE_SYSTEM_ERROR);
+  EXPECT_EQ(static_cast<int>(colonio::ErrorCode::CONNECTION_FAILD), COLONIO_ERROR_CODE_CONNECTION_FAILD);
   EXPECT_EQ(static_cast<int>(colonio::ErrorCode::OFFLINE), COLONIO_ERROR_CODE_OFFLINE);
   EXPECT_EQ(static_cast<int>(colonio::ErrorCode::INCORRECT_DATA_FORMAT), COLONIO_ERROR_CODE_INCORRECT_DATA_FORMAT);
   EXPECT_EQ(static_cast<int>(colonio::ErrorCode::CONFLICT_WITH_SETTING), COLONIO_ERROR_CODE_CONFLICT_WITH_SETTING);
@@ -55,6 +56,10 @@ TEST(ExternC, definition) {
   EXPECT_STREQ(colonio::LogLevel::DEBUG.c_str(), COLONIO_LOG_LEVEL_DEBUG);
 }
 
+void log_receiver(colonio_t*, const char* message, unsigned int len) {
+  printf("%s\n", message);
+}
+
 TEST(ExternC, connect_sync) {
   TestSeed seed;
   seed.run();
@@ -62,11 +67,13 @@ TEST(ExternC, connect_sync) {
   colonio_t colonio;
   colonio_error_t* err;
 
-  err = colonio_init(&colonio, 0);
+  err = colonio_init(&colonio, log_receiver, 0);
   EXPECT_EQ(err, nullptr);
 
   err = colonio_connect(&colonio, URL, strlen(URL), TOKEN, strlen(TOKEN));
   EXPECT_EQ(err, nullptr);
+
+  EXPECT_TRUE(colonio_is_connected(&colonio));
 
   {
     char nid[COLONIO_NID_LENGTH + 1] = {};
@@ -101,7 +108,7 @@ TEST(ExternC, connect_async) {
   colonio_t colonio;
   colonio_error_t* err;
 
-  err = colonio_init(&colonio, 0);
+  err = colonio_init(&colonio, log_receiver, 0);
   EXPECT_EQ(err, nullptr);
 
   data.helper  = &helper;

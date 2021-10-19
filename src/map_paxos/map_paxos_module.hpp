@@ -1,7 +1,5 @@
 /*
-const &
-const &
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,30 +17,29 @@ const &
 
 #include <functional>
 
-#include "colonio/exception.hpp"
 #include "colonio/map.hpp"
 #include "colonio/value.hpp"
 #include "core/command.hpp"
-#include "core/module_1d.hpp"
+#include "core/map_base.hpp"
 
 namespace colonio {
 class Random;
 typedef uint32_t PAXOS_N;
 
-class MapPaxosModule : public Module1D {
+class MapPaxosModule : public MapBase {
  public:
-  MapPaxosModule(
-      Context& context, ModuleDelegate& module_delegate, Module1DDelegate& module_1d_delegate, APIChannel::Type channel,
-      ModuleChannel::Type module_channel, unsigned int retry_max, uint32_t retry_interval_min,
-      uint32_t retry_interval_max);
   virtual ~MapPaxosModule();
 
+  static MapPaxosModule* new_instance(
+      ModuleParam& param, Module1DDelegate& module_1d_delegate, const picojson::object& config);
+
+  void each_local_value(std::function<void(const Value&, const Value&)>&& func) override;
   void get(
-      const Value& key, const std::function<void(const Value&)>& on_success,
-      const std::function<void(ErrorCode)>& on_failure);
+      const Value& key, std::function<void(const Value&)>&& on_success,
+      std::function<void(const Error&)>&& on_failure) override;
   void set(
-      const Value& key, const Value& value, const std::function<void()>& on_success,
-      const std::function<void(ErrorCode)>& on_failure, uint32_t opt);
+      const Value& key, const Value& value, uint32_t opt, std::function<void()>&& on_success,
+      std::function<void(const Error&)>&& on_failure) override;
 
   void module_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) override;
 
@@ -87,7 +84,7 @@ class MapPaxosModule : public Module1D {
       int count_ng;
       bool is_finished;
       std::function<void(const Value&)> cb_on_success;
-      std::function<void(ErrorCode)> cb_on_failure;
+      std::function<void(const Error&)> cb_on_failure;
 
       Info(MapPaxosModule& parent_, std::unique_ptr<Value> key_, int count_retry_);
     };
@@ -112,12 +109,12 @@ class MapPaxosModule : public Module1D {
       const Value key;
       const Value value;
       std::function<void()> cb_on_success;
-      std::function<void(ErrorCode)> cb_on_failure;
+      std::function<void(const Error&)> cb_on_failure;
       const uint32_t opt;
 
       Info(
-          MapPaxosModule& parent_, const Value& key_, const Value& value_, const std::function<void()>& cb_on_success_,
-          const std::function<void(ErrorCode)>& cb_on_failure_, const uint32_t& opt_);
+          MapPaxosModule& parent_, const Value& key_, const Value& value_, const std::function<void()> cb_on_success_,
+          const std::function<void(const Error&)> cb_on_failure_, const uint32_t& opt_);
     };
     std::unique_ptr<Info> info;
 
@@ -216,6 +213,9 @@ class MapPaxosModule : public Module1D {
   std::map<Value, ProposerInfo> proposer_infos;
 
   MapPaxosModule(const MapPaxosModule&);
+  MapPaxosModule(
+      ModuleParam& param, Module1DDelegate& module_1d_delegate, Channel::Type channel, unsigned int retry_max,
+      uint32_t retry_interval_min, uint32_t retry_interval_max);
   MapPaxosModule& operator=(const MapPaxosModule&);
 
   void module_process_command(std::unique_ptr<const Packet> packet) override;
@@ -234,8 +234,8 @@ class MapPaxosModule : public Module1D {
   void send_packet_balance_acceptor(const Value& key, uint32_t member_idx, const AcceptorInfo& acceptor);
   void send_packet_balance_proposer(const Value& key, const ProposerInfo& proposer);
   void send_packet_get(
-      std::unique_ptr<Value> key, int count_retry, int64_t interval,
-      const std::function<void(const Value&)>& on_success, const std::function<void(ErrorCode)>& on_failure);
+      std::unique_ptr<Value> key, int count_retry, int64_t interval, const std::function<void(const Value&)> on_success,
+      const std::function<void(const Error&)> on_failure);
   void send_packet_hint(const Value& key, const Value& value, PAXOS_N n, PAXOS_N i);
   void send_packet_prepare(
       ProposerInfo& proposer, std::unique_ptr<const Packet> packet_reply, std::unique_ptr<Value> key, uint32_t opt);

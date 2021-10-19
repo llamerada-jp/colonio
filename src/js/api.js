@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,8 @@
 mergeInto(LibraryManager.library, {
   js_on_output_log: function (p1, p2, p3) { jsOnOutputLog(p1, p2, p3); },
 
-  api_gate_release: function (p1) { apiGateRelease(p1); },
-  api_gate_require_call_after: function (p1, p2) { apiGateRequireCallAfter(p1, p2); },
-  api_gate_require_invoke: function (p1, p2) { apiGateRequireInvoke(p1, p2); },
+  scheduler_release: function (p1) { schedulerRelease(p1); },
+  scheduler_request_next_routine: function (p1, p2) { schedulerRequestNextRoutine(p1, p2); },
 
   seed_link_ws_connect: function (p1, p2, p3) { seedLinkWsConnect(p1, p2, p3); },
   seed_link_ws_disconnect: function (p1) { seedLinkWsDisconnect(p1); },

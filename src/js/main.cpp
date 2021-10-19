@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_error_get_message(COLONIO_PTR_T err);
 EMSCRIPTEN_KEEPALIVE int js_error_get_message_length(COLONIO_PTR_T err);
 
 EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T
-js_init(COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_position_on_failure_);
+js_init(COLONIO_PTR_T logger_ptr, COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_position_on_failure_);
 EMSCRIPTEN_KEEPALIVE void js_connect(
     COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T url, unsigned int url_siz, COLONIO_PTR_T token, unsigned int token_siz,
     COLONIO_PTR_T on_success, COLONIO_PTR_T on_failure);
@@ -39,7 +39,6 @@ EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_access_map(COLONIO_PTR_T colonio_ptr, COLO
 EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T
 js_access_pubsub_2d(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name, unsigned int name_siz);
 EMSCRIPTEN_KEEPALIVE void js_disconnect(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T on_success, COLONIO_PTR_T on_failure);
-EMSCRIPTEN_KEEPALIVE void js_enable_output_log(COLONIO_PTR_T colonio_ptr);
 EMSCRIPTEN_KEEPALIVE void js_get_local_nid(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T nid_ptr);
 EMSCRIPTEN_KEEPALIVE void js_set_position(COLONIO_PTR_T colonio_ptr, double x, double y, COLONIO_ID_T id);
 EMSCRIPTEN_KEEPALIVE unsigned int js_invoke(COLONIO_PTR_T colonio_ptr);
@@ -100,11 +99,12 @@ int js_error_get_message_length(COLONIO_PTR_T err) {
   return e->message_siz;
 }
 
-COLONIO_PTR_T js_init(COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_position_on_failure_) {
+COLONIO_PTR_T js_init(
+    COLONIO_PTR_T logger_ptr, COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_position_on_failure_) {
   colonio_t* colonio = new colonio_t();
 
   // TODO detect an error
-  colonio_init(colonio, 0);
+  colonio_init(colonio, reinterpret_cast<void (*)(colonio_t*, const char*, unsigned int)>(logger_ptr), 0);
 
   set_position_on_success = reinterpret_cast<void (*)(COLONIO_ID_T, double, double)>(set_position_on_success_);
   set_position_on_failure = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(set_position_on_failure_);
@@ -153,16 +153,6 @@ void js_disconnect(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T on_success, COLONIO_
   colonio_disconnect_async(
       reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<void (*)(colonio_t*)>(on_success),
       reinterpret_cast<void (*)(colonio_t*, const colonio_error_t*)>(on_failure));
-}
-
-void wrap_on_output_log(colonio_t* colonio_ptr, const char* json_ptr, unsigned int json_siz) {
-  js_on_output_log(reinterpret_cast<COLONIO_PTR_T>(colonio_ptr), reinterpret_cast<COLONIO_PTR_T>(json_ptr), json_siz);
-}
-
-void js_enable_output_log(COLONIO_PTR_T colonio_ptr) {
-  colonio_t* colonio = reinterpret_cast<colonio_t*>(colonio_ptr);
-
-  colonio_set_on_output_log(colonio, wrap_on_output_log);
 }
 
 void js_get_local_nid(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T nid_ptr) {

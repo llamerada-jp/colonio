@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,38 +18,41 @@
 
 #include <cassert>
 
+#include "colonio/error.hpp"
 #include "colonio/pubsub_2d.hpp"
-#include "core/context.hpp"
 #include "core/convert.hpp"
 #include "core/coord_system.hpp"
 #include "core/definition.hpp"
+#include "core/random.hpp"
 #include "core/scheduler.hpp"
 #include "core/utils.hpp"
 #include "core/value_impl.hpp"
 #include "pubsub_2d_protocol.pb.h"
 
 namespace colonio {
+Pubsub2DModule* Pubsub2DModule::new_instance(
+    ModuleParam& param, Module2DDelegate& module_2d_delegate, const CoordSystem& coord_system,
+    const picojson::object& config) {
+  Channel::Type channel = static_cast<Channel::Type>(Utils::get_json<double>(config, "channel"));
+  uint32_t cache_time   = Utils::get_json<double>(config, "cacheTime", PUBSUB_2D_CACHE_TIME);
 
-Pubsub2DModuleDelegate ::~Pubsub2DModuleDelegate() {
+  return new Pubsub2DModule(param, module_2d_delegate, coord_system, channel, cache_time);
 }
 
 Pubsub2DModule::Pubsub2DModule(
-    Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate,
-    Pubsub2DModuleDelegate& delegate_, const CoordSystem& coord_system, APIChannel::Type channel,
-    ModuleChannel::Type module_channel, uint32_t cache_time) :
-    Module2D(context, module_delegate, module_2d_delegate, coord_system, channel, module_channel),
-    CONF_CACHE_TIME(cache_time),
-    delegate(delegate_) {
-  context.scheduler.add_interval_task(this, std::bind(&Pubsub2DModule::clear_cache, this), 1000);
+    ModuleParam& param, Module2DDelegate& module_2d_delegate, const CoordSystem& coord_system, Channel::Type channel,
+    uint32_t cache_time) :
+    Pubsub2DBase(param, module_2d_delegate, coord_system, channel), CONF_CACHE_TIME(cache_time) {
+  scheduler.add_controller_loop(this, std::bind(&Pubsub2DModule::clear_cache, this), 1000);
 }
 
 Pubsub2DModule::~Pubsub2DModule() {
-  context.scheduler.remove_task(this);
+  scheduler.remove_task(this);
 }
 
 void Pubsub2DModule::publish(
     const std::string& name, double x, double y, double r, const Value& value, uint32_t opt,
-    const std::function<void()>& on_success, const std::function<void(ErrorCode)>& on_failure) {
+    std::function<void()>&& on_success, std::function<void(const Error&)>&& on_failure) {
   uint64_t uid              = assign_uid();
   Coordinate local_position = coord_system.get_local_position();
   Cache& c                  = cache[uid];
@@ -76,6 +79,21 @@ void Pubsub2DModule::publish(
 
   } else {
     send_packet_pass(c, on_success, on_failure);
+  }
+}
+
+void Pubsub2DModule::on(const std::string& name, std::function<void(const Value&)>&& subscriber) {
+  if (subscribers.find(name) == subscribers.end()) {
+    subscribers.insert(std::make_pair(name, subscriber));
+  } else {
+    subscribers.at(name) = subscriber;
+  }
+}
+
+void Pubsub2DModule::off(const std::string& name) {
+  auto it = subscribers.find(name);
+  if (it != subscribers.end()) {
+    subscribers.erase(it);
   }
 }
 
@@ -132,8 +150,8 @@ void Pubsub2DModule::CommandKnock::on_success(std::unique_ptr<const Packet> pack
 }
 
 Pubsub2DModule::CommandPass::CommandPass(
-    Pubsub2DModule& parent_, uint64_t uid_, const std::function<void()>& cb_on_success_,
-    const std::function<void(ErrorCode)>& cb_on_failure_) :
+    Pubsub2DModule& parent_, uint64_t uid_, std::function<void()>& cb_on_success_,
+    std::function<void(const Error&)>& cb_on_failure_) :
     Command(CommandID::Pubsub2D::PASS, PacketMode::NONE),
     parent(parent_),
     uid(uid_),
@@ -143,14 +161,14 @@ Pubsub2DModule::CommandPass::CommandPass(
 
 void Pubsub2DModule::CommandPass::on_error(const std::string& message) {
   // @todo output log.
-  cb_on_failure(ErrorCode::SYSTEM_ERROR);
+  cb_on_failure(Error(ErrorCode::SYSTEM_ERROR, ""));
 }
 
 void Pubsub2DModule::CommandPass::on_failure(std::unique_ptr<const Packet> packet) {
   Pubsub2DProtocol::PassFailure content;
   packet->parse_content(&content);
   ErrorCode reason = static_cast<ErrorCode>(content.reason());
-  cb_on_failure(reason);
+  cb_on_failure(Error(reason, ""));
 }
 
 void Pubsub2DModule::CommandPass::on_success(std::unique_ptr<const Packet> packet) {
@@ -158,9 +176,9 @@ void Pubsub2DModule::CommandPass::on_success(std::unique_ptr<const Packet> packe
 }
 
 uint64_t Pubsub2DModule::assign_uid() {
-  uint64_t uid = context.random.generate_u64();
+  uint64_t uid = random.generate_u64();
   while (cache.find(uid) != cache.end()) {
-    uid = context.random.generate_u64();
+    uid = random.generate_u64();
   }
   return uid;
 }
@@ -220,7 +238,13 @@ void Pubsub2DModule::recv_packet_deffuse(std::unique_ptr<const Packet> packet) {
       }
     }
 
-    delegate.pubsub_2d_module_on_on(*this, name, data);
+    auto subscriber = subscribers.find(name);
+    if (subscriber != subscribers.end()) {
+      std::function<void(const Value&)> s = subscriber->second;
+      scheduler.add_user_task(this, [=] {
+        s(data);
+      });
+    }
   }
 }
 
@@ -252,7 +276,15 @@ void Pubsub2DModule::recv_packet_pass(std::unique_ptr<const Packet> packet) {
         }
       }
       send_success(*packet, nullptr);
-      delegate.pubsub_2d_module_on_on(*this, c.name, c.data);
+
+      auto subscriber = subscribers.find(c.name);
+      if (subscriber != subscribers.end()) {
+        std::function<void(const Value&)> s = subscriber->second;
+        Value d                             = c.data;
+        scheduler.add_user_task(this, [=]() {
+          s(d);
+        });
+      }
 
     } else {
       const NodeID& dst = get_relay_nid(center);
@@ -309,7 +341,7 @@ void Pubsub2DModule::send_packet_deffuse(const NodeID& dst_nid, const Cache& cac
 }
 
 void Pubsub2DModule::send_packet_pass(
-    const Cache& cache, const std::function<void()>& on_success, const std::function<void(ErrorCode)>& on_failure) {
+    const Cache& cache, std::function<void()> on_success, std::function<void(const Error&)> on_failure) {
   Pubsub2DProtocol::Pass param;
   cache.center.to_pb(param.mutable_center());
   param.set_r(cache.r);

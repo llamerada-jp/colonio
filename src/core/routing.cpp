@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,10 +22,10 @@
 #include <tuple>
 #include <vector>
 
-#include "context.hpp"
 #include "convert.hpp"
 #include "logger.hpp"
 #include "packet.hpp"
+#include "random.hpp"
 #include "routing_1d.hpp"
 #include "routing_2d.hpp"
 #include "scheduler.hpp"
@@ -53,9 +53,9 @@ RoutingAlgorithm2DDelegate::~RoutingAlgorithm2DDelegate() {
  * @param delegate_ Delegate instance (should WebrtcBundle).
  */
 Routing::Routing(
-    Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, APIChannel::Type channel,
-    const CoordSystem* coord_system, const picojson::object& config) :
-    ModuleBase(context, module_delegate, channel, ModuleChannel::Colonio::SYSTEM_ROUTING),
+    ModuleParam& param, RoutingDelegate& routing_delegate, const CoordSystem* coord_system,
+    const picojson::object& config) :
+    ModuleBase(param, Channel::SYSTEM_ROUTING),
 
     CONFIG_FORCE_UPDATE_COUNT(Utils::get_json(config, "forceUpdateCount", ROUTING_FORCE_UPDATE_COUNT)),
     CONFIG_SEED_CONNECT_INTERVAL(Utils::get_json(config, "seedConnectInterval", ROUTING_SEED_CONNECT_INTERVAL)),
@@ -75,20 +75,20 @@ Routing::Routing(
     seed_status(LinkStatus::OFFLINE),
     routing_countdown(CONFIG_FORCE_UPDATE_COUNT),
     seed_online_timestamp(0) {
-  routing_1d = new Routing1D(context, *this);
+  routing_1d = new Routing1D(param, *this);
   algorithms.push_back(std::unique_ptr<RoutingAlgorithm>(routing_1d));
 
   if (coord_system) {
-    routing_2d = new Routing2D(context, *this, *coord_system);
+    routing_2d = new Routing2D(param, *this, *coord_system);
     algorithms.push_back(std::unique_ptr<RoutingAlgorithm>(routing_2d));
   }
 
   // add task
-  context.scheduler.add_interval_task(this, std::bind(&Routing::update, this), CONFIG_UPDATE_PERIOD);
+  scheduler.add_controller_loop(this, std::bind(&Routing::update, this), CONFIG_UPDATE_PERIOD);
 }
 
 Routing::~Routing() {
-  context.scheduler.remove_task(this);
+  scheduler.remove_task(this);
 }
 
 const NodeID& Routing::get_relay_nid_1d(const Packet& packet) {
@@ -285,11 +285,11 @@ void Routing::update_seed_connection() {
     if (seed_online_timestamp == 0) {
       seed_online_timestamp = Utils::get_current_msec();
       logi("force routing");
-      routing_countdown                  = 0;
-      seed_timestamps[context.local_nid] = current;
+      routing_countdown          = 0;
+      seed_timestamps[local_nid] = current;
     }
 
-    distance_from_seed[context.local_nid] = 1;
+    distance_from_seed[local_nid] = 1;
 
     int64_t online_duration = current - seed_online_timestamp;
     if (online_duration > CONFIG_SEED_DISCONNECT_THREATHOLD && node_status == LinkStatus::ONLINE) {
@@ -302,9 +302,7 @@ void Routing::update_seed_connection() {
       logi("force routing");
       routing_countdown = 0;
     }
-    if (distance_from_seed.find(context.local_nid) != distance_from_seed.end()) {
-      distance_from_seed.erase(context.local_nid);
-    }
+    distance_from_seed.erase(local_nid);
 
     if (node_status != LinkStatus::ONLINE) {
       delegate.routing_do_connect_seed(*this);
@@ -324,7 +322,7 @@ void Routing::update_seed_connection() {
       }
     }
     if (count == 0) {
-      if (context.random.generate_u32() % CONFIG_SEED_CONNECT_RATE == 0) {
+      if (random.generate_u32() % CONFIG_SEED_CONNECT_RATE == 0) {
         delegate.routing_do_connect_seed(*this);
       }
       return;
@@ -398,16 +396,16 @@ void Routing::update_seed_route_by_links() {
 
 void Routing::update_seed_route_by_status() {
   if (seed_status == LinkStatus::ONLINE) {
-    if (next_to_seed != context.local_nid) {
-      next_to_seed                     = context.local_nid;
+    if (next_to_seed != local_nid) {
+      next_to_seed                     = local_nid;
       distance_from_seed[next_to_seed] = 1;
       logi("force routing");
       routing_countdown = 0;
     }
 
   } else {
-    if (next_to_seed == context.local_nid) {
-      distance_from_seed.erase(context.local_nid);
+    if (next_to_seed == local_nid) {
+      distance_from_seed.erase(local_nid);
       update_seed_route_by_links();
     }
   }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,8 +24,7 @@
 
 namespace colonio {
 Coordinate::Coordinate() :
-    x(std::numeric_limits<double>::signaling_NaN()),
-    y(std::numeric_limits<double>::signaling_NaN()) {
+    x(std::numeric_limits<double>::signaling_NaN()), y(std::numeric_limits<double>::signaling_NaN()) {
 }
 
 Coordinate::Coordinate(double x_, double y_) : x(x_), y(y_) {

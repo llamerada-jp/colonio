@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,11 +20,8 @@ namespace colonio {
 Module1DDelegate::~Module1DDelegate() {
 }
 
-Module1D::Module1D(
-    Context& context, ModuleDelegate& module_delegate, Module1DDelegate& module_1d_delegate, APIChannel::Type channel,
-    ModuleChannel::Type module_channel) :
-    ModuleBase(context, module_delegate, channel, module_channel),
-    delegate(module_1d_delegate) {
+Module1D::Module1D(ModuleParam& param, Module1DDelegate& module_1d_delegate, Channel::Type channel) :
+    ModuleBase(param, channel), delegate(module_1d_delegate) {
 }
 
 bool Module1D::module_1d_check_covered_range(const NodeID& nid) {

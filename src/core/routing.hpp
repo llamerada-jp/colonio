@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@
 
 namespace colonio {
 class CoordSystem;
-class Context;
 class Packet;
 class Routing;
 class Routing1D;
@@ -78,8 +77,8 @@ class RoutingAlgorithm2DDelegate {
 class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public RoutingAlgorithm2DDelegate {
  public:
   Routing(
-      Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, APIChannel::Type channel,
-      const CoordSystem* coord_system, const picojson::object& config);
+      ModuleParam& param, RoutingDelegate& routing_delegate, const CoordSystem* coord_system,
+      const picojson::object& config);
   virtual ~Routing();
 
   const NodeID& get_relay_nid_1d(const Packet& packet);

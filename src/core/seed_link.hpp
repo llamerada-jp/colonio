@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,36 +18,42 @@
 #include <string>
 
 namespace colonio {
-class Context;
-class SeedLinkBase;
+class Logger;
+class Scheduler;
+class SeedLink;
+class SeedLinkDelegate;
+
+struct SeedLinkParam {
+  SeedLinkDelegate& delegate;
+  Logger& logger;
+
+  SeedLinkParam(SeedLinkDelegate& delegate_, Logger& logger_);
+};
 
 class SeedLinkDelegate {
  public:
   virtual ~SeedLinkDelegate();
-  virtual void seed_link_on_connect(SeedLinkBase& link)                       = 0;
-  virtual void seed_link_on_disconnect(SeedLinkBase& link)                    = 0;
-  virtual void seed_link_on_error(SeedLinkBase& link)                         = 0;
-  virtual void seed_link_on_recv(SeedLinkBase& link, const std::string& data) = 0;
+  virtual void seed_link_on_connect(SeedLink& link)                       = 0;
+  virtual void seed_link_on_disconnect(SeedLink& link)                    = 0;
+  virtual void seed_link_on_error(SeedLink& link)                         = 0;
+  virtual void seed_link_on_recv(SeedLink& link, const std::string& data) = 0;
 };
 
-class SeedLinkBase {
+class SeedLink {
  public:
   SeedLinkDelegate& delegate;
 
-  SeedLinkBase(SeedLinkDelegate& delegate_, Context& context_);
-  virtual ~SeedLinkBase();
+  static SeedLink* new_instance(SeedLinkParam& param);
+
+  virtual ~SeedLink();
 
   virtual void connect(const std::string& url) = 0;
   virtual void disconnect()                    = 0;
   virtual void send(const std::string& data)   = 0;
 
  protected:
-  Context& context;
+  Logger& logger;
+
+  SeedLink(SeedLinkParam& param);
 };
 }  // namespace colonio
-
-#ifndef EMSCRIPTEN
-#  include "seed_link_websocket_native.hpp"
-#else
-#  include "seed_link_websocket_wasm.hpp"
-#endif

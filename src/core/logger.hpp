@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -132,23 +132,23 @@ class Logger {
 };
 
 #define logi(FORMAT, ...) \
-  this->context.logger.create(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+  this->logger.create(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 #define logI(INSTANCE, FORMAT, ...) \
   (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 #define logw(FORMAT, ...) \
-  this->context.logger.create(__FILE__, __LINE__, LogLevel::WARN, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+  this->logger.create(__FILE__, __LINE__, LogLevel::WARN, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 #define logW(INSTANCE, FORMAT, ...) \
   (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::WARN, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 #define loge(FORMAT, ...) \
-  this->context.logger.create(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+  this->logger.create(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 #define logE(INSTANCE, FORMAT, ...) \
   (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 #ifndef NDEBUG
 #  define logd(FORMAT, ...) \
-    this->context.logger.create(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+    this->logger.create(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 #  define logD(INSTANCE, FORMAT, ...) \
     (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 

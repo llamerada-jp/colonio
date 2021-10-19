@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,38 +47,24 @@ static const char SEED[] = "seed";  ///< Server is a special node.
 static const char NEXT[] = "next";  ///< Next node is nodes of connecting direct from this node.
 }  // namespace NID
 
-namespace APIChannel {
+namespace Channel {
 typedef uint16_t Type;
-static const Type NONE    = 0;
-static const Type COLONIO = 1;
-}  // namespace APIChannel
-
-namespace ModuleChannel {
-typedef uint16_t Type;
-static const Type NONE = 0;
-
-namespace Colonio {
-static const Type MAIN           = 1;
+static const Type NONE           = 0;
+static const Type COLONIO        = 1;
 static const Type SEED_ACCESSOR  = 2;
 static const Type NODE_ACCESSOR  = 3;
 static const Type SYSTEM_ROUTING = 4;
-// static const Type SYSTEM_ROUTING_2D = 16;
-}  // namespace Colonio
-
-namespace MapPaxos {
-static const Type MAP_PAXOS = 1;
-}
-
-namespace Pubsub2D {
-static const Type PUBSUB_2D = 1;
-}
-}  // namespace ModuleChannel
+}  // namespace Channel
 
 namespace CommandID {
 typedef uint16_t Type;
 static const Type ERROR   = 0xFFFF;
 static const Type FAILURE = 0xFFFE;
 static const Type SUCCESS = 0xFFFD;
+
+namespace Colonio {
+static const Type SEND_PACKET = 1;
+}  //  namespace Colonio
 
 namespace Seed {
 static const Type AUTH           = 1;

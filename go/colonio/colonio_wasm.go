@@ -1,6 +1,23 @@
+//go:build js
 // +build js
 
 package colonio
+
+/*
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 import (
 	"fmt"
@@ -33,6 +50,11 @@ type pubsub2dImpl struct {
 	eventsMtx sync.Mutex
 	events    map[string]uint32
 }
+
+type defaultLogger struct {
+}
+
+var DefaultLogger *defaultLogger
 
 const (
 	jsModuleName    = "colonioSuite"
@@ -146,9 +168,12 @@ func onResponse(_ js.Value, args []js.Value) interface{} {
 }
 
 // NewColonio creates a new instance of colonio object.
-func NewColonio() (Colonio, error) {
+func NewColonio(logger Logger) (Colonio, error) {
 	impl := &colonioImpl{
-		jsModule:  jsSuite.Call("newColonio"),
+		jsModule: jsSuite.Call("newColonio", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+			logger.Output(args[0].String())
+			return nil
+		})),
 		maps:      make(map[string]*mapImpl),
 		pubsub2ds: make(map[string]*pubsub2dImpl),
 	}
@@ -242,6 +267,10 @@ func (c *colonioImpl) Quit() error {
 	}
 
 	return nil
+}
+
+func (l *defaultLogger) Output(message string) {
+	jsSuite.Call("outputDefaultLog", js.ValueOf(message))
 }
 
 func (v *valueImpl) IsNil() bool {

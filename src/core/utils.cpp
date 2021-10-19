@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -104,7 +104,6 @@ std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
   out << is << "id : " << Convert::int2str(packet.id) << std::endl;
   out << is << "mode : " << Convert::int2str(packet.mode) << std::endl;
   out << is << "channel : " << Convert::int2str(packet.channel) << std::endl;
-  out << is << "module_channel : " << Convert::int2str(packet.module_channel) << std::endl;
   out << is << "command_id : " << Convert::int2str(packet.command_id) << std::endl;
   out << is << "content : " << dump_binary(packet.content.get());
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -75,7 +75,6 @@ Logger::L& Logger::L::map(const std::string& name, const Packet& value) {
   p.insert(std::make_pair("id", picojson::value(Convert::int2str(value.id))));
   p.insert(std::make_pair("mode", picojson::value(Convert::int2str(value.mode))));
   p.insert(std::make_pair("channel", picojson::value(Convert::int2str(value.channel))));
-  p.insert(std::make_pair("module_channel", picojson::value(Convert::int2str(value.module_channel))));
   p.insert(std::make_pair("command_id", picojson::value(Convert::int2str(value.command_id))));
   if (value.content) {
     p.insert(std::make_pair("content_size", picojson::value(static_cast<double>(value.content->size()))));

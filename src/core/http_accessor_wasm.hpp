@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,4 @@ class HttpAccessorWasm : public HttpAccessorBase {
       const std::string& url, const std::string& payload, const std::string& content_type,
       HttpAccessorDelegate* delegate_) override;
 };
-
-typedef HttpAccessorWasm HttpAccessor;
 }  // namespace colonio
