@@ -236,7 +236,7 @@ func (node *Node) start() error {
 }
 
 func (node *Node) receivePacket(packet *proto.SeedAccessor) error {
-	if packet.Channel == ChannelColonio && packet.ModuleChannel == ModuleChannelColonioSeedAccessor {
+	if packet.Channel == ChannelSeedAccessor {
 		switch packet.CommandId {
 		case MethodSeedAuth:
 			glog.Info("receive packet auth")
@@ -307,7 +307,7 @@ func (node *Node) recvPacketAuth(packet *proto.SeedAccessor) error {
 
 func (node *Node) relayPacket(packet *proto.SeedAccessor) error {
 	// Get node id from `WEBRTC_CONNECT::OFFER` packet.
-	if packet.Channel == ChannelColonio && packet.ModuleChannel == ModuleChannelColonioNodeAccessor {
+	if packet.Channel == ChannelNodeAccessor {
 		switch packet.CommandId {
 		case MethodWebrtcConnectOffer:
 			var content proto.Offer
@@ -377,15 +377,14 @@ func (node *Node) sendHint(locked bool) error {
 	}
 
 	packet := &proto.SeedAccessor{
-		DstNid:        node.nid,
-		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
-		HopCount:      0,
-		Id:            0,
-		Mode:          ModeExplicit | ModeOneWay,
-		Channel:       ChannelColonio,
-		ModuleChannel: ModuleChannelColonioSeedAccessor,
-		CommandId:     MethodSeedHint,
-		Content:       contentByte,
+		DstNid:    node.nid,
+		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
+		HopCount:  0,
+		Id:        0,
+		Mode:      ModeExplicit | ModeOneWay,
+		Channel:   ChannelSeedAccessor,
+		CommandId: MethodSeedHint,
+		Content:   contentByte,
 	}
 
 	glog.Infof("Send hint.(%d)\n", len(contentByte))
@@ -394,14 +393,13 @@ func (node *Node) sendHint(locked bool) error {
 
 func (node *Node) sendPing() error {
 	packet := &proto.SeedAccessor{
-		DstNid:        node.nid,
-		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
-		HopCount:      0,
-		Id:            0,
-		Mode:          ModeExplicit | ModeOneWay,
-		Channel:       ChannelColonio,
-		ModuleChannel: ModuleChannelColonioSeedAccessor,
-		CommandId:     MethodSeedPing,
+		DstNid:    node.nid,
+		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
+		HopCount:  0,
+		Id:        0,
+		Mode:      ModeExplicit | ModeOneWay,
+		Channel:   ChannelSeedAccessor,
+		CommandId: MethodSeedPing,
 	}
 
 	glog.Info("Send ping.")
@@ -410,14 +408,13 @@ func (node *Node) sendPing() error {
 
 func (node *Node) sendRequireRandom() error {
 	packet := &proto.SeedAccessor{
-		DstNid:        node.nid,
-		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
-		HopCount:      0,
-		Id:            0,
-		Mode:          ModeExplicit | ModeOneWay,
-		Channel:       ChannelColonio,
-		ModuleChannel: ModuleChannelColonioSeedAccessor,
-		CommandId:     MethodSeedRequireRandom,
+		DstNid:    node.nid,
+		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
+		HopCount:  0,
+		Id:        0,
+		Mode:      ModeExplicit | ModeOneWay,
+		Channel:   ChannelSeedAccessor,
+		CommandId: MethodSeedRequireRandom,
 	}
 
 	glog.Info("Send require random.")
@@ -431,15 +428,14 @@ func (link *Node) sendSuccess(replyFor *proto.SeedAccessor, content proto3.Messa
 	}
 
 	packet := &proto.SeedAccessor{
-		DstNid:        replyFor.SrcNid,
-		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
-		HopCount:      0,
-		Id:            replyFor.Id,
-		Mode:          ModeExplicit | ModeOneWay,
-		Channel:       replyFor.Channel,
-		ModuleChannel: replyFor.ModuleChannel,
-		CommandId:     MethodSuccess,
-		Content:       contentByte,
+		DstNid:    replyFor.SrcNid,
+		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
+		HopCount:  0,
+		Id:        replyFor.Id,
+		Mode:      ModeExplicit | ModeOneWay,
+		Channel:   replyFor.Channel,
+		CommandId: MethodSuccess,
+		Content:   contentByte,
 	}
 
 	glog.Info("Send success.")
@@ -457,15 +453,14 @@ func (node *Node) sendFailure(replyFor *proto.SeedAccessor, content proto3.Messa
 	}
 
 	packet := &proto.SeedAccessor{
-		DstNid:        replyFor.SrcNid,
-		SrcNid:        &proto.NodeID{Type: NidTypeSeed},
-		HopCount:      0,
-		Id:            replyFor.Id,
-		Mode:          ModeExplicit | ModeOneWay,
-		Channel:       replyFor.Channel,
-		ModuleChannel: replyFor.ModuleChannel,
-		CommandId:     MethodFailure,
-		Content:       contentByte,
+		DstNid:    replyFor.SrcNid,
+		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
+		HopCount:  0,
+		Id:        replyFor.Id,
+		Mode:      ModeExplicit | ModeOneWay,
+		Channel:   replyFor.Channel,
+		CommandId: MethodFailure,
+		Content:   contentByte,
 	}
 
 	glog.Info("Send failure.")
