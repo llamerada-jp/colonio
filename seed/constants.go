@@ -38,11 +38,10 @@ const (
 	ModeRelaySeed = 0x0008
 	ModeNoRetry   = 0x0010
 
-	ChannelNone    = 0
-	ChannelColonio = 1
-
-	ModuleChannelColonioSeedAccessor = 2
-	ModuleChannelColonioNodeAccessor = 3
+	ChannelNone         = 0
+	ChannelMain         = 1
+	ChannelSeedAccessor = 2
+	ChannelNodeAccessor = 3
 
 	// Commonly packet method.
 	MethodError   = 0xffff
