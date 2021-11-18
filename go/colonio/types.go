@@ -27,6 +27,7 @@ type Colonio interface {
 	Quit() error
 }
 
+// Logger is an interface to configure the output destination of the logs.
 type Logger interface {
 	Output(message string)
 }

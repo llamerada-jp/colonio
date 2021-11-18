@@ -52,28 +52,30 @@ ColonioModule::~ColonioModule() {
 void ColonioModule::send(
     const std::string& dst_nid, const Value& value, uint32_t opt, std::function<void()>&& on_success,
     std::function<void(const Error&)>&& on_failure) {
-  ColonioModuleProtocol::SendPacket param;
-  ValueImpl::to_pb(param.mutable_value(), value);
-  std::shared_ptr<const std::string> param_bin = serialize_pb(param);
+  scheduler.add_controller_task(this, [=] {
+    ColonioModuleProtocol::SendPacket param;
+    ValueImpl::to_pb(param.mutable_value(), value);
+    std::shared_ptr<const std::string> param_bin = serialize_pb(param);
 
-  PacketMode::Type mode = 0;
-  if ((opt & Colonio::SEND_ACCEPT_NEARBY) == 0) {
-    mode |= PacketMode::EXPLICIT;
-  }
+    PacketMode::Type mode = 0;
+    if ((opt & Colonio::SEND_ACCEPT_NEARBY) == 0) {
+      mode |= PacketMode::EXPLICIT;
+    }
 
-  if ((opt & Colonio::CONFIRM_RECEIVER_RESULT) != 0) {
-    std::unique_ptr<CommandSend> command = std::make_unique<CommandSend>(mode, *this);
-    command->cb_success                  = on_success;
-    command->cb_failure                  = on_failure;
+    if ((opt & Colonio::CONFIRM_RECEIVER_RESULT) != 0) {
+      std::unique_ptr<CommandSend> command = std::make_unique<CommandSend>(mode, *this);
+      command->cb_success                  = on_success;
+      command->cb_failure                  = on_failure;
 
-    send_packet(std::move(command), NodeID::from_str(dst_nid), param_bin);
+      send_packet(std::move(command), NodeID::from_str(dst_nid), param_bin);
 
-  } else {
-    send_packet(NodeID::from_str(dst_nid), mode, CommandID::Colonio::SEND_PACKET, param_bin);
-    scheduler.add_user_task(this, [on_success] {
-      on_success();
-    });
-  }
+    } else {
+      send_packet(NodeID::from_str(dst_nid), mode, CommandID::Colonio::SEND_PACKET, param_bin);
+      scheduler.add_user_task(this, [on_success] {
+        on_success();
+      });
+    }
+  });
 }
 
 void ColonioModule::on(std::function<void(const Value&)>&& receiver_) {

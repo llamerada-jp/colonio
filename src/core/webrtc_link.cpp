@@ -24,9 +24,8 @@
 #endif
 
 namespace colonio {
-WebrtcLinkParam::WebrtcLinkParam(
-    WebrtcLinkDelegate& delegate_, Logger& logger_, Scheduler& scheduler_, WebrtcContext& context_) :
-    delegate(delegate_), logger(logger_), scheduler(scheduler_), context(context_) {
+WebrtcLinkParam::WebrtcLinkParam(WebrtcLinkDelegate& delegate_, Logger& logger_, WebrtcContext& context_) :
+    delegate(delegate_), logger(logger_), context(context_) {
 }
 
 /**
@@ -68,9 +67,11 @@ WebrtcLink* WebrtcLink::new_instance(WebrtcLinkParam& param, bool is_create_dc) 
 
 WebrtcLink::WebrtcLink(WebrtcLinkParam& param) :
     delegate(param.delegate),
+    link_state(LinkStatus::CONNECTING),
+    dco_state(LinkStatus::CONNECTING),
+    pco_state(LinkStatus::CONNECTING),
     init_data(std::make_unique<InitData>()),
     logger(param.logger),
-    scheduler(param.scheduler),
     webrtc_context(param.context) {
 }
 

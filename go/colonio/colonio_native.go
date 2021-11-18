@@ -83,6 +83,7 @@ type pubsub2dImpl struct {
 type defaultLogger struct {
 }
 
+// DefaultLogger is the default log output module that outputs logs to the golang log module.
 var DefaultLogger *defaultLogger
 var loggerMap map[*C.struct_colonio_s]Logger
 var pubsub2DMutex sync.RWMutex

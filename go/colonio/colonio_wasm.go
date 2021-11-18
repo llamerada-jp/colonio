@@ -54,6 +54,7 @@ type pubsub2dImpl struct {
 type defaultLogger struct {
 }
 
+// DefaultLogger is the default log output module that outputs logs to the Javascript console.
 var DefaultLogger *defaultLogger
 
 const (

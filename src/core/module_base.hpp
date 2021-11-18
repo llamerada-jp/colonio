@@ -50,7 +50,9 @@ class ModuleBase {
  public:
   const Channel::Type channel;
 
+  ModuleBase(const ModuleBase&) = delete;
   virtual ~ModuleBase();
+  ModuleBase& operator=(const ModuleBase&) = delete;
 
   static std::unique_ptr<const Packet> copy_packet_for_reply(const Packet& src);
 
@@ -104,7 +106,6 @@ class ModuleBase {
   ModuleDelegate& delegate;
 
   std::map<uint32_t, Container> containers;
-  std::mutex mutex_containers;
 
   void on_persec();
 };

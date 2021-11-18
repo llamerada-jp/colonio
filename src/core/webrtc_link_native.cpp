@@ -41,7 +41,29 @@ WebrtcLinkNative::DCO::DCO(WebrtcLinkNative& parent_) : parent(parent_) {
 }
 
 void WebrtcLinkNative::DCO::OnStateChange() {
-  parent.on_dco_state_change(parent.data_channel->state());
+  LinkStatus::Type new_state = 0;
+  switch (parent.data_channel->state()) {
+    case webrtc::DataChannelInterface::kConnecting:
+      new_state = LinkStatus::CONNECTING;
+      break;
+
+    case webrtc::DataChannelInterface::kOpen:  // The DataChannel is ready to send data.
+      new_state = LinkStatus::ONLINE;
+      break;
+
+    case webrtc::DataChannelInterface::kClosing:
+      new_state = LinkStatus::CLOSING;
+      break;
+
+    case webrtc::DataChannelInterface::kClosed:
+      new_state = LinkStatus::OFFLINE;
+      break;
+
+    default:
+      assert(false);
+  }
+
+  parent.delegate.webrtc_link_on_change_dco_state(parent, new_state);
 }
 
 void WebrtcLinkNative::DCO::OnMessage(const webrtc::DataBuffer& buffer) {
@@ -68,8 +90,33 @@ void WebrtcLinkNative::PCO::OnIceCandidate(const webrtc::IceCandidateInterface* 
   parent.on_pco_ice_candidate(candidate);
 }
 
-void WebrtcLinkNative::PCO::OnIceConnectionChange(webrtc::PeerConnectionInterface::IceConnectionState new_state) {
-  parent.on_pco_connection_change(new_state);
+void WebrtcLinkNative::PCO::OnIceConnectionChange(webrtc::PeerConnectionInterface::IceConnectionState raw_state) {
+  LinkStatus::Type new_state = 0;
+  switch (raw_state) {
+    case webrtc::PeerConnectionInterface::kIceConnectionNew:
+    case webrtc::PeerConnectionInterface::kIceConnectionChecking:
+      new_state = LinkStatus::CONNECTING;
+      break;
+
+    case webrtc::PeerConnectionInterface::kIceConnectionConnected:
+    case webrtc::PeerConnectionInterface::kIceConnectionCompleted:
+      new_state = LinkStatus::ONLINE;
+      break;
+
+    case webrtc::PeerConnectionInterface::kIceConnectionDisconnected:
+      new_state = LinkStatus::CLOSING;
+      break;
+
+    case webrtc::PeerConnectionInterface::kIceConnectionFailed:
+    case webrtc::PeerConnectionInterface::kIceConnectionClosed:
+      new_state = LinkStatus::OFFLINE;
+      break;
+
+    default:
+      assert(false);
+  }
+
+  parent.delegate.webrtc_link_on_change_pco_state(parent, new_state);
 }
 
 void WebrtcLinkNative::PCO::OnIceGatheringChange(webrtc::PeerConnectionInterface::IceGatheringState new_state) {
@@ -100,10 +147,7 @@ WebrtcLinkNative::WebrtcLinkNative(WebrtcLinkParam& param, bool is_create_dc) :
     dco(*this),
     pco(*this),
     ssdo(new rtc::RefCountedObject<SSDO>(*this)),
-    is_remote_sdp_set(false),
-    prev_status(LinkStatus::CONNECTING),
-    dco_status(LinkStatus::CONNECTING),
-    pco_status(LinkStatus::CONNECTING) {
+    is_remote_sdp_set(false) {
   WebrtcContextNative& wc_native = dynamic_cast<WebrtcContextNative&>(webrtc_context);
   peer_connection =
       wc_native.peer_connection_factory->CreatePeerConnection(wc_native.pc_config, nullptr, nullptr, &pco);
@@ -128,8 +172,7 @@ WebrtcLinkNative::WebrtcLinkNative(WebrtcLinkParam& param, bool is_create_dc) :
  * Destractor, close peer connection and release.
  */
 WebrtcLinkNative::~WebrtcLinkNative() {
-  assert(get_status() == LinkStatus::OFFLINE);
-  scheduler.remove_task(this);
+  assert(link_state == LinkStatus::OFFLINE);
 }
 
 void WebrtcLinkNative::disconnect() {
@@ -147,7 +190,7 @@ void WebrtcLinkNative::disconnect() {
  */
 void WebrtcLinkNative::get_local_sdp(std::function<void(const std::string&)>&& func) {
   assert(local_sdp.empty());
-  assert(get_status() == LinkStatus::CONNECTING);
+  assert(link_state == LinkStatus::CONNECTING);
 
   if (is_remote_sdp_set) {
     peer_connection->CreateAnswer(csdo, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
@@ -165,23 +208,25 @@ void WebrtcLinkNative::get_local_sdp(std::function<void(const std::string&)>&& f
   func(local_sdp);
 }
 
-LinkStatus::Type WebrtcLinkNative::get_status() {
-  if (init_data) {
-    return LinkStatus::CONNECTING;
-
-  } else {
-    std::lock_guard<std::mutex> guard(mutex_status);
-
-    if (dco_status == LinkStatus::ONLINE && pco_status == LinkStatus::ONLINE) {
-      return LinkStatus::ONLINE;
-
-    } else if (dco_status == LinkStatus::OFFLINE && pco_status == LinkStatus::OFFLINE) {
-      return LinkStatus::OFFLINE;
-
-    } else {
-      return LinkStatus::CLOSING;
-    }
+LinkStatus::Type WebrtcLinkNative::get_new_link_state() {
+  if (dco_state == LinkStatus::OFFLINE && pco_state == LinkStatus::OFFLINE) {
+    return LinkStatus::OFFLINE;
   }
+
+  if (dco_state == LinkStatus::CLOSING || dco_state == LinkStatus::OFFLINE || pco_state == LinkStatus::CLOSING ||
+      pco_state == LinkStatus::OFFLINE) {
+    disconnect();
+    return LinkStatus::CLOSING;
+  }
+
+  if (dco_state == LinkStatus::CONNECTING || pco_state == LinkStatus::CONNECTING) {
+    return LinkStatus::CONNECTING;
+  }
+
+  assert(dco_state == LinkStatus::ONLINE);
+  assert(pco_state == LinkStatus::ONLINE);
+
+  return LinkStatus::ONLINE;
 }
 
 /**
@@ -189,14 +234,13 @@ LinkStatus::Type WebrtcLinkNative::get_status() {
  * @param packet Packet to send.
  */
 bool WebrtcLinkNative::send(const std::string& packet) {
-  if (get_status() == LinkStatus::ONLINE) {
-    webrtc::DataBuffer buffer(rtc::CopyOnWriteBuffer(packet.c_str(), packet.size()), true);
-    data_channel->Send(buffer);
-    return true;
-
-  } else {
+  if (link_state != LinkStatus::ONLINE) {
     return false;
   }
+
+  webrtc::DataBuffer buffer(rtc::CopyOnWriteBuffer(packet.c_str(), packet.size()), true);
+  data_channel->Send(buffer);
+  return true;
 }
 
 /**
@@ -204,22 +248,23 @@ bool WebrtcLinkNative::send(const std::string& packet) {
  * @param sdp String of sdp.
  */
 void WebrtcLinkNative::set_remote_sdp(const std::string& sdp) {
-  LinkStatus::Type status = get_status();
-  if (status == LinkStatus::CONNECTING || status == LinkStatus::ONLINE) {
-    webrtc::SdpParseError error;
-    webrtc::SessionDescriptionInterface* session_description(
-        webrtc::CreateSessionDescription((local_sdp.empty() ? "offer" : "answer"), sdp, &error));
-
-    if (session_description == nullptr) {
-      /// @todo error
-      std::cout << error.line << std::endl;
-      std::cout << error.description << std::endl;
-      assert(false);
-    }
-
-    peer_connection->SetRemoteDescription(ssdo, session_description);
-    is_remote_sdp_set = true;
+  if (link_state != LinkStatus::CONNECTING && link_state != LinkStatus::ONLINE) {
+    return;
   }
+
+  webrtc::SdpParseError error;
+  webrtc::SessionDescriptionInterface* session_description(
+      webrtc::CreateSessionDescription((local_sdp.empty() ? "offer" : "answer"), sdp, &error));
+
+  if (session_description == nullptr) {
+    /// @todo error
+    std::cout << error.line << std::endl;
+    std::cout << error.description << std::endl;
+    assert(false);
+  }
+
+  peer_connection->SetRemoteDescription(ssdo, session_description);
+  is_remote_sdp_set = true;
 }
 
 /**
@@ -227,54 +272,23 @@ void WebrtcLinkNative::set_remote_sdp(const std::string& sdp) {
  * @param ice String of ice.
  */
 void WebrtcLinkNative::update_ice(const picojson::object& ice) {
-  LinkStatus::Type status = get_status();
-  if (status == LinkStatus::CONNECTING || status == LinkStatus::ONLINE) {
-    webrtc::SdpParseError err_sdp;
-    webrtc::IceCandidateInterface* ice_ptr = CreateIceCandidate(
-        ice.at("sdpMid").get<std::string>(), static_cast<int>(ice.at("sdpMLineIndex").get<double>()),
-        ice.at("candidate").get<std::string>(), &err_sdp);
-    if (!err_sdp.line.empty() && !err_sdp.description.empty()) {
-      /// @todo error
-      std::cout << "Error on CreateIceCandidate" << std::endl
-                << err_sdp.line << std::endl
-                << err_sdp.description << std::endl;
-      assert(false);
-    }
-
-    peer_connection->AddIceCandidate(ice_ptr);
+  if (link_state != LinkStatus::CONNECTING && link_state != LinkStatus::ONLINE) {
+    return;
   }
-}
 
-void WebrtcLinkNative::on_change_status() {
-  scheduler.add_controller_task(this, [this] {
-    {
-      LinkStatus::Type dco_status;
-      LinkStatus::Type pco_status;
-      {
-        std::lock_guard<std::mutex> guard(mutex_status);
-        dco_status = this->dco_status;
-        pco_status = this->pco_status;
-      }
+  webrtc::SdpParseError err_sdp;
+  webrtc::IceCandidateInterface* ice_ptr = CreateIceCandidate(
+      ice.at("sdpMid").get<std::string>(), static_cast<int>(ice.at("sdpMLineIndex").get<double>()),
+      ice.at("candidate").get<std::string>(), &err_sdp);
+  if (!err_sdp.line.empty() && !err_sdp.description.empty()) {
+    /// @todo error
+    std::cout << "Error on CreateIceCandidate" << std::endl
+              << err_sdp.line << std::endl
+              << err_sdp.description << std::endl;
+    assert(false);
+  }
 
-      if (init_data && dco_status == LinkStatus::ONLINE && pco_status == LinkStatus::ONLINE) {
-        init_data.reset();
-
-      } else if ((dco_status == LinkStatus::OFFLINE || pco_status == LinkStatus::OFFLINE) && dco_status != pco_status) {
-        disconnect();
-
-      } else if (dco_status == LinkStatus::OFFLINE && pco_status == LinkStatus::OFFLINE) {
-        peer_connection = nullptr;
-        data_channel    = nullptr;
-      }
-    }
-
-    LinkStatus::Type status = get_status();
-    if (status != prev_status) {
-      logd("change status").map("nid", nid).map_int("before", prev_status).map_int("after", status);
-      prev_status = status;
-      delegate.webrtc_link_on_change_status(*this, status);
-    }
-  });
+  peer_connection->AddIceCandidate(ice_ptr);
 }
 
 /**
@@ -282,10 +296,11 @@ void WebrtcLinkNative::on_change_status() {
  */
 void WebrtcLinkNative::on_csd_success(webrtc::SessionDescriptionInterface* desc) {
   peer_connection->SetLocalDescription(ssdo, desc);
-
-  std::lock_guard<std::mutex> guard(mutex);
+  {
+    std::lock_guard<std::mutex> guard(mutex);
+    desc->ToString(&local_sdp);
+  }
   cond.notify_all();
-  desc->ToString(&local_sdp);
 }
 
 void WebrtcLinkNative::on_csd_failure(const std::string& error) {
@@ -301,95 +316,10 @@ void WebrtcLinkNative::on_csd_failure(const std::string& error) {
 void WebrtcLinkNative::on_dco_message(const webrtc::DataBuffer& buffer) {
   std::string data = std::string(buffer.data.data<char>(), buffer.size());
   // Can't receive message when OPENING, but there is a possibility to receive message when CLOSEING or CLOSED.
-  assert(dco_status != LinkStatus::CONNECTING);
-  assert(pco_status != LinkStatus::CONNECTING);
+  assert(dco_state != LinkStatus::CONNECTING);
+  assert(pco_state != LinkStatus::CONNECTING);
 
   delegate.webrtc_link_on_recv_data(*this, data);
-}
-
-/**
- * Raise status chagne event by data channel status.
- * @param status Data channel status.
- */
-void WebrtcLinkNative::on_dco_state_change(webrtc::DataChannelInterface::DataState status) {
-  LinkStatus::Type should = 0;
-  switch (status) {
-    case webrtc::DataChannelInterface::kConnecting:
-      should = LinkStatus::CONNECTING;
-      break;
-
-    case webrtc::DataChannelInterface::kOpen:  // The DataChannel is ready to send data.
-      should = LinkStatus::ONLINE;
-      break;
-
-    case webrtc::DataChannelInterface::kClosing:
-      should = LinkStatus::CLOSING;
-      break;
-
-    case webrtc::DataChannelInterface::kClosed:
-      should = LinkStatus::OFFLINE;
-      break;
-
-    default:
-      assert(false);
-  }
-
-  bool is_changed = false;
-  {
-    std::lock_guard<std::mutex> guard(mutex_status);
-    if (should != dco_status) {
-      dco_status = should;
-      is_changed = true;
-    }
-  }
-
-  if (is_changed) {
-    on_change_status();
-  }
-}
-
-/**
- * Raise status change event by peer connection status.
- * @param status Peer connection status.
- */
-void WebrtcLinkNative::on_pco_connection_change(webrtc::PeerConnectionInterface::IceConnectionState status) {
-  LinkStatus::Type should = 0;
-  switch (status) {
-    case webrtc::PeerConnectionInterface::kIceConnectionNew:
-    case webrtc::PeerConnectionInterface::kIceConnectionChecking:
-      should = LinkStatus::CONNECTING;
-      break;
-
-    case webrtc::PeerConnectionInterface::kIceConnectionConnected:
-    case webrtc::PeerConnectionInterface::kIceConnectionCompleted:
-      should = LinkStatus::ONLINE;
-      break;
-
-    case webrtc::PeerConnectionInterface::kIceConnectionDisconnected:
-      should = LinkStatus::CLOSING;
-      break;
-
-    case webrtc::PeerConnectionInterface::kIceConnectionFailed:
-    case webrtc::PeerConnectionInterface::kIceConnectionClosed:
-      should = LinkStatus::OFFLINE;
-      break;
-
-    default:
-      assert(false);
-  }
-
-  bool is_changed = false;
-  {
-    std::lock_guard<std::mutex> guard(mutex_status);
-    if (should != pco_status) {
-      pco_status = should;
-      is_changed = true;
-    }
-  }
-
-  if (is_changed) {
-    on_change_status();
-  }
 }
 
 /**

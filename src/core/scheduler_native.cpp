@@ -56,13 +56,13 @@ void SchedulerNative::add_controller_loop(void* src, std::function<void()>&& fun
 
   controller_tasks.push_back(
       Task{src, func, interval, static_cast<int64_t>(std::floor(CURRENT_MSEC / interval)) * interval});
-  if (controller_tid != std::this_thread::get_id()) {
+  if (!is_controller_thread()) {
     controller_cond.notify_all();
   }
 }
 
 void SchedulerNative::add_controller_task(void* src, std::function<void()>&& func, unsigned int after) {
-  if (after == 0 && controller_tid == std::this_thread::get_id() && controller_running.size() != 0) {
+  if (after == 0 && is_controller_thread() && controller_running.size() != 0) {
     controller_running.push_back(Task{src, func, 0, 0});
 
   } else {
@@ -70,7 +70,7 @@ void SchedulerNative::add_controller_task(void* src, std::function<void()>&& fun
 
     const int64_t CURRENT_MSEC = Utils::get_current_msec();
     controller_tasks.push_back(Task{src, func, 0, CURRENT_MSEC + after});
-    if (controller_tid != std::this_thread::get_id()) {
+    if (!is_controller_thread()) {
       controller_cond.notify_all();
     }
   }
@@ -79,13 +79,13 @@ void SchedulerNative::add_controller_task(void* src, std::function<void()>&& fun
 void SchedulerNative::add_user_task(void* src, std::function<void()>&& func) {
   std::lock_guard<std::mutex> guard(user_mtx);
   user_tasks.push_back(Task{src, func, 0, 0});
-  if (user_tid != std::this_thread::get_id()) {
+  if (!is_user_thread()) {
     user_cond.notify_all();
   }
 }
 
 bool SchedulerNative::has_task(void* src) {
-  assert(controller_tid == std::this_thread::get_id());
+  assert(is_controller_thread());
   for (auto& task : controller_running) {
     if (task.src == src) {
       return true;
@@ -113,10 +113,18 @@ bool SchedulerNative::has_task(void* src) {
   return false;
 }
 
-void SchedulerNative::remove_task(void* src, bool remove_current) {
-  assert(std::this_thread::get_id() != user_tid);
+bool SchedulerNative::is_controller_thread() const {
+  return std::this_thread::get_id() == controller_tid;
+}
 
-  if (std::this_thread::get_id() == controller_tid) {
+bool SchedulerNative::is_user_thread() const {
+  return std::this_thread::get_id() == user_tid;
+}
+
+void SchedulerNative::remove_task(void* src, bool remove_current) {
+  assert(!is_user_thread());
+
+  if (is_controller_thread()) {
     assert(!remove_current || controller_running.front().src != src);
     remove_deque_tasks(src, &controller_tasks, true);
     remove_deque_tasks(src, &controller_running, remove_current);

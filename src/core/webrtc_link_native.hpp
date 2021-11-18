@@ -39,7 +39,7 @@ class WebrtcLinkNative : public WebrtcLink {
 
   void disconnect() override;
   void get_local_sdp(std::function<void(const std::string&)>&& func) override;
-  LinkStatus::Type get_status() override;
+  LinkStatus::Type get_new_link_state() override;
   bool send(const std::string& data) override;
   void set_remote_sdp(const std::string& sdp) override;
   void update_ice(const picojson::object& ice) override;
@@ -111,19 +111,9 @@ class WebrtcLinkNative : public WebrtcLink {
   /// SDP of local peer.
   std::string local_sdp;
 
-  LinkStatus::Type prev_status;
-
-  std::mutex mutex_status;
-  LinkStatus::Type dco_status;
-  LinkStatus::Type pco_status;
-
-  void on_change_status();
-
   void on_csd_success(webrtc::SessionDescriptionInterface* desc);
   void on_csd_failure(const std::string& error);
   void on_dco_message(const webrtc::DataBuffer& buffer);
-  void on_dco_state_change(webrtc::DataChannelInterface::DataState status);
-  void on_pco_connection_change(webrtc::PeerConnectionInterface::IceConnectionState status);
   void on_pco_ice_candidate(const webrtc::IceCandidateInterface* candidate);
   void on_ssd_failure(const std::string& error);
 };

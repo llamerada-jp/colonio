@@ -641,8 +641,6 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
     }
   }
 
-  node_accessor->update_link_status();
-
   if (packet) {
     logw("drop packet").map("packet", *packet);
   }

@@ -53,33 +53,35 @@ Pubsub2DModule::~Pubsub2DModule() {
 void Pubsub2DModule::publish(
     const std::string& name, double x, double y, double r, const Value& value, uint32_t opt,
     std::function<void()>&& on_success, std::function<void(const Error&)>&& on_failure) {
-  uint64_t uid              = assign_uid();
-  Coordinate local_position = coord_system.get_local_position();
-  Cache& c                  = cache[uid];
-  c.name                    = name;
-  c.center                  = Coordinate(x, y);
-  c.r                       = r;
-  c.uid                     = uid;
-  c.create_time             = Utils::get_current_msec();
-  c.data                    = value;
-  c.opt                     = opt;
+  scheduler.add_controller_task(this, [=] {
+    uint64_t uid              = assign_uid();
+    Coordinate local_position = coord_system.get_local_position();
+    Cache& c                  = cache[uid];
+    c.name                    = name;
+    c.center                  = Coordinate(x, y);
+    c.r                       = r;
+    c.uid                     = uid;
+    c.create_time             = Utils::get_current_msec();
+    c.data                    = value;
+    c.opt                     = opt;
 
-  if (coord_system.get_distance(c.center, local_position) < r) {
-    if (c.data.get_type() == Value::STRING_T) {
-      send_packet_knock(NodeID::NONE, c);
+    if (coord_system.get_distance(c.center, local_position) < r) {
+      if (c.data.get_type() == Value::STRING_T) {
+        send_packet_knock(NodeID::NONE, c);
 
-    } else {
-      for (auto& it : next_positions) {
-        if (coord_system.get_distance(c.center, it.second) < r) {
-          send_packet_deffuse(it.first, c);
+      } else {
+        for (auto& it : next_positions) {
+          if (coord_system.get_distance(c.center, it.second) < r) {
+            send_packet_deffuse(it.first, c);
+          }
         }
       }
-    }
-    on_success();
+      on_success();
 
-  } else {
-    send_packet_pass(c, on_success, on_failure);
-  }
+    } else {
+      send_packet_pass(c, on_success, on_failure);
+    }
+  });
 }
 
 void Pubsub2DModule::on(const std::string& name, std::function<void(const Value&)>&& subscriber) {

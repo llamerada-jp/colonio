@@ -34,6 +34,8 @@ class SchedulerNative : public Scheduler {
   void add_controller_task(void* src, std::function<void()>&& func, unsigned int after = 0) override;
   void add_user_task(void* src, std::function<void()>&& func) override;
   bool has_task(void* src) override;
+  bool is_controller_thread() const override;
+  bool is_user_thread() const override;
   void remove_task(void* src, bool remove_current = true) override;
 
   void start_controller_routine() override;

@@ -493,9 +493,11 @@ void MapPaxosModule::get(
 void MapPaxosModule::set(
     const Value& key, const Value& value, uint32_t opt, std::function<void()>&& on_success,
     std::function<void(const Error&)>&& on_failure) {
-  std::unique_ptr<CommandSet::Info> info =
-      std::make_unique<CommandSet::Info>(*this, key, value, on_success, on_failure, opt);
-  send_packet_set(std::move(info));
+  scheduler.add_controller_task(this, [=] {
+    std::unique_ptr<CommandSet::Info> info =
+        std::make_unique<CommandSet::Info>(*this, key, value, on_success, on_failure, opt);
+    send_packet_set(std::move(info));
+  });
 }
 
 void MapPaxosModule::module_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) {

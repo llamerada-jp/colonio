@@ -31,6 +31,8 @@ class Scheduler {
   virtual void add_controller_task(void* src, std::function<void()>&& func, unsigned int after = 0) = 0;
   virtual void add_user_task(void* src, std::function<void()>&& func)                               = 0;
   virtual bool has_task(void* src)                                                                  = 0;
+  virtual bool is_controller_thread() const                                                         = 0;
+  virtual bool is_user_thread() const                                                               = 0;
   virtual void remove_task(void* src, bool remove_current = true)                                   = 0;
 
   virtual void start_controller_routine() = 0;

@@ -68,50 +68,47 @@ void ModuleBase::module_on_change_accessor_status(LinkStatus::Type seed_status, 
  */
 void ModuleBase::on_recv_packet(std::unique_ptr<const Packet> packet) {
   assert(packet->channel == channel);
+  assert(scheduler.is_controller_thread());
 
   if (packet->command_id == CommandID::SUCCESS) {
     std::unique_ptr<Command> command;
-    {
-      std::lock_guard<std::mutex> guard(mutex_containers);
-      auto container = containers.find(packet->id);
-      if (container != containers.end()) {
-        command = std::move(container->second.command);
-        containers.erase(container);
-      }
+    auto container = containers.find(packet->id);
+    if (container != containers.end()) {
+      command = std::move(container->second.command);
+      containers.erase(container);
     }
     if (command) {
       command->on_success(std::move(packet));
+      return;
     }
 
   } else if (packet->command_id == CommandID::FAILURE) {
     std::unique_ptr<Command> command;
-    {
-      std::lock_guard<std::mutex> guard(mutex_containers);
-      auto container = containers.find(packet->id);
-      if (container != containers.end()) {
-        command = std::move(container->second.command);
-        containers.erase(container);
-      }
+    auto container = containers.find(packet->id);
+    if (container != containers.end()) {
+      command = std::move(container->second.command);
+      containers.erase(container);
     }
     if (command) {
       command->on_failure(std::move(packet));
+      return;
     }
 
   } else if (packet->command_id == CommandID::ERROR) {
     std::unique_ptr<Command> command;
-    {
-      std::lock_guard<std::mutex> guard(mutex_containers);
-      auto container = containers.find(packet->id);
-      if (container != containers.end()) {
-        command = std::move(container->second.command);
-        containers.erase(container);
-      }
+    auto container = containers.find(packet->id);
+    if (container != containers.end()) {
+      command = std::move(container->second.command);
+      containers.erase(container);
     }
     if (command) {
       core::Error content;
       packet->parse_content(&content);
       command->on_error(content.message());
+      return;
     }
+
+    logd("repling packet droped").map_u32("id", packet->id);
 
   } else {
     module_process_command(std::move(packet));
@@ -119,7 +116,7 @@ void ModuleBase::on_recv_packet(std::unique_ptr<const Packet> packet) {
 }
 
 void ModuleBase::reset() {
-  std::lock_guard<std::mutex> guard(mutex_containers);
+  assert(scheduler.is_controller_thread());
   containers.clear();
 }
 
@@ -147,28 +144,27 @@ void ModuleBase::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Packe
  */
 void ModuleBase::send_packet(
     std::unique_ptr<Command> command, const NodeID& dst_nid, std::shared_ptr<const std::string> content) {
+  assert(scheduler.is_controller_thread());
+
   uint32_t packet_id = random.generate_u32();
   std::unique_ptr<const Packet> packet;
-  {
-    std::lock_guard<std::mutex> guard(mutex_containers);
-    while (packet_id == PACKET_ID_NONE || containers.find(packet_id) != containers.end()) {
-      packet_id = random.generate_u32();
-    }
-
-    std::tuple<CommandID::Type, PacketMode::Type> t = command->get_define();
-    CommandID::Type command_id                      = std::get<0>(t);
-    PacketMode::Type mode                           = std::get<1>(t);
-
-    assert(mode & PacketMode::ONE_WAY || dst_nid != NodeID::NEXT);
-
-    packet =
-        std::make_unique<const Packet>(Packet{dst_nid, local_nid, 0, packet_id, content, mode, channel, command_id});
-
-    containers.insert(std::make_pair(
-        packet_id, Container(
-                       {dst_nid, local_nid, packet_id, mode, command_id, content, 0, Utils::get_current_msec(),
-                        std::move(command)})));
+  while (packet_id == PACKET_ID_NONE || containers.find(packet_id) != containers.end()) {
+    packet_id = random.generate_u32();
   }
+
+  std::tuple<CommandID::Type, PacketMode::Type> t = command->get_define();
+  CommandID::Type command_id                      = std::get<0>(t);
+  PacketMode::Type mode                           = std::get<1>(t);
+
+  assert(mode & PacketMode::ONE_WAY || dst_nid != NodeID::NEXT);
+
+  packet = std::make_unique<const Packet>(Packet{dst_nid, local_nid, 0, packet_id, content, mode, channel, command_id});
+
+  containers.insert(std::make_pair(
+      packet_id, Container(
+                     {dst_nid, local_nid, packet_id, mode, command_id, content, 0, Utils::get_current_msec(),
+                      std::move(command)})));
+
   delegate.module_do_send_packet(*this, std::move(packet));
 }
 
@@ -183,12 +179,10 @@ void ModuleBase::send_packet(
 void ModuleBase::send_packet(
     const NodeID& dst_nid, PacketMode::Type mode, CommandID::Type command_id,
     std::shared_ptr<const std::string> content) {
+  assert(scheduler.is_controller_thread());
   uint32_t packet_id = random.generate_u32();
-  {
-    std::lock_guard<std::mutex> guard(mutex_containers);
-    while (packet_id == PACKET_ID_NONE || containers.find(packet_id) != containers.end()) {
-      packet_id = random.generate_u32();
-    }
+  while (packet_id == PACKET_ID_NONE || containers.find(packet_id) != containers.end()) {
+    packet_id = random.generate_u32();
   }
 
   std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet{
@@ -253,37 +247,35 @@ void ModuleBase::send_success(const Packet& reply_for, std::shared_ptr<const std
 }
 
 void ModuleBase::on_persec() {
+  assert(scheduler.is_controller_thread());
   std::set<std::unique_ptr<Command>> on_errors;
   std::set<std::unique_ptr<Packet>> retry_packets;
 
-  {
-    std::lock_guard<std::mutex> guard(mutex_containers);
-    auto it = containers.begin();
+  auto it = containers.begin();
 
-    while (it != containers.end()) {
-      Container& container = it->second;
-      if (Utils::get_current_msec() - container.send_time > PACKET_RETRY_INTERVAL) {
-        if (container.retry_count > PACKET_RETRY_COUNT_MAX) {
-          // error
-          logd("command timeout").map_u32("id", container.packet_id);
-          on_errors.insert(std::move(container.command));
-          it = containers.erase(it);
-          continue;
+  while (it != containers.end()) {
+    Container& container = it->second;
+    if (Utils::get_current_msec() - container.send_time > PACKET_RETRY_INTERVAL) {
+      if (container.retry_count > PACKET_RETRY_COUNT_MAX) {
+        // error
+        logd("command timeout").map_u32("id", container.packet_id);
+        on_errors.insert(std::move(container.command));
+        it = containers.erase(it);
+        continue;
 
-        } else {
-          if ((container.mode & PacketMode::NO_RETRY) == PacketMode::NONE) {
-            // retry
-            retry_packets.insert(std::make_unique<Packet>(Packet{
-                container.dst_nid, container.src_nid, 0, container.packet_id, container.content, container.mode,
-                channel, container.command_id}));
-          }
-
-          container.retry_count++;
-          container.send_time = Utils::get_current_msec();
+      } else {
+        if ((container.mode & PacketMode::NO_RETRY) == PacketMode::NONE) {
+          // retry
+          retry_packets.insert(std::make_unique<Packet>(Packet{
+              container.dst_nid, container.src_nid, 0, container.packet_id, container.content, container.mode, channel,
+              container.command_id}));
         }
+
+        container.retry_count++;
+        container.send_time = Utils::get_current_msec();
       }
-      it++;
     }
+    it++;
   }
 
   for (auto& it : on_errors) {

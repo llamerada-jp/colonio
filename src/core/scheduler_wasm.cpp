@@ -91,6 +91,14 @@ bool SchedulerWasm::has_task(void* src) {
   return false;
 }
 
+bool SchedulerWasm::is_controller_thread() const {
+  return true;
+}
+
+bool SchedulerWasm::is_user_thread() const {
+  return true;
+}
+
 void SchedulerWasm::remove_task(void* src, bool remove_current) {
   assert(!remove_current || running.front().src != src);
   remove_deque_tasks(src, &tasks, true);
