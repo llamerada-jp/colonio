@@ -89,7 +89,7 @@ func (seed *Seed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	node := seed.newNode(socket)
 	if err := node.start(); err != nil {
-		glog.Fatal(err)
+		glog.Error(err)
 	}
 }
 
@@ -282,7 +282,7 @@ func (node *Node) recvPacketAuth(packet *proto.SeedAccessor) error {
 		node.seed.config.Node.Revision = node.seed.config.Revision
 		configByte, err := json.Marshal(node.seed.config.Node)
 		if err != nil {
-			glog.Fatal(err)
+			return err
 		}
 		contentReply := &proto.AuthSuccess{
 			Config: (string)(configByte),
