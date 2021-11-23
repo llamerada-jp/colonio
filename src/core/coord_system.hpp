@@ -27,6 +27,9 @@ class CoordSystem {
   const double PRECISION;
 
   virtual ~CoordSystem();
+  CoordSystem(const CoordSystem&) = delete;
+  CoordSystem& operator=(const CoordSystem&) = delete;
+
   // for use delaunay triangle.
   virtual double get_distance(const Coordinate& p1, const Coordinate& p2) const                     = 0;
   virtual Coordinate get_local_position() const                                                     = 0;
@@ -35,9 +38,5 @@ class CoordSystem {
 
  protected:
   CoordSystem(double min_x, double min_y, double max_x, double max_y, double precision);
-
- private:
-  CoordSystem(const CoordSystem&);
-  void operator=(const CoordSystem&);
 };
 }  // namespace colonio

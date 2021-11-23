@@ -35,6 +35,7 @@ foreach(test_target IN LISTS test_targets_combine)
   target_link_libraries(combine_${test_target} colonio_test ${GTEST_LDFLAGS} ${webrtc_libs} ${extra_libs})
   target_compile_options(combine_${test_target} PUBLIC ${GTEST_CFLAGS})
   add_test(NAME "combine_${test_target}_test" COMMAND "combine_${test_target}")
+  set_tests_properties("combine_${test_target}_test" PROPERTIES TIMEOUT "${TEST_TIMEOUT}")
 endforeach()
 
 # Unit test of core module
@@ -52,4 +53,5 @@ foreach(test_target IN LISTS test_targets_core)
   target_link_libraries(core_${test_target} colonio_test ${GTEST_LDFLAGS} ${webrtc_libs} ${extra_libs})
   target_compile_options(core_${test_target} PUBLIC ${GTEST_CFLAGS})
   add_test(NAME "core_${test_target}_test" COMMAND "core_${test_target}")
+  set_tests_properties("core_${test_target}_test" PROPERTIES TIMEOUT "${TEST_TIMEOUT}")
 endforeach()

@@ -29,6 +29,8 @@ type Colonio interface {
 
 // Logger is an interface to configure the output destination of the logs.
 type Logger interface {
+	// The log messages are passed as JSON format strings.
+	// Colonio runs on multi-threads, so this interface is called on multi-threads.
 	Output(message string)
 }
 

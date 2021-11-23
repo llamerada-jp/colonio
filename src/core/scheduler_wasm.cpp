@@ -19,6 +19,7 @@
 
 #include <cassert>
 
+#include "logger.hpp"
 #include "utils.hpp"
 
 extern "C" {
@@ -119,7 +120,18 @@ int SchedulerWasm::exec_tasks() {
 
   while (!running.empty()) {
     Task& task = running.front();
-    task.func();
+    try {
+      task.func();
+
+    } catch (Error& e) {
+      if (e.fatal) {
+        loge(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
+        return -1;
+
+      } else {
+        logw(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
+      }
+    }
     running.pop_front();
   }
 

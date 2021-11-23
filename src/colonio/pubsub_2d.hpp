@@ -17,6 +17,7 @@
 
 #include <colonio/value.hpp>
 #include <functional>
+#include <string>
 
 namespace colonio {
 class Error;
@@ -28,6 +29,9 @@ class Pubsub2D {
  public:
   /// let raise an error if no one node that can be received a message within the specified range.
   static const uint32_t RAISE_NO_ONE_RECV = 0x01;
+
+  Pubsub2D(const Pubsub2D&) = delete;
+  Pubsub2D& operator=(const Pubsub2D&) = delete;
 
   /**
    * @brief Destroy the Pubsub 2D object
@@ -102,5 +106,8 @@ class Pubsub2D {
    * @param name Name used to filter messages.
    */
   virtual void off(const std::string& name) = 0;
+
+ protected:
+  Pubsub2D(){};
 };
 }  // namespace colonio

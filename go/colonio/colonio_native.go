@@ -1,5 +1,4 @@
 //go:build !js
-// +build !js
 
 package colonio
 
@@ -119,7 +118,11 @@ func NewColonio(logger Logger) (Colonio, error) {
 
 //export cgoCbColonioLogger
 func cgoCbColonioLogger(cInstancePtr *C.struct_colonio_s, messagePtr unsafe.Pointer, len C.int) {
-	logger := loggerMap[cInstancePtr]
+	logger, ok := loggerMap[cInstancePtr]
+
+	if !ok {
+		log.Fatal("logger not found or deallocated yet")
+	}
 
 	logger.Output(C.GoStringN((*C.char)(messagePtr), len))
 }

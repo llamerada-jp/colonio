@@ -34,6 +34,8 @@ class Pipe {
  public:
   Pipe() {
   }
+  Pipe(const Pipe&) = delete;
+  void operator=(const Pipe&) = delete;
 
   /**
    * @brief Pass the value to another thread.
@@ -69,13 +71,21 @@ class Pipe {
     return std::make_pair(instance.get(), error.get());
   }
 
+  T* pop_with_throw() {
+    std::unique_lock<std::mutex> lock(mtx);
+    cond.wait(lock, [this] {
+      return instance || error;
+    });
+    if (error) {
+      throw *error;
+    }
+    return instance.get();
+  }
+
  private:
   std::mutex mtx;
   std::condition_variable cond;
   std::unique_ptr<T> instance;
   std::unique_ptr<Error> error;
-
-  explicit Pipe(const Pipe&);
-  void operator=(const Pipe&);
 };
 }  // namespace colonio

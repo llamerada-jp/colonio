@@ -3,6 +3,7 @@ project(colonio)
 find_package(PkgConfig)
 
 # Read options.
+option(TEST_TIMEOUT  "Timeout seconds for each test." 180)
 option(WITH_COVERAGE "Build test with coverage. (For native only)" OFF)
 option(WITH_GPROF    "Enable build option for gprof. (For native only)" OFF)
 option(WITH_PYTHON   "Generate library for python. (For native only)" OFF)

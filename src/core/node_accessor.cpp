@@ -51,7 +51,6 @@ NodeAccessor::NodeAccessor(ModuleParam& param, NodeAccessorDelegate& na_delegate
 
 NodeAccessor::~NodeAccessor() {
   scheduler.remove_task(this);
-  // It must close connections with subthread alive.
   links.clear();
 }
 
@@ -63,12 +62,12 @@ void NodeAccessor::connect_link(const NodeID& nid) {
   auto it = nid_links.find(nid);
   if (it != nid_links.end()) {
     switch (it->second->link_state) {
-      case LinkStatus::CONNECTING:
-      case LinkStatus::ONLINE:
+      case LinkState::CONNECTING:
+      case LinkState::ONLINE:
         return;
 
-      case LinkStatus::CLOSING:
-      case LinkStatus::OFFLINE: {
+      case LinkState::CLOSING:
+      case LinkState::OFFLINE: {
         disconnect_link(it->second);
       } break;
 
@@ -88,7 +87,7 @@ void NodeAccessor::connect_link(const NodeID& nid) {
 }
 
 void NodeAccessor::connect_init_link() {
-  assert(get_status() == LinkStatus::OFFLINE);
+  assert(get_link_state() == LinkState::OFFLINE);
   assert(first_link == nullptr);
   assert(random_link == nullptr);
   assert(nid_links.empty());
@@ -116,27 +115,24 @@ void NodeAccessor::connect_random_link() {
   send_offer(random_link, local_nid, local_nid, OFFER_TYPE_RANDOM);
 }
 
-LinkStatus::Type NodeAccessor::get_status() {
-  bool is_connecting = false;
+LinkState::Type NodeAccessor::get_link_state() const {
+  bool has_connecting = false;
 
   for (auto& link : links) {
-    LinkStatus::Type status = link.second->link_state;
-    if (status == LinkStatus::ONLINE) {
-      return LinkStatus::ONLINE;
+    LinkState::Type status = link.second->link_state;
+    if (status == LinkState::ONLINE) {
+      return LinkState::ONLINE;
 
-    } else if (status == LinkStatus::CONNECTING) {
-      is_connecting = true;
-
-    } else if (link.first != first_link && link.first != random_link) {
-      disconnect_link(link.first);
+    } else if (status == LinkState::CONNECTING) {
+      has_connecting = true;
     }
   }
 
-  if (is_connecting || first_link != nullptr || random_link != nullptr) {
-    return LinkStatus::CONNECTING;
+  if (has_connecting || first_link != nullptr || random_link != nullptr) {
+    return LinkState::CONNECTING;
 
   } else {
-    return LinkStatus::OFFLINE;
+    return LinkState::OFFLINE;
   }
 }
 
@@ -190,10 +186,8 @@ void NodeAccessor::disconnect_link(WebrtcLink* link) {
 
   closing_links.insert(link);
 
-  auto it = nid_links.find(link->nid);
-  if (it != nid_links.end()) {
+  if (nid_links.erase(link->nid) > 0) {
     logd("disconnect link").map("nid", link->nid);
-    nid_links.erase(it);
     send_buffers.erase(link->nid);
     recv_buffers.erase(link->nid);
   }
@@ -224,7 +218,7 @@ bool NodeAccessor::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Pac
   assert(dst_nid != NodeID::NONE);
   assert(dst_nid != NodeID::SEED);
   assert(dst_nid != NodeID::THIS);
-  if (get_status() != LinkStatus::ONLINE) {
+  if (get_link_state() != LinkState::ONLINE) {
     logw("drop packet").map("packet", *packet);
     return false;
   }
@@ -235,7 +229,7 @@ bool NodeAccessor::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Pac
       NodeID nid       = nid_link.first;
       WebrtcLink& link = *nid_link.second;
 
-      if (link.link_state == LinkStatus::ONLINE) {
+      if (link.link_state == LinkState::ONLINE) {
         try_send(nid, *packet);
       }
     }
@@ -271,7 +265,7 @@ void NodeAccessor::CommandOffer::on_success(std::unique_ptr<const Packet> packet
       assert(accessor.first_link != nullptr);
       assert(accessor.nid_links.size() == 0);
       accessor.disconnect_link(accessor.first_link);
-      accessor.delegate.node_accessor_on_change_status(accessor);
+      accessor.delegate.node_accessor_on_change_state(accessor);
     } break;
 
     case OFFER_STATUS_SUCCESS_ACCEPT: {
@@ -319,7 +313,7 @@ void NodeAccessor::CommandOffer::on_success(std::unique_ptr<const Packet> packet
       link->set_remote_sdp(sdp);
 
       // There is a possibility to change link's status by set a SDP.
-      if (link->link_state == LinkStatus::CONNECTING) {
+      if (link->link_state == LinkState::CONNECTING) {
         accessor.send_ice(link, link->init_data->ice);
         link->init_data->ice.clear();
         link->init_data->is_changing_ice = true;
@@ -356,7 +350,7 @@ void NodeAccessor::CommandOffer::on_error(const std::string& message) {
     }
   }
 
-  accessor.delegate.node_accessor_on_change_status(accessor);
+  accessor.delegate.node_accessor_on_change_state(accessor);
 }
 
 void NodeAccessor::module_process_command(std::unique_ptr<const Packet> packet) {
@@ -376,7 +370,7 @@ void NodeAccessor::module_process_command(std::unique_ptr<const Packet> packet) 
   }
 }
 
-void NodeAccessor::webrtc_link_on_change_dco_state(WebrtcLink& link, LinkStatus::Type new_dco_state) {
+void NodeAccessor::webrtc_link_on_change_dco_state(WebrtcLink& link, LinkState::Type new_dco_state) {
   scheduler.add_controller_task(this, [this, &link, new_dco_state] {
     if (links.find(&link) == links.end()) {
       return;
@@ -389,7 +383,7 @@ void NodeAccessor::webrtc_link_on_change_dco_state(WebrtcLink& link, LinkStatus:
   });
 }
 
-void NodeAccessor::webrtc_link_on_change_pco_state(WebrtcLink& link, LinkStatus::Type new_pco_state) {
+void NodeAccessor::webrtc_link_on_change_pco_state(WebrtcLink& link, LinkState::Type new_pco_state) {
   scheduler.add_controller_task(this, [this, &link, new_pco_state] {
     if (links.find(&link) == links.end()) {
       return;
@@ -409,7 +403,7 @@ void NodeAccessor::webrtc_link_on_error(WebrtcLink& link) {
 }
 
 void NodeAccessor::webrtc_link_on_update_ice(WebrtcLink& link, const picojson::object& ice) {
-  if (link.link_state != LinkStatus::CONNECTING) {
+  if (link.link_state != LinkState::CONNECTING) {
     return;
   }
 
@@ -418,14 +412,15 @@ void NodeAccessor::webrtc_link_on_update_ice(WebrtcLink& link, const picojson::o
       return;
     }
 
-    if (link.init_data && link.init_data->is_changing_ice) {
-      assert(link.init_data->ice.size() == 0);
+    WebrtcLink::InitData& init_data = *link.init_data;
+    if (init_data.is_changing_ice) {
+      assert(init_data.ice.size() == 0);
       picojson::array ice_array;
       ice_array.push_back(ice);
       send_ice(&link, ice_array);
 
     } else {
-      link.init_data->ice.push_back(ice);
+      init_data.ice.push_back(ice);
     }
   });
 }
@@ -514,7 +509,9 @@ void NodeAccessor::check_link_disconnect() {
 
   std::set<WebrtcLink*> target_links;
   for (auto& it : links) {
-    if (it.first->nid != NodeID::NONE && it.first->link_state == LinkStatus::OFFLINE) {
+    WebrtcLink* link = it.first;
+    if (link->link_state != LinkState::ONLINE && link->link_state != LinkState::CONNECTING &&
+        link->nid != NodeID::NONE && link != first_link && link != random_link) {
       target_links.insert(it.first);
     }
   }
@@ -532,15 +529,15 @@ void NodeAccessor::check_link_timeout() {
       disconnect_link(first_link);
       is_changed_first = true;
 
-      assert(get_status() != LinkStatus::ONLINE);
+      assert(get_link_state() != LinkState::ONLINE);
 
-      if (get_status() != LinkStatus::ONLINE) {
+      if (get_link_state() != LinkState::ONLINE) {
         if (first_link_try_count < FIRST_LINK_RETRY_MAX) {
           first_link_try_count++;
           create_first_link();
 
         } else {
-          delegate.node_accessor_on_change_status(*this);
+          delegate.node_accessor_on_change_state(*this);
         }
       }
     }
@@ -571,7 +568,7 @@ void NodeAccessor::check_link_timeout() {
     if (first_link == nullptr) {
       create_first_link();
     }
-    delegate.node_accessor_on_change_status(*this);
+    delegate.node_accessor_on_change_state(*this);
   }
 }
 
@@ -583,13 +580,13 @@ void NodeAccessor::cleanup_closing() {
     assert(random_link != link);
     assert(link->nid == NodeID::NONE);
 
-    if (link->link_state == LinkStatus::OFFLINE) {
+    if (link->link_state == LinkState::OFFLINE) {
       links.erase(link);
       closing_link = closing_links.erase(closing_link);
 
     } else {
       // There is a link that is not closing rarely, so disconnect it.
-      if (link->link_state != LinkStatus::OFFLINE && link->link_state != LinkStatus::CLOSING) {
+      if (link->link_state != LinkState::CLOSING) {
         link->disconnect();
       }
       closing_link++;
@@ -636,7 +633,7 @@ void NodeAccessor::recv_offer(std::unique_ptr<const Packet> packet) {
     auto it = nid_links.find(prime_nid);
     if (it != nid_links.end()) {
       WebrtcLink* link = it->second;
-      if (link->link_state == LinkStatus::ONLINE) {
+      if (link->link_state == LinkState::ONLINE) {
         // Already having a online connection with prime node yet.
         NodeAccessorProtocol::OfferSuccess param;
         param.set_status(OFFER_STATUS_SUCCESS_ALREADY);
@@ -934,24 +931,29 @@ bool NodeAccessor::try_send(const NodeID& dst_nid, const Packet& packet) {
 }
 
 void NodeAccessor::update_link_state(WebrtcLink& link) {
-  LinkStatus::Type new_state = link.get_new_link_state();
+  LinkState::Type new_state = link.get_new_link_state();
   if (new_state == link.link_state) {
     return;
   }
 
-  if (new_state != LinkStatus::CONNECTING) {
+  if (new_state != LinkState::CONNECTING) {
     link.init_data.reset();
   }
-  bool is_change_online_links = (new_state == LinkStatus::ONLINE || link.link_state == LinkStatus::ONLINE);
+  bool is_change_online_links = (new_state == LinkState::ONLINE || link.link_state == LinkState::ONLINE);
 
   link.link_state = new_state;
+
+  if (new_state != LinkState::ONLINE && new_state != LinkState::CONNECTING && &link != first_link &&
+      &link != random_link) {
+    disconnect_link(&link);
+  }
 
   // update online links
   if (is_change_online_links) {
     update_online_links(link.nid);
   }
 
-  delegate.node_accessor_on_change_status(*this);
+  delegate.node_accessor_on_change_state(*this);
 }
 
 /**
@@ -963,16 +965,13 @@ void NodeAccessor::update_online_links(const NodeID& nid) {
   auto nid_link   = nid_links.find(nid);
   if (nid_link != nid_links.end()) {
     WebrtcLink* link = nid_link->second;
-    if (link->link_state == LinkStatus::ONLINE && last_online_links.find(nid) == last_online_links.end()) {
+    if (link->link_state == LinkState::ONLINE && last_online_links.find(nid) == last_online_links.end()) {
       last_online_links.insert(nid);
       is_updated = true;
     }
 
-  } else {
-    if (last_online_links.find(nid) != last_online_links.end()) {
-      last_online_links.erase(nid);
-      is_updated = true;
-    }
+  } else if (last_online_links.erase(nid) > 0) {
+    is_updated = true;
   }
 
   // skip if hadn't update

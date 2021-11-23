@@ -28,12 +28,14 @@ typedef uint32_t PAXOS_N;
 
 class MapPaxosModule : public MapBase {
  public:
-  virtual ~MapPaxosModule();
-
   static MapPaxosModule* new_instance(
       ModuleParam& param, Module1DDelegate& module_1d_delegate, const picojson::object& config);
 
-  void each_local_value(std::function<void(const Value&, const Value&)>&& func) override;
+  virtual ~MapPaxosModule();
+  MapPaxosModule(const MapPaxosModule&) = delete;
+  MapPaxosModule& operator=(const MapPaxosModule&) = delete;
+
+  void foreach_local_value(std::function<void(const Value&, const Value&)>&& func) override;
   void get(
       const Value& key, std::function<void(const Value&)>&& on_success,
       std::function<void(const Error&)>&& on_failure) override;
@@ -118,7 +120,7 @@ class MapPaxosModule : public MapBase {
     };
     std::unique_ptr<Info> info;
 
-    CommandSet(std::unique_ptr<Info> info_);
+    explicit CommandSet(std::unique_ptr<Info> info_);
 
     void on_error(const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
@@ -156,7 +158,7 @@ class MapPaxosModule : public MapBase {
 
     std::shared_ptr<Info> info;
 
-    CommandPrepare(std::shared_ptr<Info> info_);
+    explicit CommandPrepare(std::shared_ptr<Info> info_);
 
     void on_error(const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
@@ -196,7 +198,7 @@ class MapPaxosModule : public MapBase {
 
     std::shared_ptr<Info> info;
 
-    CommandAccept(std::shared_ptr<Info> info_);
+    explicit CommandAccept(std::shared_ptr<Info> info_);
 
     void on_error(const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
@@ -212,11 +214,9 @@ class MapPaxosModule : public MapBase {
   std::map<std::pair<Value, uint32_t>, AcceptorInfo> acceptor_infos;
   std::map<Value, ProposerInfo> proposer_infos;
 
-  MapPaxosModule(const MapPaxosModule&);
   MapPaxosModule(
       ModuleParam& param, Module1DDelegate& module_1d_delegate, Channel::Type channel, unsigned int retry_max,
       uint32_t retry_interval_min, uint32_t retry_interval_max);
-  MapPaxosModule& operator=(const MapPaxosModule&);
 
   void module_process_command(std::unique_ptr<const Packet> packet) override;
 

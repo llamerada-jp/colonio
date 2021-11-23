@@ -58,7 +58,7 @@ std::unique_ptr<const Packet> ModuleBase::copy_packet_for_reply(const Packet& sr
   return std::make_unique<const Packet>(src);
 }
 
-void ModuleBase::module_on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status) {
+void ModuleBase::module_on_change_accessor_state(LinkState::Type seed_status, LinkState::Type node_status) {
   // for override.
 }
 
@@ -121,15 +121,7 @@ void ModuleBase::reset() {
 }
 
 bool ModuleBase::cancel_packet(uint32_t id) {
-  auto it = containers.find(id);
-
-  if (it == containers.end()) {
-    return false;
-
-  } else {
-    containers.erase(it);
-    return true;
-  }
+  return containers.erase(id) > 0;
 }
 
 void ModuleBase::relay_packet(const NodeID& dst_nid, std::unique_ptr<const Packet> packet) {

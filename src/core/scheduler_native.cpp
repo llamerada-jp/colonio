@@ -19,11 +19,16 @@
 #include <cmath>
 
 #include "colonio/colonio.hpp"
+#include "logger.hpp"
 #include "utils.hpp"
 
 namespace colonio {
 SchedulerNative::SchedulerNative(Logger& logger, uint32_t opt) :
-    Scheduler(logger), controller_remove_waiting(nullptr), user_remove_waiting(nullptr), flg_end(false) {
+    Scheduler(logger),
+    controller_remove_waiting(nullptr),
+    controller_remove_current(false),
+    user_remove_waiting(nullptr),
+    flg_end(false) {
   if ((opt & Colonio::EXPLICIT_CONTROLLER_THREAD) == 0) {
     controller_thread = std::make_unique<std::thread>(&SchedulerNative::start_controller_routine, this);
   }
@@ -189,7 +194,18 @@ void SchedulerNative::start_controller_routine() {
 
     while (!controller_running.empty()) {
       Task& task = controller_running.front();
-      task.func();
+      try {
+        task.func();
+
+      } catch (Error& e) {
+        if (e.fatal) {
+          loge(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
+          return;
+
+        } else {
+          logw(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
+        }
+      }
       controller_running.pop_front();
     }
   }
@@ -200,8 +216,8 @@ void SchedulerNative::start_user_routine() {
   std::deque<Task> running;
 
   while (true) {
-    bool notify = false;
     {
+      bool notify = false;
       std::unique_lock<std::mutex> guard(user_mtx);
       user_cond.wait(guard, [this] {
         return !user_tasks.empty() || user_remove_waiting != nullptr || flg_end;
@@ -229,7 +245,18 @@ void SchedulerNative::start_user_routine() {
     }
 
     for (auto& task : running) {
-      task.func();
+      try {
+        task.func();
+
+      } catch (Error& e) {
+        if (e.fatal) {
+          loge(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
+          return;
+
+        } else {
+          logw(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
+        }
+      }
     }
 
     running.clear();

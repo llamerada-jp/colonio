@@ -45,7 +45,6 @@ class LoggerDelegate {
 
 /**
  * Logger is a class for summarizing log messages.
- * It instance put on the Context class, and other modules pass log messages by using it.
  */
 class Logger {
  public:

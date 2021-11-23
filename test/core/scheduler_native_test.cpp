@@ -196,6 +196,6 @@ TEST(SchedulerNativeTest, task) {
       100);
 
   sleep(1);
-  EXPECT_LE(8, count);
+  EXPECT_LE(6, count);
   EXPECT_LE(count, 12);
 }

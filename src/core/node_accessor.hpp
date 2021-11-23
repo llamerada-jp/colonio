@@ -37,14 +37,13 @@
 #include "webrtc_link.hpp"
 
 namespace colonio {
-class Context;
 class NodeAccessor;
 
 class NodeAccessorDelegate {
  public:
   virtual ~NodeAccessorDelegate();
   virtual void node_accessor_on_change_online_links(NodeAccessor& na, const std::set<NodeID>& nids) = 0;
-  virtual void node_accessor_on_change_status(NodeAccessor& na)                                     = 0;
+  virtual void node_accessor_on_change_state(NodeAccessor& na)                                      = 0;
   virtual void node_accessor_on_recv_packet(
       NodeAccessor& na, const NodeID& nid, std::unique_ptr<const Packet> packet) = 0;
 };
@@ -53,11 +52,13 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
  public:
   NodeAccessor(ModuleParam& param, NodeAccessorDelegate& na_delegate);
   virtual ~NodeAccessor();
+  NodeAccessor(const NodeAccessor&) = delete;
+  NodeAccessor& operator=(const NodeAccessor&) = delete;
 
   void connect_link(const NodeID& nid);
   void connect_init_link();
   void connect_random_link();
-  LinkStatus::Type get_status();
+  LinkState::Type get_link_state() const;
   void disconnect_all(std::function<void()> on_after);
   void disconnect_link(const NodeID& nid);
   void disconnect_link(WebrtcLink* link);
@@ -128,13 +129,10 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
   };
   std::map<NodeID, RecvBuffer> recv_buffers;
 
-  explicit NodeAccessor(const NodeAccessor&);
-  NodeAccessor& operator=(const NodeAccessor&);
-
   void module_process_command(std::unique_ptr<const Packet> packet) override;
 
-  void webrtc_link_on_change_dco_state(WebrtcLink& link, LinkStatus::Type new_dco_state) override;
-  void webrtc_link_on_change_pco_state(WebrtcLink& link, LinkStatus::Type new_pco_state) override;
+  void webrtc_link_on_change_dco_state(WebrtcLink& link, LinkState::Type new_dco_state) override;
+  void webrtc_link_on_change_pco_state(WebrtcLink& link, LinkState::Type new_pco_state) override;
   void webrtc_link_on_error(WebrtcLink& link) override;
   void webrtc_link_on_update_ice(WebrtcLink& link, const picojson::object& ice) override;
   void webrtc_link_on_recv_data(WebrtcLink& link, const std::string& data) override;

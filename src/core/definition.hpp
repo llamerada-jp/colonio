@@ -24,18 +24,16 @@ namespace colonio {
 
 static const char PROTOCOL_VERSION[] = "A1";
 
-typedef uint32_t CallID;
-
 /**
- * Pipe/server connection status.
+ * Pipe/server connection state.
  */
-namespace LinkStatus {
+namespace LinkState {
 typedef int Type;
 static const Type OFFLINE    = 0;
 static const Type CONNECTING = 1;
 static const Type ONLINE     = 2;
 static const Type CLOSING    = 3;
-}  // namespace LinkStatus
+}  // namespace LinkState
 
 /**
  * Specified node-id.
@@ -138,7 +136,6 @@ static const unsigned int ROUTING_SEED_CONNECT_INTERVAL      = 10000;  // [msec]
 static const unsigned int ROUTING_SEED_CONNECT_RATE          = 512;
 static const unsigned int ROUTING_SEED_DISCONNECT_THREATHOLD = 30000;  // [msec]
 static const unsigned int ROUTING_SEED_INFO_KEEP_THREATHOLD  = 60000;  // [msec]
-static const unsigned int ROUTING_SEED_TABLE_SIZE            = 10;
 static const unsigned int ROUTING_SEED_INFO_NIDS_COUNT       = 4;
 static const double ROUTING_SEED_NEXT_POSITION               = 0.71828;
 static const unsigned int ROUTING_UPDATE_PERIOD              = 1000;  // [msec]
@@ -151,11 +148,7 @@ static const int64_t CONNECT_LINK_TIMEOUT        = 30000;
 static const unsigned int FIRST_LINK_RETRY_MAX   = 3;
 static const int64_t LINK_TRIAL_TIME_MIN         = 60000;
 static const unsigned int LINKS_MIN              = 4;
-static const unsigned int LINKS_MAX              = 24;
 static const int64_t SEED_CONNECT_INTERVAL       = 10000;
 static const uint32_t PACKET_ID_NONE             = 0x0;
-static const unsigned int EVENT_QUEUE_LIMIT      = 100;
 
-// debug parameter
-static const int DEBUG_PRINT_PACKET_SIZE = 32;
 }  // namespace colonio

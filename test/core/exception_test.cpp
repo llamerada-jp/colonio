@@ -16,7 +16,6 @@
 
 #include <gtest/gtest.h>
 
-#include "core/internal_exception.hpp"
 #include "core/utils.hpp"
 
 using namespace colonio;
@@ -25,12 +24,10 @@ TEST(UtilsTest, Exception) {
   unsigned int l = 0;
   try {
     l = __LINE__;
-    colonio_throw(ErrorCode::SYSTEM_ERROR, "test");
+    colonio_throw_error(ErrorCode::SYSTEM_ERROR, "test");
 
-  } catch (FatalException& e) {
-    FAIL();
-
-  } catch (InternalException& e) {
+  } catch (Error& e) {
+    EXPECT_FALSE(e.fatal);
     EXPECT_EQ(e.line, l + 1);
     EXPECT_STREQ(e.file.c_str(), "exception_test.cpp");
     EXPECT_EQ(e.code, ErrorCode::SYSTEM_ERROR);
@@ -40,16 +37,14 @@ TEST(UtilsTest, Exception) {
 
   try {
     l = __LINE__;
-    colonio_fatal("test");
+    colonio_throw_fatal("test");
 
-  } catch (FatalException& e) {
+  } catch (Error& e) {
+    EXPECT_TRUE(e.fatal);
     EXPECT_EQ(e.line, l + 1);
     EXPECT_STREQ(e.file.c_str(), "exception_test.cpp");
     EXPECT_EQ(e.code, ErrorCode::UNDEFINED);
     EXPECT_EQ(e.message, "test");
     EXPECT_STREQ(e.what(), "test");
-
-  } catch (InternalException& e) {
-    FAIL();
   }
 }

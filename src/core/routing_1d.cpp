@@ -71,6 +71,7 @@ bool Routing1D::on_change_online_links(const std::set<NodeID>& nids) {
     if (nids.find(nid) == nids.end()) {
       is_changed = true;
       it         = connected_nodes.erase(it);
+
     } else {
       it++;
     }
@@ -97,7 +98,6 @@ bool Routing1D::on_recv_routing_info(const Packet& packet, const RoutingProtocol
   // Ignore routing packet when source node has disconnected.
   // assert(connected_nodes.find(packet.src_nid) != connected_nodes.end());
   if (connected_nodes.find(packet.src_nid) == connected_nodes.end()) {
-    printf("disconnected:%s\n", packet.src_nid.to_str().c_str());
     return false;
   }
 
@@ -509,6 +509,7 @@ void Routing1D::update_route_infos() {
   while (it != route_infos.end()) {
     if (known_nids.find(it->first) == known_nids.end()) {
       it = route_infos.erase(it);
+
     } else {
       it++;
     }
@@ -535,7 +536,7 @@ void Routing1D::update_route_infos() {
     }
     logd("routing 1d known").map("nids", picojson::value(a));
   }
-  logd("routing 1d next").map("next",next_nid).map("prev", prev_nid);
+  logd("routing 1d next").map("next", next_nid).map("prev", prev_nid);
 #endif
 }
 

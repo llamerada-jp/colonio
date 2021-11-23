@@ -17,7 +17,6 @@
 
 #include <cassert>
 
-#include "colonio/error.hpp"
 #include "core/convert.hpp"
 #include "core/definition.hpp"
 #include "core/logger.hpp"
@@ -118,7 +117,7 @@ void MapPaxosModule::CommandGet::postprocess() {
         info->parent.send_packet_get(
             std::move(info->key), info->count_retry + 1, interval, info->cb_on_success, info->cb_on_failure);
       } else {
-        info->cb_on_failure(Error(ErrorCode::NOT_EXIST_KEY, "could not find the key"));
+        info->cb_on_failure(colonio_error(ErrorCode::NOT_EXIST_KEY, "could not find the key"));
       }
 
     } else {
@@ -159,7 +158,7 @@ MapPaxosModule::CommandSet::CommandSet(std::unique_ptr<MapPaxosModule::CommandSe
 
 void MapPaxosModule::CommandSet::on_error(const std::string& message) {
   logD(info->parent, "error on packet of 'set'").map("message", message);
-  info->cb_on_failure(Error(ErrorCode::SYSTEM_ERROR, "failed to set value"));
+  info->cb_on_failure(colonio_error(ErrorCode::SYSTEM_ERROR, "failed to set value"));
 }
 
 void MapPaxosModule::CommandSet::on_failure(std::unique_ptr<const Packet> packet) {
@@ -171,7 +170,7 @@ void MapPaxosModule::CommandSet::on_failure(std::unique_ptr<const Packet> packet
     info->parent.send_packet_set(std::move(info));
 
   } else {
-    info->cb_on_failure(Error(reason, "failed to set value"));
+    info->cb_on_failure(colonio_error(reason, "failed to set value"));
   }
 }
 
@@ -480,7 +479,7 @@ MapPaxosModule::MapPaxosModule(
 MapPaxosModule::~MapPaxosModule() {
 }
 
-void MapPaxosModule::each_local_value(std::function<void(const Value&, const Value&)>&& func) {
+void MapPaxosModule::foreach_local_value(std::function<void(const Value&, const Value&)>&& func) {
   // not implemented
   assert(false);
 }

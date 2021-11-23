@@ -25,24 +25,32 @@ namespace colonio {
  * @brief Error information. This is used when the asynchronous method calls a failed callback and is thrown when an
  * error occurs in a synchronous method.
  *
- * The code and message are set to the same content as the Exception.
  *
  * @sa ErrorCode
  */
 class Error : public std::exception {
  public:
+  /// True if the error is fatal and the process of colonio can not continue.
+  const bool fatal;
   /// Code to indicate the cause of the error.
   const ErrorCode code;
   /// A detailed message string for display or bug report.
   const std::string message;
+  /// The line number where the exception was thrown (for debug).
+  const unsigned long line;
+  /// The file name where the exception was thrown (for debug).
+  const std::string file;
 
   /**
    * @brief Construct a new Error object.
    *
-   * @param code_ Code to indicate the cause of the error.
-   * @param message_ A detailed message string for display or bug report.
+   * @param fatal True if the error is fatal and the process of colonio can not continue.
+   * @param code Code to indicate the cause of the error.
+   * @param message A detailed message string for display or bug report.
+   * @param line The line number where the exception was thrown.
+   * @param file The file name where the exception was thrown.
    */
-  explicit Error(ErrorCode code_, const std::string& message_);
+  Error(bool fatal, ErrorCode code, const std::string& message, int line, const std::string& file);
 
   /**
    * @brief Override the standard method to output message.

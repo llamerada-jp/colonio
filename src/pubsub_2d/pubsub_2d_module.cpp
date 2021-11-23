@@ -18,7 +18,6 @@
 
 #include <cassert>
 
-#include "colonio/error.hpp"
 #include "colonio/pubsub_2d.hpp"
 #include "core/convert.hpp"
 #include "core/coord_system.hpp"
@@ -93,10 +92,7 @@ void Pubsub2DModule::on(const std::string& name, std::function<void(const Value&
 }
 
 void Pubsub2DModule::off(const std::string& name) {
-  auto it = subscribers.find(name);
-  if (it != subscribers.end()) {
-    subscribers.erase(it);
-  }
+  subscribers.erase(name);
 }
 
 void Pubsub2DModule::module_process_command(std::unique_ptr<const Packet> packet) {
@@ -163,14 +159,14 @@ Pubsub2DModule::CommandPass::CommandPass(
 
 void Pubsub2DModule::CommandPass::on_error(const std::string& message) {
   // @todo output log.
-  cb_on_failure(Error(ErrorCode::SYSTEM_ERROR, ""));
+  cb_on_failure(colonio_error(ErrorCode::SYSTEM_ERROR, ""));
 }
 
 void Pubsub2DModule::CommandPass::on_failure(std::unique_ptr<const Packet> packet) {
   Pubsub2DProtocol::PassFailure content;
   packet->parse_content(&content);
   ErrorCode reason = static_cast<ErrorCode>(content.reason());
-  cb_on_failure(Error(reason, ""));
+  cb_on_failure(colonio_error(reason, ""));
 }
 
 void Pubsub2DModule::CommandPass::on_success(std::unique_ptr<const Packet> packet) {

@@ -28,8 +28,11 @@
 
 namespace colonio {
 
-Routing2D::Routing2D(ModuleParam& param, RoutingAlgorithm2DDelegate& delegate_, const CoordSystem& coord_system_) :
+Routing2D::Routing2D(
+    ModuleParam& param, RoutingAlgorithm2DDelegate& delegate_, const CoordSystem& coord_system_,
+    unsigned int config_update_period) :
     RoutingAlgorithm("2D"),
+    CONFIG_UPDATE_PERIOD(config_update_period),
     logger(param.logger),
     local_nid(param.local_nid),
     delegate(delegate_),
@@ -118,8 +121,8 @@ bool Routing2D::update_routing_info(
   // update nearby_nodes, required_nodes
   update_node_infos();
 
-  // Ignore
-  //*
+// Ignore
+//*
 #ifndef NDEBUG
   picojson::object nodes;
   picojson::array links;
@@ -150,7 +153,7 @@ bool Routing2D::update_routing_info(
 
   // return is_changed;
   return true;  // TODO
-}
+}  // namespace colonio
 
 const NodeID& Routing2D::get_relay_nid(const Coordinate& position) {
   const NodeID* near_nid    = &NodeID::THIS;

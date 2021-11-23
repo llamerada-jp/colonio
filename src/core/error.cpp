@@ -16,8 +16,13 @@
 
 #include "colonio/error.hpp"
 
+#include <string>
+
+#include "utils.hpp"
+
 namespace colonio {
-Error::Error(ErrorCode code_, const std::string& message_) : code(code_), message(message_) {
+Error::Error(bool fatal_, ErrorCode code_, const std::string& message_, int line_, const std::string& file_) :
+    fatal(fatal_), code(code_), message(message_), line(line_), file(Utils::file_basename(file_)) {
 }
 
 const char* Error::what() const noexcept {

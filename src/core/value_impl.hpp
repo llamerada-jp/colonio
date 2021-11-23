@@ -37,12 +37,12 @@ class ValueImpl {
   Storage storage;
 
   ValueImpl();
+  ValueImpl(const ValueImpl& src);
   explicit ValueImpl(bool v);
   explicit ValueImpl(int64_t v);
   explicit ValueImpl(double v);
   explicit ValueImpl(const std::string& v);
   explicit ValueImpl(const char* v);
-  ValueImpl(const ValueImpl& src);
   virtual ~ValueImpl();
 
   static void to_pb(core::Value* pb, const Value& value);

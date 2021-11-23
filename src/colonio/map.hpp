@@ -33,9 +33,12 @@ class Map {
   static const uint32_t TRY_LOCK            = 0x4;  // lock (unsupported yet)
 
   virtual ~Map();
+  Map(const Map&) = delete;
+  Map& operator=(const Map&) = delete;
 
-  virtual void each_local_value(std::function<void(Map&, const Value&, const Value&)>&& func) = 0;
-  virtual Value get(const Value& key)                                                         = 0;
+  // TODO not implemented
+  virtual void foreach_local_value(std::function<void(Map&, const Value&, const Value&)>&& func) = 0;
+  virtual Value get(const Value& key)                                                            = 0;
   virtual void get(
       const Value& key, std::function<void(Map&, const Value&)>&& on_success,
       std::function<void(Map&, const Error&)>&& on_failure)                   = 0;
@@ -43,5 +46,8 @@ class Map {
   virtual void set(
       const Value& key, const Value& value, uint32_t opt, std::function<void(Map&)>&& on_success,
       std::function<void(Map&, const Error&)>&& on_failure) = 0;
+
+ protected:
+  Map(){};
 };
 }  // namespace colonio

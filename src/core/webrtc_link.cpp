@@ -67,9 +67,9 @@ WebrtcLink* WebrtcLink::new_instance(WebrtcLinkParam& param, bool is_create_dc) 
 
 WebrtcLink::WebrtcLink(WebrtcLinkParam& param) :
     delegate(param.delegate),
-    link_state(LinkStatus::CONNECTING),
-    dco_state(LinkStatus::CONNECTING),
-    pco_state(LinkStatus::CONNECTING),
+    link_state(LinkState::CONNECTING),
+    dco_state(LinkState::CONNECTING),
+    pco_state(LinkState::CONNECTING),
     init_data(std::make_unique<InitData>()),
     logger(param.logger),
     webrtc_context(param.context) {

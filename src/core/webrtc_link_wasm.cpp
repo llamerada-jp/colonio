@@ -64,14 +64,14 @@ void webrtc_link_on_dco_close(COLONIO_PTR_T this_ptr) {
   colonio::WebrtcLinkWasm& THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
   assert(THIS.debug_ptr == &THIS);
 
-  THIS.delegate.webrtc_link_on_change_dco_state(THIS, colonio::LinkStatus::OFFLINE);
+  THIS.delegate.webrtc_link_on_change_dco_state(THIS, colonio::LinkState::OFFLINE);
 }
 
 void webrtc_link_on_dco_closing(COLONIO_PTR_T this_ptr) {
   colonio::WebrtcLinkWasm& THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
   assert(THIS.debug_ptr == &THIS);
 
-  THIS.delegate.webrtc_link_on_change_dco_state(THIS, colonio::LinkStatus::CLOSING);
+  THIS.delegate.webrtc_link_on_change_dco_state(THIS, colonio::LinkState::CLOSING);
 }
 
 void webrtc_link_on_dco_error(COLONIO_PTR_T this_ptr, COLONIO_PTR_T message_ptr, int message_siz) {
@@ -94,7 +94,7 @@ void webrtc_link_on_dco_open(COLONIO_PTR_T this_ptr) {
   colonio::WebrtcLinkWasm& THIS = *reinterpret_cast<colonio::WebrtcLinkWasm*>(this_ptr);
   assert(THIS.debug_ptr == &THIS);
 
-  THIS.delegate.webrtc_link_on_change_dco_state(THIS, colonio::LinkStatus::ONLINE);
+  THIS.delegate.webrtc_link_on_change_dco_state(THIS, colonio::LinkState::ONLINE);
 }
 
 void webrtc_link_on_pco_ice_candidate(COLONIO_PTR_T this_ptr, COLONIO_PTR_T ice_ptr, int ice_siz) {
@@ -111,21 +111,21 @@ void webrtc_link_on_pco_state_change(COLONIO_PTR_T this_ptr, COLONIO_PTR_T state
 
   std::string state(reinterpret_cast<char*>(state_ptr), state_siz);
   // https://w3c.github.io/webrtc-pc/#rtcicetransportstate
-  colonio::LinkStatus::Type new_state = 0;
+  colonio::LinkState::Type new_state = 0;
   if (state == "new" || state == "checking") {
-    assert(THIS.pco_state == colonio::LinkStatus::CONNECTING);
-    new_state = colonio::LinkStatus::CONNECTING;
+    assert(THIS.pco_state == colonio::LinkState::CONNECTING);
+    new_state = colonio::LinkState::CONNECTING;
 
   } else if (state == "connected" || state == "completed") {
-    assert(THIS.pco_state == colonio::LinkStatus::CONNECTING || THIS.pco_state == colonio::LinkStatus::ONLINE);
-    new_state = colonio::LinkStatus::ONLINE;
+    assert(THIS.pco_state == colonio::LinkState::CONNECTING || THIS.pco_state == colonio::LinkState::ONLINE);
+    new_state = colonio::LinkState::ONLINE;
 
   } else if (state == "disconnected") {
-    assert(THIS.pco_state != colonio::LinkStatus::OFFLINE);
-    new_state = colonio::LinkStatus::CLOSING;
+    assert(THIS.pco_state != colonio::LinkState::OFFLINE);
+    new_state = colonio::LinkState::CLOSING;
 
   } else if (state == "closed" || state == "failed") {
-    new_state = colonio::LinkStatus::OFFLINE;
+    new_state = colonio::LinkState::OFFLINE;
 
   } else {
     assert(false);
@@ -190,7 +190,7 @@ void WebrtcLinkWasm::on_pco_ice_candidate(const std::string& ice_str) {
 
 void WebrtcLinkWasm::disconnect() {
   init_data.reset();
-  if (dco_state == LinkStatus::CLOSING || dco_state == LinkStatus::OFFLINE) {
+  if (dco_state == LinkState::CLOSING || dco_state == LinkState::OFFLINE) {
     return;
   }
   webrtc_link_disconnect(reinterpret_cast<COLONIO_PTR_T>(this));
@@ -202,12 +202,12 @@ void WebrtcLinkWasm::get_local_sdp(std::function<void(const std::string&)>&& fun
   webrtc_link_get_local_sdp(reinterpret_cast<COLONIO_PTR_T>(this), is_remote_sdp_set);
 }
 
-LinkStatus::Type WebrtcLinkWasm::get_new_link_state() {
+LinkState::Type WebrtcLinkWasm::get_new_link_state() {
   return dco_state;
 }
 
 bool WebrtcLinkWasm::send(const std::string& data) {
-  if (link_state != LinkStatus::ONLINE) {
+  if (link_state != LinkState::ONLINE) {
     return false;
   }
 
@@ -216,7 +216,7 @@ bool WebrtcLinkWasm::send(const std::string& data) {
 }
 
 void WebrtcLinkWasm::set_remote_sdp(const std::string& sdp) {
-  if (link_state == LinkStatus::CONNECTING || link_state == LinkStatus::ONLINE) {
+  if (link_state == LinkState::CONNECTING || link_state == LinkState::ONLINE) {
     webrtc_link_set_remote_sdp(
         reinterpret_cast<COLONIO_PTR_T>(this), reinterpret_cast<COLONIO_PTR_T>(sdp.c_str()), sdp.size(),
         local_sdp.empty());
@@ -225,7 +225,7 @@ void WebrtcLinkWasm::set_remote_sdp(const std::string& sdp) {
 }
 
 void WebrtcLinkWasm::update_ice(const picojson::object& ice) {
-  if (link_state == LinkStatus::CONNECTING || link_state == LinkStatus::ONLINE) {
+  if (link_state == LinkState::CONNECTING || link_state == LinkState::ONLINE) {
     std::string ice_str = picojson::value(ice).serialize();
     webrtc_link_update_ice(
         reinterpret_cast<COLONIO_PTR_T>(this), reinterpret_cast<COLONIO_PTR_T>(ice_str.c_str()), ice_str.size());

@@ -322,7 +322,9 @@ function schedulerRequestNextRoutine(schedulerPtr, msec) {
   }
   schedulerTimers.set(schedulerPtr, setTimeout(() => {
     let next = ccall("scheduler_invoke", "number", ["number"], [schedulerPtr]);
-    schedulerRequestNextRoutine(schedulerPtr, next);
+    if (next >= 0) {
+      schedulerRequestNextRoutine(schedulerPtr, next);
+    }
   }, msec));
 }
 

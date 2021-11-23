@@ -18,7 +18,6 @@
 #include "module_base.hpp"
 
 namespace colonio {
-class Context;
 class NodeID;
 class Module1D;
 

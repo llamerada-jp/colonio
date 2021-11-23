@@ -38,7 +38,7 @@ class DummyModule : public LoggerDelegate {
   picojson::object param;
   std::string time;
 
-  DummyModule() : logger(*this) {
+  DummyModule() : logger(*this), last_logger(nullptr), line(0) {
   }
 
   void logger_on_output(Logger& logger, const std::string& json) override {

@@ -19,7 +19,6 @@
 #include "colonio/error.hpp"
 #include "map_base.hpp"
 #include "pipe.hpp"
-#include "scheduler.hpp"
 #include "value_impl.hpp"
 
 namespace colonio {
@@ -27,8 +26,8 @@ namespace colonio {
 MapImpl::MapImpl(MapBase& base_) : base(base_) {
 }
 
-void MapImpl::each_local_value(std::function<void(Map&, const Value&, const Value&)>&& func) {
-  base.each_local_value([this, &func](const Value& key, const Value& value) {
+void MapImpl::foreach_local_value(std::function<void(Map&, const Value&, const Value&)>&& func) {
+  base.foreach_local_value([this, &func](const Value& key, const Value& value) {
     func(*this, key, value);
   });
 }
@@ -45,15 +44,7 @@ Value MapImpl::get(const Value& key) {
         pipe.pushError(error);
       });
 
-  Value* value;
-  Error* e;
-  std::tie(value, e) = pipe.pop();
-
-  if (e != nullptr) {
-    throw *e;
-  }
-
-  return *value;
+  return *pipe.pop_with_throw();
 }
 
 void MapImpl::get(
@@ -81,13 +72,7 @@ void MapImpl::set(const Value& key, const Value& value, uint32_t opt) {
         pipe.pushError(error);
       });
 
-  int* dummy;
-  Error* e;
-  std::tie(dummy, e) = pipe.pop();
-
-  if (e != nullptr) {
-    throw *e;
-  }
+  pipe.pop_with_throw();
 }
 
 void MapImpl::set(

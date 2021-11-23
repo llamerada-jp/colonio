@@ -49,6 +49,7 @@ BUILD_TYPE ?= Release
 CTEST_ARGS ?= ""
 DESTDIR ?= /usr/local
 SKIP_SETUP_LOCAL ?= OFF
+TEST_TIMEOUT ?= 180
 WITH_COVERAGE ?= OFF
 WITH_GPROF ?= OFF
 WITH_PYTHON ?= ON
@@ -224,6 +225,7 @@ build-native:
 	&& cd $(NATIVE_BUILD_PATH) \
 	&& PKG_CONFIG_PATH=$(LOCAL_ENV_PATH)/lib/pkgconfig/ \
 		cmake -DLOCAL_ENV_PATH=$(LOCAL_ENV_PATH) \
+		-DTEST_TIMEOUT=$(TEST_TIMEOUT) \
 		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 		-DCMAKE_INSTALL_PREFIX=$(DESTDIR) \
 		-DCOLONIO_SEED_BIN_PATH=$(OUTPUT_PATH)/seed \
@@ -246,7 +248,10 @@ build-wasm:
 	&& mkdir -p /tmp/em_cache \
 	&& export EM_CACHE=/tmp/em_cache \
 	&& cd $(WASM_BUILD_PATH) \
-	&& emcmake cmake -DLOCAL_ENV_PATH=$(LOCAL_ENV_PATH) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) $(ROOT_PATH) \
+	&& emcmake cmake -DLOCAL_ENV_PATH=$(LOCAL_ENV_PATH) \
+	    -DTEST_TIMEOUT=$(TEST_TIMEOUT) \
+		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		$(ROOT_PATH) \
   	&& emmake $(MAKE) \
 	&& cp src/colonio.* $(OUTPUT_PATH)
 

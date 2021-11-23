@@ -15,13 +15,11 @@
  */
 #include "logger.hpp"
 
-#include <cassert>
 #include <chrono>
 #include <cstdarg>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
-#include <vector>
 
 #include "convert.hpp"
 #include "node_id.hpp"
@@ -135,5 +133,4 @@ Logger::L Logger::create(
     const std::string& file, unsigned long line, const std::string& level, const std::string& message) {
   return L(*this, file, line, level, message);
 }
-
 }  // namespace colonio

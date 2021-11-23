@@ -15,7 +15,6 @@ set(COLONIO_FILES
   core/coordinate.cpp
   core/error.cpp
   core/export_c.cpp
-  core/internal_exception.cpp
   core/logger.cpp
   core/map.cpp
   core/map_base.cpp

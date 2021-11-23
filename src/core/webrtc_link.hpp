@@ -41,11 +41,11 @@ struct WebrtcLinkParam {
 class WebrtcLinkDelegate {
  public:
   virtual ~WebrtcLinkDelegate();
-  virtual void webrtc_link_on_change_dco_state(WebrtcLink& link, LinkStatus::Type status) = 0;
-  virtual void webrtc_link_on_change_pco_state(WebrtcLink& link, LinkStatus::Type status) = 0;
-  virtual void webrtc_link_on_error(WebrtcLink& link)                                     = 0;
-  virtual void webrtc_link_on_update_ice(WebrtcLink& link, const picojson::object& ice)   = 0;
-  virtual void webrtc_link_on_recv_data(WebrtcLink& link, const std::string& data)        = 0;
+  virtual void webrtc_link_on_change_dco_state(WebrtcLink& link, LinkState::Type state) = 0;
+  virtual void webrtc_link_on_change_pco_state(WebrtcLink& link, LinkState::Type state) = 0;
+  virtual void webrtc_link_on_error(WebrtcLink& link)                                   = 0;
+  virtual void webrtc_link_on_update_ice(WebrtcLink& link, const picojson::object& ice) = 0;
+  virtual void webrtc_link_on_recv_data(WebrtcLink& link, const std::string& data)      = 0;
 };
 
 class WebrtcLink {
@@ -73,20 +73,19 @@ class WebrtcLink {
   NodeID nid;
   /// Event handler.
   WebrtcLinkDelegate& delegate;
-  LinkStatus::Type link_state;
-  LinkStatus::Type dco_state;
-  LinkStatus::Type pco_state;
+  LinkState::Type link_state;
+  LinkState::Type dco_state;
+  LinkState::Type pco_state;
   ///
   std::unique_ptr<InitData> init_data;
 
   static WebrtcLink* new_instance(WebrtcLinkParam& param, bool is_create_dc);
 
-  WebrtcLink(WebrtcLinkParam& param);
   virtual ~WebrtcLink();
 
   virtual void disconnect()                                                  = 0;
   virtual void get_local_sdp(std::function<void(const std::string&)>&& func) = 0;
-  virtual LinkStatus::Type get_new_link_state()                              = 0;
+  virtual LinkState::Type get_new_link_state()                               = 0;
   virtual bool send(const std::string& data)                                 = 0;
   virtual void set_remote_sdp(const std::string& sdp)                        = 0;
   virtual void update_ice(const picojson::object& ice)                       = 0;
@@ -94,5 +93,7 @@ class WebrtcLink {
  protected:
   Logger& logger;
   WebrtcContext& webrtc_context;
+
+  WebrtcLink(WebrtcLinkParam& param);
 };
 }  // namespace colonio

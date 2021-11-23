@@ -21,7 +21,6 @@
 #include <colonio/pubsub_2d.hpp>
 #include <colonio/value.hpp>
 #include <functional>
-#include <memory>
 #include <string>
 #include <tuple>
 
@@ -34,9 +33,13 @@ namespace colonio {
  */
 class Colonio {
  public:
-  // options
-  static const uint32_t EXPLICIT_EVENT_THREAD      = 0x1;
+  // These options are provided for implementations of other languages or libraries. And are not normally used.
+  /// This declares that the thread for the event loop will be specified explicitly instead of created internally.
+  static const uint32_t EXPLICIT_EVENT_THREAD = 0x1;
+  /// This declares that the thread for the colonio main loop will be specified explicitly instead of created
+  /// internally.
   static const uint32_t EXPLICIT_CONTROLLER_THREAD = 0x2;
+
   /**
    * Log messages in JSON format.
    *
@@ -58,6 +61,8 @@ class Colonio {
    * @sa disconnect()
    */
   virtual ~Colonio();
+  Colonio(const Colonio&) = delete;
+  Colonio& operator=(const Colonio&) = delete;
 
   /**
    * @brief Get a @ref Map accessor.
@@ -190,18 +195,77 @@ class Colonio {
       double x, double y, std::function<void(Colonio&, double, double)> on_success,
       std::function<void(Colonio&, const Error&)> on_failure) = 0;
 
-  // options
-  static const uint32_t SEND_ACCEPT_NEARBY      = 0x01;
+  // Options for `send` method.
+  /// If there is no node with a matching node-id, the node with the closest node-id will receive the value.
+  static const uint32_t SEND_ACCEPT_NEARBY = 0x01;
+  /// Confirm that any node receives the value. If this option is not specified, the send method will return immediately
+  /// with success.
   static const uint32_t CONFIRM_RECEIVER_RESULT = 0x02;
 
+  /**
+   * @brief Send packet to the destination node.
+   *
+   * This method provides the simple feature of sending a value.
+   *
+   * @param dst_nid Target node's ID.
+   * @param value A value to be sent.
+   * @param opt Options.
+   *
+   * @sa send(
+   *     const std::string& dst_nid, const Value& value, uint32_t opt, std::function<void(Colonio&)>&& on_success,
+   *     std::function<void(Colonio&, const Error&)>&& on_failure)
+   * @sa on(std::function<void(Colonio&, const Value&)>&& receiver)
+   * @sa off()
+   */
   virtual void send(const std::string& dst_nid, const Value& value, uint32_t opt = 0x00) = 0;
+
+  /**
+   * @brief Send packet to the destination node asynchronously.
+   *
+   * This method provides the simple feature of sending a value.
+   *
+   * @param dst_nid Target node's ID.
+   * @param value A value to be sent.
+   * @param opt Options.
+   * @param on_success The function will call when success to send the message.
+   * @param on_failure The function will call when failure to send the message.
+   *
+   * @sa send(const std::string& dst_nid, const Value& value, uint32_t opt)
+   * @sa on(std::function<void(Colonio&, const Value&)>&& receiver)
+   * @sa off()
+   */
   virtual void send(
       const std::string& dst_nid, const Value& value, uint32_t opt, std::function<void(Colonio&)>&& on_success,
-      std::function<void(Colonio&, const Error&)>&& on_failure)           = 0;
-  virtual void on(std::function<void(Colonio&, const Value&)>&& receiver) = 0;
-  virtual void off()                                                      = 0;
+      std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
 
-  virtual void start_on_event_thread()      = 0;
+  /**
+   * @brief Register a callback function to receive messages from the send method.
+   *
+   * If another function has already been registered, that registration will be overwritten.
+   *
+   * @param receiver Receiver function.
+   */
+  virtual void on(std::function<void(Colonio&, const Value&)>&& receiver) = 0;
+
+  /**
+   * @brief Release the function registered in the on method.
+   */
+  virtual void off() = 0;
+
+  /**
+   * @brief This is the method to call inside the thread for events.
+   *
+   * This method is provided for implementations of other languages or libraries. And are not normally used.
+   * Used with the EXPLICIT_EVENT_THREAD option.
+   */
+  virtual void start_on_event_thread() = 0;
+
+  /**
+   * @brief This is the method to call inside the thread for colonio main loop.
+   *
+   * This method is provided for implementations of other languages or libraries. And are not normally used.
+   * Used with the EXPLICIT_CONTROLLER_THREAD option.
+   */
   virtual void start_on_controller_thread() = 0;
 
  protected:
@@ -209,9 +273,5 @@ class Colonio {
    * @brief Construct a new Colonio object.
    */
   Colonio();
-
- private:
-  Colonio(const Colonio&);
-  Colonio& operator=(const Colonio&);
 };
 }  // namespace colonio

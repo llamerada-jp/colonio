@@ -27,7 +27,7 @@ class Value;
 
 class ColonioModule : public ModuleBase {
  public:
-  ColonioModule(ModuleParam& param);
+  explicit ColonioModule(ModuleParam& param);
   virtual ~ColonioModule();
 
   void send(

@@ -59,7 +59,7 @@ SeedAccessor::~SeedAccessor() {
  * Try to connect to the seed server over HTTP(S).
  */
 void SeedAccessor::connect(unsigned int interval) {
-  assert(get_status() == LinkStatus::OFFLINE);
+  assert(get_link_state() == LinkState::OFFLINE);
   int64_t current_msec = Utils::get_current_msec();
 
   // Ignore interval if first connect
@@ -84,13 +84,13 @@ void SeedAccessor::connect(unsigned int interval) {
           last_connect_time    = current_msec;
           if (link) {
             link->connect(url);
-            delegate.seed_accessor_on_change_status(*this);
+            delegate.seed_accessor_on_change_state(*this);
           }
         },
         last_connect_time + interval - current_msec);
   }
 
-  delegate.seed_accessor_on_change_status(*this);
+  delegate.seed_accessor_on_change_state(*this);
 }
 
 /**
@@ -98,33 +98,33 @@ void SeedAccessor::connect(unsigned int interval) {
  */
 void SeedAccessor::disconnect() {
   logd("SeedAccessor::disconnect");
-  if (get_status() != LinkStatus::OFFLINE) {
+  if (get_link_state() != LinkState::OFFLINE) {
     link.reset();
 
-    delegate.seed_accessor_on_change_status(*this);
+    delegate.seed_accessor_on_change_state(*this);
   }
 }
 
-AuthStatus::Type SeedAccessor::get_auth_status() {
+AuthStatus::Type SeedAccessor::get_auth_status() const {
   return auth_status;
 }
 
-LinkStatus::Type SeedAccessor::get_status() {
+LinkState::Type SeedAccessor::get_link_state() const {
   if (link) {
     if (auth_status == AuthStatus::SUCCESS) {
-      return LinkStatus::ONLINE;
+      return LinkState::ONLINE;
 
     } else {
-      return LinkStatus::CONNECTING;
+      return LinkState::CONNECTING;
     }
 
   } else {
-    return LinkStatus::OFFLINE;
+    return LinkState::OFFLINE;
   }
 }
 
 bool SeedAccessor::is_only_one() {
-  if (get_status() == LinkStatus::ONLINE && (hint & SeedHint::ONLYONE) != 0) {
+  if (get_link_state() == LinkState::ONLINE && (hint & SeedHint::ONLYONE) != 0) {
     return true;
 
   } else {
@@ -246,7 +246,7 @@ void SeedAccessor::recv_auth_success(const Packet& packet) {
 
   auth_status = AuthStatus::SUCCESS;
   delegate.seed_accessor_on_recv_config(*this, v.get<picojson::object>());
-  delegate.seed_accessor_on_change_status(*this);
+  delegate.seed_accessor_on_change_state(*this);
 }
 
 void SeedAccessor::recv_auth_failure(const Packet& packet) {
@@ -266,7 +266,7 @@ void SeedAccessor::recv_hint(const Packet& packet) {
   hint = content.hint();
 
   if (hint != hint_old) {
-    delegate.seed_accessor_on_change_status(*this);
+    delegate.seed_accessor_on_change_state(*this);
   }
 }
 

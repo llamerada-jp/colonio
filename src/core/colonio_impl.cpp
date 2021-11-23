@@ -42,7 +42,8 @@ ColonioImpl::ColonioImpl(std::function<void(Colonio&, const std::string&)> log_r
     enable_retry(true),
     node_accessor(nullptr),
     routing(nullptr),
-    link_status(LinkStatus::OFFLINE) {
+    colonio_module(nullptr),
+    link_state(LinkState::OFFLINE) {
 }
 
 ColonioImpl::~ColonioImpl() {
@@ -61,13 +62,7 @@ void ColonioImpl::connect(const std::string& url, const std::string& token) {
         pipe.pushError(error);
       });
 
-  int* dummy;
-  Error* e;
-  std::tie(dummy, e) = pipe.pop();
-
-  if (e != nullptr) {
-    throw *e;
-  }
+  pipe.pop_with_throw();
 }
 
 void ColonioImpl::connect(
@@ -78,12 +73,13 @@ void ColonioImpl::connect(
       on_success, on_failure));
 
   try {
-    if (link_status != LinkStatus::OFFLINE && link_status != LinkStatus::CLOSING) {
+    if (link_state != LinkState::OFFLINE && link_state != LinkState::CLOSING) {
       loge("duplicate connection.");
       scheduler->add_user_task(this, [this]() {
-        Error e(ErrorCode::CONNECTION_FAILD, "duplicate connectin.");
-        connect_cb->second(*this, e);
-        connect_cb.reset();
+        auto d = Utils::defer([this] {
+          connect_cb.reset();
+        });
+        connect_cb->second(*this, colonio_error(ErrorCode::CONNECTION_FAILD, "duplicate connectin."));
       });
 
     } else {
@@ -99,12 +95,16 @@ void ColonioImpl::connect(
     register_module(colonio_module, nullptr, false, false);
 
     scheduler->add_controller_task(this, [this]() {
-      update_accessor_status();
+      update_accessor_state();
     });
 
   } catch (Error& e) {
-    connect_cb.reset();
-    on_failure(*this, e);
+    if (connect_cb) {
+      auto d = Utils::defer([this] {
+        connect_cb.reset();
+      });
+      connect_cb->second(*this, e);
+    }
   }
 }
 
@@ -119,13 +119,7 @@ void ColonioImpl::disconnect() {
         pipe.pushError(error);
       });
 
-  int* dummy;
-  Error* e;
-  std::tie(dummy, e) = pipe.pop();
-
-  if (e != nullptr) {
-    throw *e;
-  }
+  pipe.pop_with_throw();
 }
 
 void ColonioImpl::disconnect(
@@ -137,9 +131,9 @@ void ColonioImpl::disconnect(
     seed_accessor->disconnect();
     node_accessor->disconnect_all([this, on_success]() {
       scheduler->add_controller_task(this, [this, on_success] {
-        link_status = LinkStatus::OFFLINE;
+        link_state = LinkState::OFFLINE;
         for (auto& module : modules) {
-          module.second->module_on_change_accessor_status(LinkStatus::OFFLINE, LinkStatus::OFFLINE);
+          module.second->module_on_change_accessor_state(LinkState::OFFLINE, LinkState::OFFLINE);
         }
 
         clear_modules();
@@ -154,7 +148,7 @@ void ColonioImpl::disconnect(
 }
 
 bool ColonioImpl::is_connected() {
-  return link_status == LinkStatus::ONLINE;
+  return link_state == LinkState::ONLINE;
 }
 
 std::string ColonioImpl::get_local_nid() {
@@ -168,7 +162,7 @@ std::string ColonioImpl::get_local_nid() {
 Map& ColonioImpl::access_map(const std::string& name) {
   auto it = if_map.find(name);
   if (it == if_map.end()) {
-    throw Error(ErrorCode::CONFLICT_WITH_SETTING, Utils::format_string("map module not found : ", 0, name.c_str()));
+    colonio_throw_error(ErrorCode::CONFLICT_WITH_SETTING, "map module not found : %s", name.c_str());
   }
 
   return *it->second;
@@ -177,7 +171,7 @@ Map& ColonioImpl::access_map(const std::string& name) {
 Pubsub2D& ColonioImpl::access_pubsub_2d(const std::string& name) {
   auto it = if_pubsub2d.find(name);
   if (it == if_pubsub2d.end()) {
-    throw Error(ErrorCode::CONFLICT_WITH_SETTING, Utils::format_string("pubsub module not found : ", 0, name.c_str()));
+    colonio_throw_error(ErrorCode::CONFLICT_WITH_SETTING, "pubsub module not found : %s", name.c_str());
   }
 
   return *it->second;
@@ -195,21 +189,14 @@ std::tuple<double, double> ColonioImpl::set_position(double x, double y) {
         pipe.pushError(error);
       });
 
-  std::tuple<double, double>* r;
-  Error* e;
-  std::tie(r, e) = pipe.pop();
-
-  if (e != nullptr) {
-    throw *e;
-  }
-  return *r;
+  return *pipe.pop_with_throw();
 }
 
 void ColonioImpl::set_position(
     double x, double y, std::function<void(Colonio&, double, double)> on_success,
     std::function<void(Colonio&, const Error&)> on_failure) {
   if (!coord_system) {
-    on_failure(*this, Error(ErrorCode::CONFLICT_WITH_SETTING, "coordinate system was not enabled"));
+    on_failure(*this, colonio_error(ErrorCode::CONFLICT_WITH_SETTING, "coordinate system was not enabled"));
   }
 
   scheduler->add_controller_task(this, [this, x, y, on_success] {
@@ -244,13 +231,7 @@ void ColonioImpl::send(const std::string& dst_nid, const Value& value, uint32_t 
         pipe.pushError(error);
       });
 
-  int* dummy;
-  Error* e;
-  std::tie(dummy, e) = pipe.pop();
-
-  if (e != nullptr) {
-    throw *e;
-  }
+  pipe.pop_with_throw();
 }
 
 void ColonioImpl::send(
@@ -266,7 +247,6 @@ void ColonioImpl::send(
           on_failure(*this, err);
         });
   } catch (Error& e) {
-    connect_cb.reset();
     on_failure(*this, e);
   }
 }
@@ -312,7 +292,7 @@ void ColonioImpl::node_accessor_on_change_online_links(NodeAccessor& na, const s
 #ifndef NDEBUG
   {
     picojson::array a;
-    for (auto nid : nids) {
+    for (auto& nid : nids) {
       a.push_back(picojson::value(nid.to_str()));
     }
     logd("links").map("nids", picojson::value(a));
@@ -320,9 +300,9 @@ void ColonioImpl::node_accessor_on_change_online_links(NodeAccessor& na, const s
 #endif
 }
 
-void ColonioImpl::node_accessor_on_change_status(NodeAccessor& na) {
+void ColonioImpl::node_accessor_on_change_state(NodeAccessor& na) {
   scheduler->add_controller_task(this, [this]() {
-    update_accessor_status();
+    update_accessor_state();
   });
 }
 
@@ -335,13 +315,13 @@ void ColonioImpl::node_accessor_on_recv_packet(
 }
 
 void ColonioImpl::routing_do_connect_node(Routing& routing, const NodeID& nid) {
-  if (node_accessor->get_status() == LinkStatus::ONLINE) {
+  if (node_accessor->get_link_state() == LinkState::ONLINE) {
     node_accessor->connect_link(nid);
   }
 }
 
 void ColonioImpl::routing_do_disconnect_node(Routing& routing, const NodeID& nid) {
-  if (node_accessor->get_status() == LinkStatus::ONLINE) {
+  if (node_accessor->get_link_state() == LinkState::ONLINE) {
     node_accessor->disconnect_link(nid);
   }
 }
@@ -385,9 +365,9 @@ void ColonioImpl::routing_on_module_2d_change_nearby_position(
   });
 }
 
-void ColonioImpl::seed_accessor_on_change_status(SeedAccessor& sa) {
+void ColonioImpl::seed_accessor_on_change_state(SeedAccessor& sa) {
   scheduler->add_controller_task(this, [this]() {
-    update_accessor_status();
+    update_accessor_state();
   });
 }
 
@@ -440,15 +420,17 @@ bool ColonioImpl::module_1d_do_check_covered_range(Module1D& module_1d, const No
 }
 
 void ColonioImpl::check_api_connect() {
-  if (!connect_cb || link_status != LinkStatus::ONLINE) {
+  if (!connect_cb || link_state != LinkState::ONLINE) {
     return;
   }
   assert(seed_accessor->get_auth_status() == AuthStatus::SUCCESS);
 
   scheduler->add_user_task(this, [this]() {
     if (connect_cb) {
+      auto d = Utils::defer([this] {
+        connect_cb.reset();
+      });
       connect_cb->first(*this);
-      connect_cb.reset();
     }
   });
 }
@@ -504,16 +486,16 @@ void ColonioImpl::initialize_algorithms() {
       if_map.insert(std::make_pair(name, std::make_unique<MapImpl>(*mod)));
 
     } else {
-      colonio_fatal("unsupported algorithm(%s)", type.c_str());
+      colonio_throw_fatal("unsupported algorithm(%s)", type.c_str());
     }
   }
 
   check_api_connect();
 }
 
-void ColonioImpl::update_accessor_status() {
-  LinkStatus::Type seed_status = seed_accessor->get_status();
-  LinkStatus::Type node_status = node_accessor->get_status();
+void ColonioImpl::update_accessor_state() {
+  LinkState::Type seed_status = seed_accessor->get_link_state();
+  LinkState::Type node_status = node_accessor->get_link_state();
 
   logd("link status")
       .map_int("seed", seed_status)
@@ -521,58 +503,60 @@ void ColonioImpl::update_accessor_status() {
       .map_int("auth", seed_accessor->get_auth_status())
       .map_bool("onlyone", seed_accessor->is_only_one());
 
-  LinkStatus::Type status = LinkStatus::OFFLINE;
+  LinkState::Type status = LinkState::OFFLINE;
 
-  if (node_status == LinkStatus::ONLINE) {
-    status = LinkStatus::ONLINE;
+  if (node_status == LinkState::ONLINE) {
+    status = LinkState::ONLINE;
 
-  } else if (node_status == LinkStatus::CONNECTING) {
+  } else if (node_status == LinkState::CONNECTING) {
     if (seed_accessor->is_only_one() == true) {
-      status = LinkStatus::ONLINE;
+      status = LinkState::ONLINE;
     } else {
-      status = LinkStatus::CONNECTING;
+      status = LinkState::CONNECTING;
     }
 
-  } else if (seed_status == LinkStatus::ONLINE) {
+  } else if (seed_status == LinkState::ONLINE) {
     if (seed_accessor->is_only_one() == true) {
-      status = LinkStatus::ONLINE;
+      status = LinkState::ONLINE;
     } else {
       node_accessor->connect_init_link();
-      status = LinkStatus::CONNECTING;
+      status = LinkState::CONNECTING;
     }
 
-  } else if (seed_status == LinkStatus::CONNECTING) {
-    status = LinkStatus::CONNECTING;
+  } else if (seed_status == LinkState::CONNECTING) {
+    status = LinkState::CONNECTING;
 
   } else if (!seed_accessor) {
     assert(node_accessor == nullptr);
 
-    status = LinkStatus::OFFLINE;
+    status = LinkState::OFFLINE;
 
   } else if (seed_accessor->get_auth_status() == AuthStatus::FAILURE) {
     loge("connect failure");
     if (connect_cb) {
       scheduler->add_user_task(this, [this] {
-        connect_cb->second(*this, Error(ErrorCode::OFFLINE, "Connect failure."));
-        connect_cb.reset();
+        auto d = Utils::defer([this] {
+          connect_cb.reset();
+        });
+        connect_cb->second(*this, colonio_error(ErrorCode::OFFLINE, "Connect failure."));
       });
     }
 
     scheduler->add_controller_task(this, [this]() {
       disconnect();
     });
-    status = LinkStatus::OFFLINE;
+    status = LinkState::OFFLINE;
 
   } else if (enable_retry) {
     seed_accessor->connect();
-    status = LinkStatus::CONNECTING;
+    status = LinkState::CONNECTING;
   }
 
-  link_status = status;
+  link_state = status;
   check_api_connect();
 
   for (auto& module : modules) {
-    module.second->module_on_change_accessor_status(seed_status, node_status);
+    module.second->module_on_change_accessor_state(seed_status, node_status);
   }
 }
 
@@ -580,10 +564,10 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
   assert(packet->channel != Channel::NONE);
 
   if ((packet->mode & PacketMode::RELAY_SEED) != 0x0) {
-    LinkStatus::Type seed_status = seed_accessor->get_status();
+    LinkState::Type seed_status = seed_accessor->get_link_state();
 
     if ((packet->mode & PacketMode::REPLY) != 0x0 && !is_from_seed) {
-      if (seed_status == LinkStatus::ONLINE) {
+      if (seed_status == LinkState::ONLINE) {
         seed_accessor->relay_packet(std::move(packet));
       } else {
         assert(routing);
@@ -592,7 +576,7 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
       return;
 
     } else if (packet->src_nid == local_nid) {
-      if (seed_status == LinkStatus::ONLINE) {
+      if (seed_status == LinkState::ONLINE) {
         seed_accessor->relay_packet(std::move(packet));
       } else {
         logw("drop packet").map("packet", *packet);
@@ -602,7 +586,7 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
   }
 
   assert(routing);
-  NodeID dst_nid = routing->get_relay_nid_1d(*packet);
+  const NodeID& dst_nid = routing->get_relay_nid_1d(*packet);
 
   if (dst_nid == NodeID::THIS || dst_nid == local_nid) {
     logd("receive packet").map("packet", *packet);
@@ -618,7 +602,7 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
         module->second->on_recv_packet(std::move(packet));
       } else {
 #warning dump-packet
-        colonio_throw(
+        colonio_throw_error(
             ErrorCode::INCORRECT_DATA_FORMAT, "received incorrect packet entry", Utils::dump_packet(*packet).c_str());
       }
     });
@@ -626,8 +610,8 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
 
   } else if (!dst_nid.is_special() || dst_nid == NodeID::NEXT) {
 #ifndef NDEBUG
-    NodeID src_nid    = packet->src_nid;
-    const Packet copy = *packet;
+    const NodeID& src_nid = packet->src_nid;
+    const Packet copy     = *packet;
 #endif
     if (node_accessor->relay_packet(dst_nid, std::move(packet))) {
 #ifndef NDEBUG

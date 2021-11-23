@@ -71,15 +71,15 @@ Routing::Routing(
     delegate(routing_delegate),
     routing_1d(nullptr),
     routing_2d(nullptr),
-    node_status(LinkStatus::OFFLINE),
-    seed_status(LinkStatus::OFFLINE),
+    node_state(LinkState::OFFLINE),
+    seed_state(LinkState::OFFLINE),
     routing_countdown(CONFIG_FORCE_UPDATE_COUNT),
     seed_online_timestamp(0) {
   routing_1d = new Routing1D(param, *this);
   algorithms.push_back(std::unique_ptr<RoutingAlgorithm>(routing_1d));
 
   if (coord_system) {
-    routing_2d = new Routing2D(param, *this, *coord_system);
+    routing_2d = new Routing2D(param, *this, *coord_system, CONFIG_UPDATE_PERIOD);
     algorithms.push_back(std::unique_ptr<RoutingAlgorithm>(routing_2d));
   }
 
@@ -150,11 +150,11 @@ void Routing::algorithm_2d_on_change_nearby_position(
   delegate.routing_on_module_2d_change_nearby_position(*this, positions);
 }
 
-void Routing::module_on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status) {
-  this->seed_status = seed_status;
-  this->node_status = node_status;
+void Routing::module_on_change_accessor_state(LinkState::Type seed_status, LinkState::Type node_status) {
+  this->seed_state = seed_status;
+  this->node_state = node_status;
 
-  update_seed_route_by_status();
+  update_seed_route_by_state();
 }
 
 void Routing::module_process_command(std::unique_ptr<const Packet> packet) {
@@ -231,7 +231,7 @@ void Routing::send_routing_info() {
 void Routing::update() {
   update_seed_connection();
 
-  if (node_status == LinkStatus::ONLINE) {
+  if (node_state == LinkState::ONLINE) {
     for (auto& row : routing_infos) {
       std::get<0>(row.second)->parse_content(&std::get<1>(row.second));
     }
@@ -281,7 +281,7 @@ void Routing::update_node_connection() {
 void Routing::update_seed_connection() {
   int64_t current = Utils::get_current_msec();
 
-  if (seed_status == LinkStatus::ONLINE) {
+  if (seed_state == LinkState::ONLINE) {
     if (seed_online_timestamp == 0) {
       seed_online_timestamp = Utils::get_current_msec();
       logi("force routing");
@@ -292,11 +292,11 @@ void Routing::update_seed_connection() {
     distance_from_seed[local_nid] = 1;
 
     int64_t online_duration = current - seed_online_timestamp;
-    if (online_duration > CONFIG_SEED_DISCONNECT_THREATHOLD && node_status == LinkStatus::ONLINE) {
+    if (online_duration > CONFIG_SEED_DISCONNECT_THREATHOLD && node_state == LinkState::ONLINE) {
       delegate.routing_do_disconnect_seed(*this);
     }
 
-  } else if (seed_status == LinkStatus::OFFLINE) {
+  } else if (seed_state == LinkState::OFFLINE) {
     if (seed_online_timestamp != 0) {
       seed_online_timestamp = 0;
       logi("force routing");
@@ -304,7 +304,7 @@ void Routing::update_seed_connection() {
     }
     distance_from_seed.erase(local_nid);
 
-    if (node_status != LinkStatus::ONLINE) {
+    if (node_state != LinkState::ONLINE) {
       delegate.routing_do_connect_seed(*this);
     }
 
@@ -351,6 +351,7 @@ void Routing::update_seed_route_by_info(const NodeID& src_nid, const RoutingProt
   while (it != seed_timestamps.end()) {
     if (CURRENT - it->second >= CONFIG_SEED_INFO_KEEP_THREATHOLD) {
       it = seed_timestamps.erase(it);
+
     } else {
       it++;
     }
@@ -362,6 +363,7 @@ void Routing::update_seed_route_by_info(const NodeID& src_nid, const RoutingProt
     auto it          = seed_timestamps.find(nid);
     if (it == seed_timestamps.end()) {
       seed_timestamps.insert(std::make_pair(nid, CURRENT - duration));
+
     } else if (CURRENT - duration < it->second) {
       it->second = CURRENT - duration;
     }
@@ -374,6 +376,7 @@ void Routing::update_seed_route_by_links() {
     const NodeID& nid = it->first;
     if (nid != NodeID::NONE && online_links.find(nid) == online_links.end()) {
       it = distance_from_seed.erase(it);
+
     } else {
       it++;
     }
@@ -394,8 +397,8 @@ void Routing::update_seed_route_by_links() {
   }
 }
 
-void Routing::update_seed_route_by_status() {
-  if (seed_status == LinkStatus::ONLINE) {
+void Routing::update_seed_route_by_state() {
+  if (seed_state == LinkState::ONLINE) {
     if (next_to_seed != local_nid) {
       next_to_seed                     = local_nid;
       distance_from_seed[next_to_seed] = 1;

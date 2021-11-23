@@ -15,8 +15,6 @@
  */
 #include "colonio/colonio.hpp"
 
-#include <iostream>
-
 #include "colonio_impl.hpp"
 
 namespace colonio {

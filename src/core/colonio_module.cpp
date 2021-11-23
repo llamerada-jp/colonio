@@ -17,9 +17,9 @@
 #include "colonio_module.hpp"
 
 #include "colonio/colonio.hpp"
-#include "colonio/error.hpp"
 #include "colonio_module_protocol.pb.h"
 #include "scheduler.hpp"
+#include "utils.hpp"
 #include "value_impl.hpp"
 
 namespace colonio {
@@ -30,7 +30,7 @@ ColonioModule::CommandSend::CommandSend(PacketMode::Type mode, ColonioModule& pa
 
 void ColonioModule::CommandSend::on_error(const std::string& message) {
   // TODO:implement error
-  Error e(ErrorCode::UNDEFINED, message);
+  Error e = colonio_error(ErrorCode::UNDEFINED, message);
   parent.scheduler.add_user_task(&parent, [cb = cb_failure, e] {
     cb(e);
   });

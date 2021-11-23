@@ -176,9 +176,12 @@ PYBIND11_MODULE(colonio, m) {
 
   // Error
   py::class_<colonio::Error> Error(m, "Error");
-  Error.def(py::init<colonio::ErrorCode, const std::string&>())
+  Error.def(py::init<bool, colonio::ErrorCode, const std::string&, int, const std::string&>())
+      .def_readonly("fatal", &colonio::Error::fatal)
       .def_readonly("code", &colonio::Error::code)
-      .def_readonly("message", &colonio::Error::message);
+      .def_readonly("message", &colonio::Error::message)
+      .def_readonly("line", &colonio::Error::line)
+      .def_readonly("file", &colonio::Error::file);
 
   // Map
   py::class_<PythonMap> Map(m, "Map");

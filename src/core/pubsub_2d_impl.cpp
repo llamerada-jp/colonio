@@ -37,12 +37,7 @@ void Pubsub2DImpl::publish(const std::string& name, double x, double y, double r
         pipe.pushError(error);
       });
 
-  int* dummy;
-  Error* e;
-  std::tie(dummy, e) = pipe.pop();
-  if (e != nullptr) {
-    throw *e;
-  }
+  pipe.pop_with_throw();
 }
 
 void Pubsub2DImpl::publish(

@@ -56,7 +56,7 @@ class ModuleBase {
 
   static std::unique_ptr<const Packet> copy_packet_for_reply(const Packet& src);
 
-  virtual void module_on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status);
+  virtual void module_on_change_accessor_state(LinkState::Type seed_state, LinkState::Type node_state);
 
   void on_recv_packet(std::unique_ptr<const Packet> packet);
   void reset();
