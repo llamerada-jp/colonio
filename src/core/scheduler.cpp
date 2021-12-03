@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,158 +15,81 @@
  */
 #include "scheduler.hpp"
 
-#include <cassert>
-#include <iostream>
-
-#include "logger.hpp"
+#ifndef EMSCRIPTEN
+#  include "scheduler_native.hpp"
+#else
+#  include "scheduler_wasm.hpp"
+#endif
 #include "utils.hpp"
 
 namespace colonio {
-SchedulerDelegate::~SchedulerDelegate() {
-}
-
-Scheduler::Scheduler(SchedulerDelegate& delegate_, Logger& logger_) : delegate(delegate_), logger(logger_) {
+Scheduler::Scheduler(Logger& logger_) : logger(logger_) {
 }
 
 Scheduler::~Scheduler() {
 }
 
-void Scheduler::add_interval_task(void* src, std::function<void()> func, unsigned int msec) {
-  assert(msec != 0);
-
-  std::lock_guard<std::mutex> guard(mtx);
-  int64_t next = ((Utils::get_current_msec() / 1000) + 1) * 1000 + msec;
-  tasks.push_back(std::make_shared<Task>(Task{src, func, msec, next}));
+Scheduler* Scheduler::new_instance(Logger& logger, uint32_t opt) {
+#ifndef EMSCRIPTEN
+  return new SchedulerNative(logger, opt);
+#else
+  return new SchedulerWasm(logger, opt);
+#endif
 }
 
-void Scheduler::add_timeout_task(void* src, std::function<void()> func, unsigned int msec) {
-  std::lock_guard<std::mutex> guard(mtx);
+int64_t Scheduler::get_next_timeing(std::deque<Task>& src) {
+  const int64_t CURRENT_MSEC = Utils::get_current_msec();
+  int64_t next               = CURRENT_MSEC + 10 * 1000;  // max 10 sec
 
-  if (msec == 0 && running_tasks.size() != 0) {
-    running_tasks.push_back(std::make_shared<Task>(Task{src, func, 0, 0}));
+  for (auto task : src) {
+    if (task.next < next) {
+      next = task.next;
+    }
+  }
 
-  } else {
-    int64_t min_next = INT64_MAX;
-    for (auto& it : tasks) {
-      if (min_next > it->next) {
-        min_next = it->next;
-      }
+  return next;
+}
+
+void Scheduler::pick_runnable_tasks(std::deque<Task>* dst, std::deque<Task>* src) {
+  const int64_t CURRENT_MSEC = Utils::get_current_msec();
+
+  auto task = src->begin();
+  while (task != src->end()) {
+    if (CURRENT_MSEC < task->next) {
+      task++;
+      continue;
     }
 
-    int64_t current_msec = Utils::get_current_msec();
-    tasks.push_back(std::make_shared<Task>(Task{src, func, 0, current_msec + msec}));
+    dst->push_back(*task);
+    if (task->interval == 0) {
+      task = src->erase(task);
 
-    if (min_next - current_msec > msec) {
-      delegate.scheduler_on_require_invoke(*this, msec);
+    } else {
+      while (task->next <= CURRENT_MSEC) {
+        task->next += task->interval;
+      }
+      task++;
     }
   }
 }
 
-unsigned int Scheduler::invoke() {
-  assert(running_tasks.size() == 0);
-  {
-    int64_t current_msec = Utils::get_current_msec();
-    std::lock_guard<std::mutex> guard(mtx);
-    auto it = tasks.begin();
-    while (it != tasks.end()) {
-      if ((*it)->next <= current_msec) {
-        running_tasks.push_back(*it);
-        if ((*it)->interval == 0) {
-          it = tasks.erase(it);
-        } else {
-          while ((*it)->next <= current_msec) {
-            (*it)->next += (*it)->interval;
-          }
-          it++;
-        }
-      } else {
-        it++;
-      }
-    }
+void Scheduler::remove_deque_tasks(void* src, std::deque<Task>* dq, bool remove_head) {
+  if (src == nullptr) {
+    return;
   }
 
   bool is_first = true;
-  while (true) {
-    std::shared_ptr<Task> task;
-    {
-      std::lock_guard<std::mutex> guard(mtx);
-      if (is_first) {
-        is_first = false;
-      } else {
-        running_tasks.pop_front();
-      }
-      if (running_tasks.size() > 0) {
-        task = running_tasks.front();
-      } else {
-        break;
-      }
-    }
+  auto it       = dq->begin();
+  while (it != dq->end()) {
+    if (!remove_head && is_first && it->src == src) {
+      is_first = false;
+      it++;
 
-    task->func();
-  }
+    } else if (it->src == src) {
+      it = dq->erase(it);
 
-  {
-    std::lock_guard<std::mutex> guard(mtx);
-    if (tasks.size() == 0) {
-      return 0;
     } else {
-      int64_t current_msec = Utils::get_current_msec();
-      int64_t min_next     = INT64_MAX;
-      for (auto& it : tasks) {
-        if (min_next > it->next) {
-          min_next = it->next;
-        }
-      }
-      if (min_next > current_msec) {
-        return min_next - current_msec;
-      } else {
-        return 1;
-      }
-    }
-  }
-}
-
-bool Scheduler::is_having_task(void* src) {
-  std::lock_guard<std::mutex> guard(mtx);
-
-  for (auto& it : running_tasks) {
-    if (it->src == src) {
-      return true;
-    }
-  }
-
-  for (auto& it : tasks) {
-    if (it->src == src) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-void Scheduler::remove_task(void* src) {
-  std::lock_guard<std::mutex> guard(mtx);
-
-  if (running_tasks.size() != 0) {
-    auto it = running_tasks.begin();
-    it++;
-    while (it != running_tasks.end()) {
-      if ((*it)->src == src) {
-        it = running_tasks.erase(it);
-      } else {
-        it++;
-      }
-    }
-  }
-
-  {
-    auto it = tasks.begin();
-    while (it != tasks.end()) {
-      if ((*it)->src == src) {
-        it = tasks.erase(it);
-      } else {
-        it++;
-      }
+      it++;
     }
   }
 }

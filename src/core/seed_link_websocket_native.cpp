@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,8 @@
 
 #include "seed_link_websocket_native.hpp"
 
-#include "context.hpp"
-#include "scheduler.hpp"
-
 namespace colonio {
-SeedLinkWebsocketNative::SeedLinkWebsocketNative(SeedLinkDelegate& delegate_, Context& context_) :
-    SeedLinkBase(delegate_, context_) {
+SeedLinkWebsocketNative::SeedLinkWebsocketNative(SeedLinkParam& param) : SeedLink(param) {
   client.clear_access_channels(websocketpp::log::alevel::all);
   client.clear_error_channels(websocketpp::log::elevel::all);
 
@@ -43,7 +39,6 @@ SeedLinkWebsocketNative::~SeedLinkWebsocketNative() {
   }
 
   m_thread->join();
-  context.scheduler.remove_task(this);
 }
 
 void SeedLinkWebsocketNative::connect(const std::string& url) {
@@ -57,24 +52,20 @@ void SeedLinkWebsocketNative::connect(const std::string& url) {
   }
 
   con->set_open_handler([this](std::weak_ptr<void>) {
-    context.scheduler.add_timeout_task(
-        this, [this]() { this->delegate.seed_link_on_connect(*this); }, 0);
+    this->delegate.seed_link_on_connect(*this);
   });
 
   con->set_fail_handler([this](std::weak_ptr<void>) {
-    context.scheduler.add_timeout_task(
-        this, [this]() { this->delegate.seed_link_on_error(*this); }, 0);
+    this->delegate.seed_link_on_error(*this);
   });
 
   con->set_close_handler([this](std::weak_ptr<void>) {
-    context.scheduler.add_timeout_task(
-        this, [this]() { this->delegate.seed_link_on_disconnect(*this); }, 0);
+    this->delegate.seed_link_on_disconnect(*this);
   });
 
   con->set_message_handler([this](std::weak_ptr<void>, message_ptr msg) {
     std::string msg_str(msg->get_payload());
-    context.scheduler.add_timeout_task(
-        this, [this, msg_str]() { this->delegate.seed_link_on_recv(*this, msg_str); }, 0);
+    this->delegate.seed_link_on_recv(*this, msg_str);
   });
 
   client.connect(con);

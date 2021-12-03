@@ -1,9 +1,9 @@
-// +build !js
+//go:build !js
 
 package colonio
 
 /*
- * Copyright 2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,9 +27,9 @@ package colonio
 #include "../../src/colonio/colonio.h"
 
 extern const unsigned int cgo_colonio_nid_length;
-extern const unsigned int cgo_colonio_colonio_explicit_event_thread;
 
 // colonio
+colonio_error_t *cgo_colonio_init(colonio_t *colonio);
 colonio_error_t *cgo_colonio_connect(colonio_t *colonio, _GoString_ url, _GoString_ token);
 colonio_map_t cgo_colonio_access_map(colonio_t *colonio, _GoString_ name);
 colonio_pubsub_2d_t cgo_colonio_access_pubsub_2d(colonio_t *colonio, _GoString_ name);
@@ -49,6 +49,7 @@ import "C"
 
 import (
 	"fmt"
+	"log"
 	"reflect"
 	"sync"
 	"unsafe"
@@ -78,10 +79,17 @@ type pubsub2dImpl struct {
 	cbMap     map[*string]func(Value)
 }
 
+type defaultLogger struct {
+}
+
+// DefaultLogger is the default log output module that outputs logs to the golang log module.
+var DefaultLogger *defaultLogger
+var loggerMap map[*C.struct_colonio_s]Logger
 var pubsub2DMutex sync.RWMutex
 var pubsub2DMap map[*C.struct_colonio_pubsub_2d_s]*pubsub2dImpl
 
 func init() {
+	loggerMap = make(map[*C.struct_colonio_s]Logger)
 	pubsub2DMutex = sync.RWMutex{}
 	pubsub2DMap = make(map[*C.struct_colonio_pubsub_2d_s]*pubsub2dImpl)
 }
@@ -91,12 +99,14 @@ func convertError(err *C.struct_colonio_error_s) error {
 }
 
 // NewColonio creates a new initialized instance.
-func NewColonio() (Colonio, error) {
+func NewColonio(logger Logger) (Colonio, error) {
 	instance := &colonioImpl{
 		mapCache:      make(map[string]*mapImpl),
 		pubsub2DCache: make(map[string]*pubsub2dImpl),
 	}
-	err := C.colonio_init(&instance.cInstance, C.cgo_colonio_colonio_explicit_event_thread)
+	loggerMap[&instance.cInstance] = logger
+
+	err := C.cgo_colonio_init(&instance.cInstance)
 	if err != nil {
 		return nil, convertError(err)
 	}
@@ -104,6 +114,17 @@ func NewColonio() (Colonio, error) {
 	go C.colonio_start_on_event_thread(&instance.cInstance)
 
 	return instance, nil
+}
+
+//export cgoCbColonioLogger
+func cgoCbColonioLogger(cInstancePtr *C.struct_colonio_s, messagePtr unsafe.Pointer, len C.int) {
+	logger, ok := loggerMap[cInstancePtr]
+
+	if !ok {
+		log.Fatal("logger not found or deallocated yet")
+	}
+
+	logger.Output(C.GoStringN((*C.char)(messagePtr), len))
 }
 
 // Connect to seed and join the cluster.
@@ -182,7 +203,12 @@ func (c *colonioImpl) Quit() error {
 	if err != nil {
 		return convertError(err)
 	}
+	delete(loggerMap, &c.cInstance)
 	return nil
+}
+
+func (l *defaultLogger) Output(message string) {
+	log.Println(message)
 }
 
 func newValue(cValue *C.struct_colonio_value_s) Value {

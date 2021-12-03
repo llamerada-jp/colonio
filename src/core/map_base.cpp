@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,23 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
-
-#include <map>
-#include <memory>
-
-#include "api.pb.h"
-#include "definition.hpp"
+#include "map_base.hpp"
 
 namespace colonio {
-class APIBase;
 
-class APIBundler {
- public:
-  void call(const api::Call& call);
-  void registrate(std::shared_ptr<APIBase> api_base);
-
- private:
-  std::map<APIChannel::Type, std::shared_ptr<APIBase>> apis;
-};
+MapBase::MapBase(ModuleParam& param, Module1DDelegate& module_1d_delegate, Channel::Type channel) :
+    Module1D(param, module_1d_delegate, channel) {
+}
 }  // namespace colonio

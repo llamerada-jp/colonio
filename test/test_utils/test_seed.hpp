@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -98,7 +98,7 @@ class TestSeed {
     modules.insert(std::make_pair(name, picojson::value(m)));
   }
 
-  void add_module_pubsub_2d(const std::string& name, unsigned int channel, unsigned int cache_time = 100) {
+  void add_module_pubsub_2d(const std::string& name, unsigned int channel, unsigned int cache_time = 30000) {
     picojson::object m;
     m.insert(std::make_pair("type", picojson::value("pubsub2D")));
     m.insert(std::make_pair("channel", picojson::value(static_cast<double>(channel))));

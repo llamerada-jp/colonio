@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@
 
 namespace colonio {
 class CoordSystem;
-class Context;
 class Packet;
 class Routing;
 class Routing1D;
@@ -78,8 +77,8 @@ class RoutingAlgorithm2DDelegate {
 class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public RoutingAlgorithm2DDelegate {
  public:
   Routing(
-      Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, APIChannel::Type channel,
-      const CoordSystem* coord_system, const picojson::object& config);
+      ModuleParam& param, RoutingDelegate& routing_delegate, const CoordSystem* coord_system,
+      const picojson::object& config);
   virtual ~Routing();
 
   const NodeID& get_relay_nid_1d(const Packet& packet);
@@ -110,8 +109,8 @@ class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public Rou
   Routing1D* routing_1d;
   Routing2D* routing_2d;
 
-  LinkStatus::Type node_status;
-  LinkStatus::Type seed_status;
+  LinkState::Type node_state;
+  LinkState::Type seed_state;
 
   std::set<NodeID> online_links;
   bool has_update_online_links;
@@ -132,7 +131,7 @@ class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public Rou
   void algorithm_2d_on_change_nearby_position(
       RoutingAlgorithm& algorithm, const std::map<NodeID, Coordinate>& positions) override;
 
-  void module_on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status) override;
+  void module_on_change_accessor_state(LinkState::Type seed_state, LinkState::Type node_state) override;
   void module_process_command(std::unique_ptr<const Packet> packet) override;
 
   void recv_routing_info(std::unique_ptr<const Packet> packet);
@@ -142,6 +141,6 @@ class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public Rou
   void update_seed_connection();
   void update_seed_route_by_info(const NodeID& src_nid, const RoutingProtocol::RoutingInfo& info);
   void update_seed_route_by_links();
-  void update_seed_route_by_status();
+  void update_seed_route_by_state();
 };
 }  // namespace colonio

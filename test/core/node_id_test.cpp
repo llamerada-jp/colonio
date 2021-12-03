@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@
 
 #include <gtest/gtest.h>
 
+#include "colonio/error.hpp"
 #include "core/core.pb.h"
-#include "core/internal_exception.hpp"
 #include "core/random.hpp"
 
 using namespace colonio;
@@ -58,7 +58,7 @@ TEST(NodeIDTest, str) {
   bool has_error = false;
   try {
     NodeID::from_str("0123456789abcdef0123456789ABCDEZ");
-  } catch (InternalException& e) {
+  } catch (Error& e) {
     has_error = true;
     EXPECT_STREQ(e.what(), "illegal node-id string. (string : 0123456789abcdef0123456789ABCDEZ)");
   }
@@ -67,7 +67,7 @@ TEST(NodeIDTest, str) {
   has_error = false;
   try {
     NodeID::from_str("Z123456789abcdef0123456789ABCDE");
-  } catch (InternalException& e) {
+  } catch (Error& e) {
     has_error = true;
     EXPECT_STREQ(e.what(), "illegal node-id string. (string : Z123456789abcdef0123456789ABCDE)");
   }
@@ -112,7 +112,7 @@ TEST(NodeIDTest, pb) {
     ptest02.set_type(5);
     NodeID::from_pb(ptest02);
 
-  } catch (InternalException& e) {
+  } catch (Error& e) {
     has_error = true;
     EXPECT_STREQ(e.what(), "illegal node-id type in Protocol Buffers. (type : 5)");
   }

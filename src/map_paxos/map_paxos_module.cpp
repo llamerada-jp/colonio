@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,10 @@
 
 #include <cassert>
 
-#include "core/context.hpp"
 #include "core/convert.hpp"
 #include "core/definition.hpp"
 #include "core/logger.hpp"
+#include "core/random.hpp"
 #include "core/scheduler.hpp"
 #include "core/utils.hpp"
 #include "core/value_impl.hpp"
@@ -29,6 +29,12 @@
 namespace colonio {
 static const unsigned int NUM_ACCEPTOR = 3;
 static const unsigned int NUM_MAJORITY = 2;
+
+static const NodeID MEMBER_DIFF[3] = {
+    NodeID(0x4000000000000000, 0x0000000000000000),  // QUOTER
+    NodeID(0x8000000000000000, 0x0000000000000000),  // HALF
+    NodeID(0xC000000000000000, 0x0000000000000000),  // 3/4
+};
 
 /* class KVSPaxos::AcceptorInfo */
 MapPaxosModule::AcceptorInfo::AcceptorInfo() : na(0), np(0), ia(0) {
@@ -57,7 +63,7 @@ MapPaxosModule::CommandGet::CommandGet(Random& random_, std::shared_ptr<Info> in
 }
 
 void MapPaxosModule::CommandGet::on_error(const std::string& message) {
-  logD(info->parent.context, "error on packet of 'get'").map("message", message);
+  logD(info->parent, "error on packet of 'get'").map("message", message);
   info->count_ng += 1;
 
   postprocess();
@@ -99,7 +105,7 @@ void MapPaxosModule::CommandGet::postprocess() {
   }
 
   if (ok_sum + info->count_ng == NUM_ACCEPTOR) {
-    logD(info->parent.context, "map get retry").map_int("count", info->count_retry).map_int("sum", ok_sum);
+    logD(info->parent, "map get retry").map_int("count", info->count_retry).map_int("sum", ok_sum);
     info->is_finished = true;
 
     if (ok_sum == 0) {
@@ -111,7 +117,7 @@ void MapPaxosModule::CommandGet::postprocess() {
         info->parent.send_packet_get(
             std::move(info->key), info->count_retry + 1, interval, info->cb_on_success, info->cb_on_failure);
       } else {
-        info->cb_on_failure(ErrorCode::NOT_EXIST_KEY);
+        info->cb_on_failure(colonio_error(ErrorCode::NOT_EXIST_KEY, "could not find the key"));
       }
 
     } else {
@@ -140,8 +146,8 @@ void MapPaxosModule::CommandGet::postprocess() {
 
 /* class MapPaxosModule::CommandSet::Info */
 MapPaxosModule::CommandSet::Info::Info(
-    MapPaxosModule& parent_, const Value& key_, const Value& value_, const std::function<void()>& cb_on_success_,
-    const std::function<void(ErrorCode)>& cb_on_failure_, const uint32_t& opt_) :
+    MapPaxosModule& parent_, const Value& key_, const Value& value_, const std::function<void()> cb_on_success_,
+    const std::function<void(const Error&)> cb_on_failure_, const uint32_t& opt_) :
     parent(parent_), key(key_), value(value_), cb_on_success(cb_on_success_), cb_on_failure(cb_on_failure_), opt(opt_) {
 }
 
@@ -151,8 +157,8 @@ MapPaxosModule::CommandSet::CommandSet(std::unique_ptr<MapPaxosModule::CommandSe
 }
 
 void MapPaxosModule::CommandSet::on_error(const std::string& message) {
-  logD(info->parent.context, "error on packet of 'set'").map("message", message);
-  info->cb_on_failure(ErrorCode::SYSTEM_ERROR);
+  logD(info->parent, "error on packet of 'set'").map("message", message);
+  info->cb_on_failure(colonio_error(ErrorCode::SYSTEM_ERROR, "failed to set value"));
 }
 
 void MapPaxosModule::CommandSet::on_failure(std::unique_ptr<const Packet> packet) {
@@ -164,7 +170,7 @@ void MapPaxosModule::CommandSet::on_failure(std::unique_ptr<const Packet> packet
     info->parent.send_packet_set(std::move(info));
 
   } else {
-    info->cb_on_failure(reason);
+    info->cb_on_failure(colonio_error(reason, "failed to set value"));
   }
 }
 
@@ -206,7 +212,7 @@ MapPaxosModule::CommandPrepare::CommandPrepare(std::shared_ptr<MapPaxosModule::C
 }
 
 void MapPaxosModule::CommandPrepare::on_error(const std::string& message) {
-  logD(info->parent.context, "error on packet of 'prepare'").map("message", message);
+  logD(info->parent, "error on packet of 'prepare'").map("message", message);
   info->replies.push_back(Reply(NodeID::NONE, 0, 0, false));
 
   postprocess();
@@ -338,7 +344,7 @@ MapPaxosModule::CommandAccept::CommandAccept(std::shared_ptr<MapPaxosModule::Com
 }
 
 void MapPaxosModule::CommandAccept::on_error(const std::string& message) {
-  logD(info->parent.context, "error on packet of 'accept'").map("message", message);
+  logD(info->parent, "error on packet of 'accept'").map("message", message);
   info->replies.push_back(Reply(NodeID::NONE, 0, 0, false));
 
   postprocess();
@@ -450,11 +456,21 @@ void MapPaxosModule::CommandAccept::postprocess() {
   }
 }
 
+MapPaxosModule* MapPaxosModule::new_instance(
+    ModuleParam& param, Module1DDelegate& module_1d_delegate, const picojson::object& config) {
+  Channel::Type channel       = static_cast<Channel::Type>(Utils::get_json<double>(config, "channel"));
+  unsigned int retry_max      = Utils::get_json<double>(config, "retryMax", MAP_PAXOS_RETRY_MAX);
+  uint32_t retry_interval_min = Utils::get_json<double>(config, "retryIntervalMin", MAP_PAXOS_RETRY_INTERVAL_MIN);
+  uint32_t retry_interval_max = Utils::get_json<double>(config, "retryIntervalMax", MAP_PAXOS_RETRY_INTERVAL_MAX);
+  assert(retry_interval_min <= retry_interval_max);
+
+  return new MapPaxosModule(param, module_1d_delegate, channel, retry_max, retry_interval_min, retry_interval_max);
+}
+
 MapPaxosModule::MapPaxosModule(
-    Context& context, ModuleDelegate& module_delegate, Module1DDelegate& module_1d_delegate, APIChannel::Type channel,
-    ModuleChannel::Type module_channel, unsigned int retry_max, uint32_t retry_interval_min,
-    uint32_t retry_interval_max) :
-    Module1D(context, module_delegate, module_1d_delegate, channel, module_channel),
+    ModuleParam& param, Module1DDelegate& module_1d_delegate, Channel::Type channel, unsigned int retry_max,
+    uint32_t retry_interval_min, uint32_t retry_interval_max) :
+    MapBase(param, module_1d_delegate, channel),
     CONF_RETRY_MAX(retry_max),
     CONF_RETRY_INTERVAL_MIN(retry_interval_min),
     CONF_RETRY_INTERVAL_MAX(retry_interval_max) {
@@ -463,18 +479,24 @@ MapPaxosModule::MapPaxosModule(
 MapPaxosModule::~MapPaxosModule() {
 }
 
+void MapPaxosModule::foreach_local_value(std::function<void(const Value&, const Value&)>&& func) {
+  // not implemented
+  assert(false);
+}
+
 void MapPaxosModule::get(
-    const Value& key, const std::function<void(const Value&)>& on_success,
-    const std::function<void(ErrorCode)>& on_failure) {
+    const Value& key, std::function<void(const Value&)>&& on_success, std::function<void(const Error&)>&& on_failure) {
   send_packet_get(std::make_unique<Value>(key), 0, 0, on_success, on_failure);
 }
 
 void MapPaxosModule::set(
-    const Value& key, const Value& value, const std::function<void()>& on_success,
-    const std::function<void(ErrorCode)>& on_failure, uint32_t opt) {
-  std::unique_ptr<CommandSet::Info> info =
-      std::make_unique<CommandSet::Info>(*this, key, value, on_success, on_failure, opt);
-  send_packet_set(std::move(info));
+    const Value& key, const Value& value, uint32_t opt, std::function<void()>&& on_success,
+    std::function<void(const Error&)>&& on_failure) {
+  scheduler.add_controller_task(this, [=] {
+    std::unique_ptr<CommandSet::Info> info =
+        std::make_unique<CommandSet::Info>(*this, key, value, on_success, on_failure, opt);
+    send_packet_set(std::move(info));
+  });
 }
 
 void MapPaxosModule::module_1d_on_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) {
@@ -542,12 +564,6 @@ void MapPaxosModule::module_process_command(std::unique_ptr<const Packet> packet
       assert(false);
   }
 }
-
-const NodeID MEMBER_DIFF[3] = {
-  NodeID::QUARTER,
-  NodeID::QUARTER + NodeID::QUARTER,
-  NodeID::QUARTER + NodeID::QUARTER + NodeID::QUARTER,
-};
 
 bool MapPaxosModule::check_key_acceptor(const Value& key, uint32_t member_idx) {
   NodeID hash = ValueImpl::to_hash(key, salt);
@@ -749,7 +765,7 @@ void MapPaxosModule::recv_packet_prepare(std::unique_ptr<const Packet> packet) {
   Value key                 = ValueImpl::from_pb(content.key());
   const uint32_t member_idx = content.member_idx();
   const PAXOS_N n           = content.n();
-  
+
   auto acceptor_it = acceptor_infos.find(std::make_pair(key, member_idx));
   if (acceptor_it == acceptor_infos.end()) {
     if (check_key_acceptor(key, member_idx)) {
@@ -898,8 +914,8 @@ void MapPaxosModule::send_packet_balance_proposer(const Value& key, const Propos
 }
 
 void MapPaxosModule::send_packet_get(
-    std::unique_ptr<Value> key, int count_retry, int64_t interval, const std::function<void(const Value&)>& on_success,
-    const std::function<void(ErrorCode)>& on_failure) {
+    std::unique_ptr<Value> key, int count_retry, int64_t interval, const std::function<void(const Value&)> on_success,
+    const std::function<void(const Error&)> on_failure) {
   std::shared_ptr<CommandGet::Info> info = std::make_unique<CommandGet::Info>(*this, std::move(key), count_retry);
   info->cb_on_success                    = on_success;
   info->cb_on_failure                    = on_failure;
@@ -907,7 +923,7 @@ void MapPaxosModule::send_packet_get(
   if (interval < 0) {
     interval = 0;
   }
-  context.scheduler.add_timeout_task(
+  scheduler.add_controller_task(
       this,
       [this, info]() {
         info->time_send = Utils::get_current_msec();
@@ -920,9 +936,8 @@ void MapPaxosModule::send_packet_get(
           param.set_member_idx(i);
           std::shared_ptr<const std::string> param_bin = serialize_pb(param);
 
-
           acceptor_nid += NodeID::QUARTER;
-          std::unique_ptr<Command> command = std::make_unique<CommandGet>(context.random, info);
+          std::unique_ptr<Command> command = std::make_unique<CommandGet>(random, info);
 
           send_packet(std::move(command), acceptor_nid, param_bin);
         }

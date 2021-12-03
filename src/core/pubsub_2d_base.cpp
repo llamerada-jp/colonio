@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,27 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
 
-#include "node_id.hpp"
-#include "random.hpp"
+#include "pubsub_2d_base.hpp"
 
 namespace colonio {
-class Logger;
-class Scheduler;
-
-class Context {
- public:
-  Logger& logger;
-  Random& random;
-  Scheduler& scheduler;
-  const NodeID local_nid;
-
-  Context(Logger& logger_, Random& random_, Scheduler& scheduler_);
-  virtual ~Context();
-
- private:
-  Context(const Context&);
-  void operator=(const Context&);
-};
+Pubsub2DBase::Pubsub2DBase(
+    ModuleParam& param, Module2DDelegate& module_2d_delegate, const CoordSystem& coord_system, Channel::Type channel) :
+    Module2D(param, module_2d_delegate, coord_system, channel) {
+}
 }  // namespace colonio

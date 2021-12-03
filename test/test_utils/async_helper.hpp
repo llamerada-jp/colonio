@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,14 +59,22 @@ class AsyncHelper {
 
   void wait_signal(const std::string& key) {
     std::unique_lock<std::mutex> lock(mtx);
-    cond_signals.wait(lock, [this, &key]() { return signals.find(key) != signals.end(); });
+    cond_signals.wait(lock, [this, &key]() {
+      return signals.find(key) != signals.end();
+    });
   }
 
-  void wait_signal(const std::string& key, std::function<void()> func) {
+  void wait_signal(const std::string& key, std::function<void()>&& func) {
     std::unique_lock<std::mutex> lock(mtx);
-    while (!cond_signals.wait_for(
-        lock, std::chrono::seconds(3), [this, &key]() { return signals.find(key) != signals.end(); })) {
+    while (!cond_signals.wait_for(lock, std::chrono::seconds(3), [this, &key]() {
+      return signals.find(key) != signals.end();
+    })) {
       func();
     }
+  }
+
+  bool check_signal(const std::string& key) {
+    std::lock_guard<std::mutex> lock(mtx);
+    return signals.find(key) != signals.end();
   }
 };

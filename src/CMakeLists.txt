@@ -4,31 +4,28 @@
 ##
 file(GLOB HEADER_FILES "*.hpp")
 set(COLONIO_FILES
-  core/api_base.cpp
-  core/api_bundler.cpp
-  core/api_gate.cpp
+  core/colonio.cpp
+  core/colonio_impl.cpp
+  core/colonio_module.cpp
   core/command.cpp
-  core/context.cpp
-  core/controller.cpp
   core/convert.cpp
   core/coord_system.cpp
   core/coord_system_plane.cpp
   core/coord_system_sphere.cpp
   core/coordinate.cpp
   core/error.cpp
-  core/exception.cpp
   core/export_c.cpp
-  core/internal_exception.cpp
   core/logger.cpp
   core/map.cpp
+  core/map_base.cpp
   core/map_impl.cpp
   core/module_1d.cpp
   core/module_2d.cpp
   core/module_base.cpp
-  core/module_bundler.cpp
   core/node_accessor.cpp
   core/node_id.cpp
   core/pubsub_2d.cpp
+  core/pubsub_2d_base.cpp
   core/pubsub_2d_impl.cpp
   core/random.cpp
   core/routing.cpp
@@ -40,15 +37,11 @@ set(COLONIO_FILES
   core/utils.cpp
   core/value.cpp
   core/value_impl.cpp
-  core/colonio.cpp
-  core/colonio_impl.cpp
   core/webrtc_context.cpp
   core/webrtc_link.cpp
 
-  map_paxos/map_paxos_api.cpp
   map_paxos/map_paxos_module.cpp
 
-  pubsub_2d/pubsub_2d_api.cpp
   pubsub_2d/pubsub_2d_module.cpp
   )
 
@@ -80,10 +73,10 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   ## WebAssembly
   ##
   list(APPEND COLONIO_FILES core/md5/md5.c)
-  list(APPEND COLONIO_FILES core/api_gate_wasm.cpp)
+  list(APPEND COLONIO_FILES core/scheduler_wasm.cpp)
+  list(APPEND COLONIO_FILES core/seed_link_websocket_wasm.cpp)
   list(APPEND COLONIO_FILES core/webrtc_context_wasm.cpp)
   list(APPEND COLONIO_FILES core/webrtc_link_wasm.cpp)
-  list(APPEND COLONIO_FILES core/seed_link_websocket_wasm.cpp)
 
   add_executable(colonio
     js/main.cpp
@@ -102,10 +95,10 @@ else()
   ##
   ## Native
   ##
-  list(APPEND COLONIO_FILES core/api_gate_mt.cpp)
+  list(APPEND COLONIO_FILES core/scheduler_native.cpp)
+  list(APPEND COLONIO_FILES core/seed_link_websocket_native.cpp)
   list(APPEND COLONIO_FILES core/webrtc_context_native.cpp)
   list(APPEND COLONIO_FILES core/webrtc_link_native.cpp)
-  list(APPEND COLONIO_FILES core/seed_link_websocket_native.cpp)
 
   # Core
   add_library(colonio STATIC

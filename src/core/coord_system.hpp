@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,9 @@ class CoordSystem {
   const double PRECISION;
 
   virtual ~CoordSystem();
+  CoordSystem(const CoordSystem&) = delete;
+  CoordSystem& operator=(const CoordSystem&) = delete;
+
   // for use delaunay triangle.
   virtual double get_distance(const Coordinate& p1, const Coordinate& p2) const                     = 0;
   virtual Coordinate get_local_position() const                                                     = 0;
@@ -35,9 +38,5 @@ class CoordSystem {
 
  protected:
   CoordSystem(double min_x, double min_y, double max_x, double max_y, double precision);
-
- private:
-  CoordSystem(const CoordSystem&);
-  void operator=(const CoordSystem&);
 };
 }  // namespace colonio

@@ -9,7 +9,7 @@ build_seed:
 
 .PHONY: test_native
 test_native: build_seed
-	COLONIO_SEED_BIN_PATH=$(OUTPUT_PATH)/seed CGO_LDFLAGS="-L$(OUTPUT_PATH) -L$(OUTPUT_PATH)/lib" go test ./test/
+	COLONIO_SEED_BIN_PATH=$(OUTPUT_PATH)/seed CGO_LDFLAGS="-L$(OUTPUT_PATH) -L$(OUTPUT_PATH)/lib" go test ./test/ -v
 
 .PHONY: test_wasm
 test_wasm:

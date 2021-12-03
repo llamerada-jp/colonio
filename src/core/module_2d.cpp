@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,11 +22,8 @@ Module2DDelegate::~Module2DDelegate() {
 }
 
 Module2D::Module2D(
-    Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate,
-    const CoordSystem& coord_system_, APIChannel::Type channel, ModuleChannel::Type module_channel) :
-    ModuleBase(context, module_delegate, channel, module_channel),
-    coord_system(coord_system_),
-    delegate(module_2d_delegate) {
+    ModuleParam& param, Module2DDelegate& module_2d_delegate, const CoordSystem& coord_system_, Channel::Type channel) :
+    ModuleBase(param, channel), coord_system(coord_system_), delegate(module_2d_delegate) {
 }
 
 const NodeID& Module2D::get_relay_nid(const Coordinate& position) {

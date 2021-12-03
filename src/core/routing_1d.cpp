@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +18,11 @@
 #include <cassert>
 #include <list>
 
-#include "context.hpp"
 #include "convert.hpp"
 #include "logger.hpp"
+#include "module_base.hpp"
 #include "packet.hpp"
+#include "random.hpp"
 #include "utils.hpp"
 
 namespace colonio {
@@ -38,8 +39,12 @@ Routing1D::RouteInfo::RouteInfo(const NodeID& root_nid_, int level_) :
     root_nid(root_nid_), level(level_), raw_score(0) {
 }
 
-Routing1D::Routing1D(Context& context_, RoutingAlgorithm1DDelegate& delegate_) :
-    RoutingAlgorithm("1D"), context(context_), delegate(delegate_) {
+Routing1D::Routing1D(ModuleParam& param, RoutingAlgorithm1DDelegate& delegate_) :
+    RoutingAlgorithm("1D"),
+    logger(param.logger),
+    random(param.random),
+    local_nid(param.local_nid),
+    delegate(delegate_) {
 }
 
 const std::set<NodeID>& Routing1D::get_required_nodes() {
@@ -66,6 +71,7 @@ bool Routing1D::on_change_online_links(const std::set<NodeID>& nids) {
     if (nids.find(nid) == nids.end()) {
       is_changed = true;
       it         = connected_nodes.erase(it);
+
     } else {
       it++;
     }
@@ -92,7 +98,6 @@ bool Routing1D::on_recv_routing_info(const Packet& packet, const RoutingProtocol
   // Ignore routing packet when source node has disconnected.
   // assert(connected_nodes.find(packet.src_nid) != connected_nodes.end());
   if (connected_nodes.find(packet.src_nid) == connected_nodes.end()) {
-    printf("disconnected:%s\n", packet.src_nid.to_str().c_str());
     return false;
   }
 
@@ -104,7 +109,7 @@ bool Routing1D::on_recv_routing_info(const Packet& packet, const RoutingProtocol
   for (auto& it : routing_info.nodes()) {
     NodeID nid = NodeID::from_str(it.first);
     next_nids.insert(nid);
-    if (nid == context.local_nid) {
+    if (nid == local_nid) {
       odd_score = it.second.r1d_score();
     }
   }
@@ -156,7 +161,7 @@ bool Routing1D::update_routing_info(
 const NodeID& Routing1D::get_relay_nid(const Packet& packet) {
   bool is_explicit = packet.mode & PacketMode::EXPLICIT;
 
-  if (packet.dst_nid == context.local_nid || packet.dst_nid == NodeID::THIS) {
+  if (packet.dst_nid == local_nid || packet.dst_nid == NodeID::THIS) {
     return NodeID::THIS;
   }
 
@@ -164,7 +169,11 @@ const NodeID& Routing1D::get_relay_nid(const Packet& packet) {
     return NodeID::NEXT;
   }
 
-  if (prev_nid == NodeID::NONE) {
+  RouteInfo* nearest_info;
+  const NodeID* nearest_nid;
+  std::tie(nearest_nid, nearest_info) = get_nearest_info(packet.dst_nid);
+
+  if (prev_nid == NodeID::NONE || nearest_info == nullptr) {
     if (is_explicit) {
       return NodeID::NONE;
     } else {
@@ -180,14 +189,9 @@ const NodeID& Routing1D::get_relay_nid(const Packet& packet) {
       }
 
     } else {
-      RouteInfo* nearest_info;
-      const NodeID* nearest_nid;
-      std::tie(nearest_nid, nearest_info) = get_nearest_info(packet.dst_nid);
-
-      assert(nearest_info != nullptr);
       nearest_info->raw_score++;
 
-      NodeID nearest_dist = context.local_nid.distance_from(packet.dst_nid);
+      NodeID nearest_dist = local_nid.distance_from(packet.dst_nid);
       ConnectedNode* cn   = nullptr;
 
       for (auto& it : connected_nodes) {
@@ -234,7 +238,7 @@ bool Routing1D::is_orphan(unsigned int nodes_count) {
 }
 
 int Routing1D::get_level(const NodeID& nid) {
-  NodeID sub = nid - context.local_nid;
+  NodeID sub = nid - local_nid;
 
   for (int i = 0; i < static_cast<int>(sizeof(LEVEL_RANGE) / sizeof(LEVEL_RANGE[0])); i++) {
     if (sub < LEVEL_RANGE[i]) {
@@ -289,7 +293,7 @@ std::tuple<NodeID, NodeID> Routing1D::get_nearby_nid(const NodeID& nid, const st
 }
 
 std::tuple<const NodeID*, Routing1D::RouteInfo*> Routing1D::get_nearest_info(const NodeID& nid) {
-  NodeID nearest_dist       = context.local_nid.distance_from(nid);
+  NodeID nearest_dist       = local_nid.distance_from(nid);
   const NodeID* nearest_nid = nullptr;
   RouteInfo* nearest_info   = nullptr;
 
@@ -347,7 +351,7 @@ void Routing1D::update_required_nodes() {
     for (auto& it : connected_nodes) {
       connected_nids.insert(it.first);
     }
-    std::tie(now_prev_nid, now_next_nid) = get_nearby_nid(context.local_nid, connected_nids);
+    std::tie(now_prev_nid, now_next_nid) = get_nearby_nid(local_nid, connected_nids);
     next_nids.insert(now_prev_nid);
     next_nids.insert(now_next_nid);
   }
@@ -366,9 +370,9 @@ void Routing1D::update_required_nodes() {
       for (auto& nid : cn.next_nids) {
         nids.insert(nid);
       }
-      nids.insert(context.local_nid);
+      nids.insert(local_nid);
       std::tie(prev, next) = get_nearby_nid(root, nids);
-      if (prev == context.local_nid || next == context.local_nid) {
+      if (prev == local_nid || next == local_nid) {
         required_nodes.insert(root);
       }
     }
@@ -427,7 +431,7 @@ void Routing1D::update_required_nodes() {
     }
 
     if (need_connect && r_nids.size() > 0) {
-      int idx           = context.random.generate_u32() % r_nids.size();
+      int idx           = random.generate_u32() % r_nids.size();
       const NodeID& nid = r_nids[idx];
       required_nodes.insert(nid);
     }
@@ -473,7 +477,7 @@ void Routing1D::update_route_infos() {
   }
 
   // Find the prev and the next node.
-  known_nids.insert(std::make_pair(context.local_nid, NodeID::NONE));
+  known_nids.insert(std::make_pair(local_nid, NodeID::NONE));
   if (known_nids.size() == 1) {
     prev_nid      = NodeID::NONE;
     next_nid      = NodeID::NONE;
@@ -487,7 +491,7 @@ void Routing1D::update_route_infos() {
     }
     NodeID prev_nid_bk           = prev_nid;
     NodeID next_nid_bk           = next_nid;
-    std::tie(prev_nid, next_nid) = get_nearby_nid(context.local_nid, nids);
+    std::tie(prev_nid, next_nid) = get_nearby_nid(local_nid, nids);
     assert(prev_nid != NodeID::NONE);
     assert(next_nid != NodeID::NONE);
 
@@ -495,16 +499,17 @@ void Routing1D::update_route_infos() {
       delegate.algorithm_1d_on_change_nearby(*this, prev_nid, next_nid);
     }
 
-    range_min_nid = NodeID::center_mod(prev_nid, context.local_nid);
-    range_max_nid = NodeID::center_mod(context.local_nid, next_nid);
+    range_min_nid = NodeID::center_mod(prev_nid, local_nid);
+    range_max_nid = NodeID::center_mod(local_nid, next_nid);
   }
 
   // Update route_nodes.
-  known_nids.erase(context.local_nid);
+  known_nids.erase(local_nid);
   auto it = route_infos.begin();
   while (it != route_infos.end()) {
     if (known_nids.find(it->first) == known_nids.end()) {
       it = route_infos.erase(it);
+
     } else {
       it++;
     }
@@ -531,12 +536,7 @@ void Routing1D::update_route_infos() {
     }
     logd("routing 1d known").map("nids", picojson::value(a));
   }
-  {
-    picojson::array a;
-    a.push_back(next_nid.to_json());
-    a.push_back(prev_nid.to_json());
-    logd("routing 1d next").map("nids", picojson::value(a));
-  }
+  logd("routing 1d next").map("next", next_nid).map("prev", prev_nid);
 #endif
 }
 

@@ -3,6 +3,7 @@ project(colonio)
 find_package(PkgConfig)
 
 # Read options.
+option(TEST_TIMEOUT  "Timeout seconds for each test." 180)
 option(WITH_COVERAGE "Build test with coverage. (For native only)" OFF)
 option(WITH_GPROF    "Enable build option for gprof. (For native only)" OFF)
 option(WITH_PYTHON   "Generate library for python. (For native only)" OFF)
@@ -111,18 +112,6 @@ else()
   include_directories(${CURL_INCLUDE_DIRS})
   link_directories(${CURL_LIBRARY_DIRS})
   list(APPEND extra_libs ${CURL_LIBRARIES})
-
-  # libuv
-  pkg_search_module(UV libuv)
-  if(UV_FOUND)
-    include_directories(${UV_INCLUDE_DIRS})
-    string(REPLACE ";" " " UV_CFLAGS_STR "${UV_CFLAGS}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${UV_CFLAGS_STR}")
-    list(APPEND extra_libs ${UV_LIBRARIES})
-  else()
-    include_directories(${UV_INCLUDE_DIRS})
-    list(APPEND extra_libs ${UV_LIBRARIES})
-  endif()
 
   # WebSocket++
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DASIO_STANDALONE")

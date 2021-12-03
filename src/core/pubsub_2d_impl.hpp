@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,26 +15,24 @@
  */
 #pragma once
 
-#include "api_gate.hpp"
 #include "colonio/pubsub_2d.hpp"
 
 namespace colonio {
+class Pubsub2DBase;
+
 class Pubsub2DImpl : public Pubsub2D {
  public:
-  Pubsub2DImpl(APIGate& api_gate_, APIChannel::Type channel_);
+  explicit Pubsub2DImpl(Pubsub2DBase& base_);
 
   void publish(const std::string& name, double x, double y, double r, const Value& value, uint32_t opt) override;
   void publish(
       const std::string& name, double x, double y, double r, const Value& value, uint32_t opt,
-      std::function<void(Pubsub2D&)> on_success, std::function<void(Pubsub2D&, const Error&)> on_failure
-     ) override;
+      std::function<void(Pubsub2D&)>&& on_success, std::function<void(Pubsub2D&, const Error&)>&& on_failure) override;
 
-  void on(const std::string& name, const std::function<void(const Value&)>& subscriber) override;
+  void on(const std::string& name, std::function<void(Pubsub2D&, const Value&)>&& subscriber) override;
   void off(const std::string& name) override;
 
  private:
-  APIGate& api_gate;
-  APIChannel::Type channel;
-  std::map<std::string, std::function<void(const Value&)>> subscribers;
+  Pubsub2DBase& base;
 };
 }  // namespace colonio

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,10 +22,10 @@
 #include <tuple>
 #include <vector>
 
-#include "context.hpp"
 #include "convert.hpp"
 #include "logger.hpp"
 #include "packet.hpp"
+#include "random.hpp"
 #include "routing_1d.hpp"
 #include "routing_2d.hpp"
 #include "scheduler.hpp"
@@ -53,9 +53,9 @@ RoutingAlgorithm2DDelegate::~RoutingAlgorithm2DDelegate() {
  * @param delegate_ Delegate instance (should WebrtcBundle).
  */
 Routing::Routing(
-    Context& context, ModuleDelegate& module_delegate, RoutingDelegate& routing_delegate, APIChannel::Type channel,
-    const CoordSystem* coord_system, const picojson::object& config) :
-    ModuleBase(context, module_delegate, channel, ModuleChannel::Colonio::SYSTEM_ROUTING),
+    ModuleParam& param, RoutingDelegate& routing_delegate, const CoordSystem* coord_system,
+    const picojson::object& config) :
+    ModuleBase(param, Channel::SYSTEM_ROUTING),
 
     CONFIG_FORCE_UPDATE_COUNT(Utils::get_json(config, "forceUpdateCount", ROUTING_FORCE_UPDATE_COUNT)),
     CONFIG_SEED_CONNECT_INTERVAL(Utils::get_json(config, "seedConnectInterval", ROUTING_SEED_CONNECT_INTERVAL)),
@@ -71,24 +71,24 @@ Routing::Routing(
     delegate(routing_delegate),
     routing_1d(nullptr),
     routing_2d(nullptr),
-    node_status(LinkStatus::OFFLINE),
-    seed_status(LinkStatus::OFFLINE),
+    node_state(LinkState::OFFLINE),
+    seed_state(LinkState::OFFLINE),
     routing_countdown(CONFIG_FORCE_UPDATE_COUNT),
     seed_online_timestamp(0) {
-  routing_1d = new Routing1D(context, *this);
+  routing_1d = new Routing1D(param, *this);
   algorithms.push_back(std::unique_ptr<RoutingAlgorithm>(routing_1d));
 
   if (coord_system) {
-    routing_2d = new Routing2D(context, *this, *coord_system);
+    routing_2d = new Routing2D(param, *this, *coord_system, CONFIG_UPDATE_PERIOD);
     algorithms.push_back(std::unique_ptr<RoutingAlgorithm>(routing_2d));
   }
 
   // add task
-  context.scheduler.add_interval_task(this, std::bind(&Routing::update, this), CONFIG_UPDATE_PERIOD);
+  scheduler.add_controller_loop(this, std::bind(&Routing::update, this), CONFIG_UPDATE_PERIOD);
 }
 
 Routing::~Routing() {
-  context.scheduler.remove_task(this);
+  scheduler.remove_task(this);
 }
 
 const NodeID& Routing::get_relay_nid_1d(const Packet& packet) {
@@ -150,11 +150,11 @@ void Routing::algorithm_2d_on_change_nearby_position(
   delegate.routing_on_module_2d_change_nearby_position(*this, positions);
 }
 
-void Routing::module_on_change_accessor_status(LinkStatus::Type seed_status, LinkStatus::Type node_status) {
-  this->seed_status = seed_status;
-  this->node_status = node_status;
+void Routing::module_on_change_accessor_state(LinkState::Type seed_status, LinkState::Type node_status) {
+  this->seed_state = seed_status;
+  this->node_state = node_status;
 
-  update_seed_route_by_status();
+  update_seed_route_by_state();
 }
 
 void Routing::module_process_command(std::unique_ptr<const Packet> packet) {
@@ -231,7 +231,7 @@ void Routing::send_routing_info() {
 void Routing::update() {
   update_seed_connection();
 
-  if (node_status == LinkStatus::ONLINE) {
+  if (node_state == LinkState::ONLINE) {
     for (auto& row : routing_infos) {
       std::get<0>(row.second)->parse_content(&std::get<1>(row.second));
     }
@@ -281,32 +281,30 @@ void Routing::update_node_connection() {
 void Routing::update_seed_connection() {
   int64_t current = Utils::get_current_msec();
 
-  if (seed_status == LinkStatus::ONLINE) {
+  if (seed_state == LinkState::ONLINE) {
     if (seed_online_timestamp == 0) {
       seed_online_timestamp = Utils::get_current_msec();
       logi("force routing");
-      routing_countdown                  = 0;
-      seed_timestamps[context.local_nid] = current;
+      routing_countdown          = 0;
+      seed_timestamps[local_nid] = current;
     }
 
-    distance_from_seed[context.local_nid] = 1;
+    distance_from_seed[local_nid] = 1;
 
     int64_t online_duration = current - seed_online_timestamp;
-    if (online_duration > CONFIG_SEED_DISCONNECT_THREATHOLD && node_status == LinkStatus::ONLINE) {
+    if (online_duration > CONFIG_SEED_DISCONNECT_THREATHOLD && node_state == LinkState::ONLINE) {
       delegate.routing_do_disconnect_seed(*this);
     }
 
-  } else if (seed_status == LinkStatus::OFFLINE) {
+  } else if (seed_state == LinkState::OFFLINE) {
     if (seed_online_timestamp != 0) {
       seed_online_timestamp = 0;
       logi("force routing");
       routing_countdown = 0;
     }
-    if (distance_from_seed.find(context.local_nid) != distance_from_seed.end()) {
-      distance_from_seed.erase(context.local_nid);
-    }
+    distance_from_seed.erase(local_nid);
 
-    if (node_status != LinkStatus::ONLINE) {
+    if (node_state != LinkState::ONLINE) {
       delegate.routing_do_connect_seed(*this);
     }
 
@@ -324,7 +322,7 @@ void Routing::update_seed_connection() {
       }
     }
     if (count == 0) {
-      if (context.random.generate_u32() % CONFIG_SEED_CONNECT_RATE == 0) {
+      if (random.generate_u32() % CONFIG_SEED_CONNECT_RATE == 0) {
         delegate.routing_do_connect_seed(*this);
       }
       return;
@@ -353,6 +351,7 @@ void Routing::update_seed_route_by_info(const NodeID& src_nid, const RoutingProt
   while (it != seed_timestamps.end()) {
     if (CURRENT - it->second >= CONFIG_SEED_INFO_KEEP_THREATHOLD) {
       it = seed_timestamps.erase(it);
+
     } else {
       it++;
     }
@@ -364,6 +363,7 @@ void Routing::update_seed_route_by_info(const NodeID& src_nid, const RoutingProt
     auto it          = seed_timestamps.find(nid);
     if (it == seed_timestamps.end()) {
       seed_timestamps.insert(std::make_pair(nid, CURRENT - duration));
+
     } else if (CURRENT - duration < it->second) {
       it->second = CURRENT - duration;
     }
@@ -376,6 +376,7 @@ void Routing::update_seed_route_by_links() {
     const NodeID& nid = it->first;
     if (nid != NodeID::NONE && online_links.find(nid) == online_links.end()) {
       it = distance_from_seed.erase(it);
+
     } else {
       it++;
     }
@@ -396,18 +397,18 @@ void Routing::update_seed_route_by_links() {
   }
 }
 
-void Routing::update_seed_route_by_status() {
-  if (seed_status == LinkStatus::ONLINE) {
-    if (next_to_seed != context.local_nid) {
-      next_to_seed                     = context.local_nid;
+void Routing::update_seed_route_by_state() {
+  if (seed_state == LinkState::ONLINE) {
+    if (next_to_seed != local_nid) {
+      next_to_seed                     = local_nid;
       distance_from_seed[next_to_seed] = 1;
       logi("force routing");
       routing_countdown = 0;
     }
 
   } else {
-    if (next_to_seed == context.local_nid) {
-      distance_from_seed.erase(context.local_nid);
+    if (next_to_seed == local_nid) {
+      distance_from_seed.erase(local_nid);
       update_seed_route_by_links();
     }
   }

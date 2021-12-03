@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,24 +17,39 @@
 
 #include <cassert>
 
+#ifndef EMSCRIPTEN
+#  include "webrtc_link_native.hpp"
+#else
+#  include "webrtc_link_wasm.hpp"
+#endif
+
 namespace colonio {
+WebrtcLinkParam::WebrtcLinkParam(WebrtcLinkDelegate& delegate_, Logger& logger_, WebrtcContext& context_) :
+    delegate(delegate_), logger(logger_), context(context_) {
+}
+
 /**
  * Simple destructor for vtable.
  */
 WebrtcLinkDelegate::~WebrtcLinkDelegate() {
 }
 
-WebrtcLinkBase::InitData::InitData() :
-    is_by_seed(false), is_changing_ice(false), is_prime(false), has_delete_func(false), on_delete_v(nullptr) {
+WebrtcLink::InitData::InitData() :
+    is_by_seed(false),
+    is_changing_ice(false),
+    is_prime(false),
+    start_time(0),
+    has_delete_func(false),
+    on_delete_v(nullptr) {
 }
 
-WebrtcLinkBase::InitData::~InitData() {
+WebrtcLink::InitData::~InitData() {
   if (has_delete_func) {
     on_delete_func(on_delete_v);
   }
 }
 
-void WebrtcLinkBase::InitData::hook_on_delete(std::function<void(void*)> func, void* v) {
+void WebrtcLink::InitData::hook_on_delete(std::function<void(void*)>&& func, void* v) {
   assert(has_delete_func == false);
 
   has_delete_func = true;
@@ -42,10 +57,24 @@ void WebrtcLinkBase::InitData::hook_on_delete(std::function<void(void*)> func, v
   on_delete_v     = v;
 }
 
-WebrtcLinkBase::WebrtcLinkBase(WebrtcLinkDelegate& delegate_, Context& context_, WebrtcContext& webrtc_context_) :
-    delegate(delegate_), init_data(std::make_unique<InitData>()), context(context_), webrtc_context(webrtc_context_) {
+WebrtcLink* WebrtcLink::new_instance(WebrtcLinkParam& param, bool is_create_dc) {
+#ifndef EMSCRIPTEN
+  return new WebrtcLinkNative(param, is_create_dc);
+#else
+  return new WebrtcLinkWasm(param, is_create_dc);
+#endif
 }
 
-WebrtcLinkBase::~WebrtcLinkBase() {
+WebrtcLink::WebrtcLink(WebrtcLinkParam& param) :
+    delegate(param.delegate),
+    link_state(LinkState::CONNECTING),
+    dco_state(LinkState::CONNECTING),
+    pco_state(LinkState::CONNECTING),
+    init_data(std::make_unique<InitData>()),
+    logger(param.logger),
+    webrtc_context(param.context) {
+}
+
+WebrtcLink::~WebrtcLink() {
 }
 }  // namespace colonio

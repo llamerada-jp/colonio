@@ -15,8 +15,8 @@ class ColonioSuite {
         this.colonio = colonio;
     }
 
-    newColonio() {
-        return new ColonioWrap(this);
+    newColonio(logger) {
+        return new ColonioWrap(this, logger);
     }
 
     newValue(type, value) {
@@ -53,12 +53,16 @@ class ColonioSuite {
     onResponse(key, resp) {
         logE("onResponse method must by override by golang");
     }
+
+    outputDefaultLog(message) {
+        logD(JSON.parse(message));
+    }
 }
 
 class ColonioWrap {
-    constructor(suite) {
+    constructor(suite, logger) {
         this.suite = suite;
-        this.c = new this.suite.colonio.Colonio();
+        this.c = new this.suite.colonio.Colonio(logger);
     }
 
     connect(key, url, token) {

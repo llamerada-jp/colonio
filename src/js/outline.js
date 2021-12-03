@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -161,12 +161,17 @@ class Colonio {
 
   static get NID_THIS() { return "."; }
 
-  constructor() {
+  constructor(logger) {
     this._colonioPtr = null;
     this._instanceCache = new Map();
 
     addFuncAfterLoad(() => {
       // initialize
+      let logWrapper = Module.addFunction((_/*colonioPtr*/, messagePtr, messageSiz) => {
+        let message = UTF8ToString(messagePtr, messageSiz);
+        logger(message);
+      }, "viii");
+
       let setPositionOnSuccess = Module.addFunction((id, newX, newY) => {
         popObject(id).onSuccess({
           x: newX,
@@ -179,8 +184,8 @@ class Colonio {
       }, "vii");
 
       this._colonioPtr = ccall("js_init", "number",
-        ["number", "number"],
-        [setPositionOnSuccess, setPositionOnFailure]);
+        ["number", "number", "number"],
+        [logWrapper, setPositionOnSuccess, setPositionOnFailure]);
     });
   }
 
@@ -285,56 +290,41 @@ class Colonio {
 
   on(type, func) {
     addFuncAfterLoad(() => {
-      const TYPES = ["log"];
+      const TYPES = [];
       assert(TYPES.indexOf(type) >= 0);
 
+      /*
       switch (type) {
         case "log":
           ccall("js_enable_output_log", "null", ["number"], [this._colonioPtr]);
           break;
       }
-
+  
       setEventFunc(this._colonioPtr, "colonio", type, func);
+      //*/
     });
   }
 }
 
-/* log */
-function jsOnOutputLog(colonioPtr, jsonPtr, jsonSiz) {
-  let json = UTF8ToString(jsonPtr, jsonSiz);
-  let funcs = getEventFuncs(colonioPtr, "colonio", "log");
-  if (funcs === null) {
-    return;
-  }
-  for (let idx = 0; idx < funcs.length; idx++) {
-    funcs[idx](JSON.parse(json));
+/* Scheduler */
+let schedulerTimers = new Map();
+
+function schedulerRelease(schedulerPtr) {
+  if (schedulerTimers.has(schedulerPtr)) {
+    clearTimeout(schedulerTimers.get(schedulerPtr));
+    schedulerTimers.delete(schedulerPtr);
   }
 }
 
-/* APIGate */
-let gateTimers = new Map();
-
-function apiGateRelease(gatePtr) {
-  if (gateTimers.has(gatePtr)) {
-    clearTimeout(gateTimers.get(gatePtr));
-    gateTimers.delete(gatePtr);
+function schedulerRequestNextRoutine(schedulerPtr, msec) {
+  if (schedulerTimers.has(schedulerPtr)) {
+    clearTimeout(schedulerTimers.get(schedulerPtr));
   }
-}
-
-function apiGateRequireCallAfter(gatePtr, id) {
-  setTimeout(() => {
-    if (gateTimers.has(gatePtr)) {
-      ccall("api_gate_call", "null", ["number", "number"], [gatePtr, id]);
+  schedulerTimers.set(schedulerPtr, setTimeout(() => {
+    let next = ccall("scheduler_invoke", "number", ["number"], [schedulerPtr]);
+    if (next >= 0) {
+      schedulerRequestNextRoutine(schedulerPtr, next);
     }
-  }, 0);
-}
-
-function apiGateRequireInvoke(gatePtr, msec) {
-  if (gateTimers.has(gatePtr)) {
-    clearTimeout(gateTimers.get(gatePtr));
-  }
-  gateTimers.set(gatePtr, setTimeout(() => {
-    ccall("api_gate_invoke", "null", ["number"], [gatePtr]);
   }, msec));
 }
 
@@ -418,7 +408,7 @@ class ColonioValue {
     assert(this.isEnable(), "Released value.");
 
     this._type = ccall("js_value_get_type", "number", ["number"], [this._valuePtr]);
-    
+
     switch (this.getType()) {
       case 0: // this.VALUE_TYPE_NULL:
         this._value = null;

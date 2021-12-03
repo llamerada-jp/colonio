@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,8 +63,7 @@ void seed_link_ws_on_recv(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, int da
 }
 
 namespace colonio {
-SeedLinkWebsocketWasm::SeedLinkWebsocketWasm(SeedLinkDelegate& delegate_, Context& context_) :
-    SeedLinkBase(delegate_, context_) {
+SeedLinkWebsocketWasm::SeedLinkWebsocketWasm(SeedLinkParam& param) : SeedLink(param) {
 #ifndef NDEBUG
   debug_ptr = this;
 #endif

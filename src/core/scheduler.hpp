@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,49 +15,44 @@
  */
 #pragma once
 
-#include <ctime>
 #include <deque>
 #include <functional>
-#include <list>
-#include <memory>
-#include <mutex>
 
 namespace colonio {
 class Logger;
-class Scheduler;
-
-class SchedulerDelegate {
- public:
-  virtual ~SchedulerDelegate();
-  virtual void scheduler_on_require_invoke(Scheduler& sched, unsigned int msec) = 0;
-};
 
 class Scheduler {
  public:
-  Scheduler(SchedulerDelegate& delegate_, Logger& logger_);
+  static Scheduler* new_instance(Logger& logger, uint32_t opt);
+
   virtual ~Scheduler();
 
-  void add_interval_task(void* src, std::function<void()> func, unsigned int msec);
-  void add_timeout_task(void* src, std::function<void()> func, unsigned int msec);
-  unsigned int invoke();
-  bool is_having_task(void* src);
-  void remove_task(void* src);
+  virtual void add_controller_loop(void* src, std::function<void()>&& func, unsigned int interval)  = 0;
+  virtual void add_controller_task(void* src, std::function<void()>&& func, unsigned int after = 0) = 0;
+  virtual void add_user_task(void* src, std::function<void()>&& func)                               = 0;
+  virtual bool has_task(void* src)                                                                  = 0;
+  virtual bool is_controller_thread() const                                                         = 0;
+  virtual bool is_user_thread() const                                                               = 0;
+  virtual void remove_task(void* src, bool remove_current = true)                                   = 0;
 
- private:
-  SchedulerDelegate& delegate;
-  Logger& logger;
+  virtual void start_controller_routine() = 0;
+  virtual void start_user_routine()       = 0;
+
+ protected:
   struct Task {
     void* src;
     std::function<void()> func;
     unsigned int interval;
     int64_t next;
   };
-  std::list<std::shared_ptr<Task>> tasks;
-  std::deque<std::shared_ptr<Task>> running_tasks;
-  std::mutex mtx;
 
-  Scheduler(const Scheduler&);
-  void operator=(const Scheduler&);
+  Logger& logger;
+
+  explicit Scheduler(Logger& logger_);
+  Scheduler(const Scheduler&) = delete;
+
+  int64_t get_next_timeing(std::deque<Task>& src);
+  void pick_runnable_tasks(std::deque<Task>* dst, std::deque<Task>* src);
+  void remove_deque_tasks(void* src, std::deque<Task>* dq, bool remove_head);
 };
-
 }  // namespace colonio

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,41 +20,24 @@
 #include "colonio/colonio.h"
 #include "colonio/colonio.hpp"
 
-namespace colonio_export_c {
-class ColonioC : public colonio::Colonio {
- public:
-  colonio_t* colonio;
-  void (*cb_on_output_log)(colonio_t*, const char*, unsigned int);
-
-  ColonioC(uint32_t opt) : Colonio(opt), colonio(nullptr), cb_on_output_log(nullptr) {
-  }
-
- protected:
-  void on_output_log(const std::string& json) override {
-    if (cb_on_output_log != nullptr) {
-      cb_on_output_log(colonio, json.c_str(), json.size());
-    }
-  }
-};
-}  // namespace colonio_export_c
-
 static thread_local std::string error_message;
 static thread_local colonio_error_t last_error;
 
 colonio_error_t* convert_error(const colonio::Error& e);
-colonio_error_t* convert_exception(const colonio::Exception& e);
 void convert_value_c_to_cpp(colonio::Value* dst, const colonio_value_t* src);
 void convert_value_cpp_to_c(colonio_value_t* dst, const colonio::Value* src);
 
-colonio_error_t* colonio_init(colonio_t* colonio, uint32_t opt) {
+colonio_error_t* colonio_init(colonio_t* colonio, void (*logger)(colonio_t*, const char*, unsigned int), uint32_t opt) {
   try {
     memset(colonio, 0, sizeof(colonio_t));
-    colonio->impl                    = new colonio_export_c::ColonioC(opt);
-    colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
-    impl->colonio                    = colonio;
+    colonio->impl = colonio::Colonio::new_instance(
+        [colonio, logger](colonio::Colonio&, const std::string& message) {
+          logger(colonio, message.c_str(), message.size());
+        },
+        opt);
 
-  } catch (const colonio::Exception& e) {
-    return convert_exception(e);
+  } catch (const colonio::Error& e) {
+    return convert_error(e);
   }
 
   return nullptr;
@@ -62,12 +45,12 @@ colonio_error_t* colonio_init(colonio_t* colonio, uint32_t opt) {
 
 colonio_error_t* colonio_connect(
     colonio_t* colonio, const char* url, unsigned int url_siz, const char* token, unsigned int token_siz) {
-  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
+  colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
 
   try {
     impl->connect(std::string(url, url_siz), std::string(token, token_siz));
-  } catch (const colonio::Exception& e) {
-    return convert_exception(e);
+  } catch (const colonio::Error& e) {
+    return convert_error(e);
   }
 
   return nullptr;
@@ -76,21 +59,25 @@ colonio_error_t* colonio_connect(
 void colonio_connect_async(
     colonio_t* colonio, const char* url, unsigned int url_siz, const char* token, unsigned int token_siz,
     void (*on_success)(colonio_t*), void (*on_failure)(colonio_t*, const colonio_error_t*)) {
-  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
+  colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
   impl->connect(
       std::string(url, url_siz), std::string(token, token_siz),
-      [colonio, on_success](colonio::Colonio&) { on_success(colonio); },
-      [colonio, on_failure](colonio::Colonio&, const colonio::Error& e) { on_failure(colonio, convert_error(e)); });
+      [colonio, on_success](colonio::Colonio&) {
+        on_success(colonio);
+      },
+      [colonio, on_failure](colonio::Colonio&, const colonio::Error& e) {
+        on_failure(colonio, convert_error(e));
+      });
 }
 
 #ifndef EMSCRIPTEN
 colonio_error_t* colonio_disconnect(colonio_t* colonio) {
-  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
+  colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
 
   try {
     impl->disconnect();
-  } catch (const colonio::Exception& e) {
-    return convert_exception(e);
+  } catch (const colonio::Error& e) {
+    return convert_error(e);
   }
 
   return nullptr;
@@ -99,15 +86,25 @@ colonio_error_t* colonio_disconnect(colonio_t* colonio) {
 #else
 void colonio_disconnect_async(
     colonio_t* colonio, void (*on_success)(colonio_t*), void (*on_failure)(colonio_t*, const colonio_error_t*)) {
-  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
+  colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
   impl->disconnect(
-      [colonio, on_success](colonio::Colonio&) { on_success(colonio); },
-      [colonio, on_failure](colonio::Colonio&, const colonio::Error& e) { on_failure(colonio, convert_error(e)); });
+      [colonio, on_success](colonio::Colonio&) {
+        on_success(colonio);
+      },
+      [colonio, on_failure](colonio::Colonio&, const colonio::Error& e) {
+        on_failure(colonio, convert_error(e));
+      });
 }
 #endif
 
+bool colonio_is_connected(colonio_t* colonio) {
+  colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
+
+  return impl->is_connected();
+}
+
 colonio_map_t colonio_access_map(colonio_t* colonio, const char* name, unsigned int name_siz) {
-  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
+  colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
 
   colonio_map_t map;
   map.data = colonio->data;
@@ -117,7 +114,7 @@ colonio_map_t colonio_access_map(colonio_t* colonio, const char* name, unsigned 
 }
 
 colonio_pubsub_2d_t colonio_access_pubsub_2d(colonio_t* colonio, const char* name, unsigned int name_siz) {
-  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
+  colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
 
   colonio_pubsub_2d_t pubsub_2d;
   pubsub_2d.data = colonio->data;
@@ -127,8 +124,8 @@ colonio_pubsub_2d_t colonio_access_pubsub_2d(colonio_t* colonio, const char* nam
 }
 
 void colonio_get_local_nid(colonio_t* colonio, char* dst, unsigned int* siz) {
-  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
-  std::string local_nid            = impl->get_local_nid();
+  colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
+  std::string local_nid  = impl->get_local_nid();
   memcpy(dst, local_nid.c_str(), local_nid.size() + 1);
   if (siz != nullptr) {
     *siz = local_nid.size();
@@ -136,12 +133,12 @@ void colonio_get_local_nid(colonio_t* colonio, char* dst, unsigned int* siz) {
 }
 
 colonio_error_t* colonio_set_position(colonio_t* colonio, double* x, double* y) {
-  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
+  colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
 
   try {
     std::tie(*x, *y) = impl->set_position(*x, *y);
-  } catch (const colonio::Exception& e) {
-    return convert_exception(e);
+  } catch (const colonio::Error& e) {
+    return convert_error(e);
   }
 
   return nullptr;
@@ -150,7 +147,7 @@ colonio_error_t* colonio_set_position(colonio_t* colonio, double* x, double* y) 
 void colonio_set_position_async(
     colonio_t* colonio, double x, double y, void* ptr, void (*on_success)(colonio_t*, void*, double, double),
     void (*on_failure)(colonio_t*, void*, const colonio_error_t*)) {
-  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
+  colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
   impl->set_position(
       x, y,
       [colonio, ptr, on_success](colonio::Colonio&, double app_x, double app_y) {
@@ -161,23 +158,18 @@ void colonio_set_position_async(
       });
 }
 
-void colonio_set_on_output_log(colonio_t* colonio, void (*func)(colonio_t*, const char*, unsigned int)) {
-  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
-  impl->cb_on_output_log           = func;
-}
-
 void colonio_start_on_event_thread(colonio_t* colonio) {
-  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
+  colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
   impl->start_on_event_thread();
 }
 
 void colonio_start_on_controller_thread(colonio_t* colonio) {
-  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
+  colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
   impl->start_on_controller_thread();
 }
 
 colonio_error_t* colonio_quit(colonio_t* colonio) {
-  colonio_export_c::ColonioC* impl = reinterpret_cast<colonio_export_c::ColonioC*>(colonio->impl);
+  colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
 
   delete impl;
   colonio->impl = nullptr;
@@ -260,8 +252,8 @@ colonio_error_t* colonio_map_get(colonio_map_t* map, const colonio_value_t* key,
   try {
     colonio::Value cpp_value = impl->get(cpp_key);
     convert_value_cpp_to_c(dst, &cpp_value);
-  } catch (const colonio::Exception& e) {
-    return convert_exception(e);
+  } catch (const colonio::Error& e) {
+    return convert_error(e);
   }
 
   return nullptr;
@@ -284,7 +276,9 @@ void colonio_map_get_async(
         on_success(map, ptr, &c_value);
         colonio_value_free(&c_value);
       },
-      [map, ptr, on_failure](colonio::Map&, const colonio::Error& e) { on_failure(map, ptr, convert_error(e)); });
+      [map, ptr, on_failure](colonio::Map&, const colonio::Error& e) {
+        on_failure(map, ptr, convert_error(e));
+      });
 }
 
 colonio_error_t* colonio_map_set(
@@ -297,8 +291,8 @@ colonio_error_t* colonio_map_set(
 
   try {
     impl->set(cpp_key, cpp_value, opt);
-  } catch (const colonio::Exception& e) {
-    return convert_exception(e);
+  } catch (const colonio::Error& e) {
+    return convert_error(e);
   }
 
   return nullptr;
@@ -314,8 +308,13 @@ void colonio_map_set_async(
   convert_value_c_to_cpp(&cpp_value, value);
 
   impl->set(
-      cpp_key, cpp_value, opt, [map, ptr, on_success](colonio::Map&) { on_success(map, ptr); },
-      [map, ptr, on_failure](colonio::Map&, const colonio::Error& e) { on_failure(map, ptr, convert_error(e)); });
+      cpp_key, cpp_value, opt,
+      [map, ptr, on_success](colonio::Map&) {
+        on_success(map, ptr);
+      },
+      [map, ptr, on_failure](colonio::Map&, const colonio::Error& e) {
+        on_failure(map, ptr, convert_error(e));
+      });
 }
 
 colonio_error_t* colonio_pubsub_2d_publish(
@@ -327,8 +326,8 @@ colonio_error_t* colonio_pubsub_2d_publish(
 
   try {
     impl->publish(std::string(name, name_siz), x, y, r, cpp_value, opt);
-  } catch (const colonio::Exception& e) {
-    return convert_exception(e);
+  } catch (const colonio::Error& e) {
+    return convert_error(e);
   }
 
   return nullptr;
@@ -344,7 +343,9 @@ void colonio_pubsub_2d_publish_async(
 
   impl->publish(
       std::string(name, name_siz), x, y, r, cpp_value, opt,
-      [pubsub_2d, ptr, on_success](colonio::Pubsub2D&) { on_success(pubsub_2d, ptr); },
+      [pubsub_2d, ptr, on_success](colonio::Pubsub2D&) {
+        on_success(pubsub_2d, ptr);
+      },
       [pubsub_2d, ptr, on_failure](colonio::Pubsub2D&, const colonio::Error& e) {
         on_failure(pubsub_2d, ptr, convert_error(e));
       });
@@ -354,7 +355,7 @@ void colonio_pubsub_2d_on(
     colonio_pubsub_2d_t* pubsub_2d, const char* name, unsigned int name_siz, void* ptr,
     void (*subscriber)(colonio_pubsub_2d_t* pubsub_2d, void* ptr, const colonio_value_t* value)) {
   colonio::Pubsub2D* impl = reinterpret_cast<colonio::Pubsub2D*>(pubsub_2d->impl);
-  impl->on(std::string(name, name_siz), [pubsub_2d, ptr, subscriber](const colonio::Value& value) {
+  impl->on(std::string(name, name_siz), [pubsub_2d, ptr, subscriber](colonio::Pubsub2D&, const colonio::Value& value) {
     colonio_value_t c_value;
     colonio_value_init(&c_value);
     convert_value_cpp_to_c(&c_value, &value);
@@ -369,14 +370,6 @@ void colonio_pubsub_2d_off(colonio_pubsub_2d_t* pubsub_2d, const char* name, uns
 }
 
 colonio_error_t* convert_error(const colonio::Error& e) {
-  error_message          = e.message;
-  last_error.code        = static_cast<COLONIO_ERROR_CODE>(e.code);
-  last_error.message     = error_message.c_str();
-  last_error.message_siz = error_message.size();
-  return &last_error;
-}
-
-colonio_error_t* convert_exception(const colonio::Exception& e) {
   error_message          = e.message;
   last_error.code        = static_cast<COLONIO_ERROR_CODE>(e.code);
   last_error.message     = error_message.c_str();

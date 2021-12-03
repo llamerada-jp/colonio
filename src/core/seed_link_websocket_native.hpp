@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@
 #include "seed_link.hpp"
 
 namespace colonio {
-class SeedLinkWebsocketNative : public SeedLinkBase {
+class SeedLinkWebsocketNative : public SeedLink {
  public:
-  SeedLinkWebsocketNative(SeedLinkDelegate& delegate_, Context& context_);
+  explicit SeedLinkWebsocketNative(SeedLinkParam& param);
   virtual ~SeedLinkWebsocketNative();
 
   // SeedlinkBase
@@ -38,6 +38,4 @@ class SeedLinkWebsocketNative : public SeedLinkBase {
   WSClient::connection_ptr con;
   websocketpp::lib::shared_ptr<websocketpp::lib::thread> m_thread;
 };
-
-typedef SeedLinkWebsocketNative SeedLink;
 }  // namespace colonio

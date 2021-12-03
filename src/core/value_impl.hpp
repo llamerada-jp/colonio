@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,12 +37,12 @@ class ValueImpl {
   Storage storage;
 
   ValueImpl();
+  ValueImpl(const ValueImpl& src);
   explicit ValueImpl(bool v);
   explicit ValueImpl(int64_t v);
   explicit ValueImpl(double v);
   explicit ValueImpl(const std::string& v);
   explicit ValueImpl(const char* v);
-  ValueImpl(const ValueImpl& src);
   virtual ~ValueImpl();
 
   static void to_pb(core::Value* pb, const Value& value);

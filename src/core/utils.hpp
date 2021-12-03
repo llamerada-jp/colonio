@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,47 +27,33 @@
 #include <cassert>
 #include <string>
 
-#include "internal_exception.hpp"
+#include "colonio/error.hpp"
 
 namespace colonio {
 class Packet;
 
-/**
- * ASSERT macro is helper function to show message when assertion.
- * @param FORMAT Format string of an assersion message that similar to printf.
- */
-#ifndef NDEBUG
-#  define colonio_assert(EX, FORMAT, ...)                                                                      \
-    if (!(EX)) {                                                                                               \
-      Utils::output_assert(__func__, __FILE__, __LINE__, #EX, Utils::format_string(FORMAT, 0, ##__VA_ARGS__)); \
-    }
+#define colonio_error(CODE, FORMAT, ...) \
+  Error(false, CODE, Utils::format_string(FORMAT, 0, ##__VA_ARGS__), __LINE__, __FILE__)
 
-#else
-#  define colonio_assert(EX, FORMAT, ...) \
-    if (!(EX)) {                          \
-      exit(EXIT_FAILURE);                 \
-    }
-#endif
+#define colonio_fatal(FORMAT, ...) \
+  Error(true, ErrorCode::UNDEFINED, Utils::format_string(FORMAT, 0, ##__VA_ARGS__), __LINE__, __FILE__)
 
 /**
  * THROW macro is helper function to throw exception with line number and file name.
  * @param FORMAT Format string of an exception message that similar to printf.
  */
-#define colonio_throw(CODE, FORMAT, ...) \
-  throw InternalException(__LINE__, __FILE__, CODE, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+#define colonio_throw_error(CODE, FORMAT, ...) \
+  throw Error(false, CODE, Utils::format_string(FORMAT, 0, ##__VA_ARGS__), __LINE__, __FILE__)
 
 /**
  * FATAL macro is helper function to throw fatal exception.
  * @param FORMAT Format string of an exception message that similar to printf.
  */
-#define colonio_fatal(FORMAT, ...) \
-  throw FatalException(__LINE__, __FILE__, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
+#define colonio_throw_fatal(FORMAT, ...) \
+  throw Error(true, ErrorCode::UNDEFINED, Utils::format_string(FORMAT, 0, ##__VA_ARGS__), __LINE__, __FILE__)
 
 namespace Utils {
 std::string format_string(const std::string& format, int dummy, ...);
-void output_assert(
-    const std::string& func, const std::string& file, unsigned long line, const std::string& exp,
-    const std::string& message);
 
 template<typename T>
 bool check_json_optional(const picojson::object& obj, const std::string& key, T* dst) {
@@ -80,8 +66,7 @@ bool check_json_optional(const picojson::object& obj, const std::string& key, T*
     return true;
 
   } else {
-    colonio_assert(
-        false, "Wrong json type.(key : %s, json : %s)", key.c_str(), picojson::value(obj).serialize().c_str());
+    assert(false);
     return false;
   }
 }
@@ -94,7 +79,7 @@ T get_json(const picojson::object& obj, const std::string& key) {
   if (it != obj.end() && it->second.is<T>()) {
     return it->second.get<T>();
   } else {
-    colonio_fatal(
+    colonio_throw_fatal(
         "Key dose not exist in JSON.(key : %s, json : %s)", key.c_str(), picojson::value(obj).serialize().c_str());
   }
 }
@@ -113,10 +98,27 @@ template<>
 unsigned int
 get_json<unsigned int>(const picojson::object& obj, const std::string& key, const unsigned int& default_value);
 
+template<typename F>
+class Defer {
+ public:
+  explicit Defer(F func) : func(func) {
+  }
+  ~Defer() {
+    func();
+  }
+
+ private:
+  F func;
+};
+
+template<typename F>
+static Defer<F> defer(F func) {
+  return Defer<F>(func);
+}
+
 std::string dump_binary(const std::string* bin);
 std::string dump_packet(const Packet& packet, unsigned int indent = 2);
 int64_t get_current_msec();
-std::string get_current_thread_id();
 
 template<typename T>
 const T* get_json_value(const picojson::object& parent, const std::string& key) {
@@ -130,9 +132,7 @@ const T* get_json_value(const picojson::object& parent, const std::string& key) 
 }
 
 std::string file_basename(const std::string& path, bool cutoff_ext = false);
-std::string file_dirname(const std::string& path);
 bool is_safevalue(double v);
 double float_mod(double a, double b);
-void replace_string(std::string* str, const std::string& from, const std::string& to);
 }  // namespace Utils
 }  // namespace colonio

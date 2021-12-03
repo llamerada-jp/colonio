@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,9 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <tuple>
 
+#include "colonio/colonio.hpp"
 #include "test_utils/all.hpp"
 
 using namespace colonio;
@@ -39,16 +41,19 @@ TEST(Pubsub2DTest, pubsub_async) {
   seed.add_module_pubsub_2d(PUBSUB_2D_NAME, 256);
   seed.run();
 
-  ColonioNode node1("node1");
-  ColonioNode node2("node2");
+  std::unique_ptr<Colonio> node1(Colonio::new_instance(log_receiver("node1")));
+  std::unique_ptr<Colonio> node2(Colonio::new_instance(log_receiver("node2")));
 
   printf("connect node1\n");
-  node1.connect(
+  node1->connect(
       URL, TOKEN,
       [&URL, &TOKEN, &node2, &helper](Colonio& _) {
         printf("connect node2\n");
-        node2.connect(
-            URL, TOKEN, [&helper](Colonio& _) { helper.pass_signal("connect"); },
+        node2->connect(
+            URL, TOKEN,
+            [&helper](Colonio& _) {
+              helper.pass_signal("connect");
+            },
             [](Colonio&, const Error& err) {
               std::cout << err.message << std::endl;
               ADD_FAILURE();
@@ -61,43 +66,32 @@ TEST(Pubsub2DTest, pubsub_async) {
 
   printf("wait connecting\n");
   helper.wait_signal("connect");
-  Pubsub2D& ps1 = node1.access_pubsub_2d(PUBSUB_2D_NAME);
-  Pubsub2D& ps2 = node2.access_pubsub_2d(PUBSUB_2D_NAME);
-  ps1.on("key", [&helper](const Value& v) {
+  Pubsub2D& ps1 = node1->access_pubsub_2d(PUBSUB_2D_NAME);
+  Pubsub2D& ps2 = node2->access_pubsub_2d(PUBSUB_2D_NAME);
+  ps1.on("key", [&helper](Pubsub2D&, const Value& v) {
     helper.mark("1" + v.get<std::string>());
     helper.pass_signal("on1");
   });
-  ps2.on("key", [&helper](const Value& v) {
+  ps2.on("key", [&helper](Pubsub2D&, const Value& v) {
     helper.mark("2" + v.get<std::string>());
     helper.pass_signal("on2");
   });
 
-  printf("set position node1\n");
-  node1.set_position(
-      d2r(50), d2r(50),
-      [&helper](Colonio& _, double x, double y) {
-        EXPECT_FLOAT_EQ(d2r(50), x);
-        EXPECT_FLOAT_EQ(d2r(50), y);
-        helper.pass_signal("pos1");
-      },
-      [](Colonio&, const Error& err) {
-        std::cout << err.message << std::endl;
-        ADD_FAILURE();
-      });
-  printf("set position node2\n");
-  node2.set_position(
-      d2r(50), d2r(50),
-      [&helper](Colonio& _, double x, double y) {
-        EXPECT_FLOAT_EQ(d2r(50), x);
-        EXPECT_FLOAT_EQ(d2r(50), y);
-        helper.pass_signal("pos2");
-      },
-      [](Colonio&, const Error& err) {
-        std::cout << err.message << std::endl;
-        ADD_FAILURE();
-      });
-  helper.wait_signal("pos1");
-  helper.wait_signal("pos2");
+  {
+    double x, y;
+    printf("set position node1\n");
+    std::tie(x, y) = node1->set_position(d2r(50), d2r(50));
+    EXPECT_FLOAT_EQ(d2r(50), x);
+    EXPECT_FLOAT_EQ(d2r(50), y);
+  }
+
+  {
+    double x, y;
+    printf("set position node2\n");
+    std::tie(x, y) = node2->set_position(d2r(50), d2r(50));
+    EXPECT_FLOAT_EQ(d2r(50), x);
+    EXPECT_FLOAT_EQ(d2r(50), y);
+  }
 
   printf("wait publishing\n");
   helper.wait_signal("on1", [&ps2] {
@@ -120,8 +114,8 @@ TEST(Pubsub2DTest, pubsub_async) {
   });
 
   printf("disconnect\n");
-  node1.disconnect();
-  node2.disconnect();
+  node1->disconnect();
+  node2->disconnect();
 
   EXPECT_THAT(helper.get_route(), MatchesRegex("^1b2a|2a1b$"));
 }
@@ -137,20 +131,20 @@ TEST(Pubsub2DTest, multi_node) {
   seed.add_module_pubsub_2d(PUBSUB_2D_NAME, 256);
   seed.run();
 
-  ColonioNode node1("node1");
-  ColonioNode node2("node2");
+  std::unique_ptr<Colonio> node1(Colonio::new_instance(log_receiver("node1")));
+  std::unique_ptr<Colonio> node2(Colonio::new_instance(log_receiver("node2")));
 
   try {
     // connect node1;
     printf("connect node1\n");
-    node1.connect(URL, TOKEN);
-    Pubsub2D& ps1 = node1.access_pubsub_2d(PUBSUB_2D_NAME);
-    ps1.on("key1", [&helper](const Value& v) {
+    node1->connect(URL, TOKEN);
+    Pubsub2D& ps1 = node1->access_pubsub_2d(PUBSUB_2D_NAME);
+    ps1.on("key1", [&helper](Pubsub2D&, const Value& v) {
       helper.mark("11");
       helper.mark(v.get<std::string>());
       helper.pass_signal("on11");
     });
-    ps1.on("key2", [&helper](const Value& v) {
+    ps1.on("key2", [&helper](Pubsub2D&, const Value& v) {
       helper.mark("12");
       helper.mark(v.get<std::string>());
       helper.pass_signal("on12");
@@ -158,22 +152,22 @@ TEST(Pubsub2DTest, multi_node) {
 
     // connect node2;
     printf("connect node2\n");
-    node2.connect(URL, TOKEN);
-    Pubsub2D& ps2 = node2.access_pubsub_2d(PUBSUB_2D_NAME);
-    ps2.on("key1", [&helper](const Value& v) {
+    node2->connect(URL, TOKEN);
+    Pubsub2D& ps2 = node2->access_pubsub_2d(PUBSUB_2D_NAME);
+    ps2.on("key1", [&helper](Pubsub2D&, const Value& v) {
       helper.mark("21");
       helper.mark(v.get<std::string>());
       helper.pass_signal("on21");
     });
-    ps2.on("key2", [&helper](const Value& v) {
+    ps2.on("key2", [&helper](Pubsub2D&, const Value& v) {
       helper.mark("22");
       helper.mark(v.get<std::string>());
       helper.pass_signal("on22");
     });
 
     printf("set position 1 and 2\n");
-    node1.set_position(d2r(100), d2r(50));
-    node2.set_position(d2r(50), d2r(50));
+    node1->set_position(d2r(100), d2r(50));
+    node2->set_position(d2r(50), d2r(50));
 
     helper.wait_signal("on21", [&ps1] {
       printf("publish a\n");
@@ -184,7 +178,7 @@ TEST(Pubsub2DTest, multi_node) {
 
     helper.clear_signal();
     printf("set position 2\n");
-    node2.set_position(d2r(-20), d2r(10));
+    node2->set_position(d2r(-20), d2r(10));
 
     printf("publish c\n");
     ps1.publish("key1", d2r(50), d2r(50), 10, Value("c"));  // none
@@ -197,15 +191,15 @@ TEST(Pubsub2DTest, multi_node) {
       ps1.publish("key2", d2r(-20), d2r(10), 10, Value("e"));  // 22e
     });
 
-  } catch (colonio::Exception& ex) {
-    printf("exception code:%u: %s\n", static_cast<uint32_t>(ex.code), ex.message.c_str());
+  } catch (colonio::Error& err) {
+    printf("exception code:%u: %s\n", static_cast<uint32_t>(err.code), err.message.c_str());
     ADD_FAILURE();
   }
 
   // disconnect
   printf("disconnect\n");
-  node1.disconnect();
-  node2.disconnect();
+  node1->disconnect();
+  node2->disconnect();
 
   EXPECT_THAT(helper.get_route(), MatchesRegex("^21a21d22e$"));
 }
@@ -223,50 +217,50 @@ TEST(Pubsub2DTest, pubsub_plane) {
   seed.run();
 
   printf("create instance1\n");
-  ColonioNode node1("node1");
+  std::unique_ptr<Colonio> node1(Colonio::new_instance(log_receiver("node1")));
   printf("create instance2\n");
-  ColonioNode node2("node2");
+  std::unique_ptr<Colonio> node2(Colonio::new_instance(log_receiver("node2")));
 
   // connect node1;
   printf("connect node1\n");
-  node1.connect(URL, TOKEN);
+  node1->connect(URL, TOKEN);
   printf("connect node1 fin\n");
-  Pubsub2D& ps1 = node1.access_pubsub_2d(PUBSUB_2D_NAME);
-  ps1.on("key1", [&helper](const Value& v) {
+  Pubsub2D& ps1 = node1->access_pubsub_2d(PUBSUB_2D_NAME);
+  ps1.on("key1", [&helper](Pubsub2D&, const Value& v) {
     helper.mark("11");
     helper.mark(v.get<std::string>());
   });
-  ps1.on("key2", [&helper](const Value& v) {
+  ps1.on("key2", [&helper](Pubsub2D&, const Value& v) {
     helper.mark("12");
     helper.mark(v.get<std::string>());
   });
 
   // connect node2;
   printf("connect node2\n");
-  node2.connect(URL, TOKEN);
+  node2->connect(URL, TOKEN);
   printf("connect node2 fin\n");
-  Pubsub2D& ps2 = node2.access_pubsub_2d(PUBSUB_2D_NAME);
-  ps2.on("key1", [&helper](const Value& v) {
+  Pubsub2D& ps2 = node2->access_pubsub_2d(PUBSUB_2D_NAME);
+  ps2.on("key1", [&helper](Pubsub2D&, const Value& v) {
     helper.mark("21");
     helper.mark(v.get<std::string>());
   });
-  ps2.on("key2", [&helper](const Value& v) {
+  ps2.on("key2", [&helper](Pubsub2D&, const Value& v) {
     helper.mark("22");
     helper.mark(v.get<std::string>());
   });
 
   double x1, y1;
-  std::tie(x1, y1) = node1.set_position(-0.5, 0.5);
+  std::tie(x1, y1) = node1->set_position(-0.5, 0.5);
   EXPECT_FLOAT_EQ(x1, -0.5);
   EXPECT_FLOAT_EQ(y1, 0.5);
 
   double x2, y2;
-  std::tie(x2, y2) = node2.set_position(0.5, -0.5);
+  std::tie(x2, y2) = node2->set_position(0.5, -0.5);
   EXPECT_FLOAT_EQ(x2, 0.5);
   EXPECT_FLOAT_EQ(y2, -0.5);
 
   // disconnect
   printf("disconnect\n");
-  node1.disconnect();
-  node2.disconnect();
+  node1->disconnect();
+  node2->disconnect();
 }

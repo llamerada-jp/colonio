@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,10 +25,17 @@ static const char *_GoStringPtr(_GoString_ s) {
 }
 
 // export constant value for golang
-const unsigned int cgo_colonio_nid_length                    = COLONIO_NID_LENGTH;
-const unsigned int cgo_colonio_colonio_explicit_event_thread = COLONIO_COLONIO_EXPLICIT_EVENT_THREAD;
+const unsigned int cgo_colonio_nid_length = COLONIO_NID_LENGTH;
 
 // colonio
+void cgo_cb_colonio_logger(colonio_t *colonio, const char *message, unsigned int len) {
+  cgoCbColonioLogger(colonio, (void *)message, (int)len);
+}
+
+colonio_error_t *cgo_colonio_init(colonio_t *colonio) {
+  return colonio_init(colonio, cgo_cb_colonio_logger, COLONIO_COLONIO_EXPLICIT_EVENT_THREAD);
+}
+
 colonio_error_t *cgo_colonio_connect(colonio_t *colonio, _GoString_ url, _GoString_ token) {
   return colonio_connect(colonio, _GoStringPtr(url), _GoStringLen(url), _GoStringPtr(token), _GoStringLen(token));
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,21 +18,25 @@
 #include <functional>
 #include <string>
 
-#include "api_base.hpp"
+#include "colonio/colonio.hpp"
 #include "definition.hpp"
+#include "logger.hpp"
 #include "module_1d.hpp"
 #include "module_2d.hpp"
-#include "module_bundler.hpp"
 #include "node_accessor.hpp"
 #include "node_id.hpp"
+#include "random.hpp"
 #include "routing.hpp"
+#include "scheduler.hpp"
 #include "seed_accessor.hpp"
 
 namespace colonio {
-class APIBundler;
-class Context;
+class ColonioModule;
+class MapImpl;
+class Pubsub2DImpl;
 
-class ColonioImpl : public APIBase,
+class ColonioImpl : public Colonio,
+                    public LoggerDelegate,
                     public ModuleDelegate,
                     public NodeAccessorDelegate,
                     public RoutingDelegate,
@@ -40,35 +44,70 @@ class ColonioImpl : public APIBase,
                     public Module1DDelegate,
                     public Module2DDelegate {
  public:
-  ColonioImpl(Context& context_, APIDelegate& api_delegate_, APIBundler& api_bundler_);
+  ColonioImpl(std::function<void(Colonio&, const std::string&)> log_receiver_, uint32_t opt);
   virtual ~ColonioImpl();
 
-  LinkStatus::Type get_status();
+  void connect(const std::string& url, const std::string& token) override;
+  void connect(
+      const std::string& url, const std::string& token, std::function<void(Colonio&)>&& on_success,
+      std::function<void(Colonio&, const Error&)>&& on_failure) override;
+  void disconnect() override;
+  void disconnect(
+      std::function<void(Colonio&)>&& on_success, std::function<void(Colonio&, const Error&)>&& on_failure) override;
+  bool is_connected() override;
+  std::string get_local_nid() override;
+
+  Map& access_map(const std::string& name) override;
+  Pubsub2D& access_pubsub_2d(const std::string& name) override;
+
+  std::tuple<double, double> set_position(double x, double y) override;
+  void set_position(
+      double x, double y, std::function<void(Colonio&, double, double)> on_success,
+      std::function<void(Colonio&, const Error&)> on_failure) override;
+
+  void send(const std::string& dst_nid, const Value& value, uint32_t opt = 0x00) override;
+  void send(
+      const std::string& dst_nid, const Value& value, uint32_t opt, std::function<void(Colonio&)>&& on_success,
+      std::function<void(Colonio&, const Error&)>&& on_failure) override;
+  void on(std::function<void(Colonio&, const Value&)>&& receiver) override;
+  void off() override;
+
+  void start_on_event_thread() override;
+  void start_on_controller_thread() override;
 
  private:
-  APIDelegate& api_delegate;
-  APIBundler& api_bundler;
-  ModuleBundler module_bundler;
+  std::function<void(Colonio&, const std::string&)> log_receiver;
+  Logger logger;
+  Random random;
+  std::unique_ptr<Scheduler> scheduler;
+  const NodeID local_nid;
+  ModuleParam module_param;
   picojson::object config;
   bool enable_retry;
 
-  uint32_t api_connect_id;
-  std::unique_ptr<api::colonio::ConnectReply> api_connect_reply;
-
   std::unique_ptr<SeedAccessor> seed_accessor;
-  std::unique_ptr<NodeAccessor> node_accessor;
+  NodeAccessor* node_accessor;
   std::unique_ptr<CoordSystem> coord_system;
-  std::unique_ptr<Routing> routing;
+  Routing* routing;
+  ColonioModule* colonio_module;
 
-  LinkStatus::Type link_status;
+  std::map<Channel::Type, std::unique_ptr<ModuleBase>> modules;
+  std::map<std::string, Channel::Type> module_names;
+  std::set<Module1D*> modules_1d;
+  std::set<Module2D*> modules_2d;
+  std::map<std::string, std::unique_ptr<MapImpl>> if_map;
+  std::map<std::string, std::unique_ptr<Pubsub2DImpl>> if_pubsub2d;
 
-  void api_on_recv_call(const api::Call& call) override;
+  std::unique_ptr<std::pair<std::function<void(Colonio&)>, std::function<void(Colonio&, const Error&)>>> connect_cb;
+  LinkState::Type link_state;
+
+  void logger_on_output(Logger& logger, const std::string& json) override;
 
   void module_do_send_packet(ModuleBase& module, std::unique_ptr<const Packet> packet) override;
   void module_do_relay_packet(ModuleBase& module, const NodeID& dst_nid, std::unique_ptr<const Packet> packet) override;
 
   void node_accessor_on_change_online_links(NodeAccessor& na, const std::set<NodeID>& nids) override;
-  void node_accessor_on_change_status(NodeAccessor& na) override;
+  void node_accessor_on_change_state(NodeAccessor& na) override;
   void node_accessor_on_recv_packet(NodeAccessor& na, const NodeID& nid, std::unique_ptr<const Packet> packet) override;
 
   void routing_do_connect_node(Routing& routing, const NodeID& nid) override;
@@ -80,7 +119,7 @@ class ColonioImpl : public APIBase,
   void routing_on_module_2d_change_nearby_position(
       Routing& routing, const std::map<NodeID, Coordinate>& positions) override;
 
-  void seed_accessor_on_change_status(SeedAccessor& sa) override;
+  void seed_accessor_on_change_state(SeedAccessor& sa) override;
   void seed_accessor_on_recv_config(SeedAccessor& sa, const picojson::object& config) override;
   void seed_accessor_on_recv_packet(SeedAccessor& sa, std::unique_ptr<const Packet> packet) override;
   void seed_accessor_on_recv_require_random(SeedAccessor& sa) override;
@@ -89,12 +128,11 @@ class ColonioImpl : public APIBase,
 
   const NodeID& module_2d_do_get_relay_nid(Module2D& module_2d, const Coordinate& position) override;
 
-  void api_connect(uint32_t id, const api::colonio::Connect& param);
-  void api_disconnect(uint32_t id);
-  void api_set_position(uint32_t id, const api::colonio::SetPosition& param);
   void check_api_connect();
+  void clear_modules();
   void initialize_algorithms();
-  void on_change_accessor_status();
+  void register_module(ModuleBase* module, const std::string* name, bool is_1d, bool is_2d);
   void relay_packet(std::unique_ptr<const Packet> packet, bool is_from_seed);
+  void update_accessor_state();
 };
 }  // namespace colonio
