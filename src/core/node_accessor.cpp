@@ -529,8 +529,6 @@ void NodeAccessor::check_link_timeout() {
       disconnect_link(first_link);
       is_changed_first = true;
 
-      assert(get_link_state() != LinkState::ONLINE);
-
       if (get_link_state() != LinkState::ONLINE) {
         if (first_link_try_count < FIRST_LINK_RETRY_MAX) {
           first_link_try_count++;
