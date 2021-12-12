@@ -59,7 +59,7 @@ void ColonioImpl::connect(const std::string& url, const std::string& token) {
         pipe.push(1);
       },
       [&pipe](Colonio&, const Error& error) {
-        pipe.pushError(error);
+        pipe.push_error(error);
       });
 
   pipe.pop_with_throw();
@@ -116,7 +116,7 @@ void ColonioImpl::disconnect() {
         pipe.push(1);
       },
       [&pipe](Colonio&, const Error& error) {
-        pipe.pushError(error);
+        pipe.push_error(error);
       });
 
   pipe.pop_with_throw();
@@ -186,7 +186,7 @@ std::tuple<double, double> ColonioImpl::set_position(double x, double y) {
         pipe.push(std::make_tuple(rx, ry));
       },
       [&pipe](Colonio&, const Error& error) {
-        pipe.pushError(error);
+        pipe.push_error(error);
       });
 
   return *pipe.pop_with_throw();
@@ -228,7 +228,7 @@ void ColonioImpl::send(const std::string& dst_nid, const Value& value, uint32_t 
         pipe.push(1);
       },
       [&pipe](Colonio&, const Error& error) {
-        pipe.pushError(error);
+        pipe.push_error(error);
       });
 
   pipe.pop_with_throw();

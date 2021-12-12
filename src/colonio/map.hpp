@@ -36,9 +36,19 @@ class Map {
   Map(const Map&) = delete;
   Map& operator=(const Map&) = delete;
 
-  // TODO not implemented
-  virtual void foreach_local_value(std::function<void(Map&, const Value&, const Value&)>&& func) = 0;
-  virtual Value get(const Value& key)                                                            = 0;
+  /**
+   * @brief Execute the specified procedure for all values stored by this node.
+   *
+   * This function is executed synchronously.
+   * Locks the data while the function specified by the argument is being executed.
+   * Therefore, only light processing such as filtering should be performed.
+   * Also, using other colonio functions synchronously within the function may cause a deadlock.
+   *
+   * @param func
+   * @return Error
+   */
+  virtual void foreach_local_value(std::function<void(Map&, const Value&, const Value&, uint32_t)>&& func) = 0;
+  virtual Value get(const Value& key)                                                                      = 0;
   virtual void get(
       const Value& key, std::function<void(Map&, const Value&)>&& on_success,
       std::function<void(Map&, const Error&)>&& on_failure)                   = 0;

@@ -50,7 +50,7 @@ class Pipe {
     cond.notify_all();
   }
 
-  void pushError(const Error& error_) {
+  void push_error(const Error& error_) {
     std::lock_guard<std::mutex> lock(mtx);
     assert(!instance);
     assert(!error);

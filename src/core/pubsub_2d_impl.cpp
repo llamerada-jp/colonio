@@ -34,7 +34,7 @@ void Pubsub2DImpl::publish(const std::string& name, double x, double y, double r
         pipe.push(1);
       },
       [&pipe](const Error& error) {
-        pipe.pushError(error);
+        pipe.push_error(error);
       });
 
   pipe.pop_with_throw();

@@ -20,6 +20,7 @@
 #include "core/convert.hpp"
 #include "core/definition.hpp"
 #include "core/logger.hpp"
+#include "core/pipe.hpp"
 #include "core/random.hpp"
 #include "core/scheduler.hpp"
 #include "core/utils.hpp"
@@ -479,9 +480,63 @@ MapPaxosModule::MapPaxosModule(
 MapPaxosModule::~MapPaxosModule() {
 }
 
-void MapPaxosModule::foreach_local_value(std::function<void(const Value&, const Value&)>&& func) {
-  // not implemented
-  assert(false);
+void MapPaxosModule::foreach_local_value(std::function<void(const Value&, const Value&, uint32_t)>&& func) {
+  if (!scheduler.is_controller_thread()) {
+    Pipe<int> pipe;
+
+    scheduler.add_controller_task(this, [this, &pipe, func] {
+      try {
+        foreach_local_value([func](const Value& key, const Value& value, uint32_t attr) {
+          func(key, value, attr);
+        });
+        pipe.push(0);
+      } catch (const Error& e) {
+        pipe.push_error(e);
+
+      } catch (const std::exception& e) {
+        pipe.push_error(Error(false, ErrorCode::CALLBACK_ERROR, e.what(), __LINE__, __FILE__));
+
+      } catch (...) {
+        pipe.push_error(Error(false, ErrorCode::CALLBACK_ERROR, "undefined", __LINE__, __FILE__));
+      }
+    });
+
+    pipe.pop_with_throw();
+    return;
+  }
+
+  if (!scheduler.is_user_thread()) {
+    Pipe<int> pipe;
+
+    scheduler.add_user_task(this, [this, &pipe, func] {
+      try {
+        for (auto& record : proposer_infos) {
+          const Value& key = record.first;
+          const Value& val = record.second.value;
+          func(key, val, 0);
+        }
+        pipe.push(0);
+
+      } catch (const Error& e) {
+        pipe.push_error(e);
+
+      } catch (const std::exception& e) {
+        pipe.push_error(Error(false, ErrorCode::CALLBACK_ERROR, e.what(), __LINE__, __FILE__));
+
+      } catch (...) {
+        pipe.push_error(Error(false, ErrorCode::CALLBACK_ERROR, "undefined", __LINE__, __FILE__));
+      }
+    });
+
+    pipe.pop_with_throw();
+    return;
+  }
+
+  for (auto& record : proposer_infos) {
+    const Value& key = record.first;
+    const Value& val = record.second.value;
+    func(key, val, 0);
+  }
 }
 
 void MapPaxosModule::get(

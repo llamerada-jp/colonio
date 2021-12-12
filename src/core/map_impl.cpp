@@ -26,9 +26,11 @@ namespace colonio {
 MapImpl::MapImpl(MapBase& base_) : base(base_) {
 }
 
-void MapImpl::foreach_local_value(std::function<void(Map&, const Value&, const Value&)>&& func) {
-  base.foreach_local_value([this, &func](const Value& key, const Value& value) {
-    func(*this, key, value);
+void MapImpl::foreach_local_value(std::function<void(Map&, const Value&, const Value&, uint32_t)>&& func) {
+  Pipe<int> pipe;
+
+  base.foreach_local_value([this, &func](const Value& key, const Value& value, uint32_t attr) {
+    func(*this, key, value, attr);
   });
 }
 
@@ -41,7 +43,7 @@ Value MapImpl::get(const Value& key) {
         pipe.push(value);
       },
       [&pipe](const Error& error) {
-        pipe.pushError(error);
+        pipe.push_error(error);
       });
 
   return *pipe.pop_with_throw();
@@ -69,7 +71,7 @@ void MapImpl::set(const Value& key, const Value& value, uint32_t opt) {
         pipe.push(1);
       },
       [&pipe](const Error& error) {
-        pipe.pushError(error);
+        pipe.push_error(error);
       });
 
   pipe.pop_with_throw();

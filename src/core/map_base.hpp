@@ -25,7 +25,7 @@ class Value;
 
 class MapBase : public Module1D {
  public:
-  virtual void foreach_local_value(std::function<void(const Value&, const Value&)>&& func) = 0;
+  virtual void foreach_local_value(std::function<void(const Value&, const Value&, uint32_t)>&& func) = 0;
   virtual void get(
       const Value& key, std::function<void(const Value&)>&& on_success,
       std::function<void(const Error&)>&& on_failure) = 0;

@@ -35,7 +35,7 @@ class MapPaxosModule : public MapBase {
   MapPaxosModule(const MapPaxosModule&) = delete;
   MapPaxosModule& operator=(const MapPaxosModule&) = delete;
 
-  void foreach_local_value(std::function<void(const Value&, const Value&)>&& func) override;
+  void foreach_local_value(std::function<void(const Value&, const Value&, uint32_t)>&& func) override;
   void get(
       const Value& key, std::function<void(const Value&)>&& on_success,
       std::function<void(const Error&)>&& on_failure) override;
