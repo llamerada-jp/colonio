@@ -24,6 +24,9 @@ type Colonio interface {
 	AccessPubsub2D(name string) Pubsub2D
 	GetLocalNid() string
 	SetPosition(x, y float64) (float64, float64, error)
+	Send(dst string, val interface{}, opt uint32) error
+	On(cb func(Value))
+	Off()
 	Quit() error
 }
 
@@ -56,6 +59,7 @@ const (
 
 // Map is an interface to use key-value-store.
 type Map interface {
+	ForeachLocalValue(cb func(key, value Value, attr uint32)) error
 	Get(key interface{}) (Value, error)
 	Set(key, val interface{}, opt uint32) error
 }
