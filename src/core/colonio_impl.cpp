@@ -610,8 +610,8 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
 
   } else if (!dst_nid.is_special() || dst_nid == NodeID::NEXT) {
 #ifndef NDEBUG
-    const NodeID& src_nid = packet->src_nid;
-    const Packet copy     = *packet;
+    const NodeID src_nid = packet->src_nid;
+    const Packet copy    = *packet;
 #endif
     if (node_accessor->relay_packet(dst_nid, std::move(packet))) {
 #ifndef NDEBUG

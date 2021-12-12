@@ -61,7 +61,6 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
   LinkState::Type get_link_state() const;
   void disconnect_all(std::function<void()> on_after);
   void disconnect_link(const NodeID& nid);
-  void disconnect_link(WebrtcLink* link);
   void initialize(const picojson::object& config);
   bool relay_packet(const NodeID& dst, std::unique_ptr<const Packet> packet);
 
@@ -143,6 +142,7 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
   void cleanup_closing();
   void create_first_link();
   WebrtcLink* create_link(bool is_create_dc);
+  void disconnect_link(WebrtcLink* link);
   void recv_offer(std::unique_ptr<const Packet> packet);
   void recv_ice(std::unique_ptr<const Packet> packet);
   void send_all_packet();
