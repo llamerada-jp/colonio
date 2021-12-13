@@ -183,22 +183,34 @@ class Colonio {
         popObject(id).onFailure(convertError(errorPtr));
       }, "vii");
 
+      let sendOnSuccess = Module.addFunction((id) => {
+        popObject(id).onSuccess();
+      }, "vi");
+
+      let sendOnFailure = Module.addFunction((id, errorPtr) => {
+        popObject(id).onFailure(convertError(errorPtr));
+      }, "vii");
+
+      let onOn = Module.addFunction((id, valuePtr) => {
+        getObject(id)(new ColonioValue(valuePtr));
+      }, "vii");
+
       this._colonioPtr = ccall("js_init", "number",
-        ["number", "number", "number"],
-        [logWrapper, setPositionOnSuccess, setPositionOnFailure]);
+        ["number", "number", "number", "number", "number", "number"],
+        [logWrapper, setPositionOnSuccess, setPositionOnFailure, sendOnSuccess, sendOnFailure, onOn]);
     });
   }
 
   connect(url, token) {
     const promise = new Promise((resolve, reject) => {
       addFuncAfterLoad(() => {
-        var onSuccess = Module.addFunction((colonioPtr) => {
+        var onSuccess = Module.addFunction((_) => {
           resolve();
           removeFunction(onSuccess);
           removeFunction(onFailure);
         }, "vi");
 
-        var onFailure = Module.addFunction((colonioPtr, errorPtr) => {
+        var onFailure = Module.addFunction((_, errorPtr) => {
           reject(convertError(errorPtr));
           removeFunction(onSuccess);
           removeFunction(onFailure);
@@ -288,21 +300,40 @@ class Colonio {
     return promise;
   }
 
-  on(type, func) {
-    addFuncAfterLoad(() => {
-      const TYPES = [];
-      assert(TYPES.indexOf(type) >= 0);
+  send(dst, val, opt) {
+    let promise = new Promise((resolve, reject) => {
+      let [dstPtr, dstSiz] = allocPtrString(dst);
+      const value = convertValue(val);
 
-      /*
-      switch (type) {
-        case "log":
-          ccall("js_enable_output_log", "null", ["number"], [this._colonioPtr]);
-          break;
-      }
-  
-      setEventFunc(this._colonioPtr, "colonio", type, func);
-      //*/
+      let id = pushObject({
+        onSuccess: resolve,
+        onFailure: reject,
+      });
+
+      ccall("js_send", "null",
+        ["number", "number", "number", "number", "number", "number"],
+        [this._colonioPtr, dstPtr, dstSiz, value._valuePtr, opt, id]);
+
+      freePtr(dstPtr);
+      value.release();
     });
+
+    return promise;
+  }
+
+  on(cb) {
+    this.onRaw((val) => {
+      cb(val.getJsValue());
+    });
+  }
+
+  onRaw(cb) {
+    let id = pushObject(cb);
+    ccall("js_on", "null", ["number", "number"], [this._colonioPtr, id]);
+  }
+
+  off() {
+    ccall("js_off", "null", ["number"], [this._colonioPtr]);
   }
 }
 
@@ -467,6 +498,10 @@ function convertValue(value) {
 }
 
 function initializeMap() {
+  let foreachLocalValueCb = Module.addFunction((id, keyPtr, valuePtr, attr) => {
+    getObject(id)(new ColonioValue(keyPtr), new ColonioValue(valuePtr), attr);
+  }, "viiii");
+
   let getValueOnSuccess = Module.addFunction((id, valuePtr) => {
     popObject(id).onSuccess(new ColonioValue(valuePtr));
   }, "vii");
@@ -484,8 +519,8 @@ function initializeMap() {
   }, "vii");
 
   ccall("js_map_init", "null",
-    ["number", "number", "number", "number"],
-    [getValueOnSuccess, getValueOnFailure, setValueOnSuccess, setValueOnFailure]);
+    ["number", "number", "number", "number", "number"],
+    [foreachLocalValueCb, getValueOnSuccess, getValueOnFailure, setValueOnSuccess, setValueOnFailure]);
 }
 
 class ColonioMap {
@@ -494,6 +529,22 @@ class ColonioMap {
 
   constructor(mapPtr) {
     this._mapPtr = mapPtr;
+  }
+
+  foreachLocalValue(cb) {
+    this.foreachLocalValueRaw((key, value, attr) => {
+      cb(key.getJsValue(), value.getJsValue(), attr);
+    });
+  }
+
+  foreachLocalValueRaw(cb) {
+    let id = pushObject(cb);
+
+    let errorPtr = ccall("js_map_foreach_local_value", "null", ["number", "number"], [this._mapPtr, id]);
+
+    popObject(id);
+
+    return convertError(errorPtr);
   }
 
   getValue(key) {

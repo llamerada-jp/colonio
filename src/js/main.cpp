@@ -15,6 +15,7 @@
  */
 #include <emscripten.h>
 
+#include <functional>
 #include <map>
 #include <string>
 
@@ -30,8 +31,9 @@ EMSCRIPTEN_KEEPALIVE unsigned int js_error_get_code(COLONIO_PTR_T err);
 EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_error_get_message(COLONIO_PTR_T err);
 EMSCRIPTEN_KEEPALIVE int js_error_get_message_length(COLONIO_PTR_T err);
 
-EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T
-js_init(COLONIO_PTR_T logger_ptr, COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_position_on_failure_);
+EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_init(
+    COLONIO_PTR_T logger_ptr, COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_position_on_failure_,
+    COLONIO_PTR_T send_on_success_, COLONIO_PTR_T send_on_failure_, COLONIO_PTR_T on_on_);
 EMSCRIPTEN_KEEPALIVE void js_connect(
     COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T url, unsigned int url_siz, COLONIO_PTR_T token, unsigned int token_siz,
     COLONIO_PTR_T on_success, COLONIO_PTR_T on_failure);
@@ -41,7 +43,11 @@ js_access_pubsub_2d(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name, unsigned int 
 EMSCRIPTEN_KEEPALIVE void js_disconnect(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T on_success, COLONIO_PTR_T on_failure);
 EMSCRIPTEN_KEEPALIVE void js_get_local_nid(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T nid_ptr);
 EMSCRIPTEN_KEEPALIVE void js_set_position(COLONIO_PTR_T colonio_ptr, double x, double y, COLONIO_ID_T id);
-EMSCRIPTEN_KEEPALIVE unsigned int js_invoke(COLONIO_PTR_T colonio_ptr);
+EMSCRIPTEN_KEEPALIVE void js_send(
+    COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T dst, unsigned int dst_siz, COLONIO_PTR_T val_ptr, uint32_t opt,
+    COLONIO_ID_T id);
+EMSCRIPTEN_KEEPALIVE void js_on(COLONIO_PTR_T colonio_ptr, COLONIO_ID_T id);
+EMSCRIPTEN_KEEPALIVE void js_off(COLONIO_PTR_T colonio_ptr);
 EMSCRIPTEN_KEEPALIVE void js_quit(COLONIO_PTR_T colonio_ptr);
 
 EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_value_init();
@@ -58,8 +64,9 @@ EMSCRIPTEN_KEEPALIVE void js_value_set_string(COLONIO_PTR_T value_ptr, COLONIO_P
 EMSCRIPTEN_KEEPALIVE void js_value_free(COLONIO_PTR_T value_ptr);
 
 EMSCRIPTEN_KEEPALIVE void js_map_init(
-    COLONIO_PTR_T get_on_success, COLONIO_PTR_T get_on_failure, COLONIO_PTR_T set_on_success,
-    COLONIO_PTR_T set_on_failure);
+    COLONIO_PTR_T foreach_local_value_cb, COLONIO_PTR_T get_on_success, COLONIO_PTR_T get_on_failure,
+    COLONIO_PTR_T set_on_success, COLONIO_PTR_T set_on_failure);
+EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_map_foreach_local_value(COLONIO_PTR_T map_ptr, COLONIO_ID_T id);
 EMSCRIPTEN_KEEPALIVE void js_map_get_value(COLONIO_PTR_T map_ptr, COLONIO_PTR_T key_ptr, COLONIO_ID_T id);
 EMSCRIPTEN_KEEPALIVE void js_map_set_value(
     COLONIO_PTR_T map_ptr, COLONIO_PTR_T key_ptr, COLONIO_PTR_T val_ptr, uint32_t opt, COLONIO_ID_T id);
@@ -83,6 +90,9 @@ static std::map<COLONIO_PTR_T, Cache> caches;
 
 std::function<void(COLONIO_ID_T, double, double)> set_position_on_success;
 std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> set_position_on_failure;
+std::function<void(COLONIO_ID_T)> send_on_success;
+std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> send_on_failure;
+std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> on_on;
 
 unsigned int js_error_get_code(COLONIO_PTR_T err) {
   colonio_error_t* e = reinterpret_cast<colonio_error_t*>(err);
@@ -100,7 +110,8 @@ int js_error_get_message_length(COLONIO_PTR_T err) {
 }
 
 COLONIO_PTR_T js_init(
-    COLONIO_PTR_T logger_ptr, COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_position_on_failure_) {
+    COLONIO_PTR_T logger_ptr, COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_position_on_failure_,
+    COLONIO_PTR_T send_on_success_, COLONIO_PTR_T send_on_failure_, COLONIO_PTR_T on_on_) {
   colonio_t* colonio = new colonio_t();
 
   // TODO detect an error
@@ -108,6 +119,9 @@ COLONIO_PTR_T js_init(
 
   set_position_on_success = reinterpret_cast<void (*)(COLONIO_ID_T, double, double)>(set_position_on_success_);
   set_position_on_failure = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(set_position_on_failure_);
+  send_on_success         = reinterpret_cast<void (*)(COLONIO_ID_T)>(send_on_success_);
+  send_on_failure         = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(send_on_failure_);
+  on_on                   = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(on_on_);
 
   return reinterpret_cast<COLONIO_PTR_T>(colonio);
 }
@@ -163,14 +177,43 @@ void wrap_set_position_on_success(colonio_t*, void* ptr, double newX, double new
   set_position_on_success(reinterpret_cast<COLONIO_ID_T>(ptr), newX, newY);
 }
 
-void wrap_set_position_on_failure(colonio_t*, void* ptr, const colonio_error_t* errorPtr) {
-  set_position_on_failure(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(errorPtr));
+void wrap_set_position_on_failure(colonio_t*, void* ptr, const colonio_error_t* error_ptr) {
+  set_position_on_failure(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(error_ptr));
 }
 
 void js_set_position(COLONIO_PTR_T colonio_ptr, double x, double y, COLONIO_ID_T id) {
   colonio_set_position_async(
       reinterpret_cast<colonio_t*>(colonio_ptr), x, y, reinterpret_cast<void*>(id), wrap_set_position_on_success,
       wrap_set_position_on_failure);
+}
+
+void wrap_send_on_success(colonio_t*, void* ptr) {
+  send_on_success(reinterpret_cast<COLONIO_ID_T>(ptr));
+}
+
+void wrap_send_on_failure(colonio_t*, void* ptr, const colonio_error_t* error_ptr) {
+  send_on_failure(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(error_ptr));
+}
+
+void wrap_on_on(colonio_t*, void* ptr, const colonio_value_t* value) {
+  on_on(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(value));
+}
+
+void js_send(
+    COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T dst_ptr, unsigned int dst_siz, COLONIO_PTR_T val_ptr, uint32_t opt,
+    COLONIO_ID_T id) {
+  colonio_send_async(
+      reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<char*>(dst_ptr), dst_siz,
+      reinterpret_cast<colonio_value_t*>(val_ptr), opt, reinterpret_cast<void*>(id), wrap_send_on_success,
+      wrap_send_on_failure);
+}
+
+void js_on(COLONIO_PTR_T colonio_ptr, COLONIO_ID_T id) {
+  colonio_on(reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<void*>(id), wrap_on_on);
+}
+
+void js_off(COLONIO_PTR_T colonio_ptr) {
+  colonio_off(reinterpret_cast<colonio_t*>(colonio_ptr));
 }
 
 void js_quit(COLONIO_PTR_T colonio_ptr) {
@@ -241,26 +284,42 @@ void js_value_free(COLONIO_PTR_T value_ptr) {
   delete value;
 }
 
+std::function<void(COLONIO_ID_T, COLONIO_PTR_T, COLONIO_PTR_T, int)> map_foreach_local_value_cb;
 std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> map_get_on_success;
 std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> map_get_on_failure;
 std::function<void(COLONIO_ID_T)> map_set_on_success;
 std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> map_set_on_failure;
 
 void js_map_init(
-    COLONIO_PTR_T get_on_success, COLONIO_PTR_T get_on_failure, COLONIO_PTR_T set_on_success,
-    COLONIO_PTR_T set_on_failure) {
+    COLONIO_PTR_T foreach_local_value_cb, COLONIO_PTR_T get_on_success, COLONIO_PTR_T get_on_failure,
+    COLONIO_PTR_T set_on_success, COLONIO_PTR_T set_on_failure) {
+  map_foreach_local_value_cb =
+      reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T, COLONIO_PTR_T, int)>(foreach_local_value_cb);
   map_get_on_success = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(get_on_success);
   map_get_on_failure = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(get_on_failure);
   map_set_on_success = reinterpret_cast<void (*)(COLONIO_ID_T)>(set_on_success);
   map_set_on_failure = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(set_on_failure);
 }
 
-void wrap_map_get_on_success(colonio_map_t* map, void* ptr, const colonio_value_t* valuePtr) {
-  map_get_on_success(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(valuePtr));
+void wrap_map_foreach_local_value(
+    colonio_map_t* map, void* ptr, const colonio_value_t* key_ptr, const colonio_value_t* val_ptr, uint32_t attr) {
+  map_foreach_local_value_cb(
+      reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(key_ptr),
+      reinterpret_cast<COLONIO_PTR_T>(val_ptr), attr);
 }
 
-void wrap_map_get_on_failure(colonio_map_t* map, void* ptr, const colonio_error_t* errorPtr) {
-  map_get_on_failure(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(errorPtr));
+COLONIO_PTR_T js_map_foreach_local_value(COLONIO_PTR_T map_ptr, COLONIO_ID_T id) {
+  colonio_error_t* ret = colonio_map_foreach_local_value(
+      reinterpret_cast<colonio_map_t*>(map_ptr), reinterpret_cast<void*>(id), wrap_map_foreach_local_value);
+  return reinterpret_cast<COLONIO_PTR_T>(ret);
+}
+
+void wrap_map_get_on_success(colonio_map_t* map, void* ptr, const colonio_value_t* value_ptr) {
+  map_get_on_success(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(value_ptr));
+}
+
+void wrap_map_get_on_failure(colonio_map_t* map, void* ptr, const colonio_error_t* error_ptr) {
+  map_get_on_failure(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(error_ptr));
 }
 
 void js_map_get_value(COLONIO_PTR_T map_ptr, COLONIO_PTR_T key_ptr, COLONIO_ID_T id) {
@@ -274,8 +333,8 @@ void wrap_map_set_success(colonio_map_t* map, void* ptr) {
   map_set_on_success(reinterpret_cast<COLONIO_ID_T>(ptr));
 }
 
-void wrap_map_set_failure(colonio_map_t* map, void* ptr, const colonio_error_t* errorPtr) {
-  map_set_on_failure(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(errorPtr));
+void wrap_map_set_failure(colonio_map_t* map, void* ptr, const colonio_error_t* error_ptr) {
+  map_set_on_failure(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(error_ptr));
 }
 
 void js_map_set_value(
@@ -301,8 +360,8 @@ void wrap_ps2_publish_on_success(colonio_pubsub_2d_t* pubsub_2d, void* ptr) {
   ps2_publish_on_success(reinterpret_cast<COLONIO_ID_T>(ptr));
 }
 
-void wrap_ps2_publish_on_failure(colonio_pubsub_2d_t* pubsub_2d, void* ptr, const colonio_error_t* errorPtr) {
-  ps2_publish_on_failure(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(errorPtr));
+void wrap_ps2_publish_on_failure(colonio_pubsub_2d_t* pubsub_2d, void* ptr, const colonio_error_t* error_ptr) {
+  ps2_publish_on_failure(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(error_ptr));
 }
 
 void js_pubsub_2d_publish(
