@@ -150,14 +150,16 @@ class Colonio {
   // ATTENTION: Use same value with another languages.
   static get ERROR_CODE_UNDEFINED() { return 0; }
   static get ERROR_CODE_SYSTEM_ERROR() { return 1; }
-  static get ERROR_CODE_OFFLINE() { return 2; }
-  static get ERROR_CODE_INCORRECT_DATA_FORMAT() { return 3; }
-  static get ERROR_CODE_CONFLICT_WITH_SETTING() { return 4; }
-  static get ERROR_CODE_NOT_EXIST_KEY() { return 5; }
-  static get ERROR_CODE_EXIST_KEY() { return 6; }
-  static get ERROR_CODE_CHANGED_PROPOSER() { return 7; }
-  static get ERROR_CODE_COLLISION_LATE() { return 8; }
-  static get ERROR_CODE_NO_ONE_RECV() { return 9; }
+  static get ERROR_CODE_CONNECTION_FAILD() { return 2; }
+  static get ERROR_CODE_OFFLINE() { return 3; }
+  static get ERROR_CODE_INCORRECT_DATA_FORMAT() { return 4; }
+  static get ERROR_CODE_CONFLICT_WITH_SETTING() { return 5; }
+  static get ERROR_CODE_NOT_EXIST_KEY() { return 6; }
+  static get ERROR_CODE_EXIST_KEY() { return 7; }
+  static get ERROR_CODE_CHANGED_PROPOSER() { return 8; }
+  static get ERROR_CODE_COLLISION_LATE() { return 9; }
+  static get ERROR_CODE_NO_ONE_RECV() { return 10; }
+  static get ERROR_CODE_CALLBACK_ERROR() { return 11; }
 
   static get NID_THIS() { return "."; }
 

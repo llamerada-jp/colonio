@@ -29,6 +29,7 @@ var (
 	ErrChangedProposer     = newErr(8, "")  // Developing
 	ErrCollisionLate       = newErr(9, "")  // Developing
 	ErrNoOneRecv           = newErr(10, "") // ErrNoOneRecv meaning there was no node receiving the message.
+	ErrCallbackError       = newErr(11, "") // ErrCallbackError meaning that an error occurred while executing the callback function.
 )
 
 type errImpl struct {
