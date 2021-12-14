@@ -30,6 +30,7 @@ import (
 type colonioImpl struct {
 	jsModule js.Value
 
+	onKey       uint32
 	childrenMtx sync.Mutex
 	maps        map[string]*mapImpl
 	pubsub2ds   map[string]*pubsub2dImpl
@@ -94,6 +95,9 @@ func assignEventReceiver(f func(js.Value)) (key uint32) {
 
 	for {
 		key = rand.Uint32()
+		if key == 0 {
+			continue
+		}
 		if _, ok := eventReceivers[key]; !ok {
 			eventReceivers[key] = f
 			return
@@ -255,6 +259,38 @@ func (c *colonioImpl) SetPosition(x, y float64) (float64, float64, error) {
 	return newX, newY, err
 }
 
+func (c *colonioImpl) Send(dst string, val interface{}, opt uint32) error {
+	valImpl := &valueImpl{}
+	if err := valImpl.Set(val); err != nil {
+		return err
+	}
+
+	key, respChannel := assignRespChannel()
+	defer deleteRespChannel(key)
+
+	c.jsModule.Call("send", key, dst, valImpl.valueType, js.ValueOf(valImpl.value), opt)
+
+	return checkJsError(<-respChannel)
+}
+
+func (c *colonioImpl) On(cb func(Value)) {
+	deleteEventReceiver(c.onKey)
+	c.onKey = assignEventReceiver(func(v js.Value) {
+		cb(&valueImpl{
+			valueType: int32(v.Get("type").Int()),
+			value:     v.Get("value"),
+		})
+	})
+
+	c.jsModule.Call("on", c.onKey)
+}
+
+func (c *colonioImpl) Off() {
+	deleteEventReceiver(c.onKey)
+	c.onKey = 0
+	c.jsModule.Call("off")
+}
+
 // Release some resources used by colonio object.
 func (c *colonioImpl) Quit() error {
 	// release binded events for pubsub2d
@@ -355,6 +391,24 @@ func (v *valueImpl) GetString() (string, error) {
 		return "", fmt.Errorf("type mismatch")
 	}
 	return v.value.String(), nil
+}
+
+func (m *mapImpl) ForeachLocalValue(cb func(key, value Value, attr uint32)) error {
+	key := assignEventReceiver(func(v js.Value) {
+		cb(
+			&valueImpl{
+				valueType: int32(v.Get("keyType").Int()),
+				value:     v.Get("keyValue"),
+			},
+			&valueImpl{
+				valueType: int32(v.Get("valType").Int()),
+				value:     v.Get("valValue"),
+			},
+			uint32(v.Get("attr").Int()))
+	})
+	defer deleteEventReceiver(key)
+
+	return checkJsError(m.jsModule.Call("foreachLocalValue", key))
 }
 
 func (m *mapImpl) Get(key interface{}) (Value, error) {
