@@ -24,6 +24,45 @@
 
 namespace py = pybind11;
 
+static colonio::Value convertValue(const py::object& src) {
+  if (py::isinstance<py::bool_>(src)) {
+    return colonio::Value(src.cast<bool>());
+
+  } else if (py::isinstance<py::int_>(src)) {
+    return colonio::Value(static_cast<int64_t>(src.cast<int>()));
+
+  } else if (py::isinstance<py::float_>(src)) {
+    return colonio::Value(src.cast<double>());
+
+  } else if (py::isinstance<py::str>(src)) {
+    return colonio::Value(src.cast<std::string>());
+
+  } else {
+    assert(false);
+    return colonio::Value();
+  }
+}
+
+static std::unique_ptr<py::object> convertValue(const colonio::Value& src) {
+  switch (src.get_type()) {
+    case colonio::Value::BOOL_T:
+      return std::unique_ptr<py::object>(new py::bool_(src.get<bool>()));
+
+    case colonio::Value::INT_T:
+      return std::unique_ptr<py::object>(new py::int_(src.get<int64_t>()));
+
+    case colonio::Value::DOUBLE_T:
+      return std::unique_ptr<py::object>(new py::float_(src.get<double>()));
+
+    case colonio::Value::STRING_T:
+      return std::unique_ptr<py::object>(new py::str(src.get<std::string>()));
+
+    default:
+      assert(src.get_type() == colonio::Value::NULL_T);
+      return std::unique_ptr<py::object>(new py::none());
+  }
+}
+
 class PythonMap {
  public:
   colonio::Map& map;
@@ -31,54 +70,24 @@ class PythonMap {
   explicit PythonMap(colonio::Map& map_) : map(map_) {
   }
 
-  static colonio::Value convertValue(const py::object& src) {
-    if (py::isinstance<py::bool_>(src)) {
-      return colonio::Value(src.cast<bool>());
-
-    } else if (py::isinstance<py::int_>(src)) {
-      return colonio::Value(static_cast<int64_t>(src.cast<int>()));
-
-    } else if (py::isinstance<py::float_>(src)) {
-      return colonio::Value(src.cast<double>());
-
-    } else if (py::isinstance<py::str>(src)) {
-      return colonio::Value(src.cast<std::string>());
-
-    } else {
-      assert(false);
-      return colonio::Value();
-    }
-  }
-
-  static std::unique_ptr<py::object> convertValue(const colonio::Value& src) {
-    switch (src.get_type()) {
-      case colonio::Value::BOOL_T:
-        return std::unique_ptr<py::object>(new py::bool_(src.get<bool>()));
-
-      case colonio::Value::INT_T:
-        return std::unique_ptr<py::object>(new py::int_(src.get<int64_t>()));
-
-      case colonio::Value::DOUBLE_T:
-        return std::unique_ptr<py::object>(new py::float_(src.get<double>()));
-
-      case colonio::Value::STRING_T:
-        return std::unique_ptr<py::object>(new py::str(src.get<std::string>()));
-
-      default:
-        assert(src.get_type() == colonio::Value::NULL_T);
-        return std::unique_ptr<py::object>(new py::none());
-    }
+  void foreach_local_value(const std::function<void(PythonMap&, py::object&, py::object&, unsigned int)> func) {
+    map.foreach_local_value(
+        [this, func](colonio::Map&, const colonio::Value& cKey, const colonio::Value& cValue, uint32_t attr) {
+          std::unique_ptr<py::object> pKey   = std::move(convertValue(cKey));
+          std::unique_ptr<py::object> pValue = std::move(convertValue(cValue));
+          func(*this, *pKey, *pValue, attr);
+        });
   }
 
   void get(
-      const py::object key, const std::function<void(PythonMap&, py::object&)> on_success,
+      const py::object pKey, const std::function<void(PythonMap&, py::object&)> on_success,
       const std::function<void(PythonMap&, colonio::Error)> on_failure) {
-    colonio::Value key_value = convertValue(key);
+    colonio::Value cKey = convertValue(pKey);
     map.get(
-        key_value,
-        [this, on_success](colonio::Map&, const colonio::Value& value) {
-          std::unique_ptr<py::object> val = std::move(convertValue(value));
-          on_success(*this, *val);
+        cKey,
+        [this, on_success](colonio::Map&, const colonio::Value& cValue) {
+          std::unique_ptr<py::object> pValue = std::move(convertValue(cValue));
+          on_success(*this, *pValue);
         },
         [this, on_failure](colonio::Map&, const colonio::Error& err) {
           on_failure(*this, err);
@@ -86,12 +95,13 @@ class PythonMap {
   }
 
   void set(
-      const py::object key, const py::object val, unsigned int opt, const std::function<void(PythonMap&)> on_success,
+      const py::object pKey, const py::object pValue, unsigned int opt,
+      const std::function<void(PythonMap&)> on_success,
       const std::function<void(PythonMap&, colonio::Error)> on_failure) {
-    colonio::Value key_value = convertValue(key);
-    colonio::Value val_value = convertValue(val);
+    colonio::Value cKey   = convertValue(pKey);
+    colonio::Value cValue = convertValue(pValue);
     map.set(
-        key_value, val_value, static_cast<uint32_t>(opt),
+        cKey, cValue, static_cast<uint32_t>(opt),
         [this, on_success](colonio::Map&) {
           on_success(*this);
         },
@@ -147,6 +157,32 @@ class PythonColonio {
     return c->instance->get_local_nid();
   }
 
+  void send(
+      const std::string& dst, const py::object pValue, unsigned int opt,
+      const std::function<void(PythonColonio&)> on_success,
+      const std::function<void(PythonColonio&, colonio::Error)> on_failure) {
+    colonio::Value cValue = convertValue(pValue);
+    c->instance->send(
+        dst, cValue, opt,
+        [this, on_success](colonio::Colonio&) {
+          on_success(*this);
+        },
+        [this, on_failure](colonio::Colonio&, const colonio::Error& err) {
+          on_failure(*this, err);
+        });
+  }
+
+  void on(const std::function<void(PythonColonio&, py::object&)> receiver) {
+    c->instance->on([this, receiver](colonio::Colonio&, const colonio::Value& cValue) {
+      std::unique_ptr<py::object> pValue = std::move(convertValue(cValue));
+      receiver(*this, *pValue);
+    });
+  }
+
+  void off() {
+    c->instance->off();
+  }
+
  private:
   struct C {
     std::unique_ptr<colonio::Colonio> instance;
@@ -172,6 +208,7 @@ PYBIND11_MODULE(colonio, m) {
       .value("CHANGED_PROPOSER", colonio::ErrorCode::CHANGED_PROPOSER)
       .value("COLLISION_LATE", colonio::ErrorCode::COLLISION_LATE)
       .value("NO_ONE_RECV", colonio::ErrorCode::NO_ONE_RECV)
+      .value("CALLBACK_ERROR", colonio::ErrorCode::CALLBACK_ERROR)
       .export_values();
 
   // Error
@@ -188,6 +225,7 @@ PYBIND11_MODULE(colonio, m) {
   Map.def_readonly_static("ERROR_WITHOUT_EXIST", &colonio::Map::ERROR_WITHOUT_EXIST)
       .def_readonly_static("ERROR_WITH_EXIST", &colonio::Map::ERROR_WITH_EXIST)
       .def_readonly_static("TRY_LOCK", &colonio::Map::TRY_LOCK)
+      .def("foreachLocalValue", &PythonMap::foreach_local_value)
       .def("get", &PythonMap::get)
       .def("set", &PythonMap::set);
 
@@ -199,5 +237,8 @@ PYBIND11_MODULE(colonio, m) {
       .def("accessMap", &PythonColonio::access_map)
       .def("connect", &PythonColonio::connect)
       .def("disconnect", &PythonColonio::disconnect)
-      .def("getLocalNid", &PythonColonio::get_local_nid);
+      .def("getLocalNid", &PythonColonio::get_local_nid)
+      .def("send", &PythonColonio::send)
+      .def("on", &PythonColonio::on)
+      .def("off", &PythonColonio::off);
 }
