@@ -91,6 +91,7 @@ typedef enum COLONIO_ERROR_CODE {
   COLONIO_ERROR_CODE_CHANGED_PROPOSER,
   COLONIO_ERROR_CODE_COLLISION_LATE,
   COLONIO_ERROR_CODE_NO_ONE_RECV,
+  COLONIO_ERROR_CODE_CALLBACK_ERROR,
 } COLONIO_ERROR_CODE;
 
 #define COLONIO_COLONIO_EXPLICIT_EVENT_THREAD 0x1
@@ -160,6 +161,14 @@ COLONIO_PUBLIC colonio_error_t* colonio_set_position(colonio_t* colonio, double*
 COLONIO_PUBLIC void colonio_set_position_async(
     colonio_t* colonio, double x, double y, void* ptr, void (*on_success)(colonio_t*, void*, double, double),
     void (*on_failure)(colonio_t*, void*, const colonio_error_t*));
+COLONIO_PUBLIC colonio_error_t* colonio_send(
+    colonio_t* colonio, const char* dst, unsigned int dst_siz, const colonio_value_t* value, uint32_t opt);
+COLONIO_PUBLIC void colonio_send_async(
+    colonio_t* colonio, const char* dst, unsigned int dst_siz, const colonio_value_t* value, uint32_t opt, void* ptr,
+    void (*on_success)(colonio_t*, void*), void (*on_failure)(colonio_t*, void*, const colonio_error_t*));
+COLONIO_PUBLIC void colonio_on(
+    colonio_t* colonio, void* ptr, void (*receiver)(colonio_t*, void*, const colonio_value_t*));
+COLONIO_PUBLIC void colonio_off(colonio_t* colonio);
 COLONIO_PUBLIC void colonio_start_on_event_thread(colonio_t* colonio);
 COLONIO_PUBLIC void colonio_start_on_controller_thread(colonio_t* colonio);
 COLONIO_PUBLIC colonio_error_t* colonio_quit(colonio_t* colonio);
@@ -177,6 +186,9 @@ COLONIO_PUBLIC void colonio_value_set_double(colonio_value_t* value, double v);
 COLONIO_PUBLIC void colonio_value_set_string(colonio_value_t* value, const char* v, unsigned int siz);
 COLONIO_PUBLIC void colonio_value_free(colonio_value_t* value);
 
+COLONIO_PUBLIC colonio_error_t* colonio_map_foreach_local_value(
+    colonio_map_t* map, void* ptr,
+    void (*func)(colonio_map_t*, void*, const colonio_value_t*, const colonio_value_t*, uint32_t));
 COLONIO_PUBLIC colonio_error_t* colonio_map_get(colonio_map_t* map, const colonio_value_t* key, colonio_value_t* dst);
 COLONIO_PUBLIC void colonio_map_get_async(
     colonio_map_t* map, const colonio_value_t* key, void* ptr,

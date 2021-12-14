@@ -23,6 +23,7 @@ import (
 	"path"
 	"runtime"
 	"time"
+	"unicode/utf8"
 
 	"github.com/llamerada-jp/colonio/go/colonio"
 
@@ -61,31 +62,55 @@ func E2e(generator func(colonio.Logger) (colonio.Colonio, error)) {
 			return node2.Connect("ws://localhost:8080/test", "")
 		}).ShouldNot(HaveOccurred())
 
-		By("node1 setup 2D info")
-		node1.SetPosition(1.0, 0.0)
-		ps1 := node1.AccessPubsub2D("ps")
+		By("checking nid")
+		Expect(utf8.RuneCountInString(node1.GetLocalNid())).Should(Equal(32))
 
-		By("node2 setup 2D info")
-		node2.SetPosition(2.0, 0.0)
-		ps2 := node2.AccessPubsub2D("ps")
-		// set 1 to avoid dead-lock caused by ps1.Publish waits finish of ps2.On.
-		recv := make(chan string, 1)
-		ps2.On("hoge", func(v colonio.Value) {
+		recvSend := make(chan string, 1)
+		node1.On(func(v colonio.Value) {
 			str, err := v.GetString()
 			Expect(err).ShouldNot(HaveOccurred())
-			recv <- str
+			recvSend <- str
 		})
-
 		By("sending message and waiting it")
 		Eventually(func() error {
 			select {
-			case v, ok := <-recv:
+			case v, ok := <-recvSend:
 				Expect(ok).Should(BeTrue())
-				Expect(v).Should(Equal("test"))
+				Expect(v).Should(Equal("test send"))
 				return nil
 
 			default:
-				err := ps1.Publish("hoge", 2.0, 0.0, 1.1, "test", 0)
+				err := node2.Send(node1.GetLocalNid(), "test send", 0)
+				Expect(err).ShouldNot(HaveOccurred())
+				return fmt.Errorf("the message was not received")
+			}
+		}, time.Second*64, time.Second*1).Should(Succeed())
+
+		By("node1 set 2D position")
+		node1.SetPosition(1.0, 0.0)
+		ps1 := node1.AccessPubsub2D("ps")
+
+		By("node2 set 2D position")
+		node2.SetPosition(2.0, 0.0)
+		ps2 := node2.AccessPubsub2D("ps")
+		// set 1 to avoid dead-lock caused by ps1.Publish waits finish of ps2.On.
+		recvPS2 := make(chan string, 1)
+		ps2.On("hoge", func(v colonio.Value) {
+			str, err := v.GetString()
+			Expect(err).ShouldNot(HaveOccurred())
+			recvPS2 <- str
+		})
+
+		By("publishing message and waiting it")
+		Eventually(func() error {
+			select {
+			case v, ok := <-recvPS2:
+				Expect(ok).Should(BeTrue())
+				Expect(v).Should(Equal("test publish"))
+				return nil
+
+			default:
+				err := ps1.Publish("hoge", 2.0, 0.0, 1.1, "test publish", 0)
 				Expect(err).ShouldNot(HaveOccurred())
 				return fmt.Errorf("the message was not received")
 			}
@@ -107,6 +132,28 @@ func E2e(generator func(colonio.Logger) (colonio.Colonio, error)) {
 
 		err = map2.Set("key1", "val2", colonio.MapErrorWithExist)
 		Expect(err).Should(MatchError(colonio.ErrExistKey))
+
+		err = map1.Set("key2", "val2", 0)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		stored := make(map[string]string)
+		map1.ForeachLocalValue(func(vKey, vValue colonio.Value, attr uint32) {
+			key, _ := vKey.GetString()
+			val, _ := vValue.GetString()
+			_, ok := stored[key]
+			Expect(ok).Should(BeFalse())
+			stored[key] = val
+		})
+		map2.ForeachLocalValue(func(vKey, vValue colonio.Value, attr uint32) {
+			key, _ := vKey.GetString()
+			val, _ := vValue.GetString()
+			_, ok := stored[key]
+			Expect(ok).Should(BeFalse())
+			stored[key] = val
+		})
+		Expect(stored).Should(HaveLen(2))
+		Expect(stored["key1"]).Should(Equal("val1"))
+		Expect(stored["key2"]).Should(Equal("val2"))
 
 		By("node1 disconnect from seed")
 		err = node1.Disconnect()

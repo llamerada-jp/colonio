@@ -38,6 +38,7 @@ enum class ErrorCode : uint32_t {
   CHANGED_PROPOSER,       ///< Under developing.
   COLLISION_LATE,         ///< Under developing.
   NO_ONE_RECV,            ///< There was no node receiving the message.
+  CALLBACK_ERROR,         ///< An error that occurred while executing the callback function.
 };
 
 /**

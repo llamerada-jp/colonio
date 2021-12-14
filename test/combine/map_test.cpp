@@ -227,6 +227,22 @@ TEST(MapTest, set_get_multi) {
     helper.mark("c");
   }
 
+  std::map<std::string, std::string> stored;
+  printf("foreach_local_value for map1.\n");
+  map1.foreach_local_value([&](Map&, const Value& key, const Value& val, uint32_t attr) {
+    EXPECT_EQ(stored.find(key.get<std::string>()), stored.end());
+    stored.insert(std::make_pair(key.get<std::string>(), val.get<std::string>()));
+  });
+  printf("foreach_local_value for map2.\n");
+  map2.foreach_local_value([&](Map&, const Value& key, const Value& val, uint32_t attr) {
+    EXPECT_EQ(stored.find(key.get<std::string>()), stored.end());
+    stored.insert(std::make_pair(key.get<std::string>(), val.get<std::string>()));
+  });
+
+  EXPECT_EQ(stored.size(), 2);
+  EXPECT_EQ(stored[KEY_NAME1], VALUE2);
+  EXPECT_EQ(stored[KEY_NAME2], VALUE1);
+
   printf("disconnect.\n");
   node2->disconnect();
   node1->disconnect();

@@ -48,9 +48,31 @@ colonio_pubsub_2d_t cgo_colonio_access_pubsub_2d(colonio_t *colonio, _GoString_ 
   return colonio_access_pubsub_2d(colonio, _GoStringPtr(name), _GoStringLen(name));
 }
 
+colonio_error_t *cgo_colonio_send(colonio_t *colonio, _GoString_ dst, const colonio_value_t *val, uint32_t opt) {
+  colonio_send(colonio, _GoStringPtr(dst), _GoStringLen(dst), val, opt);
+}
+
+void cgo_cb_colonio_on(colonio_t *colonio, void *ptr, const colonio_value_t *val) {
+  cgoCbColonioOn(colonio, (void *)ptr, (void *)val);
+}
+
+void cgo_colonio_on(colonio_t *colonio, uintptr_t ptr) {
+  colonio_on(colonio, (void *)ptr, cgo_cb_colonio_on);
+}
+
 // value
 void cgo_colonio_value_set_string(colonio_value_t *value, _GoString_ s) {
   colonio_value_set_string(value, _GoStringPtr(s), _GoStringLen(s));
+}
+
+// map
+void cgo_cb_colonio_map_foreach_local_value(
+    colonio_map_t *map, void *ptr, const colonio_value_t *key, const colonio_value_t *val, uint32_t attr) {
+  cgoColonioMapForeachLocalValue(map, (void *)ptr, (void *)key, (void *)val, attr);
+}
+
+colonio_error_t *cgo_colonio_map_foreach_local_value(colonio_map_t *map, uintptr_t ptr) {
+  return colonio_map_foreach_local_value(map, (void *)ptr, cgo_cb_colonio_map_foreach_local_value);
 }
 
 // pubsub
@@ -64,8 +86,8 @@ void cgo_cb_colonio_pubsub_2d_on(colonio_pubsub_2d_t *pubsub_2d, void *ptr, cons
   cgoCbPubsub2DOn(pubsub_2d, (void *)ptr, (void *)val);
 }
 
-void cgo_colonio_pubsub_2d_on(colonio_pubsub_2d_t *pubsub_2d, _GoString_ name, void *ptr) {
-  colonio_pubsub_2d_on(pubsub_2d, _GoStringPtr(name), _GoStringLen(name), ptr, cgo_cb_colonio_pubsub_2d_on);
+void cgo_colonio_pubsub_2d_on(colonio_pubsub_2d_t *pubsub_2d, _GoString_ name, uintptr_t ptr) {
+  colonio_pubsub_2d_on(pubsub_2d, _GoStringPtr(name), _GoStringLen(name), (void *)ptr, cgo_cb_colonio_pubsub_2d_on);
 }
 
 void cgo_colonio_pubsub_2d_off(colonio_pubsub_2d_t *pubsub_2d, _GoString_ name) {

@@ -24,7 +24,7 @@ class MapImpl : public Map {
  public:
   explicit MapImpl(MapBase& base_);
 
-  void foreach_local_value(std::function<void(Map&, const Value&, const Value&)>&& func) override;
+  void foreach_local_value(std::function<void(Map&, const Value&, const Value&, uint32_t)>&& func) override;
   Value get(const Value& key) override;
   void get(
       const Value& key, std::function<void(Map&, const Value&)>&& on_success,
