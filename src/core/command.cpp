@@ -17,6 +17,7 @@
 #include "command.hpp"
 
 #include <cassert>
+#include <sstream>
 #include <tuple>
 
 #include "utils.hpp"
@@ -40,8 +41,10 @@ std::tuple<CommandID::Type, PacketMode::Type> Command::get_define() {
  * It will be called when an error packet has arrived for the send packet.
  * @param packet Received error packet.
  */
-void Command::on_error(const std::string& message) {
-  colonio_throw_error(ErrorCode::UNDEFINED, message);
+void Command::on_error(ErrorCode code, const std::string& message) {
+  std::stringstream ss;
+  ss << "receive error packet: (" << static_cast<uint32_t>(code) << ") " << message;
+  colonio_throw_error(ErrorCode::UNDEFINED, ss.str());
 }
 
 /**

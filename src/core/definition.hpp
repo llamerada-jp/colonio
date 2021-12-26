@@ -61,7 +61,7 @@ static const Type FAILURE = 0xFFFE;
 static const Type SUCCESS = 0xFFFD;
 
 namespace Colonio {
-static const Type SEND_PACKET = 1;
+static const Type CALL = 1;
 }  //  namespace Colonio
 
 namespace Seed {

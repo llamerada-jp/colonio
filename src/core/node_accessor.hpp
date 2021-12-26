@@ -86,7 +86,7 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
     CommandOffer(NodeAccessor& accessor_, const NodeID& nid_, OFFER_TYPE type_);
     void on_success(std::unique_ptr<const Packet> packet) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
-    void on_error(const std::string& message) override;
+    void on_error(ErrorCode code, const std::string& message) override;
 
    private:
     NodeAccessor& accessor;

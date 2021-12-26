@@ -22,6 +22,9 @@ namespace colonio {
 const uint32_t Colonio::EXPLICIT_EVENT_THREAD;
 const uint32_t Colonio::EXPLICIT_CONTROLLER_THREAD;
 
+const uint32_t Colonio::CALL_ACCEPT_NEARBY;
+const uint32_t Colonio::CALL_IGNORE_REPLY;
+
 Colonio* Colonio::new_instance(std::function<void(Colonio&, const std::string&)>&& log_receiver, uint32_t opt) {
   if (log_receiver == nullptr) {
     return new ColonioImpl([](Colonio&, const ::std::string&) {}, opt);

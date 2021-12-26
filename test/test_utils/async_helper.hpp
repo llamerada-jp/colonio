@@ -52,12 +52,14 @@ class AsyncHelper {
   }
 
   void pass_signal(const std::string& key) {
+    printf("pass_signal(%s)\n", key.c_str());
     std::lock_guard<std::mutex> lock(mtx);
     signals.insert(key);
     cond_signals.notify_all();
   }
 
   void wait_signal(const std::string& key) {
+    printf("wait_signal(%s)\n", key.c_str());
     std::unique_lock<std::mutex> lock(mtx);
     cond_signals.wait(lock, [this, &key]() {
       return signals.find(key) != signals.end();
@@ -65,11 +67,16 @@ class AsyncHelper {
   }
 
   void wait_signal(const std::string& key, std::function<void()>&& func) {
-    std::unique_lock<std::mutex> lock(mtx);
-    while (!cond_signals.wait_for(lock, std::chrono::seconds(3), [this, &key]() {
-      return signals.find(key) != signals.end();
-    })) {
+    printf("wait_signal(%s)\n", key.c_str());
+    while (true) {
       func();
+
+      std::unique_lock<std::mutex> lock(mtx);
+      if (cond_signals.wait_for(lock, std::chrono::seconds(3), [&]() {
+            return signals.find(key) != signals.end();
+          })) {
+        break;
+      }
     }
   }
 

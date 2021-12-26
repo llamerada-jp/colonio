@@ -63,7 +63,7 @@ MapPaxosModule::CommandGet::CommandGet(Random& random_, std::shared_ptr<Info> in
     Command(CommandID::MapPaxos::GET, PacketMode::NONE), random(random_), info(info_) {
 }
 
-void MapPaxosModule::CommandGet::on_error(const std::string& message) {
+void MapPaxosModule::CommandGet::on_error(ErrorCode code, const std::string& message) {
   logD(info->parent, "error on packet of 'get'").map("message", message);
   info->count_ng += 1;
 
@@ -157,7 +157,7 @@ MapPaxosModule::CommandSet::CommandSet(std::unique_ptr<MapPaxosModule::CommandSe
     Command(CommandID::MapPaxos::SET, PacketMode::NONE), info(std::move(info_)) {
 }
 
-void MapPaxosModule::CommandSet::on_error(const std::string& message) {
+void MapPaxosModule::CommandSet::on_error(ErrorCode code, const std::string& message) {
   logD(info->parent, "error on packet of 'set'").map("message", message);
   info->cb_on_failure(colonio_error(ErrorCode::SYSTEM_ERROR, "failed to set value"));
 }
@@ -212,7 +212,7 @@ MapPaxosModule::CommandPrepare::CommandPrepare(std::shared_ptr<MapPaxosModule::C
     Command(CommandID::MapPaxos::PREPARE, PacketMode::NONE), info(info_) {
 }
 
-void MapPaxosModule::CommandPrepare::on_error(const std::string& message) {
+void MapPaxosModule::CommandPrepare::on_error(ErrorCode code, const std::string& message) {
   logD(info->parent, "error on packet of 'prepare'").map("message", message);
   info->replies.push_back(Reply(NodeID::NONE, 0, 0, false));
 
@@ -344,7 +344,7 @@ MapPaxosModule::CommandAccept::CommandAccept(std::shared_ptr<MapPaxosModule::Com
     Command(CommandID::MapPaxos::ACCEPT, PacketMode::NONE), info(info_) {
 }
 
-void MapPaxosModule::CommandAccept::on_error(const std::string& message) {
+void MapPaxosModule::CommandAccept::on_error(ErrorCode code, const std::string& message) {
   logD(info->parent, "error on packet of 'accept'").map("message", message);
   info->replies.push_back(Reply(NodeID::NONE, 0, 0, false));
 

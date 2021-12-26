@@ -25,5 +25,6 @@ message Value {
 }
 
 message Error {
-  string message = 1;
+  uint32 code = 1;
+  string message = 2;
 }

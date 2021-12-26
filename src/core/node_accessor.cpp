@@ -334,7 +334,7 @@ void NodeAccessor::CommandOffer::on_failure(std::unique_ptr<const Packet> packet
   assert(false);  // fixme
 }
 
-void NodeAccessor::CommandOffer::on_error(const std::string& message) {
+void NodeAccessor::CommandOffer::on_error(ErrorCode code, const std::string& message) {
   if (accessor.first_link != nullptr) {
     accessor.disconnect_link(accessor.first_link);
 

@@ -219,29 +219,30 @@ void ColonioImpl::set_position(
   });
 }
 
-void ColonioImpl::send(const std::string& dst_nid, const Value& value, uint32_t opt) {
-  Pipe<int> pipe;
+Value ColonioImpl::call_by_nid(const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt) {
+  Pipe<Value> pipe;
 
-  send(
-      dst_nid, value, opt,
-      [&pipe](Colonio&) {
-        pipe.push(1);
+  call_by_nid(
+      dst_nid, name, value, opt,
+      [&pipe](Colonio&, const Value& reply) {
+        pipe.push(reply);
       },
       [&pipe](Colonio&, const Error& error) {
         pipe.push_error(error);
       });
 
-  pipe.pop_with_throw();
+  return *pipe.pop_with_throw();
 }
 
-void ColonioImpl::send(
-    const std::string& dst_nid, const Value& value, uint32_t opt, std::function<void(Colonio&)>&& on_success,
+void ColonioImpl::call_by_nid(
+    const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt,
+    std::function<void(Colonio&, const Value&)>&& on_success,
     std::function<void(Colonio&, const Error&)>&& on_failure) {
   try {
-    colonio_module->send(
-        dst_nid, value, opt,
-        [this, on_success] {
-          on_success(*this);
+    colonio_module->call_by_nid(
+        dst_nid, name, value, opt,
+        [this, on_success](const Value& reply) {
+          on_success(*this, reply);
         },
         [this, on_failure](const Error& err) {
           on_failure(*this, err);
@@ -251,14 +252,14 @@ void ColonioImpl::send(
   }
 }
 
-void ColonioImpl::on(std::function<void(Colonio&, const Value&)>&& receiver) {
-  colonio_module->on([this, receiver](const Value& value) {
-    receiver(*this, value);
+void ColonioImpl::on_call(const std::string& name, std::function<Value(Colonio&, const CallParameter&)>&& func) {
+  colonio_module->on_call(name, [this, func](const CallParameter& parameter) {
+    return func(*this, parameter);
   });
 }
 
-void ColonioImpl::off() {
-  colonio_module->off();
+void ColonioImpl::off_call(const std::string& name) {
+  colonio_module->off_call(name);
 }
 
 void ColonioImpl::start_on_event_thread() {
@@ -593,7 +594,7 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
     // Pass a packet to the target module.
     const Packet* p = packet.get();
     packet.release();
-    scheduler->add_controller_task(this, [this, p]() mutable {
+    scheduler->add_controller_task(this, [this, p] {
       assert(p != nullptr);
       std::unique_ptr<const Packet> packet(p);
 
@@ -623,6 +624,22 @@ void ColonioImpl::relay_packet(std::unique_ptr<const Packet> packet, bool is_fro
 #endif
       return;
     }
+
+  } else if (dst_nid == NodeID::NONE && (packet->mode & PacketMode::ONE_WAY) == 0x0) {
+    core::Error content;
+    content.set_code(static_cast<uint32_t>(ErrorCode::NO_ONE_RECV));
+    std::shared_ptr<std::string> content_bin(new std::string());
+    content.SerializeToString(content_bin.get());
+
+    PacketMode::Type packet_mode = PacketMode::REPLY | PacketMode::EXPLICIT | PacketMode::ONE_WAY;
+    if (packet->mode & PacketMode::RELAY_SEED) {
+      packet_mode |= PacketMode::RELAY_SEED;
+    }
+    relay_packet(
+        std::unique_ptr<const Packet>(new Packet{
+            packet->src_nid, local_nid, 0, packet->id, content_bin, packet_mode, packet->channel, CommandID::ERROR}),
+        false);
+    return;
   }
 
   if (packet) {

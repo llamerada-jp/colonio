@@ -66,7 +66,7 @@ class Pubsub2DModule : public Pubsub2DBase {
    public:
     CommandKnock(Pubsub2DModule& parent_, uint64_t uid_);
 
-    void on_error(const std::string& message) override;
+    void on_error(ErrorCode code, const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
     void on_success(std::unique_ptr<const Packet> packet) override;
 
@@ -81,7 +81,7 @@ class Pubsub2DModule : public Pubsub2DBase {
         Pubsub2DModule& parent_, uint64_t uid_, std::function<void()>& cb_on_success_,
         std::function<void(const Error&)>& cb_on_failure_);
 
-    void on_error(const std::string& message) override;
+    void on_error(ErrorCode code, const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
     void on_success(std::unique_ptr<const Packet> packet) override;
 
