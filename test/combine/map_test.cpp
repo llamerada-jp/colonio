@@ -239,7 +239,7 @@ TEST(MapTest, set_get_multi) {
     stored.insert(std::make_pair(key.get<std::string>(), val.get<std::string>()));
   });
 
-  EXPECT_EQ(stored.size(), 2);
+  EXPECT_EQ(stored.size(), static_cast<std::size_t>(2));
   EXPECT_EQ(stored[KEY_NAME1], VALUE2);
   EXPECT_EQ(stored[KEY_NAME2], VALUE1);
 

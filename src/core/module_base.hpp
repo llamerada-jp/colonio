@@ -84,7 +84,7 @@ class ModuleBase {
   void send_packet(
       const NodeID& dst_nid, PacketMode::Type mode, CommandID::Type command_id,
       std::shared_ptr<const std::string> content);
-  void send_error(const Packet& reply_for, const std::string& message);
+  void send_error(const Packet& reply_for, ErrorCode error_code, const std::string& message);
   void send_failure(const Packet& reply_for, std::shared_ptr<const std::string> content);
   void send_success(const Packet& reply_for, std::shared_ptr<const std::string> content);
 

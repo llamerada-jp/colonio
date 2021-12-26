@@ -30,7 +30,7 @@ class Command {
 
   std::tuple<CommandID::Type, PacketMode::Type> get_define();
 
-  virtual void on_error(const std::string& message);
+  virtual void on_error(ErrorCode code, const std::string& message);
   virtual void on_failure(std::unique_ptr<const Packet> packet);
   virtual void on_success(std::unique_ptr<const Packet> packet) = 0;
 

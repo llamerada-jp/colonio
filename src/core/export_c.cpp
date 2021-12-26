@@ -123,13 +123,10 @@ colonio_pubsub_2d_t colonio_access_pubsub_2d(colonio_t* colonio, const char* nam
   return pubsub_2d;
 }
 
-void colonio_get_local_nid(colonio_t* colonio, char* dst, unsigned int* siz) {
+void colonio_get_local_nid(colonio_t* colonio, char* dst) {
   colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
   std::string local_nid  = impl->get_local_nid();
   memcpy(dst, local_nid.c_str(), local_nid.size() + 1);
-  if (siz != nullptr) {
-    *siz = local_nid.size();
-  }
 }
 
 colonio_error_t* colonio_set_position(colonio_t* colonio, double* x, double* y) {
@@ -158,14 +155,18 @@ void colonio_set_position_async(
       });
 }
 
-colonio_error_t* colonio_send(
-    colonio_t* colonio, const char* dst, unsigned int dst_siz, const colonio_value_t* value, uint32_t opt) {
+colonio_error_t* colonio_call_by_nid(
+    colonio_t* colonio, const char* dst, const char* name, unsigned int name_siz, const colonio_value_t* value,
+    uint32_t opt, colonio_value_t* result) {
   colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
   colonio::Value cpp_value;
   convert_value_c_to_cpp(&cpp_value, value);
 
   try {
-    impl->send(std::string(dst, dst_siz), cpp_value, opt);
+    colonio::Value cpp_result =
+        impl->call_by_nid(std::string(dst, COLONIO_NID_LENGTH), std::string(name, name_siz), cpp_value, opt);
+    convert_value_cpp_to_c(result, &cpp_result);
+
   } catch (const colonio::Error& e) {
     return convert_error(e);
   }
@@ -173,37 +174,60 @@ colonio_error_t* colonio_send(
   return nullptr;
 }
 
-void colonio_send_async(
-    colonio_t* colonio, const char* dst, unsigned int dst_siz, const colonio_value_t* value, uint32_t opt, void* ptr,
-    void (*on_success)(colonio_t*, void*), void (*on_failure)(colonio_t*, void*, const colonio_error_t*)) {
+void colonio_call_by_nid_async(
+    colonio_t* colonio, const char* dst, const char* name, unsigned int name_siz, const colonio_value_t* value,
+    uint32_t opt, void* ptr, void (*on_success)(colonio_t*, void*, const colonio_value_t*),
+    void (*on_failure)(colonio_t*, void*, const colonio_error_t*)) {
   colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
   colonio::Value cpp_value;
   convert_value_c_to_cpp(&cpp_value, value);
 
-  impl->send(
-      std::string(dst, dst_siz), cpp_value, opt,
-      [colonio, ptr, on_success](colonio::Colonio&) {
-        on_success(colonio, ptr);
+  impl->call_by_nid(
+      std::string(dst, COLONIO_NID_LENGTH), std::string(name, name_siz), cpp_value, opt,
+      [colonio, ptr, on_success](colonio::Colonio&, const colonio::Value& cpp_value) {
+        colonio_value_t c_value;
+        colonio_value_init(&c_value);
+        convert_value_cpp_to_c(&c_value, &cpp_value);
+        on_success(colonio, ptr, &c_value);
+        colonio_value_free(&c_value);
       },
       [colonio, ptr, on_failure](colonio::Colonio&, const colonio::Error& e) {
         on_failure(colonio, ptr, convert_error(e));
       });
 }
 
-void colonio_on(colonio_t* colonio, void* ptr, void (*receiver)(colonio_t*, void*, const colonio_value_t*)) {
+void colonio_on_call(
+    colonio_t* colonio, const char* name, unsigned int name_siz, void* ptr,
+    void (*func)(colonio_t*, void*, const colonio_on_call_parameter_t*, colonio_value_t*)) {
   colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
-  impl->on([colonio, ptr, receiver](colonio::Colonio&, const colonio::Value& value) {
-    colonio_value_t c_value;
-    colonio_value_init(&c_value);
-    convert_value_cpp_to_c(&c_value, &value);
-    receiver(colonio, ptr, &c_value);
-    colonio_value_free(&c_value);
-  });
+  impl->on_call(
+      std::string(name, name_siz),
+      [colonio, ptr, func](colonio::Colonio&, const colonio::Colonio::CallParameter& parameter) {
+        colonio_value_t c_value;
+        colonio_value_init(&c_value);
+        convert_value_cpp_to_c(&c_value, &parameter.value);
+
+        colonio_value_t c_result;
+        colonio_value_init(&c_result);
+
+        colonio_on_call_parameter_t p{
+            parameter.name.c_str(), static_cast<unsigned int>(parameter.name.size()), &c_value, parameter.opt};
+
+        func(colonio, ptr, &p, &c_result);
+
+        colonio::Value result;
+        convert_value_c_to_cpp(&result, &c_result);
+        colonio_value_free(&c_result);
+
+        colonio_value_free(&c_value);
+
+        return result;
+      });
 }
 
-void colonio_off(colonio_t* colonio) {
+void colonio_off_call(colonio_t* colonio, const char* name, unsigned int name_siz) {
   colonio::Colonio* impl = reinterpret_cast<colonio::Colonio*>(colonio->impl);
-  impl->off();
+  impl->off_call(std::string(name, name_siz));
 }
 
 void colonio_start_on_event_thread(colonio_t* colonio) {

@@ -16,43 +16,42 @@
 #pragma once
 
 #include <functional>
+#include <map>
 
+#include "colonio/colonio.hpp"
 #include "command.hpp"
 #include "module_base.hpp"
 
 namespace colonio {
-class Colonio;
-class Error;
-class Value;
-
 class ColonioModule : public ModuleBase {
  public:
   explicit ColonioModule(ModuleParam& param);
   virtual ~ColonioModule();
 
-  void send(
-      const std::string& dst_nid, const Value& value, uint32_t opt, std::function<void()>&& on_success,
-      std::function<void(const Error&)>&& on_failure);
-  void on(std::function<void(const Value&)>&& receiver_);
-  void off();
+  void call_by_nid(
+      const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt,
+      std::function<void(const Value&)>&& on_success, std::function<void(const Error&)>&& on_failure);
+  void on_call(const std::string& name, std::function<Value(const Colonio::CallParameter&)>&& func);
+  void off_call(const std::string& name);
 
  private:
-  class CommandSend : public Command {
+  class CommandCall : public Command {
    public:
     ColonioModule& parent;
-    std::function<void()> cb_success;
+    std::string name;
+    std::function<void(const Value&)> cb_success;
     std::function<void(const Error&)> cb_failure;
 
-    CommandSend(PacketMode::Type mode, ColonioModule& parent_);
+    CommandCall(PacketMode::Type mode, ColonioModule& parent_);
 
-    void on_error(const std::string& message) override;
+    void on_error(ErrorCode code, const std::string& message) override;
     void on_success(std::unique_ptr<const Packet> packet) override;
   };
 
-  std::function<void(const Value&)> receiver;
+  std::map<std::string, std::function<Value(const Colonio::CallParameter&)>> on_call_funcs;
 
   void module_process_command(std::unique_ptr<const Packet> packet) override;
 
-  void recv_packet_send_packet(std::unique_ptr<const Packet> packet);
+  void recv_packet_call(std::unique_ptr<const Packet> packet);
 };
 }  // namespace colonio
