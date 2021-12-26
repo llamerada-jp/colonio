@@ -1,6 +1,22 @@
-// +build js
+//go:build js
 
 package colonio
+
+/*
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 import (
 	"fmt"
@@ -14,6 +30,7 @@ import (
 type colonioImpl struct {
 	jsModule js.Value
 
+	onKey       uint32
 	childrenMtx sync.Mutex
 	maps        map[string]*mapImpl
 	pubsub2ds   map[string]*pubsub2dImpl
@@ -33,6 +50,12 @@ type pubsub2dImpl struct {
 	eventsMtx sync.Mutex
 	events    map[string]uint32
 }
+
+type defaultLogger struct {
+}
+
+// DefaultLogger is the default log output module that outputs logs to the Javascript console.
+var DefaultLogger *defaultLogger
 
 const (
 	jsModuleName    = "colonioSuite"
@@ -72,6 +95,9 @@ func assignEventReceiver(f func(js.Value)) (key uint32) {
 
 	for {
 		key = rand.Uint32()
+		if key == 0 {
+			continue
+		}
 		if _, ok := eventReceivers[key]; !ok {
 			eventReceivers[key] = f
 			return
@@ -146,9 +172,12 @@ func onResponse(_ js.Value, args []js.Value) interface{} {
 }
 
 // NewColonio creates a new instance of colonio object.
-func NewColonio() (Colonio, error) {
+func NewColonio(logger Logger) (Colonio, error) {
 	impl := &colonioImpl{
-		jsModule:  jsSuite.Call("newColonio"),
+		jsModule: jsSuite.Call("newColonio", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+			logger.Output(args[0].String())
+			return nil
+		})),
 		maps:      make(map[string]*mapImpl),
 		pubsub2ds: make(map[string]*pubsub2dImpl),
 	}
@@ -230,6 +259,38 @@ func (c *colonioImpl) SetPosition(x, y float64) (float64, float64, error) {
 	return newX, newY, err
 }
 
+func (c *colonioImpl) Send(dst string, val interface{}, opt uint32) error {
+	valImpl := &valueImpl{}
+	if err := valImpl.Set(val); err != nil {
+		return err
+	}
+
+	key, respChannel := assignRespChannel()
+	defer deleteRespChannel(key)
+
+	c.jsModule.Call("send", key, dst, valImpl.valueType, js.ValueOf(valImpl.value), opt)
+
+	return checkJsError(<-respChannel)
+}
+
+func (c *colonioImpl) On(cb func(Value)) {
+	deleteEventReceiver(c.onKey)
+	c.onKey = assignEventReceiver(func(v js.Value) {
+		cb(&valueImpl{
+			valueType: int32(v.Get("type").Int()),
+			value:     v.Get("value"),
+		})
+	})
+
+	c.jsModule.Call("on", c.onKey)
+}
+
+func (c *colonioImpl) Off() {
+	deleteEventReceiver(c.onKey)
+	c.onKey = 0
+	c.jsModule.Call("off")
+}
+
 // Release some resources used by colonio object.
 func (c *colonioImpl) Quit() error {
 	// release binded events for pubsub2d
@@ -242,6 +303,10 @@ func (c *colonioImpl) Quit() error {
 	}
 
 	return nil
+}
+
+func (l *defaultLogger) Output(message string) {
+	jsSuite.Call("outputDefaultLog", js.ValueOf(message))
 }
 
 func (v *valueImpl) IsNil() bool {
@@ -326,6 +391,24 @@ func (v *valueImpl) GetString() (string, error) {
 		return "", fmt.Errorf("type mismatch")
 	}
 	return v.value.String(), nil
+}
+
+func (m *mapImpl) ForeachLocalValue(cb func(key, value Value, attr uint32)) error {
+	key := assignEventReceiver(func(v js.Value) {
+		cb(
+			&valueImpl{
+				valueType: int32(v.Get("keyType").Int()),
+				value:     v.Get("keyValue"),
+			},
+			&valueImpl{
+				valueType: int32(v.Get("valType").Int()),
+				value:     v.Get("valValue"),
+			},
+			uint32(v.Get("attr").Int()))
+	})
+	defer deleteEventReceiver(key)
+
+	return checkJsError(m.jsModule.Call("foreachLocalValue", key))
 }
 
 func (m *mapImpl) Get(key interface{}) (Value, error) {

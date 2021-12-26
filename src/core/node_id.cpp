@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ extern "C" {
 }
 
 #include <cassert>
-#include <functional>
 #include <set>
 #include <string>
 #include <tuple>
@@ -26,7 +25,6 @@ extern "C" {
 #include "convert.hpp"
 #include "core.pb.h"
 #include "definition.hpp"
-#include "internal_exception.hpp"
 #include "node_id.hpp"
 #include "random.hpp"
 #include "utils.hpp"
@@ -161,7 +159,7 @@ NodeID NodeID::from_str(const std::string& str) {
       return NEXT;
 
     } else {
-      colonio_throw(ErrorCode::INCORRECT_DATA_FORMAT, "illegal node-id string. (string : %s)", str.c_str());
+      colonio_throw_error(ErrorCode::INCORRECT_DATA_FORMAT, "illegal node-id string. (string : %s)", str.c_str());
     }
   }
 }
@@ -190,7 +188,7 @@ NodeID NodeID::from_pb(const core::NodeID& pb) {
       return NodeID::NEXT;
 
     default:
-      colonio_throw(
+      colonio_throw_error(
           ErrorCode::INCORRECT_DATA_FORMAT, "illegal node-id type in Protocol Buffers. (type : %d)", pb.type());
   }
 }

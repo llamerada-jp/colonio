@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,8 +22,10 @@
 #include <api/create_peerconnection_factory.h>
 #include <rtc_base/thread.h>
 
+#include "webrtc_context.hpp"
+
 namespace colonio {
-class WebrtcContextNative : public WebrtcContextBase {
+class WebrtcContextNative : public WebrtcContext {
  public:
   rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> peer_connection_factory;
   webrtc::PeerConnectionInterface::RTCConfiguration pc_config;
@@ -38,6 +40,4 @@ class WebrtcContextNative : public WebrtcContextBase {
   std::unique_ptr<rtc::Thread> worker_thread;
   std::unique_ptr<rtc::Thread> signaling_thread;
 };
-
-typedef WebrtcContextNative WebrtcContext;
 }  // namespace colonio

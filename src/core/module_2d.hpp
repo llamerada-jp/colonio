@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,8 +40,8 @@ class Module2D : public ModuleBase {
   const CoordSystem& coord_system;
 
   Module2D(
-      Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate,
-      const CoordSystem& coord_system_, APIChannel::Type channel, ModuleChannel::Type module_channel);
+      ModuleParam& param, Module2DDelegate& module_2d_delegate, const CoordSystem& coord_system_,
+      Channel::Type channel);
 
   const NodeID& get_relay_nid(const Coordinate& position);
 

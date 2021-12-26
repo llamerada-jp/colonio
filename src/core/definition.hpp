@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,18 +24,16 @@ namespace colonio {
 
 static const char PROTOCOL_VERSION[] = "A1";
 
-typedef uint32_t CallID;
-
 /**
- * Pipe/server connection status.
+ * Pipe/server connection state.
  */
-namespace LinkStatus {
+namespace LinkState {
 typedef int Type;
 static const Type OFFLINE    = 0;
 static const Type CONNECTING = 1;
 static const Type ONLINE     = 2;
 static const Type CLOSING    = 3;
-}  // namespace LinkStatus
+}  // namespace LinkState
 
 /**
  * Specified node-id.
@@ -47,38 +45,24 @@ static const char SEED[] = "seed";  ///< Server is a special node.
 static const char NEXT[] = "next";  ///< Next node is nodes of connecting direct from this node.
 }  // namespace NID
 
-namespace APIChannel {
+namespace Channel {
 typedef uint16_t Type;
-static const Type NONE    = 0;
-static const Type COLONIO = 1;
-}  // namespace APIChannel
-
-namespace ModuleChannel {
-typedef uint16_t Type;
-static const Type NONE = 0;
-
-namespace Colonio {
-static const Type MAIN           = 1;
+static const Type NONE           = 0;
+static const Type COLONIO        = 1;
 static const Type SEED_ACCESSOR  = 2;
 static const Type NODE_ACCESSOR  = 3;
 static const Type SYSTEM_ROUTING = 4;
-// static const Type SYSTEM_ROUTING_2D = 16;
-}  // namespace Colonio
-
-namespace MapPaxos {
-static const Type MAP_PAXOS = 1;
-}
-
-namespace Pubsub2D {
-static const Type PUBSUB_2D = 1;
-}
-}  // namespace ModuleChannel
+}  // namespace Channel
 
 namespace CommandID {
 typedef uint16_t Type;
 static const Type ERROR   = 0xFFFF;
 static const Type FAILURE = 0xFFFE;
 static const Type SUCCESS = 0xFFFD;
+
+namespace Colonio {
+static const Type SEND_PACKET = 1;
+}  //  namespace Colonio
 
 namespace Seed {
 static const Type AUTH           = 1;
@@ -152,7 +136,6 @@ static const unsigned int ROUTING_SEED_CONNECT_INTERVAL      = 10000;  // [msec]
 static const unsigned int ROUTING_SEED_CONNECT_RATE          = 512;
 static const unsigned int ROUTING_SEED_DISCONNECT_THREATHOLD = 30000;  // [msec]
 static const unsigned int ROUTING_SEED_INFO_KEEP_THREATHOLD  = 60000;  // [msec]
-static const unsigned int ROUTING_SEED_TABLE_SIZE            = 10;
 static const unsigned int ROUTING_SEED_INFO_NIDS_COUNT       = 4;
 static const double ROUTING_SEED_NEXT_POSITION               = 0.71828;
 static const unsigned int ROUTING_UPDATE_PERIOD              = 1000;  // [msec]
@@ -165,11 +148,7 @@ static const int64_t CONNECT_LINK_TIMEOUT        = 30000;
 static const unsigned int FIRST_LINK_RETRY_MAX   = 3;
 static const int64_t LINK_TRIAL_TIME_MIN         = 60000;
 static const unsigned int LINKS_MIN              = 4;
-static const unsigned int LINKS_MAX              = 24;
 static const int64_t SEED_CONNECT_INTERVAL       = 10000;
 static const uint32_t PACKET_ID_NONE             = 0x0;
-static const unsigned int EVENT_QUEUE_LIMIT      = 100;
 
-// debug parameter
-static const int DEBUG_PRINT_PACKET_SIZE = 32;
 }  // namespace colonio

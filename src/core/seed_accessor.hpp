@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 #endif
 
 #include <map>
+#include <memory>
 #include <queue>
 #include <string>
 #include <utility>
@@ -34,14 +35,15 @@
 #include "seed_link.hpp"
 
 namespace colonio {
-class Context;
+struct ModuleParam;
+class NodeID;
 class Packet;
 class SeedAccessor;
 
 class SeedAccessorDelegate {
  public:
   virtual ~SeedAccessorDelegate();
-  virtual void seed_accessor_on_change_status(SeedAccessor& sa)                                     = 0;
+  virtual void seed_accessor_on_change_state(SeedAccessor& sa)                                      = 0;
   virtual void seed_accessor_on_recv_config(SeedAccessor& sa, const picojson::object& config)       = 0;
   virtual void seed_accessor_on_recv_packet(SeedAccessor& sa, std::unique_ptr<const Packet> packet) = 0;
   virtual void seed_accessor_on_recv_require_random(SeedAccessor& sa)                               = 0;
@@ -59,39 +61,39 @@ static const Type FAILURE = 2;
  */
 class SeedAccessor : public SeedLinkDelegate {
  public:
-  SeedAccessor(Context& context_, SeedAccessorDelegate& delegate_, const std::string& url_, const std::string& token_);
+  SeedAccessor(ModuleParam& param, SeedAccessorDelegate& delegate_, const std::string& url_, const std::string& token_);
   virtual ~SeedAccessor();
+  SeedAccessor(const SeedAccessor&) = delete;
+  SeedAccessor& operator=(const SeedAccessor&) = delete;
 
   void connect(unsigned int interval = SEED_CONNECT_INTERVAL);
   void disconnect();
-  AuthStatus::Type get_auth_status();
-  LinkStatus::Type get_status();
+  AuthStatus::Type get_auth_status() const;
+  LinkState::Type get_link_state() const;
   bool is_only_one();
   void relay_packet(std::unique_ptr<const Packet> packet);
 
  private:
-  Context& context;
+  Logger& logger;
+  Scheduler& scheduler;
+  const NodeID& local_nid;
   SeedAccessorDelegate& delegate;
 
   /** Server URL. */
   const std::string url;
   const std::string token;
   /** Connection to the server */
-  std::unique_ptr<SeedLinkBase> link;
+  std::unique_ptr<SeedLink> link;
   /** Last time of tried to connect to the server. */
   int64_t last_connect_time;
 
   AuthStatus::Type auth_status;
   SeedHint::Type hint;
 
-  /** Disable copy. */
-  SeedAccessor(const SeedAccessor&);
-  SeedAccessor& operator=(const SeedAccessor&);
-
-  void seed_link_on_connect(SeedLinkBase& link) override;
-  void seed_link_on_disconnect(SeedLinkBase& link) override;
-  void seed_link_on_error(SeedLinkBase& link) override;
-  void seed_link_on_recv(SeedLinkBase& link, const std::string& data) override;
+  void seed_link_on_connect(SeedLink& link) override;
+  void seed_link_on_disconnect(SeedLink& link) override;
+  void seed_link_on_error(SeedLink& link) override;
+  void seed_link_on_recv(SeedLink& link, const std::string& data) override;
 
   void recv_auth_success(const Packet& packet);
   void recv_auth_failure(const Packet& packet);

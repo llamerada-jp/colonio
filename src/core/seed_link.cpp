@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,30 @@
 
 #include "seed_link.hpp"
 
+#ifndef EMSCRIPTEN
+#  include "seed_link_websocket_native.hpp"
+#else
+#  include "seed_link_websocket_wasm.hpp"
+#endif
+
 namespace colonio {
+SeedLinkParam::SeedLinkParam(SeedLinkDelegate& delegate_, Logger& logger_) : delegate(delegate_), logger(logger_) {
+}
+
 SeedLinkDelegate::~SeedLinkDelegate() {
 }
 
-SeedLinkBase::SeedLinkBase(SeedLinkDelegate& delegate_, Context& context_) : delegate(delegate_), context(context_) {
+SeedLink* SeedLink::new_instance(SeedLinkParam& param) {
+#ifndef EMSCRIPTEN
+  return new SeedLinkWebsocketNative(param);
+#else
+  return new SeedLinkWebsocketWasm(param);
+#endif
 }
 
-SeedLinkBase::~SeedLinkBase() {
+SeedLink::SeedLink(SeedLinkParam& param) : delegate(param.delegate), logger(param.logger) {
+}
+
+SeedLink::~SeedLink() {
 }
 }  // namespace colonio

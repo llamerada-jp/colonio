@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@
 #include <delaunay_triangulation.hpp>
 #include <list>
 
-#include "context.hpp"
 #include "convert.hpp"
 #include "coord_system.hpp"
 #include "logger.hpp"
@@ -29,8 +28,15 @@
 
 namespace colonio {
 
-Routing2D::Routing2D(Context& context_, RoutingAlgorithm2DDelegate& delegate_, const CoordSystem& coord_system_) :
-    RoutingAlgorithm("2D"), context(context_), delegate(delegate_), coord_system(coord_system_) {
+Routing2D::Routing2D(
+    ModuleParam& param, RoutingAlgorithm2DDelegate& delegate_, const CoordSystem& coord_system_,
+    unsigned int config_update_period) :
+    RoutingAlgorithm("2D"),
+    CONFIG_UPDATE_PERIOD(config_update_period),
+    logger(param.logger),
+    local_nid(param.local_nid),
+    delegate(delegate_),
+    coord_system(coord_system_) {
 }
 
 const std::set<NodeID>& Routing2D::get_required_nodes() {
@@ -100,7 +106,7 @@ bool Routing2D::update_routing_info(
 
   // update known_nodes
   known_nodes.clear();
-  known_nodes.insert(std::make_pair(context.local_nid, coord_system.get_local_position()));
+  known_nodes.insert(std::make_pair(local_nid, coord_system.get_local_position()));
 
   for (auto& it : routing_info_cache) {
     known_nodes.insert(std::make_pair(it.first, it.second.position));
@@ -115,8 +121,8 @@ bool Routing2D::update_routing_info(
   // update nearby_nodes, required_nodes
   update_node_infos();
 
-  // Ignore
-  //*
+// Ignore
+//*
 #ifndef NDEBUG
   picojson::object nodes;
   picojson::array links;
@@ -126,7 +132,7 @@ bool Routing2D::update_routing_info(
     if (known_nodes.find(nid) != known_nodes.end()) {
       nodes.insert(std::make_pair(nid.to_str(), Convert::coordinate2json(known_nodes.at(nid))));
       const NodeID& n1 = NodeID::THIS;
-      const NodeID& n2 = (nid == context.local_nid ? NodeID::THIS : nid);
+      const NodeID& n2 = (nid == local_nid ? NodeID::THIS : nid);
       link_tmp.push_back(
           n1 < n2 ? std::make_pair(std::ref(n1), std::ref(n2)) : std::make_pair(std::ref(n2), std::ref(n1)));
     }
@@ -147,7 +153,7 @@ bool Routing2D::update_routing_info(
 
   // return is_changed;
   return true;  // TODO
-}
+}  // namespace colonio
 
 const NodeID& Routing2D::get_relay_nid(const Coordinate& position) {
   const NodeID* near_nid    = &NodeID::THIS;
@@ -209,7 +215,7 @@ void Routing2D::update_node_infos() {
   unsigned int local_idx = 0;
   Coordinate base        = coord_system.get_local_position();
   for (auto& it : known_nodes) {
-    if (it.first == context.local_nid) {
+    if (it.first == local_nid) {
       local_idx = idx;
     }
     nids[idx]        = it.first;

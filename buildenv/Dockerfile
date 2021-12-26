@@ -3,7 +3,7 @@ LABEL org.opencontainers.image.source https://github.com/llamerada-jp/colonio
 
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt update \
-  && apt -y install --no-install-recommends make
+  && apt -y install --no-install-recommends make valgrind
 
 WORKDIR /work
 COPY Makefile /work/

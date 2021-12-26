@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,6 +68,7 @@ class NodeID {
 
   NodeID();
   NodeID(const NodeID& src);
+  NodeID(uint64_t id0, uint64_t id1);
 
   NodeID& operator=(const NodeID& src);
   NodeID& operator+=(const NodeID& src);
@@ -95,7 +96,6 @@ class NodeID {
   uint64_t id[2];
 
   explicit NodeID(int type_);
-  NodeID(uint64_t id0, uint64_t id1);
 
   static int compare(const NodeID& a, const NodeID& b);
   static std::tuple<uint64_t, uint64_t> add_mod(uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1);

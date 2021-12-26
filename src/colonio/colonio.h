@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -82,6 +82,7 @@ typedef enum COLONIO_VALUE_TYPE {
 typedef enum COLONIO_ERROR_CODE {
   COLONIO_ERROR_CODE_UNDEFINED,
   COLONIO_ERROR_CODE_SYSTEM_ERROR,
+  COLONIO_ERROR_CODE_CONNECTION_FAILD,
   COLONIO_ERROR_CODE_OFFLINE,
   COLONIO_ERROR_CODE_INCORRECT_DATA_FORMAT,
   COLONIO_ERROR_CODE_CONFLICT_WITH_SETTING,
@@ -90,6 +91,7 @@ typedef enum COLONIO_ERROR_CODE {
   COLONIO_ERROR_CODE_CHANGED_PROPOSER,
   COLONIO_ERROR_CODE_COLLISION_LATE,
   COLONIO_ERROR_CODE_NO_ONE_RECV,
+  COLONIO_ERROR_CODE_CALLBACK_ERROR,
 } COLONIO_ERROR_CODE;
 
 #define COLONIO_COLONIO_EXPLICIT_EVENT_THREAD 0x1
@@ -140,18 +142,17 @@ typedef struct colonio_error_s {
   unsigned int message_siz;
 } colonio_error_t;
 
-COLONIO_PUBLIC colonio_error_t* colonio_init(colonio_t* colonio, uint32_t opt);
+COLONIO_PUBLIC colonio_error_t* colonio_init(
+    colonio_t* colonio, void (*logger)(colonio_t*, const char*, unsigned int), uint32_t opt);
 COLONIO_PUBLIC colonio_error_t* colonio_connect(
     colonio_t* colonio, const char* url, unsigned int url_siz, const char* token, unsigned int token_siz);
 COLONIO_PUBLIC void colonio_connect_async(
     colonio_t* colonio, const char* url, unsigned int url_siz, const char* token, unsigned int token_siz,
     void (*on_success)(colonio_t*), void (*on_failure)(colonio_t*, const colonio_error_t*));
-#ifndef EMSCRIPTEN
 COLONIO_PUBLIC colonio_error_t* colonio_disconnect(colonio_t* colonio);
-#else
 COLONIO_PUBLIC void colonio_disconnect_async(
     colonio_t* colonio, void (*on_success)(colonio_t*), void (*on_failure)(colonio_t*, const colonio_error_t*));
-#endif
+COLONIO_PUBLIC bool colonio_is_connected(colonio_t* colonio);
 COLONIO_PUBLIC colonio_map_t colonio_access_map(colonio_t* colonio, const char* name, unsigned int name_siz);
 COLONIO_PUBLIC colonio_pubsub_2d_t
 colonio_access_pubsub_2d(colonio_t* colonio, const char* name, unsigned int name_siz);
@@ -160,7 +161,14 @@ COLONIO_PUBLIC colonio_error_t* colonio_set_position(colonio_t* colonio, double*
 COLONIO_PUBLIC void colonio_set_position_async(
     colonio_t* colonio, double x, double y, void* ptr, void (*on_success)(colonio_t*, void*, double, double),
     void (*on_failure)(colonio_t*, void*, const colonio_error_t*));
-COLONIO_PUBLIC void colonio_set_on_output_log(colonio_t* colonio, void (*func)(colonio_t*, const char*, unsigned int));
+COLONIO_PUBLIC colonio_error_t* colonio_send(
+    colonio_t* colonio, const char* dst, unsigned int dst_siz, const colonio_value_t* value, uint32_t opt);
+COLONIO_PUBLIC void colonio_send_async(
+    colonio_t* colonio, const char* dst, unsigned int dst_siz, const colonio_value_t* value, uint32_t opt, void* ptr,
+    void (*on_success)(colonio_t*, void*), void (*on_failure)(colonio_t*, void*, const colonio_error_t*));
+COLONIO_PUBLIC void colonio_on(
+    colonio_t* colonio, void* ptr, void (*receiver)(colonio_t*, void*, const colonio_value_t*));
+COLONIO_PUBLIC void colonio_off(colonio_t* colonio);
 COLONIO_PUBLIC void colonio_start_on_event_thread(colonio_t* colonio);
 COLONIO_PUBLIC void colonio_start_on_controller_thread(colonio_t* colonio);
 COLONIO_PUBLIC colonio_error_t* colonio_quit(colonio_t* colonio);
@@ -178,6 +186,9 @@ COLONIO_PUBLIC void colonio_value_set_double(colonio_value_t* value, double v);
 COLONIO_PUBLIC void colonio_value_set_string(colonio_value_t* value, const char* v, unsigned int siz);
 COLONIO_PUBLIC void colonio_value_free(colonio_value_t* value);
 
+COLONIO_PUBLIC colonio_error_t* colonio_map_foreach_local_value(
+    colonio_map_t* map, void* ptr,
+    void (*func)(colonio_map_t*, void*, const colonio_value_t*, const colonio_value_t*, uint32_t));
 COLONIO_PUBLIC colonio_error_t* colonio_map_get(colonio_map_t* map, const colonio_value_t* key, colonio_value_t* dst);
 COLONIO_PUBLIC void colonio_map_get_async(
     colonio_map_t* map, const colonio_value_t* key, void* ptr,

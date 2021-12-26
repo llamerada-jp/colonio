@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ namespace colonio {
 enum class ErrorCode : uint32_t {
   UNDEFINED,              ///< Undefined error is occurred.
   SYSTEM_ERROR,           ///< An error occurred in the API, which is used inside colonio.
+  CONNECTION_FAILD,       ///< An error on connection start failure.
   OFFLINE,                ///< The node cannot perform processing because of offline.
   INCORRECT_DATA_FORMAT,  ///< Incorrect data format detected.
   CONFLICT_WITH_SETTING,  ///< The calling method or setting parameter was inconsistent with the configuration in the
@@ -37,6 +38,7 @@ enum class ErrorCode : uint32_t {
   CHANGED_PROPOSER,       ///< Under developing.
   COLLISION_LATE,         ///< Under developing.
   NO_ONE_RECV,            ///< There was no node receiving the message.
+  CALLBACK_ERROR,         ///< An error that occurred while executing the callback function.
 };
 
 /**

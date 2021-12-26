@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,24 @@
  */
 #include "webrtc_context.hpp"
 
+#ifndef EMSCRIPTEN
+#  include "webrtc_context_native.hpp"
+#else
+#  include "webrtc_context_wasm.hpp"
+#endif
+
 namespace colonio {
-WebrtcContextBase::WebrtcContextBase() {
+WebrtcContext* WebrtcContext::new_instance() {
+#ifndef EMSCRIPTEN
+  return new WebrtcContextNative();
+#else
+  return new WebrtcContextWasm();
+#endif
 }
 
-WebrtcContextBase::~WebrtcContextBase() {
+WebrtcContext::WebrtcContext() {
+}
+
+WebrtcContext::~WebrtcContext() {
 }
 }  // namespace colonio

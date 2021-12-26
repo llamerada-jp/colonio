@@ -15,8 +15,8 @@ class ColonioSuite {
         this.colonio = colonio;
     }
 
-    newColonio() {
-        return new ColonioWrap(this);
+    newColonio(logger) {
+        return new ColonioWrap(this, logger);
     }
 
     newValue(type, value) {
@@ -45,20 +45,24 @@ class ColonioSuite {
     }
 
     // this method will be override by golang
-    onEvent(key, resp) {
+    onEvent() {
         logE("onEvent method must by override by golang");
     }
 
     // this method will be override by golang
-    onResponse(key, resp) {
+    onResponse() {
         logE("onResponse method must by override by golang");
+    }
+
+    outputDefaultLog(message) {
+        logD(JSON.parse(message));
     }
 }
 
 class ColonioWrap {
-    constructor(suite) {
+    constructor(suite, logger) {
         this.suite = suite;
-        this.c = new this.suite.colonio.Colonio();
+        this.c = new this.suite.colonio.Colonio(logger);
     }
 
     connect(key, url, token) {
@@ -104,12 +108,45 @@ class ColonioWrap {
             });
         });
     }
+
+    send(key, dst, valueType, valueValue, opt) {
+        this.c.send(dst, this.suite.newValue(valueType, valueValue), opt).then(() => {
+            this.suite.onResponse(key);
+        }, (err) => {
+            this.suite.onResponse(key, convertError(err));
+        });
+    }
+
+    on(key) {
+        this.c.onRaw((data) => {
+            this.suite.onEvent(key, {
+                type: data.getType(),
+                value: data.getJsValue()
+            });
+        });
+    }
+
+    off() {
+        this.c.off();
+    }
 }
 
 class ColonioMapWrap {
     constructor(suite, m) {
         this.suite = suite;
         this.m = m;
+    }
+
+    foreachLocalValue(key) {
+        return this.m.foreachLocalValueRaw((rKey, rValue, attr) => {
+            this.suite.onEvent(key, {
+                keyType: rKey.getType(),
+                keyValue: rKey.getJsValue(),
+                valType: rValue.getType(),
+                valValue: rValue.getJsValue(),
+                attr: attr
+            });
+        });
     }
 
     get(key, keyType, keyValue) {

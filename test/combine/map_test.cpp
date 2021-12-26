@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "colonio/colonio.hpp"
 #include "test_utils/all.hpp"
 
 using namespace colonio;
@@ -34,20 +35,20 @@ TEST(MapTest, set_get_single) {
   seed.add_module_map_paxos(MAP_NAME, 256);
   seed.run();
 
-  ColonioNode node("node");
+  std::unique_ptr<Colonio> node(Colonio::new_instance(log_receiver("node")));
 
   // connect node
-  printf("connect node1\n");
-  node.connect(URL, TOKEN);
-  Map& map = node.access_map(MAP_NAME);
-
+  printf("connect node\n");
+  node->connect(URL, TOKEN);
+  Map& map = node->access_map(MAP_NAME);
+  printf("%p\n", &map);
   // get(key) : not exist
   printf("get a not existed value.\n");
   try {
     map.get(Value(KEY_NAME));
     ADD_FAILURE();
 
-  } catch (const Exception& e) {
+  } catch (const Error& e) {
     EXPECT_EQ(e.code, ErrorCode::NOT_EXIST_KEY);
     helper.mark("a");
   }
@@ -61,7 +62,7 @@ TEST(MapTest, set_get_single) {
 
   EXPECT_EQ(v.get<std::string>(), VALUE);
 
-  node.disconnect();
+  node->disconnect();
   EXPECT_THAT(helper.get_route(), MatchesRegex("^a$"));
 }
 
@@ -77,19 +78,22 @@ TEST(MapTest, set_get_async) {
   seed.add_module_map_paxos(MAP_NAME, 256);
   seed.run();
 
-  ColonioNode node("node");
+  std::unique_ptr<Colonio> node(Colonio::new_instance(log_receiver("node")));
 
   // connect node
   printf("connect node1\n");
-  node.connect(
+  node->connect(
       URL, TOKEN,
       [&node, &MAP_NAME, &KEY_NAME, &VALUE, &helper](colonio::Colonio& _) {
-        Map& map = node.access_map(MAP_NAME);
+        Map& map = node->access_map(MAP_NAME);
 
         // get(key) : not exist
         printf("get a not existed value.\n");
         map.get(
-            Value(KEY_NAME), [](colonio::Map& _, const colonio::Value& value) { ADD_FAILURE(); },
+            Value(KEY_NAME),
+            [](colonio::Map& _, const colonio::Value& value) {
+              ADD_FAILURE();
+            },
             [&KEY_NAME, &VALUE, &helper](colonio::Map& map, const colonio::Error& err) {
               EXPECT_EQ(err.code, ErrorCode::NOT_EXIST_KEY);
               // set(key, val)
@@ -122,7 +126,7 @@ TEST(MapTest, set_get_async) {
       });
 
   helper.wait_signal("connect");
-  node.disconnect();
+  node->disconnect();
 }
 
 TEST(MapTest, set_get_multi) {
@@ -139,18 +143,18 @@ TEST(MapTest, set_get_multi) {
   seed.add_module_map_paxos(MAP_NAME, 256);
   seed.run();
 
-  ColonioNode node1("node1");
-  ColonioNode node2("node2");
+  std::unique_ptr<Colonio> node1(Colonio::new_instance(log_receiver("node1")));
+  std::unique_ptr<Colonio> node2(Colonio::new_instance(log_receiver("node2")));
 
   // connect node1
   printf("connect node1\n");
-  node1.connect(URL, TOKEN);
+  node1->connect(URL, TOKEN);
   // connect node2
   printf("connect node2\n");
-  node2.connect(URL, TOKEN);
+  node2->connect(URL, TOKEN);
 
-  Map& map1 = node1.access_map(MAP_NAME);
-  Map& map2 = node2.access_map(MAP_NAME);
+  Map& map1 = node1->access_map(MAP_NAME);
+  Map& map2 = node2->access_map(MAP_NAME);
 
   // get(key) @ node1
   printf("get a not existed value.\n");
@@ -158,7 +162,7 @@ TEST(MapTest, set_get_multi) {
     map1.get(Value(KEY_NAME1));
     ADD_FAILURE();
 
-  } catch (const Exception& e) {
+  } catch (const Error& e) {
     EXPECT_EQ(e.code, ErrorCode::NOT_EXIST_KEY);
     helper.mark("a");
   }
@@ -169,7 +173,7 @@ TEST(MapTest, set_get_multi) {
     map2.get(Value(KEY_NAME1));
     ADD_FAILURE();
 
-  } catch (const Exception& e) {
+  } catch (const Error& e) {
     EXPECT_EQ(e.code, ErrorCode::NOT_EXIST_KEY);
     helper.mark("b");
   }
@@ -207,8 +211,8 @@ TEST(MapTest, set_get_multi) {
   printf("set value with exist check.\n");
   try {
     map1.set(Value(KEY_NAME2), Value(VALUE1), Map::ERROR_WITH_EXIST);
-  } catch (const Exception& e) {
-    printf("%d %s\n", e.code, e.message.c_str());
+  } catch (const Error& e) {
+    printf("%d %s\n", static_cast<int>(e.code), e.message.c_str());
     ADD_FAILURE();
   }
 
@@ -218,14 +222,30 @@ TEST(MapTest, set_get_multi) {
     map2.set(Value(KEY_NAME2), Value(VALUE2), Map::ERROR_WITH_EXIST);
     ADD_FAILURE();
 
-  } catch (const Exception& e) {
+  } catch (const Error& e) {
     EXPECT_EQ(e.code, ErrorCode::EXIST_KEY);
     helper.mark("c");
   }
 
+  std::map<std::string, std::string> stored;
+  printf("foreach_local_value for map1.\n");
+  map1.foreach_local_value([&](Map&, const Value& key, const Value& val, uint32_t attr) {
+    EXPECT_EQ(stored.find(key.get<std::string>()), stored.end());
+    stored.insert(std::make_pair(key.get<std::string>(), val.get<std::string>()));
+  });
+  printf("foreach_local_value for map2.\n");
+  map2.foreach_local_value([&](Map&, const Value& key, const Value& val, uint32_t attr) {
+    EXPECT_EQ(stored.find(key.get<std::string>()), stored.end());
+    stored.insert(std::make_pair(key.get<std::string>(), val.get<std::string>()));
+  });
+
+  EXPECT_EQ(stored.size(), 2);
+  EXPECT_EQ(stored[KEY_NAME1], VALUE2);
+  EXPECT_EQ(stored[KEY_NAME2], VALUE1);
+
   printf("disconnect.\n");
-  node2.disconnect();
-  node1.disconnect();
+  node2->disconnect();
+  node1->disconnect();
 
   EXPECT_THAT(helper.get_route(), MatchesRegex("^abc$"));
 }

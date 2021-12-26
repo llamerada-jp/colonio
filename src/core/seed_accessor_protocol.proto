@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "core";
+option go_package = "github.com/llamerada-jp/colonio-seed/seed/core";
 
 import "core/core.proto";
 
@@ -13,9 +13,8 @@ message SeedAccessor {
   uint32 id = 4;
   uint32 mode = 5;
   uint32 channel = 6;
-  uint32 module_channel = 7;
-  uint32 command_id = 8;
-  bytes content = 9;
+  uint32 command_id = 7;
+  bytes content = 8;
 }
 
 message Auth {

@@ -1,5 +1,21 @@
 package colonio
 
+/*
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 // Colonio is an interface. It is equivalent to one node.
 type Colonio interface {
 	Connect(url, token string) error
@@ -8,7 +24,17 @@ type Colonio interface {
 	AccessPubsub2D(name string) Pubsub2D
 	GetLocalNid() string
 	SetPosition(x, y float64) (float64, float64, error)
+	Send(dst string, val interface{}, opt uint32) error
+	On(cb func(Value))
+	Off()
 	Quit() error
+}
+
+// Logger is an interface to configure the output destination of the logs.
+type Logger interface {
+	// The log messages are passed as JSON format strings.
+	// Colonio runs on multi-threads, so this interface is called on multi-threads.
+	Output(message string)
 }
 
 // Value is an instance, it is equivalent to one value.
@@ -33,6 +59,7 @@ const (
 
 // Map is an interface to use key-value-store.
 type Map interface {
+	ForeachLocalValue(cb func(key, value Value, attr uint32)) error
 	Get(key interface{}) (Value, error)
 	Set(key, val interface{}, opt uint32) error
 }

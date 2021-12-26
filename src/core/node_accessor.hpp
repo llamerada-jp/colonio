@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,32 +37,32 @@
 #include "webrtc_link.hpp"
 
 namespace colonio {
-class Context;
 class NodeAccessor;
 
 class NodeAccessorDelegate {
  public:
   virtual ~NodeAccessorDelegate();
   virtual void node_accessor_on_change_online_links(NodeAccessor& na, const std::set<NodeID>& nids) = 0;
-  virtual void node_accessor_on_change_status(NodeAccessor& na)                                     = 0;
+  virtual void node_accessor_on_change_state(NodeAccessor& na)                                      = 0;
   virtual void node_accessor_on_recv_packet(
       NodeAccessor& na, const NodeID& nid, std::unique_ptr<const Packet> packet) = 0;
 };
 
 class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
  public:
-  NodeAccessor(Context& context, ModuleDelegate& module_delegate, NodeAccessorDelegate& na_delegate);
+  NodeAccessor(ModuleParam& param, NodeAccessorDelegate& na_delegate);
   virtual ~NodeAccessor();
+  NodeAccessor(const NodeAccessor&) = delete;
+  NodeAccessor& operator=(const NodeAccessor&) = delete;
 
   void connect_link(const NodeID& nid);
   void connect_init_link();
   void connect_random_link();
-  LinkStatus::Type get_status();
+  LinkState::Type get_link_state() const;
   void disconnect_all(std::function<void()> on_after);
   void disconnect_link(const NodeID& nid);
   void initialize(const picojson::object& config);
   bool relay_packet(const NodeID& dst, std::unique_ptr<const Packet> packet);
-  void update_link_status();
 
  private:
   enum OFFER_TYPE {
@@ -99,22 +99,24 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
   unsigned int CONFIG_PACKET_SIZE;
 
   NodeAccessorDelegate& delegate;
-  WebrtcContext webrtc_context;
+  std::unique_ptr<WebrtcContext> webrtc_context;
 
   /** Link pool. */
-  std::unique_ptr<WebrtcLink> first_link;
+  std::map<WebrtcLink*, std::unique_ptr<WebrtcLink>> links;
+  WebrtcLink* first_link;
   unsigned int first_link_try_count;
-  std::unique_ptr<WebrtcLink> random_link;
+  WebrtcLink* random_link;
   /** Map of node-id and link. */
-  std::map<NodeID, std::unique_ptr<WebrtcLink>> links;
+  std::map<NodeID, WebrtcLink*> nid_links;
   /** Closing links. */
-  std::set<std::unique_ptr<WebrtcLink>> closing_links;
+  std::set<WebrtcLink*> closing_links;
 
   /** Count of links which need to transrate packet by seed. */
   unsigned int count_seed_transrate;
 
-  /** Use on update_link_status() */
-  std::set<NodeID> last_link_status;
+  /** Use on update_online_links() */
+  bool is_updated_line_links;
+  std::set<NodeID> last_online_links;
 
   /** Waiting buffer of packets to send. */
   std::map<NodeID, std::list<Packet>> send_buffers;
@@ -126,29 +128,29 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
   };
   std::map<NodeID, RecvBuffer> recv_buffers;
 
-  explicit NodeAccessor(const NodeAccessor&);
-  NodeAccessor& operator=(const NodeAccessor&);
-
   void module_process_command(std::unique_ptr<const Packet> packet) override;
 
-  void webrtc_link_on_change_status(WebrtcLink& link, LinkStatus::Type status) override;
+  void webrtc_link_on_change_dco_state(WebrtcLink& link, LinkState::Type new_dco_state) override;
+  void webrtc_link_on_change_pco_state(WebrtcLink& link, LinkState::Type new_pco_state) override;
   void webrtc_link_on_error(WebrtcLink& link) override;
   void webrtc_link_on_update_ice(WebrtcLink& link, const picojson::object& ice) override;
   void webrtc_link_on_recv_data(WebrtcLink& link, const std::string& data) override;
 
+  void assign_link_nid(const NodeID& nid, WebrtcLink* link);
   void check_link_disconnect();
   void check_link_timeout();
   void cleanup_closing();
   void create_first_link();
   WebrtcLink* create_link(bool is_create_dc);
-  void disconnect_first_link();
-  void disconnect_random_link();
+  void disconnect_link(WebrtcLink* link);
   void recv_offer(std::unique_ptr<const Packet> packet);
   void recv_ice(std::unique_ptr<const Packet> packet);
   void send_all_packet();
   void send_ice(WebrtcLink* link, const picojson::array& ice);
   void send_offer(WebrtcLink* link, const NodeID& prime_nid, const NodeID& second_nid, OFFER_TYPE type);
   bool send_packet_list(const NodeID& dst_nid, bool is_all);
+  void update_link_state(WebrtcLink& link);
+  void update_online_links(const NodeID& nid);
   bool try_send(const NodeID& dst_nid, const Packet& packet);
 };
 }  // namespace colonio

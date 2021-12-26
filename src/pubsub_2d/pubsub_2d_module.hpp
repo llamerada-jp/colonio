@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,33 +17,26 @@
 
 #include <functional>
 
-#include "colonio/exception.hpp"
 #include "colonio/value.hpp"
 #include "core/command.hpp"
 #include "core/coordinate.hpp"
-#include "core/module_2d.hpp"
+#include "core/pubsub_2d_base.hpp"
 
 namespace colonio {
-class Pubsub2DModule;
-
-class Pubsub2DModuleDelegate {
+class Pubsub2DModule : public Pubsub2DBase {
  public:
-  virtual ~Pubsub2DModuleDelegate();
+  static Pubsub2DModule* new_instance(
+      ModuleParam& param, Module2DDelegate& module_2d_delegate, const CoordSystem& coord_system,
+      const picojson::object& config);
 
-  virtual void pubsub_2d_module_on_on(Pubsub2DModule& ps2_module, const std::string& name, const Value& value) = 0;
-};
-
-class Pubsub2DModule : public Module2D {
- public:
-  Pubsub2DModule(
-      Context& context, ModuleDelegate& module_delegate, Module2DDelegate& module_2d_delegate,
-      Pubsub2DModuleDelegate& delegate_, const CoordSystem& coord_system, APIChannel::Type channel,
-      ModuleChannel::Type module_channel, uint32_t cache_time);
   virtual ~Pubsub2DModule();
 
   void publish(
       const std::string& name, double x, double y, double r, const Value& value, uint32_t opt,
-      const std::function<void()>& on_success, const std::function<void(ErrorCode)>& on_failure);
+      std::function<void()>&& on_success, std::function<void(const Error&)>&& on_failure) override;
+
+  void on(const std::string& name, std::function<void(const Value&)>&& subscriber) override;
+  void off(const std::string& name) override;
 
   void module_process_command(std::unique_ptr<const Packet> packet) override;
 
@@ -54,9 +47,8 @@ class Pubsub2DModule : public Module2D {
  private:
   unsigned int CONF_CACHE_TIME;
 
-  Pubsub2DModuleDelegate& delegate;
-
   std::map<NodeID, Coordinate> next_positions;
+  std::map<std::string, std::function<void(const Value&)>> subscribers;
 
   struct Cache {
     std::string name;
@@ -86,8 +78,8 @@ class Pubsub2DModule : public Module2D {
   class CommandPass : public Command {
    public:
     CommandPass(
-        Pubsub2DModule& parent_, uint64_t uid_, const std::function<void()>& cb_on_success_,
-        const std::function<void(ErrorCode)>& cb_on_failure_);
+        Pubsub2DModule& parent_, uint64_t uid_, std::function<void()>& cb_on_success_,
+        std::function<void(const Error&)>& cb_on_failure_);
 
     void on_error(const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
@@ -96,9 +88,13 @@ class Pubsub2DModule : public Module2D {
    private:
     Pubsub2DModule& parent;
     const uint64_t uid;
-    const std::function<void()> cb_on_success;
-    const std::function<void(ErrorCode)> cb_on_failure;
+    std::function<void()> cb_on_success;
+    std::function<void(const Error&)> cb_on_failure;
   };
+
+  Pubsub2DModule(
+      ModuleParam& param, Module2DDelegate& module_2d_delegate, const CoordSystem& coord_system, Channel::Type channel,
+      uint32_t cache_time);
 
   uint64_t assign_uid();
   void clear_cache();
@@ -110,6 +106,6 @@ class Pubsub2DModule : public Module2D {
   void send_packet_knock(const NodeID& exclude, const Cache& cache);
   void send_packet_deffuse(const NodeID& dst_nid, const Cache& cache);
   void send_packet_pass(
-      const Cache& cache, const std::function<void()>& on_success, const std::function<void(ErrorCode)>& on_failure);
+      const Cache& cache, std::function<void()> on_success, std::function<void(const Error&)> on_failure);
 };
 }  // namespace colonio

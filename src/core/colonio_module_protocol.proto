@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+import "core/core.proto";
+
+package colonio.ColonioModuleProtocol;
+
+message SendPacket {
+  core.Value value = 1;
+}

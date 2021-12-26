@@ -1,9 +1,9 @@
-// +build !js
+//go:build !js
 
 package colonio
 
 /*
- * Copyright 2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,28 +27,34 @@ package colonio
 #include "../../src/colonio/colonio.h"
 
 extern const unsigned int cgo_colonio_nid_length;
-extern const unsigned int cgo_colonio_colonio_explicit_event_thread;
 
 // colonio
+colonio_error_t *cgo_colonio_init(colonio_t *colonio);
 colonio_error_t *cgo_colonio_connect(colonio_t *colonio, _GoString_ url, _GoString_ token);
 colonio_map_t cgo_colonio_access_map(colonio_t *colonio, _GoString_ name);
 colonio_pubsub_2d_t cgo_colonio_access_pubsub_2d(colonio_t *colonio, _GoString_ name);
+colonio_error_t *cgo_colonio_send(colonio_t *colonio, _GoString_ dst, const colonio_value_t *val, uint32_t opt);
+void cgo_colonio_on(colonio_t *colonio, uintptr_t ptr);
 
 // value
 void cgo_colonio_value_set_string(colonio_value_t *value, _GoString_ s);
+
+// map
+colonio_error_t *cgo_colonio_map_foreach_local_value(colonio_map_t *map, uintptr_t ptr);
 
 // pubsub
 colonio_error_t *cgo_colonio_pubsub_2d_publish(
     colonio_pubsub_2d_t *pubsub_2d, _GoString_ name, double x, double y, double r, const colonio_value_t *value,
     uint32_t opt);
 void cgo_cb_colonio_pubsub_2d_on(colonio_pubsub_2d_t *pubsub_2d, void *ptr, const colonio_value_t *val);
-void cgo_colonio_pubsub_2d_on(colonio_pubsub_2d_t *pubsub_2d, _GoString_ name, void *ptr);
+void cgo_colonio_pubsub_2d_on(colonio_pubsub_2d_t *pubsub_2d, _GoString_ name, uintptr_t ptr);
 void cgo_colonio_pubsub_2d_off(colonio_pubsub_2d_t *pubsub_2d, _GoString_ name);
 */
 import "C"
 
 import (
 	"fmt"
+	"log"
 	"reflect"
 	"sync"
 	"unsafe"
@@ -58,6 +64,7 @@ type colonioImpl struct {
 	cInstance     C.struct_colonio_s
 	mapCache      map[string]*mapImpl
 	pubsub2DCache map[string]*pubsub2dImpl
+	cb            func(Value)
 }
 
 type valueImpl struct {
@@ -72,31 +79,48 @@ type mapImpl struct {
 	cInstance C.struct_colonio_map_s
 }
 
+type mapCbForeachImpl struct {
+	cb func(Value, Value, uint32)
+}
+
 type pubsub2dImpl struct {
 	cInstance C.struct_colonio_pubsub_2d_s
 	cbMutex   sync.RWMutex
 	cbMap     map[*string]func(Value)
 }
 
-var pubsub2DMutex sync.RWMutex
+type defaultLogger struct {
+}
+
+// DefaultLogger is the default log output module that outputs logs to the golang log module.
+var DefaultLogger *defaultLogger
+var loggerMap map[*C.struct_colonio_s]Logger
+var instanceMapMutex sync.RWMutex
 var pubsub2DMap map[*C.struct_colonio_pubsub_2d_s]*pubsub2dImpl
 
 func init() {
-	pubsub2DMutex = sync.RWMutex{}
+	loggerMap = make(map[*C.struct_colonio_s]Logger)
+
+	instanceMapMutex = sync.RWMutex{}
 	pubsub2DMap = make(map[*C.struct_colonio_pubsub_2d_s]*pubsub2dImpl)
 }
 
 func convertError(err *C.struct_colonio_error_s) error {
+	if err == nil {
+		return nil
+	}
 	return newErr(uint32(err.code), C.GoString(err.message))
 }
 
 // NewColonio creates a new initialized instance.
-func NewColonio() (Colonio, error) {
+func NewColonio(logger Logger) (Colonio, error) {
 	instance := &colonioImpl{
 		mapCache:      make(map[string]*mapImpl),
 		pubsub2DCache: make(map[string]*pubsub2dImpl),
 	}
-	err := C.colonio_init(&instance.cInstance, C.cgo_colonio_colonio_explicit_event_thread)
+	loggerMap[&instance.cInstance] = logger
+
+	err := C.cgo_colonio_init(&instance.cInstance)
 	if err != nil {
 		return nil, convertError(err)
 	}
@@ -106,22 +130,27 @@ func NewColonio() (Colonio, error) {
 	return instance, nil
 }
 
+//export cgoCbColonioLogger
+func cgoCbColonioLogger(cInstancePtr *C.struct_colonio_s, messagePtr unsafe.Pointer, len C.int) {
+	logger, ok := loggerMap[cInstancePtr]
+
+	if !ok {
+		log.Fatal("logger not found or deallocated yet")
+	}
+
+	logger.Output(C.GoStringN((*C.char)(messagePtr), len))
+}
+
 // Connect to seed and join the cluster.
 func (c *colonioImpl) Connect(url, token string) error {
 	err := C.cgo_colonio_connect(&c.cInstance, url, token)
-	if err != nil {
-		return convertError(err)
-	}
-	return nil
+	return convertError(err)
 }
 
 // Disconnect from the cluster and the seed.
 func (c *colonioImpl) Disconnect() error {
 	err := C.colonio_disconnect(&c.cInstance)
-	if err != nil {
-		return convertError(err)
-	}
-	return nil
+	return convertError(err)
 }
 
 func (c *colonioImpl) AccessMap(name string) Map {
@@ -147,8 +176,8 @@ func (c *colonioImpl) AccessPubsub2D(name string) Pubsub2D {
 		cbMutex:   sync.RWMutex{},
 		cbMap:     make(map[*string]func(Value)),
 	}
-	pubsub2DMutex.Lock()
-	defer pubsub2DMutex.Unlock()
+	instanceMapMutex.Lock()
+	defer instanceMapMutex.Unlock()
 	if _, ok := pubsub2DMap[&instance.cInstance]; ok {
 
 	} else {
@@ -163,7 +192,7 @@ func (c *colonioImpl) GetLocalNid() string {
 	buf := make([]byte, C.cgo_colonio_nid_length+1)
 	data := (*reflect.SliceHeader)(unsafe.Pointer(&buf)).Data
 	C.colonio_get_local_nid(&c.cInstance, (*C.char)(unsafe.Pointer(data)), nil)
-	return string(buf)
+	return string(buf[:C.cgo_colonio_nid_length])
 }
 
 func (c *colonioImpl) SetPosition(x, y float64) (float64, float64, error) {
@@ -176,13 +205,46 @@ func (c *colonioImpl) SetPosition(x, y float64) (float64, float64, error) {
 	return float64(cX), float64(cY), nil
 }
 
+func (c *colonioImpl) Send(dst string, val interface{}, opt uint32) error {
+	// value
+	vValue, err := NewValue(val)
+	if err != nil {
+		return err
+	}
+	cVal := C.struct_colonio_value_s{}
+	C.colonio_value_init(&cVal)
+	defer C.colonio_value_free(&cVal)
+	writeOut(&cVal, vValue)
+
+	cErr := C.cgo_colonio_send(&c.cInstance, dst, &cVal, C.uint32_t(opt))
+	return convertError(cErr)
+}
+
+//export cgoCbColonioOn
+func cgoCbColonioOn(cInstancePtr *C.struct_colonio_s, ptr unsafe.Pointer, cVal *C.struct_colonio_value_s) {
+	c := (*colonioImpl)(ptr)
+	value := newValue(cVal)
+	c.cb(value)
+}
+
+func (c *colonioImpl) On(cb func(Value)) {
+	c.cb = cb
+	C.cgo_colonio_on(&c.cInstance, C.uintptr_t(uintptr(unsafe.Pointer(c))))
+}
+
+func (c *colonioImpl) Off() {
+	C.colonio_off(&c.cInstance)
+}
+
 // Quit is the finalizer of the instance.
 func (c *colonioImpl) Quit() error {
+	defer delete(loggerMap, &c.cInstance)
 	err := C.colonio_quit(&c.cInstance)
-	if err != nil {
-		return convertError(err)
-	}
-	return nil
+	return convertError(err)
+}
+
+func (l *defaultLogger) Output(message string) {
+	log.Println(message)
 }
 
 func newValue(cValue *C.struct_colonio_value_s) Value {
@@ -345,6 +407,22 @@ func writeOut(cValue *C.struct_colonio_value_s, value Value) {
 	C.colonio_value_free(cValue)
 }
 
+//export cgoColonioMapForeachLocalValue
+func cgoColonioMapForeachLocalValue(cInstancePtr *C.struct_colonio_map_s, ptr unsafe.Pointer, cKey *C.struct_colonio_value_s, cVal *C.struct_colonio_value_s, attr C.uint32_t) {
+	cbWrap := (*mapCbForeachImpl)(ptr)
+	key := newValue(cKey)
+	value := newValue(cVal)
+	cbWrap.cb(key, value, (uint32)(attr))
+}
+
+func (m *mapImpl) ForeachLocalValue(cb func(key, value Value, attr uint32)) error {
+	cbWrap := mapCbForeachImpl{
+		cb: cb,
+	}
+	cErr := C.cgo_colonio_map_foreach_local_value(&m.cInstance, C.uintptr_t(uintptr(unsafe.Pointer(&cbWrap))))
+	return convertError(cErr)
+}
+
 func (m *mapImpl) Get(key interface{}) (Value, error) {
 	// key
 	vKey, err := NewValue(key)
@@ -393,10 +471,7 @@ func (m *mapImpl) Set(key, val interface{}, opt uint32) error {
 
 	// set
 	cErr := C.colonio_map_set(&m.cInstance, &cKey, &cVal, C.uint32_t(opt))
-	if cErr != nil {
-		return convertError(cErr)
-	}
-	return nil
+	return convertError(cErr)
 }
 
 func (p *pubsub2dImpl) Publish(name string, x, y, r float64, val interface{}, opt uint32) error {
@@ -412,18 +487,15 @@ func (p *pubsub2dImpl) Publish(name string, x, y, r float64, val interface{}, op
 
 	// publish
 	cErr := C.cgo_colonio_pubsub_2d_publish(&p.cInstance, name, C.double(x), C.double(y), C.double(r), &cVal, C.uint32_t(opt))
-	if cErr != nil {
-		return convertError(cErr)
-	}
-	return nil
+	return convertError(cErr)
 }
 
 //export cgoCbPubsub2DOn
 func cgoCbPubsub2DOn(cInstancePtr *C.struct_colonio_pubsub_2d_s, ptr unsafe.Pointer, cVal *C.struct_colonio_value_s) {
 	var ps2 *pubsub2dImpl
 	{
-		pubsub2DMutex.RLock()
-		defer pubsub2DMutex.RUnlock()
+		instanceMapMutex.RLock()
+		defer instanceMapMutex.RUnlock()
 		if p, ok := pubsub2DMap[cInstancePtr]; ok {
 			ps2 = p
 		} else {
@@ -449,7 +521,7 @@ func (p *pubsub2dImpl) On(name string, cb func(Value)) {
 	p.cbMutex.Lock()
 	defer p.cbMutex.Unlock()
 	p.cbMap[&name] = cb
-	C.cgo_colonio_pubsub_2d_on(&p.cInstance, name, unsafe.Pointer(&name))
+	C.cgo_colonio_pubsub_2d_on(&p.cInstance, name, C.uintptr_t(uintptr(unsafe.Pointer(&name))))
 }
 
 func (p *pubsub2dImpl) Off(name string) {

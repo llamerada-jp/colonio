@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@
 using namespace colonio;
 using ::testing::MatchesRegex;
 
-class DummyContext : public LoggerDelegate {
+class DummyModule : public LoggerDelegate {
  public:
   Logger logger;
 
@@ -38,7 +38,7 @@ class DummyContext : public LoggerDelegate {
   picojson::object param;
   std::string time;
 
-  DummyContext() : logger(*this) {
+  DummyModule() : logger(*this), last_logger(nullptr), line(0) {
   }
 
   void logger_on_output(Logger& logger, const std::string& json) override {
@@ -62,106 +62,107 @@ class DummyContext : public LoggerDelegate {
 
 class LoggerTest : public ::testing::Test {
  protected:
-  DummyContext context;
-  DummyContext context2;
+  DummyModule module1;
+  DummyModule module2;
+  Logger& logger = module1.logger;
 
   void test_output() {
     static const std::string TIME_REGEX("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+[0-9]{4}$");
 
     // 異なるインスタンスは互いに独立していること
-    logI(context, "test0");
-    logE(context2, "test1");
-    EXPECT_EQ(&context.logger, context.last_logger);
-    EXPECT_STREQ("logger_test.cpp", context.file.c_str());
-    EXPECT_EQ(LogLevel::INFO, context.level);
-    EXPECT_EQ(__LINE__ - 5, static_cast<int>(context.line));
-    EXPECT_STREQ("test0", context.message.c_str());
-    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
-    EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
+    logI(module1, "test0");
+    logE(module2, "test1");
+    EXPECT_EQ(&module1.logger, module1.last_logger);
+    EXPECT_STREQ("logger_test.cpp", module1.file.c_str());
+    EXPECT_EQ(LogLevel::INFO, module1.level);
+    EXPECT_EQ(__LINE__ - 5, static_cast<int>(module1.line));
+    EXPECT_STREQ("test0", module1.message.c_str());
+    EXPECT_EQ(static_cast<unsigned int>(0), module1.param.size());
+    EXPECT_THAT(module1.time, MatchesRegex(TIME_REGEX));
 
-    EXPECT_EQ(&context2.logger, context2.last_logger);
-    EXPECT_EQ(LogLevel::ERROR, context2.level);
-    EXPECT_EQ(context.line + 1, context2.line);
-    EXPECT_STREQ("test1", context2.message.c_str());
-    EXPECT_THAT(context2.time, MatchesRegex(TIME_REGEX));
+    EXPECT_EQ(&module2.logger, module2.last_logger);
+    EXPECT_EQ(LogLevel::ERROR, module2.level);
+    EXPECT_EQ(module1.line + 1, module2.line);
+    EXPECT_STREQ("test1", module2.message.c_str());
+    EXPECT_THAT(module2.time, MatchesRegex(TIME_REGEX));
 
     logi("test info 1");
-    EXPECT_EQ(&context.logger, context.last_logger);
-    EXPECT_STREQ("logger_test.cpp", context.file.c_str());
-    EXPECT_EQ(LogLevel::INFO, context.level);
-    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
-    EXPECT_STREQ("test info 1", context.message.c_str());
-    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
-    EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
+    EXPECT_EQ(&module1.logger, module1.last_logger);
+    EXPECT_STREQ("logger_test.cpp", module1.file.c_str());
+    EXPECT_EQ(LogLevel::INFO, module1.level);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(module1.line));
+    EXPECT_STREQ("test info 1", module1.message.c_str());
+    EXPECT_EQ(static_cast<unsigned int>(0), module1.param.size());
+    EXPECT_THAT(module1.time, MatchesRegex(TIME_REGEX));
 
-    logI(context, "test info 2");
-    EXPECT_EQ(&context.logger, context.last_logger);
-    EXPECT_STREQ("logger_test.cpp", context.file.c_str());
-    EXPECT_EQ(LogLevel::INFO, context.level);
-    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
-    EXPECT_STREQ("test info 2", context.message.c_str());
-    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
-    EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
+    logI(module1, "test info 2");
+    EXPECT_EQ(&module1.logger, module1.last_logger);
+    EXPECT_STREQ("logger_test.cpp", module1.file.c_str());
+    EXPECT_EQ(LogLevel::INFO, module1.level);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(module1.line));
+    EXPECT_STREQ("test info 2", module1.message.c_str());
+    EXPECT_EQ(static_cast<unsigned int>(0), module1.param.size());
+    EXPECT_THAT(module1.time, MatchesRegex(TIME_REGEX));
 
     logw("test warn 1");
-    EXPECT_EQ(&context.logger, context.last_logger);
-    EXPECT_STREQ("logger_test.cpp", context.file.c_str());
-    EXPECT_EQ(LogLevel::WARN, context.level);
-    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
-    EXPECT_STREQ("test warn 1", context.message.c_str());
-    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
-    EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
+    EXPECT_EQ(&module1.logger, module1.last_logger);
+    EXPECT_STREQ("logger_test.cpp", module1.file.c_str());
+    EXPECT_EQ(LogLevel::WARN, module1.level);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(module1.line));
+    EXPECT_STREQ("test warn 1", module1.message.c_str());
+    EXPECT_EQ(static_cast<unsigned int>(0), module1.param.size());
+    EXPECT_THAT(module1.time, MatchesRegex(TIME_REGEX));
 
-    logW(context, "test warn 2");
-    EXPECT_EQ(&context.logger, context.last_logger);
-    EXPECT_STREQ("logger_test.cpp", context.file.c_str());
-    EXPECT_EQ(LogLevel::WARN, context.level);
-    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
-    EXPECT_STREQ("test warn 2", context.message.c_str());
-    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
-    EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
+    logW(module1, "test warn 2");
+    EXPECT_EQ(&module1.logger, module1.last_logger);
+    EXPECT_STREQ("logger_test.cpp", module1.file.c_str());
+    EXPECT_EQ(LogLevel::WARN, module1.level);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(module1.line));
+    EXPECT_STREQ("test warn 2", module1.message.c_str());
+    EXPECT_EQ(static_cast<unsigned int>(0), module1.param.size());
+    EXPECT_THAT(module1.time, MatchesRegex(TIME_REGEX));
 
     loge("test error 1");
-    EXPECT_EQ(&context.logger, context.last_logger);
-    EXPECT_STREQ("logger_test.cpp", context.file.c_str());
-    EXPECT_EQ(LogLevel::ERROR, context.level);
-    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
-    EXPECT_STREQ("test error 1", context.message.c_str());
-    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
-    EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
+    EXPECT_EQ(&module1.logger, module1.last_logger);
+    EXPECT_STREQ("logger_test.cpp", module1.file.c_str());
+    EXPECT_EQ(LogLevel::ERROR, module1.level);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(module1.line));
+    EXPECT_STREQ("test error 1", module1.message.c_str());
+    EXPECT_EQ(static_cast<unsigned int>(0), module1.param.size());
+    EXPECT_THAT(module1.time, MatchesRegex(TIME_REGEX));
 
-    logE(context, "test error 2");
-    EXPECT_EQ(&context.logger, context.last_logger);
-    EXPECT_STREQ("logger_test.cpp", context.file.c_str());
-    EXPECT_EQ(LogLevel::ERROR, context.level);
-    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
-    EXPECT_STREQ("test error 2", context.message.c_str());
-    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
-    EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
+    logE(module1, "test error 2");
+    EXPECT_EQ(&module1.logger, module1.last_logger);
+    EXPECT_STREQ("logger_test.cpp", module1.file.c_str());
+    EXPECT_EQ(LogLevel::ERROR, module1.level);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(module1.line));
+    EXPECT_STREQ("test error 2", module1.message.c_str());
+    EXPECT_EQ(static_cast<unsigned int>(0), module1.param.size());
+    EXPECT_THAT(module1.time, MatchesRegex(TIME_REGEX));
 
     logd("test debug 1");
-    EXPECT_EQ(&context.logger, context.last_logger);
-    EXPECT_STREQ("logger_test.cpp", context.file.c_str());
-    EXPECT_EQ(LogLevel::DEBUG, context.level);
-    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
-    EXPECT_STREQ("test debug 1", context.message.c_str());
-    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
-    EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
+    EXPECT_EQ(&module1.logger, module1.last_logger);
+    EXPECT_STREQ("logger_test.cpp", module1.file.c_str());
+    EXPECT_EQ(LogLevel::DEBUG, module1.level);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(module1.line));
+    EXPECT_STREQ("test debug 1", module1.message.c_str());
+    EXPECT_EQ(static_cast<unsigned int>(0), module1.param.size());
+    EXPECT_THAT(module1.time, MatchesRegex(TIME_REGEX));
 
-    logD(context, "test debug 2");
-    EXPECT_EQ(&context.logger, context.last_logger);
-    EXPECT_STREQ("logger_test.cpp", context.file.c_str());
-    EXPECT_EQ(LogLevel::DEBUG, context.level);
-    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
-    EXPECT_STREQ("test debug 2", context.message.c_str());
-    EXPECT_EQ(static_cast<unsigned int>(0), context.param.size());
-    EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
+    logD(module1, "test debug 2");
+    EXPECT_EQ(&module1.logger, module1.last_logger);
+    EXPECT_STREQ("logger_test.cpp", module1.file.c_str());
+    EXPECT_EQ(LogLevel::DEBUG, module1.level);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(module1.line));
+    EXPECT_STREQ("test debug 2", module1.message.c_str());
+    EXPECT_EQ(static_cast<unsigned int>(0), module1.param.size());
+    EXPECT_THAT(module1.time, MatchesRegex(TIME_REGEX));
 
     Packet packet(
-        {NodeID::NONE, NodeID::NEXT, 0, 0, std::make_shared<std::string>(""), PacketMode::EXPLICIT, APIChannel::COLONIO,
-         ModuleChannel::Colonio::MAIN, CommandID::SUCCESS});
+        {NodeID::NONE, NodeID::NEXT, 0, 0, std::make_shared<std::string>(""), PacketMode::EXPLICIT, Channel::COLONIO,
+         CommandID::SUCCESS});
     Value value(true);
-    logI(context, "test map")
+    logI(module1, "test map")
         .map("string", std::string("string value"))
         .map("node id", NodeID::THIS)
         .map("packet", packet)
@@ -173,34 +174,34 @@ class LoggerTest : public ::testing::Test {
         .map_int("int", -12)
         .map_u32("u32", -12)
         .map_u64("u64", 12);
-    EXPECT_EQ(&context.logger, context.last_logger);
-    EXPECT_STREQ("logger_test.cpp", context.file.c_str());
-    EXPECT_EQ(LogLevel::INFO, context.level);
-    EXPECT_EQ(__LINE__ - 15, static_cast<int>(context.line));
-    EXPECT_STREQ("test map", context.message.c_str());
-    EXPECT_EQ(static_cast<unsigned int>(11), context.param.size());
-    EXPECT_EQ("string value", context.param.at("string").get<std::string>());
-    EXPECT_EQ(NodeID::THIS.to_str(), context.param.at("node id").get<std::string>());
-    EXPECT_TRUE(context.param.at("packet").is<picojson::object>());
-    EXPECT_STREQ("true", context.param.at("value").get<std::string>().c_str());
-    EXPECT_TRUE(context.param.at("json").is<picojson::array>());
-    EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
-    EXPECT_FALSE(context.param.at("bool").get<bool>());
-    EXPECT_STREQ("68 65 6c 6c 6f", context.param.at("dump").get<std::string>().c_str());
-    EXPECT_DOUBLE_EQ(2.0, context.param.at("float").get<double>());
-    EXPECT_EQ(-12, static_cast<int64_t>(context.param.at("int").get<double>()));
-    EXPECT_STREQ("fffffff4", context.param.at("u32").get<std::string>().c_str());
-    EXPECT_STREQ("000000000000000c", context.param.at("u64").get<std::string>().c_str());
+    EXPECT_EQ(&module1.logger, module1.last_logger);
+    EXPECT_STREQ("logger_test.cpp", module1.file.c_str());
+    EXPECT_EQ(LogLevel::INFO, module1.level);
+    EXPECT_EQ(__LINE__ - 15, static_cast<int>(module1.line));
+    EXPECT_STREQ("test map", module1.message.c_str());
+    EXPECT_EQ(static_cast<unsigned int>(11), module1.param.size());
+    EXPECT_EQ("string value", module1.param.at("string").get<std::string>());
+    EXPECT_EQ(NodeID::THIS.to_str(), module1.param.at("node id").get<std::string>());
+    EXPECT_TRUE(module1.param.at("packet").is<picojson::object>());
+    EXPECT_STREQ("true", module1.param.at("value").get<std::string>().c_str());
+    EXPECT_TRUE(module1.param.at("json").is<picojson::array>());
+    EXPECT_THAT(module1.time, MatchesRegex(TIME_REGEX));
+    EXPECT_FALSE(module1.param.at("bool").get<bool>());
+    EXPECT_STREQ("68 65 6c 6c 6f", module1.param.at("dump").get<std::string>().c_str());
+    EXPECT_DOUBLE_EQ(2.0, module1.param.at("float").get<double>());
+    EXPECT_EQ(-12, static_cast<int64_t>(module1.param.at("int").get<double>()));
+    EXPECT_STREQ("fffffff4", module1.param.at("u32").get<std::string>().c_str());
+    EXPECT_STREQ("000000000000000c", module1.param.at("u64").get<std::string>().c_str());
 
-    logI(context, "test NodeID").map("key", NodeID::THIS);
-    EXPECT_EQ(&context.logger, context.last_logger);
-    EXPECT_STREQ("logger_test.cpp", context.file.c_str());
-    EXPECT_EQ(LogLevel::INFO, context.level);
-    EXPECT_EQ(__LINE__ - 4, static_cast<int>(context.line));
-    EXPECT_STREQ("test NodeID", context.message.c_str());
-    EXPECT_EQ(static_cast<unsigned int>(1), context.param.size());
-    EXPECT_EQ(NodeID::THIS.to_str(), context.param.at("key").get<std::string>());
-    EXPECT_THAT(context.time, MatchesRegex(TIME_REGEX));
+    logI(module1, "test NodeID").map("key", NodeID::THIS);
+    EXPECT_EQ(&module1.logger, module1.last_logger);
+    EXPECT_STREQ("logger_test.cpp", module1.file.c_str());
+    EXPECT_EQ(LogLevel::INFO, module1.level);
+    EXPECT_EQ(__LINE__ - 4, static_cast<int>(module1.line));
+    EXPECT_STREQ("test NodeID", module1.message.c_str());
+    EXPECT_EQ(static_cast<unsigned int>(1), module1.param.size());
+    EXPECT_EQ(NodeID::THIS.to_str(), module1.param.at("key").get<std::string>());
+    EXPECT_THAT(module1.time, MatchesRegex(TIME_REGEX));
   }
 };
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -150,23 +150,30 @@ class Colonio {
   // ATTENTION: Use same value with another languages.
   static get ERROR_CODE_UNDEFINED() { return 0; }
   static get ERROR_CODE_SYSTEM_ERROR() { return 1; }
-  static get ERROR_CODE_OFFLINE() { return 2; }
-  static get ERROR_CODE_INCORRECT_DATA_FORMAT() { return 3; }
-  static get ERROR_CODE_CONFLICT_WITH_SETTING() { return 4; }
-  static get ERROR_CODE_NOT_EXIST_KEY() { return 5; }
-  static get ERROR_CODE_EXIST_KEY() { return 6; }
-  static get ERROR_CODE_CHANGED_PROPOSER() { return 7; }
-  static get ERROR_CODE_COLLISION_LATE() { return 8; }
-  static get ERROR_CODE_NO_ONE_RECV() { return 9; }
+  static get ERROR_CODE_CONNECTION_FAILD() { return 2; }
+  static get ERROR_CODE_OFFLINE() { return 3; }
+  static get ERROR_CODE_INCORRECT_DATA_FORMAT() { return 4; }
+  static get ERROR_CODE_CONFLICT_WITH_SETTING() { return 5; }
+  static get ERROR_CODE_NOT_EXIST_KEY() { return 6; }
+  static get ERROR_CODE_EXIST_KEY() { return 7; }
+  static get ERROR_CODE_CHANGED_PROPOSER() { return 8; }
+  static get ERROR_CODE_COLLISION_LATE() { return 9; }
+  static get ERROR_CODE_NO_ONE_RECV() { return 10; }
+  static get ERROR_CODE_CALLBACK_ERROR() { return 11; }
 
   static get NID_THIS() { return "."; }
 
-  constructor() {
+  constructor(logger) {
     this._colonioPtr = null;
     this._instanceCache = new Map();
 
     addFuncAfterLoad(() => {
       // initialize
+      let logWrapper = Module.addFunction((_/*colonioPtr*/, messagePtr, messageSiz) => {
+        let message = UTF8ToString(messagePtr, messageSiz);
+        logger(message);
+      }, "viii");
+
       let setPositionOnSuccess = Module.addFunction((id, newX, newY) => {
         popObject(id).onSuccess({
           x: newX,
@@ -178,22 +185,34 @@ class Colonio {
         popObject(id).onFailure(convertError(errorPtr));
       }, "vii");
 
+      let sendOnSuccess = Module.addFunction((id) => {
+        popObject(id).onSuccess();
+      }, "vi");
+
+      let sendOnFailure = Module.addFunction((id, errorPtr) => {
+        popObject(id).onFailure(convertError(errorPtr));
+      }, "vii");
+
+      let onOn = Module.addFunction((id, valuePtr) => {
+        getObject(id)(new ColonioValue(valuePtr));
+      }, "vii");
+
       this._colonioPtr = ccall("js_init", "number",
-        ["number", "number"],
-        [setPositionOnSuccess, setPositionOnFailure]);
+        ["number", "number", "number", "number", "number", "number"],
+        [logWrapper, setPositionOnSuccess, setPositionOnFailure, sendOnSuccess, sendOnFailure, onOn]);
     });
   }
 
   connect(url, token) {
     const promise = new Promise((resolve, reject) => {
       addFuncAfterLoad(() => {
-        var onSuccess = Module.addFunction((colonioPtr) => {
+        var onSuccess = Module.addFunction((_) => {
           resolve();
           removeFunction(onSuccess);
           removeFunction(onFailure);
         }, "vi");
 
-        var onFailure = Module.addFunction((colonioPtr, errorPtr) => {
+        var onFailure = Module.addFunction((_, errorPtr) => {
           reject(convertError(errorPtr));
           removeFunction(onSuccess);
           removeFunction(onFailure);
@@ -283,58 +302,62 @@ class Colonio {
     return promise;
   }
 
-  on(type, func) {
-    addFuncAfterLoad(() => {
-      const TYPES = ["log"];
-      assert(TYPES.indexOf(type) >= 0);
+  send(dst, val, opt) {
+    let promise = new Promise((resolve, reject) => {
+      let [dstPtr, dstSiz] = allocPtrString(dst);
+      const value = convertValue(val);
 
-      switch (type) {
-        case "log":
-          ccall("js_enable_output_log", "null", ["number"], [this._colonioPtr]);
-          break;
-      }
+      let id = pushObject({
+        onSuccess: resolve,
+        onFailure: reject,
+      });
 
-      setEventFunc(this._colonioPtr, "colonio", type, func);
+      ccall("js_send", "null",
+        ["number", "number", "number", "number", "number", "number"],
+        [this._colonioPtr, dstPtr, dstSiz, value._valuePtr, opt, id]);
+
+      freePtr(dstPtr);
+      value.release();
+    });
+
+    return promise;
+  }
+
+  on(cb) {
+    this.onRaw((val) => {
+      cb(val.getJsValue());
     });
   }
-}
 
-/* log */
-function jsOnOutputLog(colonioPtr, jsonPtr, jsonSiz) {
-  let json = UTF8ToString(jsonPtr, jsonSiz);
-  let funcs = getEventFuncs(colonioPtr, "colonio", "log");
-  if (funcs === null) {
-    return;
+  onRaw(cb) {
+    let id = pushObject(cb);
+    ccall("js_on", "null", ["number", "number"], [this._colonioPtr, id]);
   }
-  for (let idx = 0; idx < funcs.length; idx++) {
-    funcs[idx](JSON.parse(json));
+
+  off() {
+    ccall("js_off", "null", ["number"], [this._colonioPtr]);
   }
 }
 
-/* APIGate */
-let gateTimers = new Map();
+/* Scheduler */
+let schedulerTimers = new Map();
 
-function apiGateRelease(gatePtr) {
-  if (gateTimers.has(gatePtr)) {
-    clearTimeout(gateTimers.get(gatePtr));
-    gateTimers.delete(gatePtr);
+function schedulerRelease(schedulerPtr) {
+  if (schedulerTimers.has(schedulerPtr)) {
+    clearTimeout(schedulerTimers.get(schedulerPtr));
+    schedulerTimers.delete(schedulerPtr);
   }
 }
 
-function apiGateRequireCallAfter(gatePtr, id) {
-  setTimeout(() => {
-    if (gateTimers.has(gatePtr)) {
-      ccall("api_gate_call", "null", ["number", "number"], [gatePtr, id]);
+function schedulerRequestNextRoutine(schedulerPtr, msec) {
+  if (schedulerTimers.has(schedulerPtr)) {
+    clearTimeout(schedulerTimers.get(schedulerPtr));
+  }
+  schedulerTimers.set(schedulerPtr, setTimeout(() => {
+    let next = ccall("scheduler_invoke", "number", ["number"], [schedulerPtr]);
+    if (next >= 0) {
+      schedulerRequestNextRoutine(schedulerPtr, next);
     }
-  }, 0);
-}
-
-function apiGateRequireInvoke(gatePtr, msec) {
-  if (gateTimers.has(gatePtr)) {
-    clearTimeout(gateTimers.get(gatePtr));
-  }
-  gateTimers.set(gatePtr, setTimeout(() => {
-    ccall("api_gate_invoke", "null", ["number"], [gatePtr]);
   }, msec));
 }
 
@@ -418,7 +441,7 @@ class ColonioValue {
     assert(this.isEnable(), "Released value.");
 
     this._type = ccall("js_value_get_type", "number", ["number"], [this._valuePtr]);
-    
+
     switch (this.getType()) {
       case 0: // this.VALUE_TYPE_NULL:
         this._value = null;
@@ -477,6 +500,10 @@ function convertValue(value) {
 }
 
 function initializeMap() {
+  let foreachLocalValueCb = Module.addFunction((id, keyPtr, valuePtr, attr) => {
+    getObject(id)(new ColonioValue(keyPtr), new ColonioValue(valuePtr), attr);
+  }, "viiii");
+
   let getValueOnSuccess = Module.addFunction((id, valuePtr) => {
     popObject(id).onSuccess(new ColonioValue(valuePtr));
   }, "vii");
@@ -494,8 +521,8 @@ function initializeMap() {
   }, "vii");
 
   ccall("js_map_init", "null",
-    ["number", "number", "number", "number"],
-    [getValueOnSuccess, getValueOnFailure, setValueOnSuccess, setValueOnFailure]);
+    ["number", "number", "number", "number", "number"],
+    [foreachLocalValueCb, getValueOnSuccess, getValueOnFailure, setValueOnSuccess, setValueOnFailure]);
 }
 
 class ColonioMap {
@@ -504,6 +531,22 @@ class ColonioMap {
 
   constructor(mapPtr) {
     this._mapPtr = mapPtr;
+  }
+
+  foreachLocalValue(cb) {
+    this.foreachLocalValueRaw((key, value, attr) => {
+      cb(key.getJsValue(), value.getJsValue(), attr);
+    });
+  }
+
+  foreachLocalValueRaw(cb) {
+    let id = pushObject(cb);
+
+    let errorPtr = ccall("js_map_foreach_local_value", "null", ["number", "number"], [this._mapPtr, id]);
+
+    popObject(id);
+
+    return convertError(errorPtr);
   }
 
   getValue(key) {

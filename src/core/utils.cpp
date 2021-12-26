@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 Yuji Ito <llamerada.jp@gmail.com>
+ * Copyright 2017 Yuji Ito <llamerada.jp@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -104,7 +104,6 @@ std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
   out << is << "id : " << Convert::int2str(packet.id) << std::endl;
   out << is << "mode : " << Convert::int2str(packet.mode) << std::endl;
   out << is << "channel : " << Convert::int2str(packet.channel) << std::endl;
-  out << is << "module_channel : " << Convert::int2str(packet.module_channel) << std::endl;
   out << is << "command_id : " << Convert::int2str(packet.command_id) << std::endl;
   out << is << "content : " << dump_binary(packet.content.get());
 
@@ -144,12 +143,6 @@ int64_t Utils::get_current_msec() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(now - msec_start).count();
 }
 
-std::string Utils::get_current_thread_id() {
-  std::stringstream ss;
-  ss << std::this_thread::get_id();
-  return ss.str();
-}
-
 /**
  * Get the last component of a pathname.
  * If suffix is matched to last of the pathname, remove it from return value.
@@ -180,20 +173,6 @@ std::string Utils::file_basename(const std::string& path, bool cutoff_ext) {
   }
 }
 
-/**
- * Split path to dirname and basename, and get dirname.
- * @param path A target path to split.
- * @return A string of dirname.
- */
-std::string Utils::file_dirname(const std::string& path) {
-  std::unique_ptr<char[]> buffer = std::make_unique<char[]>(path.size() + 1);
-
-  memcpy(buffer.get(), path.c_str(), path.size());
-  buffer[path.size()] = '\0';
-
-  return std::string(dirname(buffer.get()));
-}
-
 bool Utils::is_safevalue(double v) {
   if (
 #ifdef _MSC_VER
@@ -210,31 +189,8 @@ bool Utils::is_safevalue(double v) {
   }
 }
 
-void Utils::output_assert(
-    const std::string& func, const std::string& file, unsigned long line, const std::string& exp,
-    const std::string& message) {
-  printf(
-      "Assersion failed: (%s) func: %s, file: %s, line: %lu\n%s\n", exp.c_str(), func.c_str(), file.c_str(), line,
-      message.c_str());
-  exit(EXIT_FAILURE);
-}
-
 double Utils::float_mod(double a, double b) {
   assert(b > 0);
   return a - std::floor(a / b) * b;
-}
-
-/**
- * Replace all the string in a string.
- * @param str Target string.
- * @param from String befor replace.
- * @param to String after replace.
- */
-void Utils::replace_string(std::string* str, const std::string& from, const std::string& to) {
-  std::string::size_type pos = str->find(from);
-  while (pos != std::string::npos) {
-    str->replace(pos, from.size(), to);
-    pos = str->find(from, pos + to.size());
-  }
 }
 }  // namespace colonio
