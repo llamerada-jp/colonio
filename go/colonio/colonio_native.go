@@ -31,10 +31,12 @@ extern const unsigned int cgo_colonio_nid_length;
 // colonio
 colonio_error_t *cgo_colonio_init(colonio_t *colonio);
 colonio_error_t *cgo_colonio_connect(colonio_t *colonio, _GoString_ url, _GoString_ token);
+int cgo_colonio_is_connected(colonio_t* colonio);
 colonio_map_t cgo_colonio_access_map(colonio_t *colonio, _GoString_ name);
 colonio_pubsub_2d_t cgo_colonio_access_pubsub_2d(colonio_t *colonio, _GoString_ name);
-colonio_error_t *cgo_colonio_send(colonio_t *colonio, _GoString_ dst, const colonio_value_t *val, uint32_t opt);
-void cgo_colonio_on(colonio_t *colonio, uintptr_t ptr);
+colonio_error_t *cgo_colonio_call_by_nid(colonio_t *colonio, _GoString_ dst, _GoString_ name, const colonio_value_t *val, uint32_t opt, colonio_value_t* result);
+void cgo_colonio_call_on(colonio_t *colonio, _GoString_ name, uintptr_t ptr);
+void cgo_colonio_call_off(colonio_t *colonio, _GoString_ name);
 
 // value
 void cgo_colonio_value_set_string(colonio_value_t *value, _GoString_ s);
@@ -64,7 +66,7 @@ type colonioImpl struct {
 	cInstance     C.struct_colonio_s
 	mapCache      map[string]*mapImpl
 	pubsub2DCache map[string]*pubsub2dImpl
-	cb            func(Value)
+	cbMap         map[string]func(*CallParameter) interface{}
 }
 
 type valueImpl struct {
@@ -117,6 +119,7 @@ func NewColonio(logger Logger) (Colonio, error) {
 	instance := &colonioImpl{
 		mapCache:      make(map[string]*mapImpl),
 		pubsub2DCache: make(map[string]*pubsub2dImpl),
+		cbMap:         make(map[string]func(*CallParameter) interface{}),
 	}
 	loggerMap[&instance.cInstance] = logger
 
@@ -153,9 +156,16 @@ func (c *colonioImpl) Disconnect() error {
 	return convertError(err)
 }
 
-func (c *colonioImpl) AccessMap(name string) Map {
+func (c *colonioImpl) IsConnected() bool {
+	if C.cgo_colonio_is_connected(&c.cInstance) == 0 {
+		return false
+	}
+	return true
+}
+
+func (c *colonioImpl) AccessMap(name string) (Map, error) {
 	if ret, ok := c.mapCache[name]; ok {
-		return ret
+		return ret, nil
 	}
 
 	instance := &mapImpl{
@@ -163,12 +173,12 @@ func (c *colonioImpl) AccessMap(name string) Map {
 	}
 
 	c.mapCache[name] = instance
-	return instance
+	return instance, nil
 }
 
-func (c *colonioImpl) AccessPubsub2D(name string) Pubsub2D {
+func (c *colonioImpl) AccessPubsub2D(name string) (Pubsub2D, error) {
 	if ret, ok := c.pubsub2DCache[name]; ok {
-		return ret
+		return ret, nil
 	}
 
 	instance := &pubsub2dImpl{
@@ -185,13 +195,13 @@ func (c *colonioImpl) AccessPubsub2D(name string) Pubsub2D {
 	}
 
 	c.pubsub2DCache[name] = instance
-	return instance
+	return instance, nil
 }
 
 func (c *colonioImpl) GetLocalNid() string {
 	buf := make([]byte, C.cgo_colonio_nid_length+1)
 	data := (*reflect.SliceHeader)(unsafe.Pointer(&buf)).Data
-	C.colonio_get_local_nid(&c.cInstance, (*C.char)(unsafe.Pointer(data)), nil)
+	C.colonio_get_local_nid(&c.cInstance, (*C.char)(unsafe.Pointer(data)))
 	return string(buf[:C.cgo_colonio_nid_length])
 }
 
@@ -205,35 +215,52 @@ func (c *colonioImpl) SetPosition(x, y float64) (float64, float64, error) {
 	return float64(cX), float64(cY), nil
 }
 
-func (c *colonioImpl) Send(dst string, val interface{}, opt uint32) error {
+func (c *colonioImpl) CallByNid(dst, name string, val interface{}, opt uint32) (Value, error) {
 	// value
 	vValue, err := NewValue(val)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cVal := C.struct_colonio_value_s{}
 	C.colonio_value_init(&cVal)
 	defer C.colonio_value_free(&cVal)
 	writeOut(&cVal, vValue)
 
-	cErr := C.cgo_colonio_send(&c.cInstance, dst, &cVal, C.uint32_t(opt))
-	return convertError(cErr)
+	// result
+	cResult := C.struct_colonio_value_s{}
+	C.colonio_value_init(&cResult)
+	defer C.colonio_value_free(&cResult)
+
+	cErr := C.cgo_colonio_call_by_nid(&c.cInstance, dst, name, &cVal, C.uint32_t(opt), &cResult)
+	if cErr != nil {
+		return nil, convertError(cErr)
+	}
+
+	return newValue(&cResult), nil
 }
 
-//export cgoCbColonioOn
-func cgoCbColonioOn(cInstancePtr *C.struct_colonio_s, ptr unsafe.Pointer, cVal *C.struct_colonio_value_s) {
+//export cgoCbColonioOnCall
+func cgoCbColonioOnCall(cInstancePtr *C.struct_colonio_s, ptr unsafe.Pointer, namePtr unsafe.Pointer, len C.int, cVal *C.struct_colonio_value_s, opt C.int, cResult *C.struct_colonio_value_s) {
 	c := (*colonioImpl)(ptr)
-	value := newValue(cVal)
-	c.cb(value)
+	parameter := &CallParameter{
+		Name:  C.GoStringN((*C.char)(namePtr), len),
+		Value: newValue(cVal),
+		Opt:   uint32(opt),
+	}
+	gResult, err := NewValue(c.cbMap[parameter.Name](parameter))
+	if err != nil {
+		log.Fatal()
+	}
+	writeOut(cResult, gResult)
 }
 
-func (c *colonioImpl) On(cb func(Value)) {
-	c.cb = cb
-	C.cgo_colonio_on(&c.cInstance, C.uintptr_t(uintptr(unsafe.Pointer(c))))
+func (c *colonioImpl) OnCall(name string, f func(*CallParameter) interface{}) {
+	c.cbMap[name] = f
+	C.cgo_colonio_call_on(&c.cInstance, name, C.uintptr_t(uintptr(unsafe.Pointer(c))))
 }
 
-func (c *colonioImpl) Off() {
-	C.colonio_off(&c.cInstance)
+func (c *colonioImpl) OffCall(name string) {
+	C.cgo_colonio_call_off(&c.cInstance, name)
 }
 
 // Quit is the finalizer of the instance.
