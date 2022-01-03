@@ -69,7 +69,8 @@ class ColonioImpl : public Colonio,
       const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt = 0x00) override;
   void call_by_nid(
       const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt,
-      std::function<void(Colonio&, const Value&)>&& on_success, std::function<void(Colonio&, const Error&)>&& on_failure) override;
+      std::function<void(Colonio&, const Value&)>&& on_success,
+      std::function<void(Colonio&, const Error&)>&& on_failure) override;
   void on_call(const std::string& name, std::function<Value(Colonio&, const CallParameter&)>&& func) override;
   void off_call(const std::string& name) override;
 

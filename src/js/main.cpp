@@ -33,21 +33,23 @@ EMSCRIPTEN_KEEPALIVE int js_error_get_message_length(COLONIO_PTR_T err);
 
 EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_init(
     COLONIO_PTR_T logger_ptr, COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_position_on_failure_,
-    COLONIO_PTR_T send_on_success_, COLONIO_PTR_T send_on_failure_, COLONIO_PTR_T on_on_);
+    COLONIO_PTR_T call_by_nid_on_success_, COLONIO_PTR_T call_by_nid_on_failure_, COLONIO_PTR_T on_on_call_);
 EMSCRIPTEN_KEEPALIVE void js_connect(
     COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T url, unsigned int url_siz, COLONIO_PTR_T token, unsigned int token_siz,
     COLONIO_PTR_T on_success, COLONIO_PTR_T on_failure);
+EMSCRIPTEN_KEEPALIVE void js_disconnect(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T on_success, COLONIO_PTR_T on_failure);
+EMSCRIPTEN_KEEPALIVE int js_is_connected(COLONIO_PTR_T colonio_ptr);
 EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_access_map(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name, unsigned int name_siz);
 EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T
 js_access_pubsub_2d(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name, unsigned int name_siz);
-EMSCRIPTEN_KEEPALIVE void js_disconnect(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T on_success, COLONIO_PTR_T on_failure);
 EMSCRIPTEN_KEEPALIVE void js_get_local_nid(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T nid_ptr);
 EMSCRIPTEN_KEEPALIVE void js_set_position(COLONIO_PTR_T colonio_ptr, double x, double y, COLONIO_ID_T id);
-EMSCRIPTEN_KEEPALIVE void js_send(
-    COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T dst, unsigned int dst_siz, COLONIO_PTR_T val_ptr, uint32_t opt,
-    COLONIO_ID_T id);
-EMSCRIPTEN_KEEPALIVE void js_on(COLONIO_PTR_T colonio_ptr, COLONIO_ID_T id);
-EMSCRIPTEN_KEEPALIVE void js_off(COLONIO_PTR_T colonio_ptr);
+EMSCRIPTEN_KEEPALIVE void js_call_by_nid(
+    COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T dst, COLONIO_PTR_T name, unsigned int name_siz, COLONIO_PTR_T val_ptr,
+    uint32_t opt, COLONIO_ID_T id);
+EMSCRIPTEN_KEEPALIVE void js_on_call(
+    COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name, unsigned int name_siz, COLONIO_ID_T id);
+EMSCRIPTEN_KEEPALIVE void js_off_call(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name, unsigned int name_siz);
 EMSCRIPTEN_KEEPALIVE void js_quit(COLONIO_PTR_T colonio_ptr);
 
 EMSCRIPTEN_KEEPALIVE COLONIO_PTR_T js_value_init();
@@ -62,6 +64,7 @@ EMSCRIPTEN_KEEPALIVE void js_value_set_int(COLONIO_PTR_T value_ptr, int64_t v);
 EMSCRIPTEN_KEEPALIVE void js_value_set_double(COLONIO_PTR_T value_ptr, double v);
 EMSCRIPTEN_KEEPALIVE void js_value_set_string(COLONIO_PTR_T value_ptr, COLONIO_PTR_T ptr, unsigned int siz);
 EMSCRIPTEN_KEEPALIVE void js_value_free(COLONIO_PTR_T value_ptr);
+EMSCRIPTEN_KEEPALIVE void js_value_release(COLONIO_PTR_T value_ptr);
 
 EMSCRIPTEN_KEEPALIVE void js_map_init(
     COLONIO_PTR_T foreach_local_value_cb, COLONIO_PTR_T get_on_success, COLONIO_PTR_T get_on_failure,
@@ -90,9 +93,9 @@ static std::map<COLONIO_PTR_T, Cache> caches;
 
 std::function<void(COLONIO_ID_T, double, double)> set_position_on_success;
 std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> set_position_on_failure;
-std::function<void(COLONIO_ID_T)> send_on_success;
-std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> send_on_failure;
-std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> on_on;
+std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> call_by_nid_on_success;
+std::function<void(COLONIO_ID_T, COLONIO_PTR_T)> call_by_nid_on_failure;
+std::function<void(COLONIO_ID_T, COLONIO_PTR_T, int, COLONIO_PTR_T, int, COLONIO_PTR_T)> on_on_call;
 
 unsigned int js_error_get_code(COLONIO_PTR_T err) {
   colonio_error_t* e = reinterpret_cast<colonio_error_t*>(err);
@@ -111,7 +114,7 @@ int js_error_get_message_length(COLONIO_PTR_T err) {
 
 COLONIO_PTR_T js_init(
     COLONIO_PTR_T logger_ptr, COLONIO_PTR_T set_position_on_success_, COLONIO_PTR_T set_position_on_failure_,
-    COLONIO_PTR_T send_on_success_, COLONIO_PTR_T send_on_failure_, COLONIO_PTR_T on_on_) {
+    COLONIO_PTR_T call_by_nid_on_success_, COLONIO_PTR_T call_by_nid_on_failure_, COLONIO_PTR_T on_on_call_) {
   colonio_t* colonio = new colonio_t();
 
   // TODO detect an error
@@ -119,9 +122,10 @@ COLONIO_PTR_T js_init(
 
   set_position_on_success = reinterpret_cast<void (*)(COLONIO_ID_T, double, double)>(set_position_on_success_);
   set_position_on_failure = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(set_position_on_failure_);
-  send_on_success         = reinterpret_cast<void (*)(COLONIO_ID_T)>(send_on_success_);
-  send_on_failure         = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(send_on_failure_);
-  on_on                   = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(on_on_);
+  call_by_nid_on_success  = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(call_by_nid_on_success_);
+  call_by_nid_on_failure  = reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T)>(call_by_nid_on_failure_);
+  on_on_call =
+      reinterpret_cast<void (*)(COLONIO_ID_T, COLONIO_PTR_T, int, COLONIO_PTR_T, int, COLONIO_PTR_T)>(on_on_call_);
 
   return reinterpret_cast<COLONIO_PTR_T>(colonio);
 }
@@ -135,6 +139,20 @@ void js_connect(
       colonio, reinterpret_cast<const char*>(url), url_siz, reinterpret_cast<const char*>(token), token_siz,
       reinterpret_cast<void (*)(colonio_t*)>(on_success),
       reinterpret_cast<void (*)(colonio_t*, const colonio_error_t*)>(on_failure));
+}
+
+void js_disconnect(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T on_success, COLONIO_PTR_T on_failure) {
+  colonio_disconnect_async(
+      reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<void (*)(colonio_t*)>(on_success),
+      reinterpret_cast<void (*)(colonio_t*, const colonio_error_t*)>(on_failure));
+}
+
+int js_is_connected(COLONIO_PTR_T colonio_ptr) {
+  if (colonio_is_connected(reinterpret_cast<colonio_t*>(colonio_ptr))) {
+    return 1;
+  } else {
+    return 0;
+  }
 }
 
 COLONIO_PTR_T js_access_map(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name, unsigned int name_siz) {
@@ -163,14 +181,8 @@ COLONIO_PTR_T js_access_pubsub_2d(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name,
   return reinterpret_cast<COLONIO_PTR_T>(&pubsub_2d_cache.at(name_str));
 }
 
-void js_disconnect(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T on_success, COLONIO_PTR_T on_failure) {
-  colonio_disconnect_async(
-      reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<void (*)(colonio_t*)>(on_success),
-      reinterpret_cast<void (*)(colonio_t*, const colonio_error_t*)>(on_failure));
-}
-
 void js_get_local_nid(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T nid_ptr) {
-  colonio_get_local_nid(reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<char*>(nid_ptr), nullptr);
+  colonio_get_local_nid(reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<char*>(nid_ptr));
 }
 
 void wrap_set_position_on_success(colonio_t*, void* ptr, double newX, double newY) {
@@ -187,33 +199,37 @@ void js_set_position(COLONIO_PTR_T colonio_ptr, double x, double y, COLONIO_ID_T
       wrap_set_position_on_failure);
 }
 
-void wrap_send_on_success(colonio_t*, void* ptr) {
-  send_on_success(reinterpret_cast<COLONIO_ID_T>(ptr));
+void wrap_call_by_nid_on_success(colonio_t*, void* ptr, const colonio_value_t* value_ptr) {
+  call_by_nid_on_success(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(value_ptr));
 }
 
-void wrap_send_on_failure(colonio_t*, void* ptr, const colonio_error_t* error_ptr) {
-  send_on_failure(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(error_ptr));
+void wrap_call_by_nid_on_failure(colonio_t*, void* ptr, const colonio_error_t* error_ptr) {
+  call_by_nid_on_failure(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(error_ptr));
 }
 
-void wrap_on_on(colonio_t*, void* ptr, const colonio_value_t* value) {
-  on_on(reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(value));
+void wrap_on_call(colonio_t*, void* ptr, const colonio_on_call_parameter_t* parameter, colonio_value_t* value) {
+  on_on_call(
+      reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(parameter->name), parameter->name_siz,
+      reinterpret_cast<COLONIO_PTR_T>(parameter->value), parameter->opt, reinterpret_cast<COLONIO_PTR_T>(value));
 }
 
-void js_send(
-    COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T dst_ptr, unsigned int dst_siz, COLONIO_PTR_T val_ptr, uint32_t opt,
-    COLONIO_ID_T id) {
-  colonio_send_async(
-      reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<char*>(dst_ptr), dst_siz,
-      reinterpret_cast<colonio_value_t*>(val_ptr), opt, reinterpret_cast<void*>(id), wrap_send_on_success,
-      wrap_send_on_failure);
+void js_call_by_nid(
+    COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T dst, COLONIO_PTR_T name, unsigned int name_siz, COLONIO_PTR_T val_ptr,
+    uint32_t opt, COLONIO_ID_T id) {
+  colonio_call_by_nid_async(
+      reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<char*>(dst), reinterpret_cast<char*>(name), name_siz,
+      reinterpret_cast<colonio_value_t*>(val_ptr), opt, reinterpret_cast<void*>(id), wrap_call_by_nid_on_success,
+      wrap_call_by_nid_on_failure);
 }
 
-void js_on(COLONIO_PTR_T colonio_ptr, COLONIO_ID_T id) {
-  colonio_on(reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<void*>(id), wrap_on_on);
+void js_on_call(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name, unsigned int name_siz, COLONIO_ID_T id) {
+  colonio_on_call(
+      reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<char*>(name), name_siz, reinterpret_cast<void*>(id),
+      wrap_on_call);
 }
 
-void js_off(COLONIO_PTR_T colonio_ptr) {
-  colonio_off(reinterpret_cast<colonio_t*>(colonio_ptr));
+void js_off_call(COLONIO_PTR_T colonio_ptr, COLONIO_PTR_T name, unsigned int name_siz) {
+  colonio_off_call(reinterpret_cast<colonio_t*>(colonio_ptr), reinterpret_cast<char*>(name), name_siz);
 }
 
 void js_quit(COLONIO_PTR_T colonio_ptr) {
@@ -279,6 +295,11 @@ void js_value_set_string(COLONIO_PTR_T value_ptr, COLONIO_PTR_T ptr, unsigned in
 }
 
 void js_value_free(COLONIO_PTR_T value_ptr) {
+  colonio_value_t* value = reinterpret_cast<colonio_value_t*>(value_ptr);
+  colonio_value_free(value);
+}
+
+void js_value_release(COLONIO_PTR_T value_ptr) {
   colonio_value_t* value = reinterpret_cast<colonio_value_t*>(value_ptr);
   colonio_value_free(value);
   delete value;
