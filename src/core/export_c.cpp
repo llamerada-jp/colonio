@@ -211,7 +211,7 @@ void colonio_on_call(
         colonio_value_init(&c_result);
 
         colonio_on_call_parameter_t p{
-            parameter.name.c_str(), static_cast<unsigned int>(parameter.name.size()), &c_value, parameter.opt};
+            parameter.name.c_str(), static_cast<unsigned int>(parameter.name.size()), &c_value, parameter.options};
 
         func(colonio, ptr, &p, &c_result);
 

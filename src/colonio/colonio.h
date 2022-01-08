@@ -148,7 +148,7 @@ typedef struct colono_on_call_parameter_s {
   const char* name;
   unsigned int name_siz;
   const colonio_value_t* value;
-  uint32_t opt;
+  uint32_t options;
 } colonio_on_call_parameter_t;
 
 COLONIO_PUBLIC colonio_error_t* colonio_init(

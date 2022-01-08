@@ -246,7 +246,7 @@ class Colonio {
   struct CallParameter {
     const std::string name;
     const Value value;
-    const uint32_t opt;
+    const uint32_t options;
   };
 
   /**

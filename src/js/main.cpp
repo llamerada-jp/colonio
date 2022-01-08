@@ -210,7 +210,7 @@ void wrap_call_by_nid_on_failure(colonio_t*, void* ptr, const colonio_error_t* e
 void wrap_on_call(colonio_t*, void* ptr, const colonio_on_call_parameter_t* parameter, colonio_value_t* value) {
   on_on_call(
       reinterpret_cast<COLONIO_ID_T>(ptr), reinterpret_cast<COLONIO_PTR_T>(parameter->name), parameter->name_siz,
-      reinterpret_cast<COLONIO_PTR_T>(parameter->value), parameter->opt, reinterpret_cast<COLONIO_PTR_T>(value));
+      reinterpret_cast<COLONIO_PTR_T>(parameter->value), parameter->options, reinterpret_cast<COLONIO_PTR_T>(value));
 }
 
 void js_call_by_nid(

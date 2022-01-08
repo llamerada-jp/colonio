@@ -40,7 +40,7 @@ colonio_error_t *cgo_colonio_connect(colonio_t *colonio, _GoString_ url, _GoStri
   return colonio_connect(colonio, _GoStringPtr(url), _GoStringLen(url), _GoStringPtr(token), _GoStringLen(token));
 }
 
-int cgo_colonio_is_connected(colonio_t* colonio) {
+int cgo_colonio_is_connected(colonio_t *colonio) {
   return colonio_is_connected(colonio) ? 1 : 0;
 }
 
@@ -52,12 +52,17 @@ colonio_pubsub_2d_t cgo_colonio_access_pubsub_2d(colonio_t *colonio, _GoString_ 
   return colonio_access_pubsub_2d(colonio, _GoStringPtr(name), _GoStringLen(name));
 }
 
-colonio_error_t *cgo_colonio_call_by_nid(colonio_t *colonio, _GoString_ dst, _GoString_ name, const colonio_value_t *val, uint32_t opt, colonio_value_t* result) {
+colonio_error_t *cgo_colonio_call_by_nid(
+    colonio_t *colonio, _GoString_ dst, _GoString_ name, const colonio_value_t *val, uint32_t opt,
+    colonio_value_t *result) {
   return colonio_call_by_nid(colonio, _GoStringPtr(dst), _GoStringPtr(name), _GoStringLen(name), val, opt, result);
 }
 
-void cgo_cb_colonio_call_on(colonio_t* colonio, void* ptr, const colonio_on_call_parameter_t* parameter, colonio_value_t* result) {
-  cgoCbColonioOnCall(colonio, (void *)ptr, (void*)parameter->name, (int)parameter->name_siz, (void*)parameter->value, (int)parameter->opt, (void *)result);
+void cgo_cb_colonio_call_on(
+    colonio_t *colonio, void *ptr, const colonio_on_call_parameter_t *parameter, colonio_value_t *result) {
+  cgoCbColonioOnCall(
+      colonio, (void *)ptr, (void *)parameter->name, (int)parameter->name_siz, (void *)parameter->value,
+      (int)parameter->options, (void *)result);
 }
 
 void cgo_colonio_call_on(colonio_t *colonio, _GoString_ name, uintptr_t ptr) {

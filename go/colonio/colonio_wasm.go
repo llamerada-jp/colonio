@@ -296,7 +296,7 @@ func (c *colonioImpl) OnCall(name string, f func(*CallParameter) interface{}) {
 				valueType: int32(v.Get("valueType").Int()),
 				value:     v.Get("value"),
 			},
-			Opt: uint32(v.Get("opt").Int()),
+			Options: uint32(v.Get("options").Int()),
 		}
 		result := f(parameter)
 		resultTmp := &valueImpl{}
