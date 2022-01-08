@@ -30,8 +30,8 @@ import (
 type colonioImpl struct {
 	jsModule js.Value
 
-	onKey       uint32
 	childrenMtx sync.Mutex
+	onCallCbs   map[string]uint32
 	maps        map[string]*mapImpl
 	pubsub2ds   map[string]*pubsub2dImpl
 }
@@ -69,7 +69,7 @@ const (
 var (
 	jsSuite = js.Global().Get(jsModuleName)
 
-	eventReceivers    = make(map[uint32]func(js.Value))
+	eventReceivers    = make(map[uint32]func(js.Value) interface{})
 	eventReceiversMtx sync.Mutex
 	respChannels      = make(map[uint32]chan js.Value)
 	respChannelsMtx   sync.Mutex
@@ -89,7 +89,7 @@ func checkJsError(v js.Value) error {
 	return newErr(uint32(v.Get("code").Int()), v.Get("message").String())
 }
 
-func assignEventReceiver(f func(js.Value)) (key uint32) {
+func assignEventReceiver(f func(js.Value) interface{}) (key uint32) {
 	eventReceiversMtx.Lock()
 	defer eventReceiversMtx.Unlock()
 
@@ -121,8 +121,7 @@ func onEvent(_ js.Value, args []js.Value) interface{} {
 		panic("event key does not match")
 	}
 
-	eventReceiver(args[1])
-	return nil
+	return eventReceiver(args[1])
 }
 
 func assignRespChannel() (key uint32, respChannel chan js.Value) {
@@ -178,6 +177,7 @@ func NewColonio(logger Logger) (Colonio, error) {
 			logger.Output(args[0].String())
 			return nil
 		})),
+		onCallCbs: make(map[string]uint32),
 		maps:      make(map[string]*mapImpl),
 		pubsub2ds: make(map[string]*pubsub2dImpl),
 	}
@@ -205,13 +205,17 @@ func (c *colonioImpl) Disconnect() error {
 	return checkJsError(<-respChannel)
 }
 
+func (c *colonioImpl) IsConnected() bool {
+	return c.jsModule.Call("isConnected").Bool()
+}
+
 // Get Map accessor associated with the name.
-func (c *colonioImpl) AccessMap(name string) Map {
+func (c *colonioImpl) AccessMap(name string) (Map, error) {
 	c.childrenMtx.Lock()
 	defer c.childrenMtx.Unlock()
 
 	if impl, ok := c.maps[name]; ok {
-		return impl
+		return impl, nil
 	}
 
 	impl := &mapImpl{
@@ -219,16 +223,16 @@ func (c *colonioImpl) AccessMap(name string) Map {
 	}
 	c.maps[name] = impl
 
-	return impl
+	return impl, nil
 }
 
 // Get Pubsub2D accessor associated with the name.
-func (c *colonioImpl) AccessPubsub2D(name string) Pubsub2D {
+func (c *colonioImpl) AccessPubsub2D(name string) (Pubsub2D, error) {
 	c.childrenMtx.Lock()
 	defer c.childrenMtx.Unlock()
 
 	if impl, ok := c.pubsub2ds[name]; ok {
-		return impl
+		return impl, nil
 	}
 
 	impl := &pubsub2dImpl{
@@ -237,7 +241,7 @@ func (c *colonioImpl) AccessPubsub2D(name string) Pubsub2D {
 	}
 	c.pubsub2ds[name] = impl
 
-	return impl
+	return impl, nil
 }
 
 // Get the node-id of this node.
@@ -259,36 +263,66 @@ func (c *colonioImpl) SetPosition(x, y float64) (float64, float64, error) {
 	return newX, newY, err
 }
 
-func (c *colonioImpl) Send(dst string, val interface{}, opt uint32) error {
+func (c *colonioImpl) CallByNid(dst, name string, val interface{}, opt uint32) (Value, error) {
 	valImpl := &valueImpl{}
 	if err := valImpl.Set(val); err != nil {
-		return err
+		return nil, err
 	}
 
 	key, respChannel := assignRespChannel()
 	defer deleteRespChannel(key)
 
-	c.jsModule.Call("send", key, dst, valImpl.valueType, js.ValueOf(valImpl.value), opt)
+	c.jsModule.Call("callByNid", key, dst, name, valImpl.valueType, js.ValueOf(valImpl.value), opt)
 
-	return checkJsError(<-respChannel)
+	resp := <-respChannel
+	if err := checkJsError(resp.Get("err")); err != nil {
+		return nil, err
+	}
+
+	return &valueImpl{
+		valueType: int32(resp.Get("type").Int()),
+		value:     resp.Get("value"),
+	}, nil
 }
 
-func (c *colonioImpl) On(cb func(Value)) {
-	deleteEventReceiver(c.onKey)
-	c.onKey = assignEventReceiver(func(v js.Value) {
-		cb(&valueImpl{
-			valueType: int32(v.Get("type").Int()),
-			value:     v.Get("value"),
+func (c *colonioImpl) OnCall(name string, f func(*CallParameter) interface{}) {
+	c.OffCall(name)
+	c.childrenMtx.Lock()
+	defer c.childrenMtx.Unlock()
+	cbKey := assignEventReceiver(func(v js.Value) interface{} {
+		parameter := &CallParameter{
+			Name: v.Get("name").String(),
+			Value: &valueImpl{
+				valueType: int32(v.Get("valueType").Int()),
+				value:     v.Get("value"),
+			},
+			Opt: uint32(v.Get("opt").Int()),
+		}
+		result := f(parameter)
+		resultTmp := &valueImpl{}
+		resultTmp.Set(result)
+		return js.ValueOf(map[string]interface{}{
+			"valueType": resultTmp.valueType,
+			"value":     resultTmp.value,
 		})
 	})
+	c.onCallCbs[name] = cbKey
 
-	c.jsModule.Call("on", c.onKey)
+	c.jsModule.Call("onCall", js.ValueOf(name), cbKey)
 }
 
-func (c *colonioImpl) Off() {
-	deleteEventReceiver(c.onKey)
-	c.onKey = 0
-	c.jsModule.Call("off")
+func (c *colonioImpl) OffCall(name string) {
+	c.childrenMtx.Lock()
+	defer c.childrenMtx.Unlock()
+
+	cbKey, ok := c.onCallCbs[name]
+	if !ok {
+		return
+	}
+	deleteEventReceiver(cbKey)
+	delete(c.onCallCbs, name)
+
+	c.jsModule.Call("offCall", js.ValueOf(name))
 }
 
 // Release some resources used by colonio object.
@@ -394,7 +428,7 @@ func (v *valueImpl) GetString() (string, error) {
 }
 
 func (m *mapImpl) ForeachLocalValue(cb func(key, value Value, attr uint32)) error {
-	key := assignEventReceiver(func(v js.Value) {
+	key := assignEventReceiver(func(v js.Value) interface{} {
 		cb(
 			&valueImpl{
 				valueType: int32(v.Get("keyType").Int()),
@@ -405,6 +439,7 @@ func (m *mapImpl) ForeachLocalValue(cb func(key, value Value, attr uint32)) erro
 				value:     v.Get("valValue"),
 			},
 			uint32(v.Get("attr").Int()))
+		return nil
 	})
 	defer deleteEventReceiver(key)
 
@@ -468,11 +503,12 @@ func (p *pubsub2dImpl) Publish(name string, x, y, r float64, val interface{}, op
 }
 
 func (p *pubsub2dImpl) On(name string, cb func(Value)) {
-	key := assignEventReceiver(func(v js.Value) {
+	key := assignEventReceiver(func(v js.Value) interface{} {
 		cb(&valueImpl{
 			valueType: int32(v.Get("type").Int()),
 			value:     v.Get("value"),
 		})
+		return nil
 	})
 
 	p.eventsMtx.Lock()
