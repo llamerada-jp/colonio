@@ -243,9 +243,9 @@ func (c *colonioImpl) CallByNid(dst, name string, val interface{}, opt uint32) (
 func cgoCbColonioOnCall(cInstancePtr *C.struct_colonio_s, ptr unsafe.Pointer, namePtr unsafe.Pointer, len C.int, cVal *C.struct_colonio_value_s, opt C.int, cResult *C.struct_colonio_value_s) {
 	c := (*colonioImpl)(ptr)
 	parameter := &CallParameter{
-		Name:  C.GoStringN((*C.char)(namePtr), len),
-		Value: newValue(cVal),
-		Opt:   uint32(opt),
+		Name:    C.GoStringN((*C.char)(namePtr), len),
+		Value:   newValue(cVal),
+		Options: uint32(opt),
 	}
 	gResult, err := NewValue(c.cbMap[parameter.Name](parameter))
 	if err != nil {

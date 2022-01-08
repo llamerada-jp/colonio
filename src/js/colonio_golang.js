@@ -111,7 +111,7 @@ class ColonioWrap {
                 name: parameter.name,
                 valueType: parameter.value.getType(),
                 value: parameter.value.getJsValue(),
-                opt: parameter.opt
+                options: parameter.options
             });
             return this.suite.newValue(result.valueType, result.value);
         });

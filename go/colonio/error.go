@@ -30,7 +30,7 @@ var (
 	ErrCollisionLate       = newErr(9, "")  // Developing
 	ErrNoOneRecv           = newErr(10, "") // ErrNoOneRecv meaning there was no node receiving the message.
 	ErrCallbackError       = newErr(11, "") // ErrCallbackError meaning that an error occurred while executing the callback function.
-	ErrRpcUndefinedError   = newErr(12, "") // ErrRpcUndefinedError occurred in callback function of call_by_nid.
+	ErrRRCUndefinedError   = newErr(12, "") // ErrRPCUndefinedError occurred in callback function of call_by_nid.
 	ErrTimeout             = newErr(13, "") // ErrTimeout meaning an error occurs when timeout.
 )
 

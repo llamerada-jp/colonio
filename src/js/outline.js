@@ -140,242 +140,6 @@ function convertError(ptr) {
   };
 }
 
-class Colonio {
-  // ATTENTION: Use same value with another languages.
-  static get LOG_LEVEL_INFO() { return "info"; }
-  static get LOG_LEVEL_WARN() { return "warn"; }
-  static get LOG_LEVEL_ERROR() { return "error"; }
-  static get LOG_LEVEL_DEBUG() { return "debug"; }
-
-  // ATTENTION: Use same value with another languages.
-  static get ERROR_CODE_UNDEFINED() { return 0; }
-  static get ERROR_CODE_SYSTEM_ERROR() { return 1; }
-  static get ERROR_CODE_CONNECTION_FAILD() { return 2; }
-  static get ERROR_CODE_OFFLINE() { return 3; }
-  static get ERROR_CODE_INCORRECT_DATA_FORMAT() { return 4; }
-  static get ERROR_CODE_CONFLICT_WITH_SETTING() { return 5; }
-  static get ERROR_CODE_NOT_EXIST_KEY() { return 6; }
-  static get ERROR_CODE_EXIST_KEY() { return 7; }
-  static get ERROR_CODE_CHANGED_PROPOSER() { return 8; }
-  static get ERROR_CODE_COLLISION_LATE() { return 9; }
-  static get ERROR_CODE_NO_ONE_RECV() { return 10; }
-  static get ERROR_CODE_CALLBACK_ERROR() { return 11; }
-
-  static get NID_THIS() { return "."; }
-
-  constructor(logger) {
-    this._colonioPtr = null;
-    this._instanceCache = new Map();
-
-    addFuncAfterLoad(() => {
-      // initialize
-      let logWrapper = Module.addFunction((_/*colonioPtr*/, messagePtr, messageSiz) => {
-        let message = UTF8ToString(messagePtr, messageSiz);
-        logger(message);
-      }, "viii");
-
-      let setPositionOnSuccess = Module.addFunction((id, newX, newY) => {
-        popObject(id).onSuccess({
-          x: newX,
-          y: newY
-        });
-      }, "vidd");
-
-      let setPositionOnFailure = Module.addFunction((id, errorPtr) => {
-        popObject(id).onFailure(convertError(errorPtr));
-      }, "vii");
-
-      let callByNidOnSuccess = Module.addFunction((id, valuePtr) => {
-        popObject(id).onSuccess(ColonioValue.fromCValue(valuePtr));
-      }, "vii");
-
-      let callByNidOnFailure = Module.addFunction((id, errorPtr) => {
-        popObject(id).onFailure(convertError(errorPtr));
-      }, "vii");
-
-      let onOnCall = Module.addFunction((id, namePtr, nameSiz, valuePtr, opt, resultPtr) => {
-        let parameter = {
-          name: UTF8ToString(namePtr, nameSiz),
-          value: ColonioValue.fromCValue(valuePtr),
-          opt: opt,
-        };
-        let result = getObject(id)(parameter);
-        ColonioValue.fromJsValue(result).write(resultPtr);
-      }, "viiiiii");
-
-      this._colonioPtr = ccall("js_init", "number",
-        ["number", "number", "number", "number", "number", "number"],
-        [logWrapper, setPositionOnSuccess, setPositionOnFailure, callByNidOnSuccess, callByNidOnFailure, onOnCall]);
-    });
-  }
-
-  connect(url, token) {
-    const promise = new Promise((resolve, reject) => {
-      addFuncAfterLoad(() => {
-        var onSuccess = Module.addFunction((_) => {
-          resolve();
-          removeFunction(onSuccess);
-          removeFunction(onFailure);
-        }, "vi");
-
-        var onFailure = Module.addFunction((_, errorPtr) => {
-          reject(convertError(errorPtr));
-          removeFunction(onSuccess);
-          removeFunction(onFailure);
-        }, "vii");
-
-        let [urlPtr, urlSiz] = allocPtrString(url);
-        let [tokenPtr, tokenSiz] = allocPtrString(token);
-
-        ccall("js_connect", "null",
-          ["number", "number", "number", "number", "number", "number", "number"],
-          [this._colonioPtr, urlPtr, urlSiz, tokenPtr, tokenSiz, onSuccess, onFailure]);
-
-        freePtr(url);
-        freePtr(token);
-      });
-    });
-
-    return promise;
-  }
-
-  disconnect() {
-    const promise = new Promise((resolve, reject) => {
-      var onSuccess = Module.addFunction((colonioPtr) => {
-        removeFunction(onSuccess);
-        removeFunction(onFailure);
-
-        setTimeout(() => {
-          ccall("js_quit", "null", ["number"], [this._colonioPtr]);
-          this._instanceCache = null;
-          resolve();
-        }, 0);
-      }, "vi");
-
-      var onFailure = Module.addFunction((colonioPtr, errorPtr) => {
-        reject(convertError(errorPtr));
-        removeFunction(onSuccess);
-        removeFunction(onFailure);
-      }, "vii");
-
-      ccall("js_disconnect", "null", ["number", "number", "number"], [this._colonioPtr, onSuccess, onFailure]);
-    });
-
-    return promise;
-  }
-
-  isConnected() {
-    let res = ccall("js_is_connected", "number", ["number"], [this._colonioPtr]);
-    if (res == 0) {
-      return false;
-    }
-    return true;
-  }
-
-  accessMap(name) {
-    if (!this._instanceCache.has(name)) {
-      let [namePtr, nameSiz] = allocPtrString(name);
-      this._instanceCache.set(name, new ColonioMap(ccall("js_access_map", "number",
-        ["number", "number", "number"],
-        [this._colonioPtr, namePtr, nameSiz])));
-      freePtr(namePtr);
-    }
-    return this._instanceCache.get(name);
-  }
-
-  accessPubsub2D(name) {
-    if (!this._instanceCache.has(name)) {
-      let [namePtr, nameSiz] = allocPtrString(name);
-      this._instanceCache.set(name, new ColonioPubsub2D(ccall("js_access_pubsub_2d", "number",
-        ["number", "number", "number"],
-        [this._colonioPtr, namePtr, nameSiz])));
-      freePtr(namePtr);
-    }
-    return this._instanceCache.get(name);
-  }
-
-  getLocalNid() {
-    let nidPtr = allocPtr(32 + 1);
-    ccall("js_get_local_nid", "null", ["number", "number"], [this._colonioPtr, nidPtr]);
-    let nid = UTF8ToString(nidPtr);
-    return nid;
-  }
-
-  setPosition(x, y) {
-    const promise = new Promise((resolve, reject) => {
-      let id = pushObject({
-        onSuccess: resolve,
-        onFailure: reject,
-      });
-
-      ccall("js_set_position", "null",
-        ["number", "number", "number", "number"],
-        [this._colonioPtr, x, y, id]);
-    });
-
-    return promise;
-  }
-
-  callByNid(dst, name, val, opt) {
-    let promise = new Promise((resolve, reject) => {
-      let [dstPtr, _] = allocPtrString(dst);
-      let [namePtr, nameSiz] = allocPtrString(name);
-      const value = ColonioValue.fromJsValue(val);
-      const valuePtr = value.write();
-
-      let id = pushObject({
-        onSuccess: resolve,
-        onFailure: reject,
-      });
-
-      ccall("js_call_by_nid", "null",
-        ["number", "number", "number", "number", "number", "number", "number"],
-        [this._colonioPtr, dstPtr, namePtr, nameSiz, valuePtr, opt, id]);
-
-      freePtr(namePtr);
-      freePtr(dstPtr);
-      ColonioValue.release(valuePtr);
-    });
-
-    return promise;
-  }
-
-  onCall(name, cb) {
-    let id = pushObject(cb); // TODO free it
-    let [namePtr, nameSiz] = allocPtrString(name);
-    ccall("js_on_call", "null", ["number", "number", "number", "number"], [this._colonioPtr, namePtr, nameSiz, id]);
-    freePtr(namePtr);
-  }
-
-  offCall(name) {
-    let [namePtr, nameSiz] = allocPtrString(name);
-    ccall("js_off_call", "null", ["number", "number", "number"], [this._colonioPtr, namePtr, nameSiz]);
-    freePtr(namePtr);
-  }
-}
-
-/* Scheduler */
-let schedulerTimers = new Map();
-
-function schedulerRelease(schedulerPtr) {
-  if (schedulerTimers.has(schedulerPtr)) {
-    clearTimeout(schedulerTimers.get(schedulerPtr));
-    schedulerTimers.delete(schedulerPtr);
-  }
-}
-
-function schedulerRequestNextRoutine(schedulerPtr, msec) {
-  if (schedulerTimers.has(schedulerPtr)) {
-    clearTimeout(schedulerTimers.get(schedulerPtr));
-  }
-  schedulerTimers.set(schedulerPtr, setTimeout(() => {
-    let next = ccall("scheduler_invoke", "number", ["number"], [schedulerPtr]);
-    if (next >= 0) {
-      schedulerRequestNextRoutine(schedulerPtr, next);
-    }
-  }, msec));
-}
-
 /**
  * ColonioValue is wrap for Value class.
  */
@@ -518,6 +282,243 @@ class ColonioValue {
   }
 }
 
+class Colonio {
+  // ATTENTION: Use same value with another languages.
+  static get LOG_LEVEL_INFO() { return "info"; }
+  static get LOG_LEVEL_WARN() { return "warn"; }
+  static get LOG_LEVEL_ERROR() { return "error"; }
+  static get LOG_LEVEL_DEBUG() { return "debug"; }
+
+  // ATTENTION: Use same value with another languages.
+  static get ERROR_CODE_UNDEFINED() { return 0; }
+  static get ERROR_CODE_SYSTEM_ERROR() { return 1; }
+  static get ERROR_CODE_CONNECTION_FAILD() { return 2; }
+  static get ERROR_CODE_OFFLINE() { return 3; }
+  static get ERROR_CODE_INCORRECT_DATA_FORMAT() { return 4; }
+  static get ERROR_CODE_CONFLICT_WITH_SETTING() { return 5; }
+  static get ERROR_CODE_NOT_EXIST_KEY() { return 6; }
+  static get ERROR_CODE_EXIST_KEY() { return 7; }
+  static get ERROR_CODE_CHANGED_PROPOSER() { return 8; }
+  static get ERROR_CODE_COLLISION_LATE() { return 9; }
+  static get ERROR_CODE_NO_ONE_RECV() { return 10; }
+  static get ERROR_CODE_CALLBACK_ERROR() { return 11; }
+
+  static get NID_THIS() { return "."; }
+
+  constructor(logger) {
+    this._colonioPtr = null;
+    this._instanceCache = new Map();
+
+    addFuncAfterLoad(() => {
+      // initialize
+      let logWrapper = Module.addFunction((_/*colonioPtr*/, messagePtr, messageSiz) => {
+        let message = UTF8ToString(messagePtr, messageSiz);
+        logger(message);
+      }, "viii");
+
+      let setPositionOnSuccess = Module.addFunction((id, newX, newY) => {
+        popObject(id).onSuccess({
+          x: newX,
+          y: newY
+        });
+      }, "vidd");
+
+      let setPositionOnFailure = Module.addFunction((id, errorPtr) => {
+        popObject(id).onFailure(convertError(errorPtr));
+      }, "vii");
+
+      let callByNidOnSuccess = Module.addFunction((id, valuePtr) => {
+        popObject(id).onSuccess(ColonioValue.fromCValue(valuePtr));
+      }, "vii");
+
+      let callByNidOnFailure = Module.addFunction((id, errorPtr) => {
+        popObject(id).onFailure(convertError(errorPtr));
+      }, "vii");
+
+      let onOnCall = Module.addFunction((id, namePtr, nameSiz, valuePtr, opt, resultPtr) => {
+        let parameter = {
+          name: UTF8ToString(namePtr, nameSiz),
+          value: ColonioValue.fromCValue(valuePtr),
+          options: opt,
+        };
+        let result = getObject(id)(parameter);
+        ColonioValue.fromJsValue(result).write(resultPtr);
+      }, "viiiiii");
+
+      this._colonioPtr = ccall("js_init", "number",
+        ["number", "number", "number", "number", "number", "number"],
+        [logWrapper, setPositionOnSuccess, setPositionOnFailure, callByNidOnSuccess, callByNidOnFailure, onOnCall]);
+    });
+  }
+
+  connect(url, token) {
+    const promise = new Promise((resolve, reject) => {
+      addFuncAfterLoad(() => {
+        var onSuccess = Module.addFunction((_) => {
+          resolve();
+          removeFunction(onSuccess);
+          removeFunction(onFailure);
+        }, "vi");
+
+        var onFailure = Module.addFunction((_, errorPtr) => {
+          reject(convertError(errorPtr));
+          removeFunction(onSuccess);
+          removeFunction(onFailure);
+        }, "vii");
+
+        let [urlPtr, urlSiz] = allocPtrString(url);
+        let [tokenPtr, tokenSiz] = allocPtrString(token);
+
+        ccall("js_connect", "null",
+          ["number", "number", "number", "number", "number", "number", "number"],
+          [this._colonioPtr, urlPtr, urlSiz, tokenPtr, tokenSiz, onSuccess, onFailure]);
+
+        freePtr(url);
+        freePtr(token);
+      });
+    });
+
+    return promise;
+  }
+
+  disconnect() {
+    const promise = new Promise((resolve, reject) => {
+      var onSuccess = Module.addFunction((colonioPtr) => {
+        removeFunction(onSuccess);
+        removeFunction(onFailure);
+
+        setTimeout(() => {
+          ccall("js_quit", "null", ["number"], [this._colonioPtr]);
+          this._instanceCache = null;
+          resolve();
+        }, 0);
+      }, "vi");
+
+      var onFailure = Module.addFunction((colonioPtr, errorPtr) => {
+        reject(convertError(errorPtr));
+        removeFunction(onSuccess);
+        removeFunction(onFailure);
+      }, "vii");
+
+      ccall("js_disconnect", "null", ["number", "number", "number"], [this._colonioPtr, onSuccess, onFailure]);
+    });
+
+    return promise;
+  }
+
+  isConnected() {
+    let res = ccall("js_is_connected", "number", ["number"], [this._colonioPtr]);
+    if (res === 0) {
+      return false;
+    }
+    return true;
+  }
+
+  accessMap(name) {
+    if (!this._instanceCache.has(name)) {
+      let [namePtr, nameSiz] = allocPtrString(name);
+      this._instanceCache.set(name, new ColonioMap(ccall("js_access_map", "number",
+        ["number", "number", "number"],
+        [this._colonioPtr, namePtr, nameSiz])));
+      freePtr(namePtr);
+    }
+    return this._instanceCache.get(name);
+  }
+
+  accessPubsub2D(name) {
+    if (!this._instanceCache.has(name)) {
+      let [namePtr, nameSiz] = allocPtrString(name);
+      this._instanceCache.set(name, new ColonioPubsub2D(ccall("js_access_pubsub_2d", "number",
+        ["number", "number", "number"],
+        [this._colonioPtr, namePtr, nameSiz])));
+      freePtr(namePtr);
+    }
+    return this._instanceCache.get(name);
+  }
+
+  getLocalNid() {
+    let nidPtr = allocPtr(32 + 1);
+    ccall("js_get_local_nid", "null", ["number", "number"], [this._colonioPtr, nidPtr]);
+    let nid = UTF8ToString(nidPtr);
+    return nid;
+  }
+
+  setPosition(x, y) {
+    const promise = new Promise((resolve, reject) => {
+      let id = pushObject({
+        onSuccess: resolve,
+        onFailure: reject,
+      });
+
+      ccall("js_set_position", "null",
+        ["number", "number", "number", "number"],
+        [this._colonioPtr, x, y, id]);
+    });
+
+    return promise;
+  }
+
+  callByNid(dst, name, val, opt) {
+    let promise = new Promise((resolve, reject) => {
+      let [dstPtr, _] = allocPtrString(dst);
+      let [namePtr, nameSiz] = allocPtrString(name);
+      const value = ColonioValue.fromJsValue(val);
+      const valuePtr = value.write();
+
+      let id = pushObject({
+        onSuccess: resolve,
+        onFailure: reject,
+      });
+
+      ccall("js_call_by_nid", "null",
+        ["number", "number", "number", "number", "number", "number", "number"],
+        [this._colonioPtr, dstPtr, namePtr, nameSiz, valuePtr, opt, id]);
+
+      freePtr(namePtr);
+      freePtr(dstPtr);
+      ColonioValue.release(valuePtr);
+    });
+
+    return promise;
+  }
+
+  onCall(name, cb) {
+    let id = pushObject(cb); // TODO free it
+    let [namePtr, nameSiz] = allocPtrString(name);
+    ccall("js_on_call", "null", ["number", "number", "number", "number"], [this._colonioPtr, namePtr, nameSiz, id]);
+    freePtr(namePtr);
+  }
+
+  offCall(name) {
+    let [namePtr, nameSiz] = allocPtrString(name);
+    ccall("js_off_call", "null", ["number", "number", "number"], [this._colonioPtr, namePtr, nameSiz]);
+    freePtr(namePtr);
+  }
+}
+
+/* Scheduler */
+let schedulerTimers = new Map();
+
+function schedulerRelease(schedulerPtr) {
+  if (schedulerTimers.has(schedulerPtr)) {
+    clearTimeout(schedulerTimers.get(schedulerPtr));
+    schedulerTimers.delete(schedulerPtr);
+  }
+}
+
+function schedulerRequestNextRoutine(schedulerPtr, msec) {
+  if (schedulerTimers.has(schedulerPtr)) {
+    clearTimeout(schedulerTimers.get(schedulerPtr));
+  }
+  schedulerTimers.set(schedulerPtr, setTimeout(() => {
+    let next = ccall("scheduler_invoke", "number", ["number"], [schedulerPtr]);
+    if (next >= 0) {
+      schedulerRequestNextRoutine(schedulerPtr, next);
+    }
+  }, msec));
+}
+
+/* Map */
 function initializeMap() {
   let foreachLocalValueCb = Module.addFunction((id, keyPtr, valuePtr, attr) => {
     getObject(id)(ColonioValue.fromCValue(keyPtr), ColonioValue.fromCValue(valuePtr), attr);
@@ -625,6 +626,7 @@ class ColonioMap {
   }
 }
 
+/* Pubsub2D */
 function initializePubsub2D() {
   let publishOnSuccess = Module.addFunction((id) => {
     popObject(id).onSuccess();

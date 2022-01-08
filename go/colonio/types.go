@@ -30,15 +30,20 @@ type Value interface {
 	GetString() (string, error)
 }
 
+// Options for Colonio.CallByNid opt parameter.
 const (
+	// If there is no node with a matching node-id, the node with the closest node-id will receive the call.
 	ColonioCallAcceptNearby uint32 = 0x01
-	ColonioCallIgnoreReply  uint32 = 0x02
+	// If this option is specified, call will not wait for a response. Also, no error will occur if no node receives the
+	// call. You should return null value instead of this option if you just don't need return value.
+	ColonioCallIgnoreReply uint32 = 0x02
 )
 
+// CallParameter is used by OnCall. it is pass from CallByNid.
 type CallParameter struct {
-	Name  string
-	Value Value
-	Opt   uint32
+	Name    string
+	Value   Value
+	Options uint32
 }
 
 // Colonio is an interface. It is equivalent to one node.

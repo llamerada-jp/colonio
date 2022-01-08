@@ -122,7 +122,7 @@ TEST(ConnectTest, send) {
 
   node1->on_call("call1", [&](Colonio& c, const Colonio::CallParameter& parameter) {
     printf("receive dummy1\n");
-    EXPECT_EQ(parameter.opt, Colonio::CALL_ACCEPT_NEARBY);
+    EXPECT_EQ(parameter.options, Colonio::CALL_ACCEPT_NEARBY);
     EXPECT_STREQ(parameter.name.c_str(), "call1");
     EXPECT_STREQ(parameter.value.get<std::string>().c_str(), "dummy1");
     helper.mark("1");
@@ -142,7 +142,7 @@ TEST(ConnectTest, send) {
 
   node2->on_call("call2", [&](Colonio& c, const Colonio::CallParameter& parameter) {
     printf("receive dummy2\n");
-    EXPECT_EQ(parameter.opt, Colonio::CALL_IGNORE_REPLY);
+    EXPECT_EQ(parameter.options, Colonio::CALL_IGNORE_REPLY);
     EXPECT_STREQ(parameter.name.c_str(), "call2");
     EXPECT_STREQ(parameter.value.get<std::string>().c_str(), "dummy2");
     helper.mark("2");

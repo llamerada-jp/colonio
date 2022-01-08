@@ -180,13 +180,13 @@ class PythonColonio {
   struct PythonCallParameter {
     const std::string name;
     const py::object value;
-    const uint32_t opt;
+    const uint32_t options;
   };
 
   void on_call(const std::string& name, std::function<py::object(PythonColonio&, const PythonCallParameter&)> func) {
     c->instance->on_call(name, [this, func](colonio::Colonio&, const colonio::Colonio::CallParameter& cParameter) {
       std::unique_ptr<py::object> pValue = std::move(convertValue(cParameter.value));
-      PythonCallParameter pParameter{ cParameter.name, *pValue, cParameter.opt };
+      PythonCallParameter pParameter{cParameter.name, *pValue, cParameter.options};
       py::object ret = func(*this, pParameter);
       return convertValue(ret);
     });
@@ -264,5 +264,5 @@ PYBIND11_MODULE(colonio, m) {
   py::class_<PythonColonio::PythonCallParameter> CallParameter(Colonio, "CallParameter");
   CallParameter.def_readonly("name", &PythonColonio::PythonCallParameter::name)
       .def_readonly("value", &PythonColonio::PythonCallParameter::value)
-      .def_readonly("opt", &PythonColonio::PythonCallParameter::opt);
+      .def_readonly("options", &PythonColonio::PythonCallParameter::options);
 }

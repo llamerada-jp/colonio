@@ -134,7 +134,7 @@ void ColonioModule::recv_packet_call(std::unique_ptr<const Packet> packet) {
         send_error(*p, ErrorCode::RPC_UNDEFINED_ERROR, e.what());
       }
 
-      if (flg_err || (parameter->opt & Colonio::CALL_IGNORE_REPLY) != 0) {
+      if (flg_err || (parameter->options & Colonio::CALL_IGNORE_REPLY) != 0) {
         return;
       }
 
@@ -145,7 +145,7 @@ void ColonioModule::recv_packet_call(std::unique_ptr<const Packet> packet) {
       });
     });
 
-  } else if ((parameter->opt & Colonio::CALL_IGNORE_REPLY) == 0) {
+  } else if ((parameter->options & Colonio::CALL_IGNORE_REPLY) == 0) {
     logd("receiver doesn't set").map("name", parameter->name);
     send_error(*packet, ErrorCode::RPC_UNDEFINED_ERROR, "receiver doesn't set");
   }
