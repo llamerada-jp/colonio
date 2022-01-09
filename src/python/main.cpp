@@ -153,34 +153,47 @@ class PythonColonio {
     c->instance->disconnect();
   }
 
+  bool is_connected() {
+    return c->instance->is_connected();
+  }
+
   std::string get_local_nid() {
     return c->instance->get_local_nid();
   }
 
-  void send(
-      const std::string& dst, const py::object pValue, unsigned int opt,
-      const std::function<void(PythonColonio&)> on_success,
-      const std::function<void(PythonColonio&, colonio::Error)> on_failure) {
+  void call_by_nid(
+      const std::string& dst_nid, const std::string& name, const py::object pValue, uint32_t opt,
+      std::function<void(PythonColonio&, py::object)> on_success,
+      std::function<void(PythonColonio&, colonio::Error)> on_failure) {
     colonio::Value cValue = convertValue(pValue);
-    c->instance->send(
-        dst, cValue, opt,
-        [this, on_success](colonio::Colonio&) {
-          on_success(*this);
+    c->instance->call_by_nid(
+        dst_nid, name, cValue, opt,
+        [this, on_success](colonio::Colonio&, const colonio::Value& cValue) {
+          std::unique_ptr<py::object> pValue = std::move(convertValue(cValue));
+          on_success(*this, *pValue);
         },
         [this, on_failure](colonio::Colonio&, const colonio::Error& err) {
           on_failure(*this, err);
         });
   }
 
-  void on(const std::function<void(PythonColonio&, py::object&)> receiver) {
-    c->instance->on([this, receiver](colonio::Colonio&, const colonio::Value& cValue) {
-      std::unique_ptr<py::object> pValue = std::move(convertValue(cValue));
-      receiver(*this, *pValue);
+  struct PythonCallParameter {
+    const std::string name;
+    const py::object value;
+    const uint32_t options;
+  };
+
+  void on_call(const std::string& name, std::function<py::object(PythonColonio&, const PythonCallParameter&)> func) {
+    c->instance->on_call(name, [this, func](colonio::Colonio&, const colonio::Colonio::CallParameter& cParameter) {
+      std::unique_ptr<py::object> pValue = std::move(convertValue(cParameter.value));
+      PythonCallParameter pParameter{cParameter.name, *pValue, cParameter.options};
+      py::object ret = func(*this, pParameter);
+      return convertValue(ret);
     });
   }
 
-  void off() {
-    c->instance->off();
+  void off_call(const std::string& name) {
+    c->instance->off_call(name);
   }
 
  private:
@@ -209,6 +222,8 @@ PYBIND11_MODULE(colonio, m) {
       .value("COLLISION_LATE", colonio::ErrorCode::COLLISION_LATE)
       .value("NO_ONE_RECV", colonio::ErrorCode::NO_ONE_RECV)
       .value("CALLBACK_ERROR", colonio::ErrorCode::CALLBACK_ERROR)
+      .value("RPC_UNDEFINED_ERROR", colonio::ErrorCode::RPC_UNDEFINED_ERROR)
+      .value("TIMEOUT", colonio::ErrorCode::TIMEOUT)
       .export_values();
 
   // Error
@@ -234,11 +249,20 @@ PYBIND11_MODULE(colonio, m) {
   Colonio.def(py::init<>())
       .def_readonly_static("EXPLICIT_EVENT_THREAD", &colonio::Colonio::EXPLICIT_EVENT_THREAD)
       .def_readonly_static("EXPLICIT_CONTROLLER_THREAD", &colonio::Colonio::EXPLICIT_CONTROLLER_THREAD)
+      .def_readonly_static("CALL_ACCEPT_NEARBY", &colonio::Colonio::CALL_ACCEPT_NEARBY)
+      .def_readonly_static("CALL_IGNORE_REPLY", &colonio::Colonio::CALL_IGNORE_REPLY)
       .def("accessMap", &PythonColonio::access_map)
       .def("connect", &PythonColonio::connect)
       .def("disconnect", &PythonColonio::disconnect)
+      .def("isConnected", &PythonColonio::is_connected)
       .def("getLocalNid", &PythonColonio::get_local_nid)
-      .def("send", &PythonColonio::send)
-      .def("on", &PythonColonio::on)
-      .def("off", &PythonColonio::off);
+      .def("callByNid", &PythonColonio::call_by_nid)
+      .def("onCall", &PythonColonio::on_call)
+      .def("offCall", &PythonColonio::off_call);
+
+  // Colonio::CallParameter
+  py::class_<PythonColonio::PythonCallParameter> CallParameter(Colonio, "CallParameter");
+  CallParameter.def_readonly("name", &PythonColonio::PythonCallParameter::name)
+      .def_readonly("value", &PythonColonio::PythonCallParameter::value)
+      .def_readonly("options", &PythonColonio::PythonCallParameter::options);
 }

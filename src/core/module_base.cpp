@@ -104,7 +104,7 @@ void ModuleBase::on_recv_packet(std::unique_ptr<const Packet> packet) {
     if (command) {
       core::Error content;
       packet->parse_content(&content);
-      command->on_error(content.message());
+      command->on_error(static_cast<ErrorCode>(content.code()), content.message());
       return;
     }
 
@@ -188,8 +188,9 @@ void ModuleBase::send_packet(
  * Send a error packet for the received packet.
  * @param error_for Received packet.
  */
-void ModuleBase::send_error(const Packet& reply_for, const std::string& message) {
+void ModuleBase::send_error(const Packet& reply_for, ErrorCode error_code, const std::string& message) {
   core::Error content;
+  content.set_code(static_cast<uint32_t>(error_code));
   content.set_message(message);
   std::shared_ptr<const std::string> content_bin = serialize_pb(content);
 
@@ -271,7 +272,7 @@ void ModuleBase::on_persec() {
   }
 
   for (auto& it : on_errors) {
-    it->on_error("timeout");
+    it->on_error(ErrorCode::TIMEOUT, "timeout");
   }
 
   for (auto& it : retry_packets) {

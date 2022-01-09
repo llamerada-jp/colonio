@@ -96,7 +96,7 @@ class MapPaxosModule : public MapBase {
 
     CommandGet(Random& random_, std::shared_ptr<Info> info_);
 
-    void on_error(const std::string& message) override;
+    void on_error(ErrorCode code, const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
     void on_success(std::unique_ptr<const Packet> packet) override;
     const std::tuple<PAXOS_N, PAXOS_N, Value>* get_best();
@@ -122,7 +122,7 @@ class MapPaxosModule : public MapBase {
 
     explicit CommandSet(std::unique_ptr<Info> info_);
 
-    void on_error(const std::string& message) override;
+    void on_error(ErrorCode code, const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
     void on_success(std::unique_ptr<const Packet> packet) override;
   };
@@ -160,7 +160,7 @@ class MapPaxosModule : public MapBase {
 
     explicit CommandPrepare(std::shared_ptr<Info> info_);
 
-    void on_error(const std::string& message) override;
+    void on_error(ErrorCode code, const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
     void on_success(std::unique_ptr<const Packet> packet) override;
     void postprocess();
@@ -200,7 +200,7 @@ class MapPaxosModule : public MapBase {
 
     explicit CommandAccept(std::shared_ptr<Info> info_);
 
-    void on_error(const std::string& message) override;
+    void on_error(ErrorCode code, const std::string& message) override;
     void on_failure(std::unique_ptr<const Packet> packet) override;
     void on_success(std::unique_ptr<const Packet> packet) override;
     void postprocess();

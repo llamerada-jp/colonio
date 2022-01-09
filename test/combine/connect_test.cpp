@@ -44,10 +44,10 @@ TEST(ConnectTest, connect_async) {
 
   node->connect(
       "http://localhost:8080/test", "",
-      [&](colonio::Colonio& c) {
+      [&](Colonio& c) {
         helper.pass_signal("connect");
       },
-      [&](colonio::Colonio& c, const colonio::Error& err) {
+      [&](Colonio& c, const Error& err) {
         ADD_FAILURE();
       });
 
@@ -104,10 +104,10 @@ TEST(ConnectTest, send) {
 
   std::string name1 = "node1";
   std::string name2 = "node2";
-  std::unique_ptr<Colonio> node1(Colonio::new_instance([&](colonio::Colonio&, const std::string& message) {
+  std::unique_ptr<Colonio> node1(Colonio::new_instance([&](Colonio&, const std::string& message) {
     std::cout << name1 << ":" << message << std::endl;
   }));
-  std::unique_ptr<Colonio> node2(Colonio::new_instance([&](colonio::Colonio&, const std::string& message) {
+  std::unique_ptr<Colonio> node2(Colonio::new_instance([&](Colonio&, const std::string& message) {
     std::cout << name2 << ":" << message << std::endl;
   }));
 
@@ -120,42 +120,87 @@ TEST(ConnectTest, send) {
   printf("node1 : %s\n", node1->get_local_nid().c_str());
   printf("node2 : %s\n", node2->get_local_nid().c_str());
 
-  node1->on([&](colonio::Colonio& c, const colonio::Value& value) {
+  node1->on_call("call1", [&](Colonio& c, const Colonio::CallParameter& parameter) {
     printf("receive dummy1\n");
-    EXPECT_STREQ(value.get<std::string>().c_str(), "dummy1");
+    EXPECT_EQ(parameter.options, Colonio::CALL_ACCEPT_NEARBY);
+    EXPECT_STREQ(parameter.name.c_str(), "call1");
+    EXPECT_STREQ(parameter.value.get<std::string>().c_str(), "dummy1");
     helper.mark("1");
     helper.pass_signal("1");
-    c.send(
-        node2->get_local_nid(), colonio::Value("dummy2"), colonio::Colonio::CONFIRM_RECEIVER_RESULT,
-        [&](colonio::Colonio&) {
-          helper.mark("2");
-          helper.pass_signal("2");
+
+    printf("send result1\n");
+    return Value("result1");
+  });
+
+  node1->on_call("call3", [&](Colonio& c, const Colonio::CallParameter& parameter) {
+    printf("receive dummy3\n");
+    helper.mark("3");
+    helper.pass_signal("3");
+
+    return Value();
+  });
+
+  node2->on_call("call2", [&](Colonio& c, const Colonio::CallParameter& parameter) {
+    printf("receive dummy2\n");
+    EXPECT_EQ(parameter.options, Colonio::CALL_IGNORE_REPLY);
+    EXPECT_STREQ(parameter.name.c_str(), "call2");
+    EXPECT_STREQ(parameter.value.get<std::string>().c_str(), "dummy2");
+    helper.mark("2");
+    helper.pass_signal("2");
+
+    printf("send dummy2\n");
+    // todo: avoid block without CALL_IGNORE_REPLY option.
+    c.call_by_nid(
+        node1->get_local_nid(), "call3", Value(), 0,
+        [&](Colonio&, const Value&) {
+          helper.mark("4");
+          helper.pass_signal("4");
         },
-        [&](colonio::Colonio&, const colonio::Error&) {
+        [&](Colonio&, const Error&) {
+          ADD_FAILURE();
+        });
+
+    printf("send result2\n");
+    return Value("result2");
+  });
+
+  NodeID target =
+      NodeID::center_mod(NodeID::from_str(node1->get_local_nid()), NodeID::from_str(node2->get_local_nid()));
+  helper.wait_signal("1", [&] {
+    printf("send dummy1\n");
+    Value result1 = node1->call_by_nid(target.to_str(), "call1", Value("dummy1"), Colonio::CALL_ACCEPT_NEARBY);
+    EXPECT_STREQ(result1.get<std::string>().c_str(), "result1");
+    printf("send dummy0\n");
+    node2->call_by_nid(
+        NodeID(0, 0).to_str(), "dummy", Value("dummy0"), 0,
+        [&](Colonio&, const Value&) {
+          ADD_FAILURE();
+        },
+        [&](Colonio&, const Error&) {
+          helper.pass_signal("1e");
+        });
+    sleep(1);
+  });
+
+  helper.wait_signal("2", [&] {
+    printf("send dummy2\n");
+    node1->call_by_nid(
+        node2->get_local_nid(), "call2", Value("dummy2"), Colonio::CALL_IGNORE_REPLY,
+        [&](Colonio&, const Value& result) {
+          EXPECT_EQ(result.get_type(), Value::NULL_T);
+          helper.pass_signal("2s");
+        },
+        [&](Colonio&, const Error&) {
           ADD_FAILURE();
         });
   });
 
-  node2->on([&](colonio::Colonio& c, const colonio::Value& value) {
-    printf("receive dummy2\n");
-    EXPECT_STREQ(value.get<std::string>().c_str(), "dummy2");
-    helper.mark("3");
-    helper.pass_signal("3");
-  });
-
-  NodeID target = NodeID::center_mod(NodeID::from_str(node1->get_local_nid()), NodeID::from_str(node2->get_local_nid()));
-  helper.wait_signal("1", [&] {
-    printf("send dummy1\n");
-    node1->send(target.to_str(), colonio::Value("dummy1"), Colonio::SEND_ACCEPT_NEARBY);
-    printf("send dummy0\n");
-    node2->send(NodeID(0, 0).to_str(), colonio::Value("dummy0"), 0);
-    sleep(1);
-  });
-
-  helper.wait_signal("2");
+  helper.wait_signal("1e");
+  helper.wait_signal("2s");
   helper.wait_signal("3");
+  helper.wait_signal("4");
 
-  EXPECT_THAT(helper.get_route(), MatchesRegex("^123|132$"));
+  EXPECT_THAT(helper.get_route(), MatchesRegex("^1234$"));
 
   printf("disconnect node2\n");
   node2->disconnect();

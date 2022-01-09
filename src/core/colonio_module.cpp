@@ -18,27 +18,32 @@
 
 #include "colonio/colonio.hpp"
 #include "colonio_module_protocol.pb.h"
+#include "logger.hpp"
+#include "packet.hpp"
 #include "scheduler.hpp"
 #include "utils.hpp"
 #include "value_impl.hpp"
 
 namespace colonio {
 
-ColonioModule::CommandSend::CommandSend(PacketMode::Type mode, ColonioModule& parent_) :
-    Command(CommandID::Colonio::SEND_PACKET, mode), parent(parent_) {
+ColonioModule::CommandCall::CommandCall(PacketMode::Type mode, ColonioModule& parent_) :
+    Command(CommandID::Colonio::CALL, mode), parent(parent_) {
 }
 
-void ColonioModule::CommandSend::on_error(const std::string& message) {
-  // TODO:implement error
-  Error e = colonio_error(ErrorCode::UNDEFINED, message);
+void ColonioModule::CommandCall::on_error(ErrorCode code, const std::string& message) {
+  Error e = colonio_error(code, message);
   parent.scheduler.add_user_task(&parent, [cb = cb_failure, e] {
     cb(e);
   });
 }
 
-void ColonioModule::CommandSend::on_success(std::unique_ptr<const Packet> packet) {
-  parent.scheduler.add_user_task(&parent, [cb = cb_success] {
-    cb();
+void ColonioModule::CommandCall::on_success(std::unique_ptr<const Packet> packet) {
+  ColonioModuleProtocol::CallSuccess content;
+  packet->parse_content(&content);
+  Value result = ValueImpl::from_pb(content.result());
+  std::shared_ptr<const Packet> p(packet.release());
+  parent.scheduler.add_user_task(&parent, [result, cb = cb_success] {
+    cb(result);
   });
 }
 
@@ -49,47 +54,50 @@ ColonioModule::~ColonioModule() {
   scheduler.remove_task(this);
 }
 
-void ColonioModule::send(
-    const std::string& dst_nid, const Value& value, uint32_t opt, std::function<void()>&& on_success,
-    std::function<void(const Error&)>&& on_failure) {
+void ColonioModule::call_by_nid(
+    const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt,
+    std::function<void(const Value&)>&& on_success, std::function<void(const Error&)>&& on_failure) {
   scheduler.add_controller_task(this, [=] {
-    ColonioModuleProtocol::SendPacket param;
+    ColonioModuleProtocol::Call param;
+    param.set_opt(opt);
+    param.set_name(name);
     ValueImpl::to_pb(param.mutable_value(), value);
     std::shared_ptr<const std::string> param_bin = serialize_pb(param);
 
     PacketMode::Type mode = 0;
-    if ((opt & Colonio::SEND_ACCEPT_NEARBY) == 0) {
+    if ((opt & Colonio::CALL_ACCEPT_NEARBY) == 0) {
       mode |= PacketMode::EXPLICIT;
     }
 
-    if ((opt & Colonio::CONFIRM_RECEIVER_RESULT) != 0) {
-      std::unique_ptr<CommandSend> command = std::make_unique<CommandSend>(mode, *this);
+    if ((opt & Colonio::CALL_IGNORE_REPLY) != 0) {
+      send_packet(NodeID::from_str(dst_nid), mode, CommandID::Colonio::CALL, param_bin);
+      scheduler.add_user_task(this, [on_success] {
+        on_success(Value());
+      });
+
+    } else {
+      std::unique_ptr<CommandCall> command = std::make_unique<CommandCall>(mode, *this);
+      command->name                        = name;
       command->cb_success                  = on_success;
       command->cb_failure                  = on_failure;
 
       send_packet(std::move(command), NodeID::from_str(dst_nid), param_bin);
-
-    } else {
-      send_packet(NodeID::from_str(dst_nid), mode, CommandID::Colonio::SEND_PACKET, param_bin);
-      scheduler.add_user_task(this, [on_success] {
-        on_success();
-      });
     }
   });
 }
 
-void ColonioModule::on(std::function<void(const Value&)>&& receiver_) {
-  receiver = receiver_;
+void ColonioModule::on_call(const std::string& name, std::function<Value(const Colonio::CallParameter&)>&& func) {
+  on_call_funcs[name] = func;
 }
 
-void ColonioModule::off() {
-  receiver = nullptr;
+void ColonioModule::off_call(const std::string& name) {
+  on_call_funcs.erase(name);
 }
 
 void ColonioModule::module_process_command(std::unique_ptr<const Packet> packet) {
   switch (packet->command_id) {
-    case CommandID::Colonio::SEND_PACKET:
-      recv_packet_send_packet(std::move(packet));
+    case CommandID::Colonio::CALL:
+      recv_packet_call(std::move(packet));
       break;
 
     default:
@@ -97,17 +105,49 @@ void ColonioModule::module_process_command(std::unique_ptr<const Packet> packet)
   }
 }
 
-void ColonioModule::recv_packet_send_packet(std::unique_ptr<const Packet> packet) {
-  ColonioModuleProtocol::SendPacket content;
+void ColonioModule::recv_packet_call(std::unique_ptr<const Packet> packet) {
+  ColonioModuleProtocol::Call content;
   packet->parse_content(&content);
-  Value v = ValueImpl::from_pb(content.value());
+  std::shared_ptr<Colonio::CallParameter> parameter(
+      new Colonio::CallParameter({content.name(), ValueImpl::from_pb(content.value()), content.opt()}));
 
-  send_success(*packet, std::shared_ptr<std::string>());
+  auto it_func = on_call_funcs.find(parameter->name);
+  if (it_func != on_call_funcs.end()) {
+    auto& func = it_func->second;
+    std::shared_ptr<const Packet> p(packet.release());
+    scheduler.add_user_task(this, [this, p, parameter, func] {
+      Value result;
+      bool flg_err = false;
+      try {
+        result = func(*parameter);
 
-  if (receiver) {
-    scheduler.add_user_task(this, [this, v] {
-      receiver(v);
+      } catch (const Error& e) {
+        flg_err = true;
+        logw("an error occured in user funciton")
+            .map_u32("code", static_cast<uint32_t>(e.code))
+            .map("message", e.message);
+        send_error(*p, e.code, e.message);
+
+      } catch (const std::exception& e) {
+        flg_err = true;
+        logw("an error occured in user funciton").map("message", std::string(e.what()));
+        send_error(*p, ErrorCode::RPC_UNDEFINED_ERROR, e.what());
+      }
+
+      if (flg_err || (parameter->options & Colonio::CALL_IGNORE_REPLY) != 0) {
+        return;
+      }
+
+      scheduler.add_controller_task(this, [this, p, result] {
+        ColonioModuleProtocol::CallSuccess param;
+        ValueImpl::to_pb(param.mutable_result(), result);
+        send_success(*p, serialize_pb(param));
+      });
     });
+
+  } else if ((parameter->options & Colonio::CALL_IGNORE_REPLY) == 0) {
+    logd("receiver doesn't set").map("name", parameter->name);
+    send_error(*packet, ErrorCode::RPC_UNDEFINED_ERROR, "receiver doesn't set");
   }
 }
 }  //  namespace colonio

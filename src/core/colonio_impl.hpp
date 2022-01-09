@@ -65,12 +65,14 @@ class ColonioImpl : public Colonio,
       double x, double y, std::function<void(Colonio&, double, double)> on_success,
       std::function<void(Colonio&, const Error&)> on_failure) override;
 
-  void send(const std::string& dst_nid, const Value& value, uint32_t opt = 0x00) override;
-  void send(
-      const std::string& dst_nid, const Value& value, uint32_t opt, std::function<void(Colonio&)>&& on_success,
+  Value call_by_nid(
+      const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt = 0x00) override;
+  void call_by_nid(
+      const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt,
+      std::function<void(Colonio&, const Value&)>&& on_success,
       std::function<void(Colonio&, const Error&)>&& on_failure) override;
-  void on(std::function<void(Colonio&, const Value&)>&& receiver) override;
-  void off() override;
+  void on_call(const std::string& name, std::function<Value(Colonio&, const CallParameter&)>&& func) override;
+  void off_call(const std::string& name) override;
 
   void start_on_event_thread() override;
   void start_on_controller_thread() override;

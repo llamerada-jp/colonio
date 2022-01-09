@@ -16,27 +16,6 @@ package colonio
  * limitations under the License.
  */
 
-// Colonio is an interface. It is equivalent to one node.
-type Colonio interface {
-	Connect(url, token string) error
-	Disconnect() error
-	AccessMap(name string) Map
-	AccessPubsub2D(name string) Pubsub2D
-	GetLocalNid() string
-	SetPosition(x, y float64) (float64, float64, error)
-	Send(dst string, val interface{}, opt uint32) error
-	On(cb func(Value))
-	Off()
-	Quit() error
-}
-
-// Logger is an interface to configure the output destination of the logs.
-type Logger interface {
-	// The log messages are passed as JSON format strings.
-	// Colonio runs on multi-threads, so this interface is called on multi-threads.
-	Output(message string)
-}
-
 // Value is an instance, it is equivalent to one value.
 type Value interface {
 	IsNil() bool
@@ -49,6 +28,44 @@ type Value interface {
 	GetInt() (int64, error)
 	GetDouble() (float64, error)
 	GetString() (string, error)
+}
+
+// Options for Colonio.CallByNid opt parameter.
+const (
+	// If there is no node with a matching node-id, the node with the closest node-id will receive the call.
+	ColonioCallAcceptNearby uint32 = 0x01
+	// If this option is specified, call will not wait for a response. Also, no error will occur if no node receives the
+	// call. You should return null value instead of this option if you just don't need return value.
+	ColonioCallIgnoreReply uint32 = 0x02
+)
+
+// CallParameter is used by OnCall. it is pass from CallByNid.
+type CallParameter struct {
+	Name    string
+	Value   Value
+	Options uint32
+}
+
+// Colonio is an interface. It is equivalent to one node.
+type Colonio interface {
+	Connect(url, token string) error
+	Disconnect() error
+	IsConnected() bool
+	AccessMap(name string) (Map, error)
+	AccessPubsub2D(name string) (Pubsub2D, error)
+	GetLocalNid() string
+	SetPosition(x, y float64) (float64, float64, error)
+	CallByNid(dst, name string, val interface{}, opt uint32) (Value, error)
+	OnCall(name string, f func(*CallParameter) interface{})
+	OffCall(name string)
+	Quit() error
+}
+
+// Logger is an interface to configure the output destination of the logs.
+type Logger interface {
+	// The log messages are passed as JSON format strings.
+	// Colonio runs on multi-threads, so this interface is called on multi-threads.
+	Output(message string)
 }
 
 // Options for Map interface's opt parameter

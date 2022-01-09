@@ -131,7 +131,7 @@ Pubsub2DModule::CommandKnock::CommandKnock(Pubsub2DModule& parent_, uint64_t uid
     Command(CommandID::Pubsub2D::KNOCK, PacketMode::NONE), parent(parent_), uid(uid_) {
 }
 
-void Pubsub2DModule::CommandKnock::on_error(const std::string& message) {
+void Pubsub2DModule::CommandKnock::on_error(ErrorCode code, const std::string& message) {
   // @todo fixme
   assert(false);
 }
@@ -157,7 +157,7 @@ Pubsub2DModule::CommandPass::CommandPass(
     cb_on_failure(cb_on_failure_) {
 }
 
-void Pubsub2DModule::CommandPass::on_error(const std::string& message) {
+void Pubsub2DModule::CommandPass::on_error(ErrorCode code, const std::string& message) {
   // @todo output log.
   cb_on_failure(colonio_error(ErrorCode::SYSTEM_ERROR, ""));
 }

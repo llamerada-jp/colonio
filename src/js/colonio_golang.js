@@ -20,28 +20,7 @@ class ColonioSuite {
     }
 
     newValue(type, value) {
-        let V = this.colonio.Value;
-
-        switch (type) {
-            case V.VALUE_TYPE_NULL:
-                return V.Null();
-
-            case V.VALUE_TYPE_BOOL:
-                return V.Bool(value);
-
-            case V.VALUE_TYPE_INT:
-                return V.Int(value);
-
-            case V.VALUE_TYPE_DOUBLE:
-                return V.Double(value);
-
-            case V.VALUE_TYPE_STRING:
-                return V.String(value);
-
-            default:
-                logE("unsupported value type", type, value);
-                return V.Null();
-        }
+        return new this.colonio.Value(type, value);
     }
 
     // this method will be override by golang
@@ -81,6 +60,10 @@ class ColonioWrap {
         });
     }
 
+    isConnected() {
+        return this.c.isConnected();
+    }
+
     accessMap(name) {
         return new ColonioMapWrap(this.suite, this.c.accessMap(name));
     }
@@ -109,25 +92,33 @@ class ColonioWrap {
         });
     }
 
-    send(key, dst, valueType, valueValue, opt) {
-        this.c.send(dst, this.suite.newValue(valueType, valueValue), opt).then(() => {
-            this.suite.onResponse(key);
+    callByNid(key, dst, name, valueType, valueValue, opt) {
+        this.c.callByNid(dst, name, this.suite.newValue(valueType, valueValue), opt).then((value) => {
+            this.suite.onResponse(key, {
+                type: value.getType(),
+                value: value.getJsValue()
+            });
         }, (err) => {
-            this.suite.onResponse(key, convertError(err));
-        });
-    }
-
-    on(key) {
-        this.c.onRaw((data) => {
-            this.suite.onEvent(key, {
-                type: data.getType(),
-                value: data.getJsValue()
+            this.suite.onResponse(key, {
+                err: convertError(err)
             });
         });
     }
 
-    off() {
-        this.c.off();
+    onCall(name, key) {
+        this.c.onCall(name, (parameter) => {
+            let result = this.suite.onEvent(key, {
+                name: parameter.name,
+                valueType: parameter.value.getType(),
+                value: parameter.value.getJsValue(),
+                options: parameter.options
+            });
+            return this.suite.newValue(result.valueType, result.value);
+        });
+    }
+
+    offCall(name) {
+        this.c.offCall(name);
     }
 }
 

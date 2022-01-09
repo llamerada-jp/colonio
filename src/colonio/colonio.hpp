@@ -195,62 +195,76 @@ class Colonio {
       double x, double y, std::function<void(Colonio&, double, double)> on_success,
       std::function<void(Colonio&, const Error&)> on_failure) = 0;
 
-  // Options for `send` method.
-  /// If there is no node with a matching node-id, the node with the closest node-id will receive the value.
-  static const uint32_t SEND_ACCEPT_NEARBY = 0x01;
-  /// Confirm that any node receives the value. If this option is not specified, the send method will return immediately
-  /// with success.
-  static const uint32_t CONFIRM_RECEIVER_RESULT = 0x02;
+  // Options for `call_by_nid` method.
+  /// If there is no node with a matching node-id, the node with the closest node-id will receive the call.
+  static const uint32_t CALL_ACCEPT_NEARBY = 0x01;
+  /// If this option is specified, call will not wait for a response. Also, no error will occur if no node receives the
+  /// call. You should return null value instead of this option if you just don't need return value.
+  static const uint32_t CALL_IGNORE_REPLY = 0x02;
 
   /**
-   * @brief Send packet to the destination node.
+   * @brief Call remote procedure on or neer the destination node.
    *
-   * This method provides the simple feature of sending a value.
+   * This method provides the simple feature of RPC with a value.
    *
    * @param dst_nid Target node's ID.
-   * @param value A value to be sent.
+   * @param name A name to identify the procedure.
+   * @param value A value to be sent with the call.
    * @param opt Options.
    *
-   * @sa send(
-   *     const std::string& dst_nid, const Value& value, uint32_t opt, std::function<void(Colonio&)>&& on_success,
-   *     std::function<void(Colonio&, const Error&)>&& on_failure)
-   * @sa on(std::function<void(Colonio&, const Value&)>&& receiver)
-   * @sa off()
+   * @sa call_by_nid(
+   *       const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt,
+   *       std::function<void(Colonio&, const Value&)>&& on_success,
+   *       std::function<void(Colonio&, const Error&)>&& on_failure)
+   * @sa on_call(const std::string& name, std::function<Value(Colonio&, const CallParameter&)>&& func)
+   * @sa off_call(const std::string& name)
    */
-  virtual void send(const std::string& dst_nid, const Value& value, uint32_t opt = 0x00) = 0;
+  virtual Value call_by_nid(
+      const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt = 0x00) = 0;
 
   /**
-   * @brief Send packet to the destination node asynchronously.
+   * @brief Call remote procedure on or neer the destination node asynchronously.
    *
-   * This method provides the simple feature of sending a value.
+   * This method provides the simple feature of RPC with a value.
    *
    * @param dst_nid Target node's ID.
+   * @param name A name to identify the procedure.
    * @param value A value to be sent.
    * @param opt Options.
    * @param on_success The function will call when success to send the message.
    * @param on_failure The function will call when failure to send the message.
    *
-   * @sa send(const std::string& dst_nid, const Value& value, uint32_t opt)
-   * @sa on(std::function<void(Colonio&, const Value&)>&& receiver)
-   * @sa off()
+   * @sa call_by_nid(const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt)
+   * @sa on_call(const std::string& name, std::function<Value(Colonio&, const CallParameter&)>&& func)
+   * @sa off_call(const std::string& name)
    */
-  virtual void send(
-      const std::string& dst_nid, const Value& value, uint32_t opt, std::function<void(Colonio&)>&& on_success,
+  virtual void call_by_nid(
+      const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt,
+      std::function<void(Colonio&, const Value&)>&& on_success,
       std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
 
+  struct CallParameter {
+    const std::string name;
+    const Value value;
+    const uint32_t options;
+  };
+
   /**
-   * @brief Register a callback function to receive messages from the send method.
+   * @brief Register a callback function to receive messages from the call_by_nid method.
    *
    * If another function has already been registered, that registration will be overwritten.
    *
-   * @param receiver Receiver function.
+   * @param name A name to identify the procedure.
+   * @param func Receiver function.
    */
-  virtual void on(std::function<void(Colonio&, const Value&)>&& receiver) = 0;
+  virtual void on_call(const std::string& name, std::function<Value(Colonio&, const CallParameter&)>&& func) = 0;
 
   /**
-   * @brief Release the function registered in the on method.
+   * @brief Release the function registered in the on_call method.
+   *
+   * @param name A name to identify the procedure.
    */
-  virtual void off() = 0;
+  virtual void off_call(const std::string& name) = 0;
 
   /**
    * @brief This is the method to call inside the thread for events.

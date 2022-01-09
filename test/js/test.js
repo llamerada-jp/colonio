@@ -59,24 +59,26 @@ function test() {
     return node2.connect(URL, TOKEN);
 
   }).then(() => {
-    timer1 = setInterval(() => {
-      logD("send data");
-      node1.send(node2.getLocalNid(), "from node1");
-    }, 1000);
+    node2.onCall("test", (param) => {
+      return "reply " + param.value.getJsValue();
+    });
 
-    return new Promise((resolve, reject) => {
-      logD("node2 waiting data");
-      node2.on((data) => {
-        clearInterval(timer1);
-        if (data === "from node1") {
-          resolve();
-        } else {
-          reject();
-        }
-      });
+    logD("wait 5 sec");
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve();
+      }, 5 * 1000);
     });
 
   }).then(() => {
+    return node1.callByNid(node2.getLocalNid(), "test", "from node1");
+
+  }).then((result) => {
+    // check result
+    if (result.getJsValue() !== "reply from node1") {
+      logE("result", result);
+      throw new Error("wrong result from node2.onCall");
+    }
     logD("node1.setPosition");
     return node1.setPosition(0, 0);
 

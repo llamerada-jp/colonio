@@ -65,34 +65,37 @@ func E2e(generator func(colonio.Logger) (colonio.Colonio, error)) {
 		By("checking nid")
 		Expect(utf8.RuneCountInString(node1.GetLocalNid())).Should(Equal(32))
 
-		recvSend := make(chan string, 1)
-		node1.On(func(v colonio.Value) {
-			str, err := v.GetString()
-			Expect(err).ShouldNot(HaveOccurred())
-			recvSend <- str
-		})
-		By("sending message and waiting it")
 		Eventually(func() error {
-			select {
-			case v, ok := <-recvSend:
-				Expect(ok).Should(BeTrue())
-				Expect(v).Should(Equal("test send"))
-				return nil
-
-			default:
-				err := node2.Send(node1.GetLocalNid(), "test send", 0)
+			By("sending message and waiting it")
+			node1.OnCall("twice", func(parameter *colonio.CallParameter) interface{} {
+				str, err := parameter.Value.GetString()
 				Expect(err).ShouldNot(HaveOccurred())
-				return fmt.Errorf("the message was not received")
+				return str + str
+			})
+			result, err := node2.CallByNid(node1.GetLocalNid(), "twice", "test", 0)
+			if err != nil {
+				return err
 			}
-		}, time.Second*64, time.Second*1).Should(Succeed())
+			resultStr, err := result.GetString()
+			if err != nil {
+				return err
+			}
+			if resultStr != "testtest" {
+				return fmt.Errorf("wrong text")
+			}
+			return nil
+		}, time.Second*60, time.Second*1).Should(Succeed())
 
 		By("node1 set 2D position")
 		node1.SetPosition(1.0, 0.0)
-		ps1 := node1.AccessPubsub2D("ps")
+		ps1, err := node1.AccessPubsub2D("ps")
+		Expect(err).ShouldNot(HaveOccurred())
 
 		By("node2 set 2D position")
 		node2.SetPosition(2.0, 0.0)
-		ps2 := node2.AccessPubsub2D("ps")
+		ps2, err := node2.AccessPubsub2D("ps")
+		Expect(err).ShouldNot(HaveOccurred())
+
 		// set 1 to avoid dead-lock caused by ps1.Publish waits finish of ps2.On.
 		recvPS2 := make(chan string, 1)
 		ps2.On("hoge", func(v colonio.Value) {
@@ -117,8 +120,10 @@ func E2e(generator func(colonio.Logger) (colonio.Colonio, error)) {
 		}, time.Second*60, time.Second*1).Should(Succeed())
 
 		By("getting a not existed value")
-		map1 := node1.AccessMap("map")
-		map2 := node2.AccessMap("map")
+		map1, err := node1.AccessMap("map")
+		Expect(err).ShouldNot(HaveOccurred())
+		map2, err := node2.AccessMap("map")
+		Expect(err).ShouldNot(HaveOccurred())
 
 		_, err = map1.Get("key1")
 		Expect(err).Should(MatchError(colonio.ErrNotExistKey))

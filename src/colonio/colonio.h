@@ -92,6 +92,8 @@ typedef enum COLONIO_ERROR_CODE {
   COLONIO_ERROR_CODE_COLLISION_LATE,
   COLONIO_ERROR_CODE_NO_ONE_RECV,
   COLONIO_ERROR_CODE_CALLBACK_ERROR,
+  COLONIO_ERROR_CODE_RPC_UNDEFINED_ERROR,
+  COLONIO_ERROR_CODE_TIMEOUT,
 } COLONIO_ERROR_CODE;
 
 #define COLONIO_COLONIO_EXPLICIT_EVENT_THREAD 0x1
@@ -142,6 +144,13 @@ typedef struct colonio_error_s {
   unsigned int message_siz;
 } colonio_error_t;
 
+typedef struct colono_on_call_parameter_s {
+  const char* name;
+  unsigned int name_siz;
+  const colonio_value_t* value;
+  uint32_t options;
+} colonio_on_call_parameter_t;
+
 COLONIO_PUBLIC colonio_error_t* colonio_init(
     colonio_t* colonio, void (*logger)(colonio_t*, const char*, unsigned int), uint32_t opt);
 COLONIO_PUBLIC colonio_error_t* colonio_connect(
@@ -156,19 +165,22 @@ COLONIO_PUBLIC bool colonio_is_connected(colonio_t* colonio);
 COLONIO_PUBLIC colonio_map_t colonio_access_map(colonio_t* colonio, const char* name, unsigned int name_siz);
 COLONIO_PUBLIC colonio_pubsub_2d_t
 colonio_access_pubsub_2d(colonio_t* colonio, const char* name, unsigned int name_siz);
-COLONIO_PUBLIC void colonio_get_local_nid(colonio_t* colonio, char* dst, unsigned int* siz);
+COLONIO_PUBLIC void colonio_get_local_nid(colonio_t* colonio, char* dst);
 COLONIO_PUBLIC colonio_error_t* colonio_set_position(colonio_t* colonio, double* x, double* y);
 COLONIO_PUBLIC void colonio_set_position_async(
     colonio_t* colonio, double x, double y, void* ptr, void (*on_success)(colonio_t*, void*, double, double),
     void (*on_failure)(colonio_t*, void*, const colonio_error_t*));
-COLONIO_PUBLIC colonio_error_t* colonio_send(
-    colonio_t* colonio, const char* dst, unsigned int dst_siz, const colonio_value_t* value, uint32_t opt);
-COLONIO_PUBLIC void colonio_send_async(
-    colonio_t* colonio, const char* dst, unsigned int dst_siz, const colonio_value_t* value, uint32_t opt, void* ptr,
-    void (*on_success)(colonio_t*, void*), void (*on_failure)(colonio_t*, void*, const colonio_error_t*));
-COLONIO_PUBLIC void colonio_on(
-    colonio_t* colonio, void* ptr, void (*receiver)(colonio_t*, void*, const colonio_value_t*));
-COLONIO_PUBLIC void colonio_off(colonio_t* colonio);
+COLONIO_PUBLIC colonio_error_t* colonio_call_by_nid(
+    colonio_t* colonio, const char* dst, const char* name, unsigned int name_siz, const colonio_value_t* value,
+    uint32_t opt, colonio_value_t* result);
+COLONIO_PUBLIC void colonio_call_by_nid_async(
+    colonio_t* colonio, const char* dst, const char* name, unsigned int name_siz, const colonio_value_t* value,
+    uint32_t opt, void* ptr, void (*on_success)(colonio_t*, void*, const colonio_value_t*),
+    void (*on_failure)(colonio_t*, void*, const colonio_error_t*));
+COLONIO_PUBLIC void colonio_on_call(
+    colonio_t* colonio, const char* name, unsigned int name_siz, void* ptr,
+    void (*func)(colonio_t*, void*, const colonio_on_call_parameter_t*, colonio_value_t*));
+COLONIO_PUBLIC void colonio_off_call(colonio_t* colonio, const char* name, unsigned int name_siz);
 COLONIO_PUBLIC void colonio_start_on_event_thread(colonio_t* colonio);
 COLONIO_PUBLIC void colonio_start_on_controller_thread(colonio_t* colonio);
 COLONIO_PUBLIC colonio_error_t* colonio_quit(colonio_t* colonio);

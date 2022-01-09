@@ -39,6 +39,8 @@ enum class ErrorCode : uint32_t {
   COLLISION_LATE,         ///< Under developing.
   NO_ONE_RECV,            ///< There was no node receiving the message.
   CALLBACK_ERROR,         ///< An error that occurred while executing the callback function.
+  RPC_UNDEFINED_ERROR,    ///< An undefined error that occurred in callback function of call_by_nid.
+  TIMEOUT,                ///< An error occurs when timeout.
 };
 
 /**

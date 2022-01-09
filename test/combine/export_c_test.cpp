@@ -49,6 +49,9 @@ TEST(ExternC, definition) {
   EXPECT_EQ(static_cast<int>(colonio::ErrorCode::CHANGED_PROPOSER), COLONIO_ERROR_CODE_CHANGED_PROPOSER);
   EXPECT_EQ(static_cast<int>(colonio::ErrorCode::COLLISION_LATE), COLONIO_ERROR_CODE_COLLISION_LATE);
   EXPECT_EQ(static_cast<int>(colonio::ErrorCode::NO_ONE_RECV), COLONIO_ERROR_CODE_NO_ONE_RECV);
+  EXPECT_EQ(static_cast<int>(colonio::ErrorCode::CALLBACK_ERROR), COLONIO_ERROR_CODE_CALLBACK_ERROR);
+  EXPECT_EQ(static_cast<int>(colonio::ErrorCode::RPC_UNDEFINED_ERROR), COLONIO_ERROR_CODE_RPC_UNDEFINED_ERROR);
+  EXPECT_EQ(static_cast<int>(colonio::ErrorCode::TIMEOUT), COLONIO_ERROR_CODE_TIMEOUT);
 
   EXPECT_STREQ(colonio::LogLevel::INFO.c_str(), COLONIO_LOG_LEVEL_INFO);
   EXPECT_STREQ(colonio::LogLevel::WARN.c_str(), COLONIO_LOG_LEVEL_WARN);
@@ -77,10 +80,8 @@ TEST(ExternC, connect_sync) {
 
   {
     char nid[COLONIO_NID_LENGTH + 1] = {};
-    unsigned int nid_str_len;
-    colonio_get_local_nid(&colonio, nid, &nid_str_len);
+    colonio_get_local_nid(&colonio, nid);
     EXPECT_EQ(strlen(nid), static_cast<unsigned int>(COLONIO_NID_LENGTH));
-    EXPECT_EQ(nid_str_len, static_cast<unsigned int>(COLONIO_NID_LENGTH));
   }
 
   err = colonio_disconnect(&colonio);
