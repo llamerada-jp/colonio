@@ -167,7 +167,7 @@ TEST(SchedulerNativeTest, task) {
         helper.mark("a");
         helper.pass_signal("a");
       },
-      200);
+      1000);
   scheduler.add_controller_task(dummy, [&] {
     helper.mark("b");
   });
@@ -177,7 +177,7 @@ TEST(SchedulerNativeTest, task) {
         count++;
         helper.mark("c");
       },
-      50);
+      500);
   scheduler.add_user_task(dummy, [&] {
     helper.mark("d");
   });
