@@ -17,7 +17,6 @@ package seed
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -247,12 +246,12 @@ func (node *Node) receivePacket(packet *proto.SeedAccessor) error {
 
 		default:
 			node.close()
-			return errors.New("wrong packet")
+			return fmt.Errorf("wrong packet by command %+v", packet)
 		}
 
 	} else {
 		node.close()
-		return errors.New("wrong packet")
+		return fmt.Errorf("wrong packet by channel %v", packet)
 	}
 }
 
