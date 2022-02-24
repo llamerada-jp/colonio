@@ -18,7 +18,7 @@ package seed
 import (
 	"fmt"
 
-	proto "github.com/llamerada-jp/colonio-seed/seed/core"
+	"github.com/llamerada-jp/colonio/go/proto"
 )
 
 func nidToString(nid *proto.NodeID) string {

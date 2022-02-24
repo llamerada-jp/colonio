@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/llamerada-jp/colonio-seed/seed/core";
+option go_package = "github.com/llamerada-jp/colonio/go/proto";
 
 package colonio.core;
 

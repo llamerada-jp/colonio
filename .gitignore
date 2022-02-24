@@ -3,6 +3,8 @@
 /.vscode
 /build/
 /buildenv/dummy
+/buildenv/go.mod
+/buildenv/go.sum
 /buildenv/Makefile
 /buildenv/qemu-aarch64-static
 /go/test/test.wasm

@@ -27,7 +27,7 @@ import (
 	"github.com/golang/glog"
 	proto3 "github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
-	proto "github.com/llamerada-jp/colonio-seed/seed/core"
+	"github.com/llamerada-jp/colonio/go/proto"
 )
 
 type Node struct {
