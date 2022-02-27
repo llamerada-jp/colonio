@@ -20,7 +20,7 @@ if [ "${OS}" = "Linux" ]; then
 
     make build BUILD_TYPE=Release
     make build BUILD_TYPE=Debug WITH_TEST=ON WITH_SAMPLE=ON WITH_COVERAGE=ON
-    make build-seed
+    make setup-protoc
     make test CTEST_ARGS='--overwrite MemoryCheckCommandOptions="--leak-check=full" -T memcheck --output-on-failure'
     export PATH=$PATH:$(python3 -m site --user-base)/bin
     coveralls -b ./build/linux_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/test -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'
@@ -32,7 +32,7 @@ if [ "${OS}" = "Linux" ]; then
 
     make build BUILT_TYPE=Release
     make build BUILT_TYPE=Debug WITH_TEST=ON
-    make build-seed
+    make setup-protoc
     make test CTEST_ARGS='-v --timeout 300'
     exit 0
   fi
@@ -48,7 +48,6 @@ elif [ "${OS}" = "Darwin" ]; then
 
   make build BUILT_TYPE=Release
   make build BUILT_TYPE=Debug WITH_TEST=ON
-  make build-seed
   make test CTEST_ARGS='--output-on-failure'
   mkdir -p ci_cache
   cp -a local ci_cache/local

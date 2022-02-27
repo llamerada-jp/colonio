@@ -14,7 +14,6 @@ The purpose of Colonio is to make it more versatile and to make it easy for ever
 
 - The status of this project is experimental.
 - Please see [website](https://www.colonio.dev/) to get more information.
-- [colonio-seed](https://github.com/llamerada-jp/colonio-seed) is the seed program for colonio.
 - [libwebrtc](https://github.com/llamerada-jp/libwebrtc) is a depending library to use WebRTC on native environment.
 
 ## How to build the node library
@@ -63,6 +62,17 @@ $ g++ -I<path to colonio>/src \
 -lcolonio -lwebrtc -lprotobuf -lpthread -lssl \
 <your source code>
 ```
+
+### Seed usage
+
+```
+$ ./seed [flags] -config <config file>
+```
+
+| Flag     | Parameter type | Description                     |
+| -------- | -------------- | ------------------------------- |
+| --config | string         | Specify the configuration file. |
+
 
 ## License
 

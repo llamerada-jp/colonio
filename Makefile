@@ -1,7 +1,7 @@
 SHELL := /bin/bash -o pipefail
 
 # version (yyyymmdd)
-DOCKER_IMAGE_VERSION := 20211117a
+DOCKER_IMAGE_VERSION := 20220227a
 DOCKER_IMAGE_NAME := ghcr.io/llamerada-jp/colonio-buildenv
 DOCKER_IMAGE := $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_VERSION)
 
@@ -9,7 +9,6 @@ DOCKER_IMAGE := $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_VERSION)
 ROOT_PATH := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 export LOCAL_ENV_PATH ?= $(ROOT_PATH)/local
 export WORK_PATH ?= /tmp/work
-BUILD_SEED_PATH := $(ROOT_PATH)/build
 ifeq ($(shell uname -s),Darwin)
 NATIVE_BUILD_PATH := $(ROOT_PATH)/build/macos_$(shell uname -m)
 else ifeq ($(shell uname -s),Linux)
@@ -20,13 +19,13 @@ WASM_BUILD_PATH := $(ROOT_PATH)/build/webassembly
 
 # commands
 export SUDO ?= sudo
+export PROTOC := $(LOCAL_ENV_PATH)/bin/protoc
 
 # the versions of depending packages
-ASIO_TAG := asio-1-21-0
+ASIO_TAG := asio-1-20-0
 CPP_ALGORITHMS_HASH := 1ba3fde9c4b1d067986f5243a0f03daffa501ae2
-EMSCRIPTEN_VERSION := 2.0.34
+EMSCRIPTEN_VERSION := 3.0.0
 GTEST_VERSION := 1.11.0
-LIBUV_VERSION := 1.42.0
 ifeq ($(shell uname -s),Darwin)
 LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m96/libwebrtc-96.0.4664.45-macos-amd64.zip"
 else ifeq ($(shell uname -s),Linux)
@@ -41,7 +40,8 @@ else ifeq ($(shell uname -s),Linux)
 	endif
 endif
 PICOJSON_VERSION := 1.3.0
-PROTOBUF_VERSION := 3.15.8
+PROTOBUF_VERSION := 3.19.4
+GO_PROTOBUF_VERSION := 1.5.2
 WEBSOCKETPP_VERSION := 0.8.2
 
 # build options
@@ -72,6 +72,7 @@ setup:
 	else \
 		echo "this platform is not supported yet."; \
 	fi
+	go install github.com/onsi/ginkgo/ginkgo
 
 .PHONY: setup-linux
 setup-linux:
@@ -101,6 +102,7 @@ setup-macos:
 .PHONY: setup-local
 setup-local:
 	mkdir -p $(LOCAL_ENV_PATH) $(WORK_PATH)
+	$(MAKE) setup-protoc
 	# asio
 	cd $(WORK_PATH) \
 	&& $(RM) -r asio \
@@ -140,6 +142,18 @@ setup-local:
 	&& git clone --depth=1 --branch v$(PICOJSON_VERSION) https://github.com/kazuho/picojson.git \
 	&& cd picojson \
 	&& cp picojson.h $(LOCAL_ENV_PATH)/include/
+	# websocketpp
+	cd $(WORK_PATH) \
+	&& $(RM) -r websocketpp \
+	&& git clone --depth=1 --branch $(WEBSOCKETPP_VERSION) https://github.com/zaphoyd/websocketpp.git \
+	&& cd websocketpp \
+	&& cmake -DCMAKE_INSTALL_PREFIX=$(LOCAL_ENV_PATH) . \
+	&& $(MAKE) \
+	&& $(MAKE) install \
+
+.PHONY: setup-protoc
+setup-protoc:
+	mkdir -p $(LOCAL_ENV_PATH) $(WORK_PATH)
 	# Protocol Buffers
 	cd $(WORK_PATH) \
 	&& $(RM) -r protobuf \
@@ -150,14 +164,14 @@ setup-local:
 	&& ./configure --prefix=$(LOCAL_ENV_PATH) \
 	&& $(MAKE) \
 	&& $(MAKE) install
-	# websocketpp
+	# Protocol Buffers go
 	cd $(WORK_PATH) \
-	&& $(RM) -r websocketpp \
-	&& git clone --depth=1 --branch $(WEBSOCKETPP_VERSION) https://github.com/zaphoyd/websocketpp.git \
-	&& cd websocketpp \
-	&& cmake -DCMAKE_INSTALL_PREFIX=$(LOCAL_ENV_PATH) . \
-	&& $(MAKE) \
-	&& $(MAKE) install
+	&& $(RM) -r protobuf \
+	&& git clone -b v$(GO_PROTOBUF_VERSION) --depth=1 https://github.com/golang/protobuf.git \
+	&& cd protobuf \
+	&& export GOPATH=$(LOCAL_ENV_PATH) \
+	&& unset GOROOT \
+	&& go install ./protoc-gen-go
 
 .PHONY: setup-wasm
 setup-wasm:
@@ -185,14 +199,17 @@ setup-wasm:
 
 .PHONY: build
 ifeq ($(shell uname -m),x86_64)
-BUILD_TARGET = build-native build-wasm
+BUILD_TARGET = build-native build-wasm build-seed
 else ifeq ($(shell uname -m),aarch64)
-BUILD_TARGET = build-native
+BUILD_TARGET = build-native build-seed
 endif
 build:
 	if [ $(shell uname -s) = "Linux" ]; then \
-		docker run -v $(ROOT_PATH):$(ROOT_PATH):rw \
+		docker run \
+			-v $(ROOT_PATH):$(ROOT_PATH):rw \
 			-u "$(shell id -u $(USER)):$(shell id -g $(USER))" \
+			--mount type=tmpfs,destination=/go \
+			--env GOCACHE=/go/.cache \
 			$(DOCKER_IMAGE) \
 			-C $(ROOT_PATH) -j $(shell nproc) \
 			$(BUILD_TARGET) \
@@ -203,7 +220,7 @@ build:
 			WITH_SAMPLE=$(WITH_SAMPLE) \
 			WITH_TEST=$(WITH_TEST); \
 	elif [ $(shell uname -s) = "Darwin" ]; then \
-		$(MAKE) build-native; \
+		$(MAKE) build-native build-seed; \
 	else \
 		echo "this platform is not supported yet."; \
 	fi
@@ -213,7 +230,18 @@ test:
 	# C/C++
 	LD_LIBRARY_PATH=$(OUTPUT_PATH)/lib $(MAKE) -C $(NATIVE_BUILD_PATH) CTEST_OUTPUT_ON_FAILURE=1 test ARGS='$(CTEST_ARGS)'
 	# golang
-	$(MAKE) -C go test_native
+	$(MAKE) test-seed-native
+
+.PHONY: test-seed-native
+test-seed-native: build-seed
+	COLONIO_SEED_BIN_PATH=$(OUTPUT_PATH)/seed CGO_LDFLAGS="-L$(OUTPUT_PATH) -L$(OUTPUT_PATH)/lib" go test ./go/test/ -v
+
+.PHONY: test-seed-wasm
+test-seed-wasm: build-seed
+	cp $(shell go env GOROOT)/misc/wasm/wasm_exec.js ./go/test
+	GOOS=js GOARCH=wasm ginkgo build ./go/test/
+	mv ./go/test/test.test ./go/test/test.wasm
+	$(OUTPUT_PATH)/seed -c $(ROOT_PATH)/go/test/seed.json
 
 .PHONY: format-code
 format-code:
@@ -256,28 +284,40 @@ build-wasm:
 	&& cp src/colonio.* $(OUTPUT_PATH)
 
 .PHONY: build-seed
-build-seed:
-	$(MAKE) -C go build_seed
+build-seed: go/proto/core.pb.go go/proto/node_accessor_protocol.pb.go go/proto/seed_accessor_protocol.pb.go
+	CGO_ENABLED=0 go build -o $(OUTPUT_PATH)/seed ./go/cmd/seed
+
+go/proto/core.pb.go: $(ROOT_PATH)/src/core/core.proto
+	PATH="$(LOCAL_ENV_PATH)/bin:$(PATH)" $(PROTOC) -I $(ROOT_PATH)/src --go_out=module=github.com/llamerada-jp/colonio/go:. $<
+
+go/proto/node_accessor_protocol.pb.go: $(ROOT_PATH)/src/core/node_accessor_protocol.proto
+	PATH="$(LOCAL_ENV_PATH)/bin:$(PATH)" $(PROTOC) -I $(ROOT_PATH)/src --go_out=module=github.com/llamerada-jp/colonio/go:. $<
+
+go/proto/seed_accessor_protocol.pb.go: $(ROOT_PATH)/src/core/seed_accessor_protocol.proto
+	PATH="$(LOCAL_ENV_PATH)/bin:$(PATH)" $(PROTOC) -I $(ROOT_PATH)/src --go_out=module=github.com/llamerada-jp/colonio/go:. $<
+
 
 .PHONY: build-docker
-build-docker: $(ROOT_PATH)/buildenv/Makefile
+build-docker: $(ROOT_PATH)/buildenv/Makefile $(ROOT_PATH)/buildenv/go.mod
 	docker buildx rm build-colonio || true
 	docker buildx create --name build-colonio --platform linux/amd64,linux/arm/v7,linux/arm64/v8 --use
 	docker buildx build --platform linux/amd64,linux/arm/v7,linux/arm64/v8 -t $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_VERSION) --push $(ROOT_PATH)/buildenv
 	docker buildx rm build-colonio
 
 $(ROOT_PATH)/buildenv/Makefile: $(ROOT_PATH)/Makefile
-	cp Makefile $(ROOT_PATH)/buildenv
+	cp Makefile $(ROOT_PATH)/buildenv/
+
+$(ROOT_PATH)/buildenv/go.mod: $(ROOT_PATH)/go.mod
+	cp go.mod go.sum $(ROOT_PATH)/buildenv/
 
 .PHONY: clean
 clean:
-	$(MAKE) -C $(NATIVE_BUILD_PATH) clean
-	$(MAKE) -C $(WASM_BUILD_PATH) clean
-	$(MAKE) -C $(BUILD_SEED_PATH)/colonio-seed clean
+	if [ -d $(NATIVE_BUILD_PATH) ]; then $(MAKE) -C $(NATIVE_BUILD_PATH) clean; fi
+	if [ -d $(WASM_BUILD_PATH) ];   then $(MAKE) -C $(WASM_BUILD_PATH) clean;   fi
 	find src -name *\.pb\.* -exec $(RM) {} \;
 	$(RM) -r $(OUTPUT_PATH)
 
 .PHONY: deisclean
 deisclean: clean
-	$(RM) -r $(NATIVE_BUILD_PATH) $(WASM_BUILD_PATH) $(BUILD_SEED_PATH)
+	$(RM) -r ${LOCAL_ENV_PATH} $(NATIVE_BUILD_PATH) $(WASM_BUILD_PATH) $(BUILD_SEED_PATH) ${WORK_PATH}
 	$(RM) -r $(ROOT_PATH)/buildenv/Makefile $(ROOT_PATH)/buildenv/dummy $(ROOT_PATH)/buildenv/qemu-aarch64-static
