@@ -36,6 +36,7 @@ type config struct {
 	seed.Config
 
 	DocumentRoot string            `json:"documentRoot"`
+	Headers      map[string]string `json:"headers"`
 	Overrides    map[string]string `json:"overrides"`
 	Port         uint16            `json:"port"`
 	Path         string            `json:"path"`
@@ -62,7 +63,10 @@ var cmd = &cobra.Command{
 		}
 
 		// Set HTTP headers to enable SharedArrayBuffer for WebAssembly Threads
-		headers := make(map[string]string)
+		headers := config.Headers
+		if headers == nil {
+			headers = make(map[string]string)
+		}
 		headers["Cross-Origin-Opener-Policy"] = "same-origin"
 		headers["Cross-Origin-Embedder-Policy"] = "require-corp"
 
