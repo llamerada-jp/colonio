@@ -72,7 +72,8 @@ setup:
 	else \
 		echo "this platform is not supported yet."; \
 	fi
-	go install github.com/onsi/ginkgo/ginkgo
+	go get github.com/onsi/ginkgo/ginkgo/outline@v1.16.5
+	go install github.com/onsi/ginkgo/ginkgo@v1.16.5
 
 .PHONY: setup-linux
 setup-linux:
