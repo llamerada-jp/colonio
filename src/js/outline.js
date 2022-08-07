@@ -28,6 +28,14 @@ const ID_MAX = Math.floor(Math.pow(2, 30));
  */
 let idObjectPair = new Map();
 
+/**
+ * Interface for WebRTC.
+ * It is used when use colonio in WebWorker. Currently, WebRTC is not useable in WebWorker,
+ * so developer should by-pass WebRTC methods to main worker.
+ */
+let webrtcInterface = null;
+let webrtcLinkCb = null;
+
 function pushObject(obj) {
   let id = Math.floor(Math.random() * ID_MAX);
   if (idObjectPair.has(id)) {
@@ -138,6 +146,10 @@ function convertError(ptr) {
       ccall("js_error_get_message_length", "number", ["number"], [ptr])
     )
   };
+}
+
+function setWebRTCInterface(i) {
+  webrtcInterface = i;
 }
 
 /**
@@ -352,6 +364,12 @@ class Colonio {
   }
 
   connect(url, token) {
+    // check webrtcInterface and use default module if it isn't set.
+    if (webrtcInterface === null) {
+      webrtcInterface = new DefaultWebrtcInterface();
+      webrtcLinkCb = new WebrtcLinkCb();
+    }
+
     const promise = new Promise((resolve, reject) => {
       addFuncAfterLoad(() => {
         var onSuccess = Module.addFunction((_) => {
@@ -795,301 +813,370 @@ function utilsGetRandomSeed() {
   return Math.random();
 }
 
-/* WebrtcContext */
-let webrtcContextPcConfig;
-let webrtcContextDcConfig;
+class DefaultWebrtcInterface {
+  constructor() {
+    this.webrtcContextPcConfig = null;
+    this.webrtcContextDcConfig = null;
+    this.availableWebrtcLinks = new Map();
+  }
 
-function webrtcContextInitialize() {
-  webrtcContextPcConfig = {
-    iceServers: []
-  };
-
-  webrtcContextDcConfig = {
-    orderd: true,
-    // maxRetransmitTime: 3000,
-    maxPacketLifeTime: 3000
-  };
-}
-
-function webrtcContextAddIceServer(strPtr, strSiz) {
-  webrtcContextPcConfig.iceServers.push(
-    JSON.parse(UTF8ToString(strPtr, strSiz))
-  );
-}
-
-/* WebrtcLink */
-let availableWebrtcLinks = new Map();
-
-function webrtcLinkInitialize(webrtcLink, isCreateDc) {
-  logD("rtc initialize", webrtcLink);
-
-  let setEvent = (dataChannel) => {
-    dataChannel.onerror = (event) => {
-      logD("rtc data error", webrtcLink, event);
-      if (availableWebrtcLinks.has(webrtcLink)) {
-        let [messagePtr, messageSiz] = allocPtrString(event.error.message);
-        ccall("webrtc_link_on_dco_error", "null",
-          ["number", "number", "number"],
-          [webrtcLink, messagePtr, messageSiz]);
-        freePtr(messagePtr);
-      }
+  contextInitialize() {
+    this.webrtcContextPcConfig = {
+      iceServers: []
     };
 
-    dataChannel.onmessage = (event) => {
-      if (availableWebrtcLinks.has(webrtcLink)) {
-        if (event.data instanceof ArrayBuffer) {
-          // logD("rtc data recv", webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(event.data)));
-          let [dataPtr, dataSiz] = allocPtrArrayBuffer(event.data);
-          ccall("webrtc_link_on_dco_message", "null",
-            ["number", "number", "number"],
-            [webrtcLink, dataPtr, dataSiz]);
-          freePtr(dataPtr);
+    this.webrtcContextDcConfig = {
+      orderd: true,
+      // maxRetransmitTime: 3000,
+      maxPacketLifeTime: 3000
+    };
+  }
 
-        } else if (event.data instanceof Blob) {
-          let reader = new FileReader();
-          reader.onload = () => {
-            // logD("rtc data recv", webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(reader.result)));
-            let [dataPtr, dataSiz] = allocPtrArrayBuffer(reader.result);
-            ccall("webrtc_link_on_dco_message", "null",
-              ["number", "number", "number"],
-              [webrtcLink, dataPtr, dataSiz]);
-            freePtr(dataPtr);
-          };
-          reader.readAsArrayBuffer(event.data);
+  contextAddIceServer(iceServer) {
+    this.webrtcContextPcConfig.iceServers.push(
+      JSON.parse(iceServer)
+    );
+  }
 
-        } else {
-          logE("Unsupported type of message.", event.data);
+  linkInitialize(webrtcLink, isCreateDc, cb) {
+    let setEvent = (dataChannel) => {
+      dataChannel.onerror = (event) => {
+        logD("rtc data error", webrtcLink, event);
+        if (this.availableWebrtcLinks.has(webrtcLink)) {
+          cb.onDcoError(webrtcLink, event.error.message)
         }
-      }
+      };
+
+      dataChannel.onmessage = (event) => {
+        if (this.availableWebrtcLinks.has(webrtcLink)) {
+          if (event.data instanceof ArrayBuffer) {
+            // logD("rtc data recv", webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(event.data)));
+            cb.onDcoMessage(webrtcLink, event.data);
+          } else if (event.data instanceof Blob) {
+            let reader = new FileReader();
+            reader.onload = () => {
+              // logD("rtc data recv", webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(reader.result)));
+              cb.onDcoMessage(webrtcLink, reader.result);
+            };
+            reader.readAsArrayBuffer(event.data);
+          } else {
+            logE("Unsupported type of message.", event.data);
+          }
+        }
+      };
+
+      dataChannel.onopen = () => {
+        logD("rtc data open", webrtcLink);
+        if (this.availableWebrtcLinks.has(webrtcLink)) {
+          cb.onDcoOpen(webrtcLink);
+        }
+      };
+
+      dataChannel.onclosing = () => {
+        logD("rtc data closing", webrtcLink);
+        if (this.availableWebrtcLinks.has(webrtcLink)) {
+          cb.onDcoClosing(webrtcLink);
+        }
+      };
+
+      dataChannel.onclose = () => {
+        logD("rtc data close", webrtcLink);
+        if (this.availableWebrtcLinks.has(webrtcLink)) {
+          cb.onDcoClose(webrtcLink);
+        }
+      };
     };
 
-    dataChannel.onopen = () => {
-      logD("rtc data open", webrtcLink);
-      if (availableWebrtcLinks.has(webrtcLink)) {
-        ccall("webrtc_link_on_dco_open", "null",
-          ["number"],
-          [webrtcLink]);
-      }
-    };
-
-    dataChannel.onclosing = () => {
-      logD("rtc data closing", webrtcLink);
-      if (availableWebrtcLinks.has(webrtcLink)) {
-        ccall("webrtc_link_on_dco_closing", "null",
-          ["number"],
-          [webrtcLink]);
-      }
-    };
-
-    dataChannel.onclose = () => {
-      logD("rtc data close", webrtcLink);
-      if (availableWebrtcLinks.has(webrtcLink)) {
-        ccall("webrtc_link_on_dco_close", "null",
-          ["number"],
-          [webrtcLink]);
-      }
-    };
-  };
-
-  let peer = null;
-  try {
-    peer = new RTCPeerConnection(webrtcContextPcConfig);
-
-  } catch (e) {
-    logE(e);
-    peer = null;
-  }
-
-  if (peer === null) {
-    logE("RTCPeerConnection");
-  }
-
-  let dataChannel = null;
-  if (isCreateDc) {
-    dataChannel = peer.createDataChannel("data_channel",
-      webrtcContextDcConfig);
-    setEvent(dataChannel);
-  }
-
-  availableWebrtcLinks.set(webrtcLink, { peer, dataChannel });
-
-  peer.onicecandidate = (event) => {
-    logD("rtc on ice candidate", webrtcLink);
-    if (availableWebrtcLinks.has(webrtcLink)) {
-      let ice;
-      if (event.candidate) {
-        ice = JSON.stringify(event.candidate);
-      } else {
-        ice = "";
-      }
-
-      let [icePtr, iceSiz] = allocPtrString(ice);
-      ccall("webrtc_link_on_pco_ice_candidate", "null",
-        ["number", "number", "number"],
-        [webrtcLink, icePtr, iceSiz]);
-      freePtr(icePtr);
-    }
-  };
-
-  peer.ondatachannel = (event) => {
-    logD("rtc peer datachannel", webrtcLink);
-    if (availableWebrtcLinks.has(webrtcLink)) {
-      let link = availableWebrtcLinks.get(webrtcLink);
-
-      if (link.dataChannel !== null) {
-        let [messagePtr, messageSiz] = allocPtrString("duplicate data channel.");
-        ccall("webrtc_link_on_dco_error", "null",
-          ["number", "number", "number"],
-          [webrtcLink, messagePtr, messageSiz]);
-        freePtr(messagePtr);
-      }
-
-      link.dataChannel = event.channel;
-      setEvent(event.channel);
-    }
-  };
-
-  peer.oniceconnectionstatechange = (event) => {
-    logD("rtc peer state", webrtcLink, peer.iceConnectionState);
-    if (availableWebrtcLinks.has(webrtcLink)) {
-      let link = availableWebrtcLinks.get(webrtcLink);
-      let peer = link.peer;
-      let [statePtr, stateSiz] = allocPtrString(peer.iceConnectionState);
-      ccall("webrtc_link_on_pco_state_change", "null",
-        ["number", "number", "number"],
-        [webrtcLink, statePtr, stateSiz]);
-      freePtr(statePtr);
-    }
-  };
-}
-
-function webrtcLinkFinalize(webrtcLink) {
-  logD("rtc finalize", webrtcLink);
-  assert(availableWebrtcLinks.has(webrtcLink));
-  availableWebrtcLinks.delete(webrtcLink);
-}
-
-function webrtcLinkDisconnect(webrtcLink) {
-  logD("rtc disconnect", webrtcLink);
-  assert(availableWebrtcLinks.has(webrtcLink));
-
-  if (availableWebrtcLinks.has(webrtcLink)) {
+    let peer = null;
     try {
-      let link = availableWebrtcLinks.get(webrtcLink);
+      peer = new RTCPeerConnection(this.webrtcContextPcConfig);
 
-      if (link.dataChannel !== null) {
-        link.dataChannel.close();
+    } catch (e) {
+      logE(e);
+      peer = null;
+    }
+
+    if (peer === null) {
+      logE("RTCPeerConnection");
+    }
+
+    let dataChannel = null;
+    if (isCreateDc) {
+      dataChannel = peer.createDataChannel("data_channel",
+        this.webrtcContextDcConfig);
+      setEvent(dataChannel);
+    }
+
+    this.availableWebrtcLinks.set(webrtcLink, { peer, dataChannel });
+
+    peer.onicecandidate = (event) => {
+      logD("rtc on ice candidate", webrtcLink);
+      if (this.availableWebrtcLinks.has(webrtcLink)) {
+        let ice;
+        if (event.candidate) {
+          ice = JSON.stringify(event.candidate);
+        } else {
+          ice = "";
+        }
+
+        cb.onPcoIceCandidate(webrtcLink, ice);
+      }
+    };
+
+    peer.ondatachannel = (event) => {
+      logD("rtc peer datachannel", webrtcLink);
+      if (this.availableWebrtcLinks.has(webrtcLink)) {
+        let link = this.availableWebrtcLinks.get(webrtcLink);
+
+        if (link.dataChannel !== null) {
+          cb.onPcoError(webrtcLink, "duplicate data channel.");
+        }
+
+        link.dataChannel = event.channel;
+        setEvent(event.channel);
+      }
+    };
+
+    peer.oniceconnectionstatechange = (event) => {
+      logD("rtc peer state", webrtcLink, peer.iceConnectionState);
+      if (this.availableWebrtcLinks.has(webrtcLink)) {
+        let link = this.availableWebrtcLinks.get(webrtcLink);
+        let peer = link.peer;
+        cb.onPcoStateChange(webrtcLink, peer.iceConnectionState);
+      }
+    };
+  }
+
+  linkFinalize(webrtcLink) {
+    assert(this.availableWebrtcLinks.has(webrtcLink));
+    this.availableWebrtcLinks.delete(webrtcLink);
+  }
+
+  linkDisconnect(webrtcLink) {
+    assert(this.availableWebrtcLinks.has(webrtcLink));
+
+    if (this.availableWebrtcLinks.has(webrtcLink)) {
+      try {
+        let link = this.availableWebrtcLinks.get(webrtcLink);
+
+        if (link.dataChannel !== null) {
+          link.dataChannel.close();
+        }
+
+        if (link.peer !== null) {
+          link.peer.close();
+        }
+      } catch (e) {
+        logE(e);
+      }
+    }
+  }
+
+  linkGetLocalSdp(webrtcLink, isRemoteSdpSet, cb) {
+    logD("rtc getLocalSdp", webrtcLink);
+    assert(this.availableWebrtcLinks.has(webrtcLink));
+
+    try {
+      let link = this.availableWebrtcLinks.get(webrtcLink);
+      let peer = link.peer;
+      let description;
+
+      if (isRemoteSdpSet) {
+        peer.createAnswer().then((sessionDescription) => {
+          description = sessionDescription;
+          return peer.setLocalDescription(sessionDescription);
+
+        }).then(() => {
+          logD("rtc createAnswer", webrtcLink);
+          cb.onCsdSuccess(webrtcLink, description.sdp);
+
+        }).catch((e) => {
+          logD("rtc createAnswer error", webrtcLink, e);
+          cb.onCsdFailure(webrtcLink);
+        });
+
+      } else {
+        peer.createOffer().then((sessionDescription) => {
+          description = sessionDescription;
+          return peer.setLocalDescription(sessionDescription);
+
+        }).then(() => {
+          logD("rtc createOffer", webrtcLink);
+          cb.onCsdSuccess(webrtcLink, description.sdp);
+
+        }).catch((e) => {
+          logE(e);
+          cb.onCsdFailure(webrtcLink);
+        });
       }
 
-      if (link.peer !== null) {
-        link.peer.close();
-      }
+    } catch (e) {
+      logE(e);
+    }
+  }
+
+  linkSend(webrtcLink, data) {
+    try {
+      let link = this.availableWebrtcLinks.get(webrtcLink);
+      link.dataChannel.send(data);
+    } catch (e) {
+      logE(e);
+    }
+  }
+
+  linkSetRemoteSdp(webrtcLink, sdpStr, isOffer) {
+    try {
+      let link = this.availableWebrtcLinks.get(webrtcLink);
+      let peer = link.peer;
+      let sdp = {
+        type: (isOffer ? "offer" : "answer"),
+        sdp: sdpStr
+      };
+      peer.setRemoteDescription(new RTCSessionDescription(sdp));
+
+    } catch (e) {
+      logE(e);
+    }
+  }
+
+  linkUpdateIce(webrtcLink, iceStr) {
+    try {
+      let link = this.availableWebrtcLinks.get(webrtcLink);
+      let peer = link.peer;
+      let ice = JSON.parse(iceStr);
+
+      peer.addIceCandidate(new RTCIceCandidate(ice));
+
     } catch (e) {
       logE(e);
     }
   }
 }
 
+/* WebrtcContext */
+function webrtcContextInitialize() {
+  webrtcInterface.contextInitialize();
+}
+
+function webrtcContextAddIceServer(strPtr, strSiz) {
+  webrtcInterface.contextAddIceServer(UTF8ToString(strPtr, strSiz));
+}
+
+/* WebrtcLink */
+class WebrtcLinkCb {
+  onDcoError(webrtcLink, message) {
+    let [messagePtr, messageSiz] = allocPtrString(message);
+    ccall("webrtc_link_on_dco_error", "null",
+      ["number", "number", "number"],
+      [webrtcLink, messagePtr, messageSiz]);
+    freePtr(messagePtr);
+  }
+
+  onDcoMessage(webrtcLink, message) {
+    let [dataPtr, dataSiz] = allocPtrArrayBuffer(message);
+    ccall("webrtc_link_on_dco_message", "null",
+      ["number", "number", "number"],
+      [webrtcLink, dataPtr, dataSiz]);
+    freePtr(dataPtr);
+  }
+
+  onDcoOpen(webrtcLink) {
+    ccall("webrtc_link_on_dco_open", "null",
+      ["number"],
+      [webrtcLink]);
+  }
+
+  onDcoClosing(webrtcLink) {
+    ccall("webrtc_link_on_dco_closing", "null",
+      ["number"],
+      [webrtcLink]);
+  }
+
+  onDcoClose(webrtcLink) {
+    ccall("webrtc_link_on_dco_close", "null",
+      ["number"],
+      [webrtcLink]);
+  }
+
+  onPcoError(webrtcLink, message) {
+    let [messagePtr, messageSiz] = allocPtrString(message);
+    ccall("webrtc_link_on_pco_error", "null",
+      ["number", "number", "number"],
+      [webrtcLink, messagePtr, messageSiz]);
+    freePtr(messagePtr);
+  }
+
+  onPcoIceCandidate(webrtcLink, iceStr) {
+    let [icePtr, iceSiz] = allocPtrString(iceStr);
+    ccall("webrtc_link_on_pco_ice_candidate", "null",
+      ["number", "number", "number"],
+      [webrtcLink, icePtr, iceSiz]);
+    freePtr(icePtr);
+  }
+
+  onPcoStateChange(webrtcLink, state) {
+    let [statePtr, stateSiz] = allocPtrString(state);
+    ccall("webrtc_link_on_pco_state_change", "null",
+      ["number", "number", "number"],
+      [webrtcLink, statePtr, stateSiz]);
+    freePtr(statePtr);
+  }
+
+  onCsdSuccess(webrtcLink, sdpStr) {
+    let [sdpPtr, sdpSiz] = allocPtrString(sdpStr);
+    ccall("webrtc_link_on_csd_success", "null",
+      ["number", "number", "number"],
+      [webrtcLink, sdpPtr, sdpSiz]);
+    freePtr(sdpPtr);
+  }
+
+  onCsdFailure(webrtcLink) {
+    ccall("webrtc_link_on_csd_failure", "null",
+      ["number"],
+      [webrtcLink]);
+  }
+}
+
+function webrtcLinkInitialize(webrtcLink, isCreateDc) {
+  logD("rtc initialize", webrtcLink);
+  webrtcInterface.linkInitialize(webrtcLink, isCreateDc, webrtcLinkCb);
+}
+
+function webrtcLinkFinalize(webrtcLink) {
+  logD("rtc finalize", webrtcLink);
+  webrtcInterface.linkFinalize(webrtcLink);
+}
+
+function webrtcLinkDisconnect(webrtcLink) {
+  logD("rtc disconnect", webrtcLink);
+  webrtcInterface.linkDisconnect(webrtcLink);
+}
+
 function webrtcLinkGetLocalSdp(webrtcLink, isRemoteSdpSet) {
   logD("rtc getLocalSdp", webrtcLink);
-  assert(availableWebrtcLinks.has(webrtcLink));
-
-  try {
-    let link = availableWebrtcLinks.get(webrtcLink);
-    let peer = link.peer;
-    let description;
-
-    if (isRemoteSdpSet) {
-      peer.createAnswer().then((sessionDescription) => {
-        description = sessionDescription;
-        return peer.setLocalDescription(sessionDescription);
-
-      }).then(() => {
-        logD("rtc createAnswer", webrtcLink);
-        let [sdpPtr, sdpSiz] = allocPtrString(description.sdp);
-        ccall("webrtc_link_on_csd_success", "null",
-          ["number", "number", "number"],
-          [webrtcLink, sdpPtr, sdpSiz]);
-        freePtr(sdpPtr);
-
-      }).catch((e) => {
-        logD("rtc createAnswer error", webrtcLink, e);
-        ccall("webrtc_link_on_csd_failure", "null",
-          ["number"],
-          [webrtcLink]);
-      });
-
-    } else {
-      peer.createOffer().then((sessionDescription) => {
-        description = sessionDescription;
-        return peer.setLocalDescription(sessionDescription);
-
-      }).then(() => {
-        logD("rtc createOffer", webrtcLink);
-        let [sdpPtr, sdpSiz] = allocPtrString(description.sdp);
-        ccall("webrtc_link_on_csd_success", "null",
-          ["number", "number", "number"],
-          [webrtcLink, sdpPtr, sdpSiz]);
-        freePtr(sdpPtr);
-
-      }).catch((e) => {
-        logE(e);
-        ccall("webrtc_link_on_csd_failure", "null",
-          ["number"],
-          [webrtcLink]);
-      });
-    }
-
-  } catch (e) {
-    logE(e);
-  }
+  webrtcInterface.linkGetLocalSdp(webrtcLink, isRemoteSdpSet, webrtcLinkCb);
 }
 
 function webrtcLinkSend(webrtcLink, dataPtr, dataSiz) {
   logD("rtc data send", webrtcLink);
-  try {
-    let link = availableWebrtcLinks.get(webrtcLink);
-    let dataChannel = link.dataChannel;
-
-    // avoid error : The provided ArrayBufferView value must not be shared.
-    let data = new Uint8Array(dataSiz);
-    for (let idx = 0; idx < dataSiz; idx++) {
-      data[idx] = HEAPU8[dataPtr + idx];
-    }
-
-    dataChannel.send(data);
-
-  } catch (e) {
-    logE(e);
+  // avoid error : The provided ArrayBufferView value must not be shared.
+  let data = new Uint8Array(dataSiz);
+  for (let idx = 0; idx < dataSiz; idx++) {
+    data[idx] = HEAPU8[dataPtr + idx];
   }
+  webrtcInterface.linkSend(webrtcLink, data);
 }
 
 function webrtcLinkSetRemoteSdp(webrtcLink, sdpPtr, sdpSiz, isOffer) {
-  try {
-    let link = availableWebrtcLinks.get(webrtcLink);
-    let peer = link.peer;
-    let sdp = {
-      type: (isOffer ? "offer" : "answer"),
-      sdp: UTF8ToString(sdpPtr, sdpSiz)
-    };
-    peer.setRemoteDescription(new RTCSessionDescription(sdp));
-
-  } catch (e) {
-    logE(e);
-  }
+  logD("rtc setRemoteSdp", webrtcLink);
+  let sdpStr = UTF8ToString(sdpPtr, sdpSiz);
+  webrtcInterface.linkSetRemoteSdp(webrtcLink, sdpStr, isOffer);
 }
 
 function webrtcLinkUpdateIce(webrtcLink, icePtr, iceSiz) {
-  try {
-    let link = availableWebrtcLinks.get(webrtcLink);
-    let peer = link.peer;
-    let ice = JSON.parse(UTF8ToString(icePtr, iceSiz));
-
-    peer.addIceCandidate(new RTCIceCandidate(ice));
-
-  } catch (e) {
-    logE(e);
-  }
+  logD("rtc updateIce", webrtcLink);
+  let iceStr = UTF8ToString(icePtr, iceSiz);
+  webrtcInterface.linkUpdateIce(webrtcLink, iceStr)
 }
 
 /* Module object for emscripten. */
@@ -1118,3 +1205,4 @@ Module["Colonio"] = Colonio;
 Module["Value"] = ColonioValue;
 Module["Map"] = ColonioMap;
 Module["Pubsub2D"] = ColonioPubsub2D;
+Module["setWebrtcInterface"] = setWebRTCInterface;
