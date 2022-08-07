@@ -1,9 +1,11 @@
 <!doctype html>
 <html lang="ja">
+
 <head>
   <title>test colonio</title>
   <meta charset="utf-8">
 </head>
+
 <body>
   <div id="result"></div>
   <script src="wasm_exec.js" type="text/javascript"></script>
@@ -12,7 +14,7 @@
   <script type="text/javascript">
     const go = new Go();
     ColonioModule().then(colonio => {
-      global.colonioSuite = new ColonioSuite(colonio);
+      globalThis.colonioSuite = new ColonioSuite(colonio);
       return WebAssembly.instantiateStreaming(fetch("test.wasm"), go.importObject);
 
     }).then((result) => {
@@ -23,4 +25,5 @@
     });
   </script>
 </body>
+
 </html>
