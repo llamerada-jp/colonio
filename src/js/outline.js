@@ -33,8 +33,7 @@ let idObjectPair = new Map();
  * It is used when use colonio in WebWorker. Currently, WebRTC is not useable in WebWorker,
  * so developer should by-pass WebRTC methods to main worker.
  */
-let webrtcInterface = null;
-let webrtcLinkCb = null;
+let webrtcImpl = null;
 
 function pushObject(obj) {
   let id = Math.floor(Math.random() * ID_MAX);
@@ -148,8 +147,8 @@ function convertError(ptr) {
   };
 }
 
-function setWebRTCInterface(i) {
-  webrtcInterface = i;
+function setWebRTCImpl(w) {
+  webrtcImpl = w;
 }
 
 /**
@@ -364,10 +363,9 @@ class Colonio {
   }
 
   connect(url, token) {
-    // check webrtcInterface and use default module if it isn't set.
-    if (webrtcInterface === null) {
-      webrtcInterface = new DefaultWebrtcInterface();
-      webrtcLinkCb = new WebrtcLinkCb();
+    // check webrtcImpl and use default module if it isn't set.
+    if (webrtcImpl === null) {
+      webrtcImpl = new DefaultWebrtcImpl(new WebrtcLinkCb());
     }
 
     const promise = new Promise((resolve, reject) => {
@@ -813,11 +811,12 @@ function utilsGetRandomSeed() {
   return Math.random();
 }
 
-class DefaultWebrtcInterface {
-  constructor() {
+class DefaultWebrtcImpl {
+  constructor(cb) {
     this.webrtcContextPcConfig = null;
     this.webrtcContextDcConfig = null;
     this.availableWebrtcLinks = new Map();
+    this.cb = cb;
   }
 
   contextInitialize() {
@@ -838,12 +837,12 @@ class DefaultWebrtcInterface {
     );
   }
 
-  linkInitialize(webrtcLink, isCreateDc, cb) {
+  linkInitialize(webrtcLink, isCreateDc) {
     let setEvent = (dataChannel) => {
       dataChannel.onerror = (event) => {
         logD("rtc data error", webrtcLink, event);
         if (this.availableWebrtcLinks.has(webrtcLink)) {
-          cb.onDcoError(webrtcLink, event.error.message)
+          this.cb.onDcoError(webrtcLink, event.error.message)
         }
       };
 
@@ -851,12 +850,12 @@ class DefaultWebrtcInterface {
         if (this.availableWebrtcLinks.has(webrtcLink)) {
           if (event.data instanceof ArrayBuffer) {
             // logD("rtc data recv", webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(event.data)));
-            cb.onDcoMessage(webrtcLink, event.data);
+            this.cb.onDcoMessage(webrtcLink, event.data);
           } else if (event.data instanceof Blob) {
             let reader = new FileReader();
             reader.onload = () => {
               // logD("rtc data recv", webrtcLink, dumpPacket(new TextDecoder("utf-8").decode(reader.result)));
-              cb.onDcoMessage(webrtcLink, reader.result);
+              this.cb.onDcoMessage(webrtcLink, reader.result);
             };
             reader.readAsArrayBuffer(event.data);
           } else {
@@ -868,21 +867,21 @@ class DefaultWebrtcInterface {
       dataChannel.onopen = () => {
         logD("rtc data open", webrtcLink);
         if (this.availableWebrtcLinks.has(webrtcLink)) {
-          cb.onDcoOpen(webrtcLink);
+          this.cb.onDcoOpen(webrtcLink);
         }
       };
 
       dataChannel.onclosing = () => {
         logD("rtc data closing", webrtcLink);
         if (this.availableWebrtcLinks.has(webrtcLink)) {
-          cb.onDcoClosing(webrtcLink);
+          this.cb.onDcoClosing(webrtcLink);
         }
       };
 
       dataChannel.onclose = () => {
         logD("rtc data close", webrtcLink);
         if (this.availableWebrtcLinks.has(webrtcLink)) {
-          cb.onDcoClose(webrtcLink);
+          this.cb.onDcoClose(webrtcLink);
         }
       };
     };
@@ -919,7 +918,7 @@ class DefaultWebrtcInterface {
           ice = "";
         }
 
-        cb.onPcoIceCandidate(webrtcLink, ice);
+        this.cb.onPcoIceCandidate(webrtcLink, ice);
       }
     };
 
@@ -929,7 +928,7 @@ class DefaultWebrtcInterface {
         let link = this.availableWebrtcLinks.get(webrtcLink);
 
         if (link.dataChannel !== null) {
-          cb.onPcoError(webrtcLink, "duplicate data channel.");
+          this.cb.onPcoError(webrtcLink, "duplicate data channel.");
         }
 
         link.dataChannel = event.channel;
@@ -942,7 +941,7 @@ class DefaultWebrtcInterface {
       if (this.availableWebrtcLinks.has(webrtcLink)) {
         let link = this.availableWebrtcLinks.get(webrtcLink);
         let peer = link.peer;
-        cb.onPcoStateChange(webrtcLink, peer.iceConnectionState);
+        this.cb.onPcoStateChange(webrtcLink, peer.iceConnectionState);
       }
     };
   }
@@ -972,7 +971,7 @@ class DefaultWebrtcInterface {
     }
   }
 
-  linkGetLocalSdp(webrtcLink, isRemoteSdpSet, cb) {
+  linkGetLocalSdp(webrtcLink, isRemoteSdpSet) {
     logD("rtc getLocalSdp", webrtcLink);
     assert(this.availableWebrtcLinks.has(webrtcLink));
 
@@ -988,11 +987,11 @@ class DefaultWebrtcInterface {
 
         }).then(() => {
           logD("rtc createAnswer", webrtcLink);
-          cb.onCsdSuccess(webrtcLink, description.sdp);
+          this.cb.onCsdSuccess(webrtcLink, description.sdp);
 
         }).catch((e) => {
           logD("rtc createAnswer error", webrtcLink, e);
-          cb.onCsdFailure(webrtcLink);
+          this.cb.onCsdFailure(webrtcLink);
         });
 
       } else {
@@ -1002,11 +1001,11 @@ class DefaultWebrtcInterface {
 
         }).then(() => {
           logD("rtc createOffer", webrtcLink);
-          cb.onCsdSuccess(webrtcLink, description.sdp);
+          this.cb.onCsdSuccess(webrtcLink, description.sdp);
 
         }).catch((e) => {
           logE(e);
-          cb.onCsdFailure(webrtcLink);
+          this.cb.onCsdFailure(webrtcLink);
         });
       }
 
@@ -1055,11 +1054,11 @@ class DefaultWebrtcInterface {
 
 /* WebrtcContext */
 function webrtcContextInitialize() {
-  webrtcInterface.contextInitialize();
+  webrtcImpl.contextInitialize();
 }
 
 function webrtcContextAddIceServer(strPtr, strSiz) {
-  webrtcInterface.contextAddIceServer(UTF8ToString(strPtr, strSiz));
+  webrtcImpl.contextAddIceServer(UTF8ToString(strPtr, strSiz));
 }
 
 /* WebrtcLink */
@@ -1139,22 +1138,22 @@ class WebrtcLinkCb {
 
 function webrtcLinkInitialize(webrtcLink, isCreateDc) {
   logD("rtc initialize", webrtcLink);
-  webrtcInterface.linkInitialize(webrtcLink, isCreateDc, webrtcLinkCb);
+  webrtcImpl.linkInitialize(webrtcLink, isCreateDc);
 }
 
 function webrtcLinkFinalize(webrtcLink) {
   logD("rtc finalize", webrtcLink);
-  webrtcInterface.linkFinalize(webrtcLink);
+  webrtcImpl.linkFinalize(webrtcLink);
 }
 
 function webrtcLinkDisconnect(webrtcLink) {
   logD("rtc disconnect", webrtcLink);
-  webrtcInterface.linkDisconnect(webrtcLink);
+  webrtcImpl.linkDisconnect(webrtcLink);
 }
 
 function webrtcLinkGetLocalSdp(webrtcLink, isRemoteSdpSet) {
   logD("rtc getLocalSdp", webrtcLink);
-  webrtcInterface.linkGetLocalSdp(webrtcLink, isRemoteSdpSet, webrtcLinkCb);
+  webrtcImpl.linkGetLocalSdp(webrtcLink, isRemoteSdpSet);
 }
 
 function webrtcLinkSend(webrtcLink, dataPtr, dataSiz) {
@@ -1164,19 +1163,19 @@ function webrtcLinkSend(webrtcLink, dataPtr, dataSiz) {
   for (let idx = 0; idx < dataSiz; idx++) {
     data[idx] = HEAPU8[dataPtr + idx];
   }
-  webrtcInterface.linkSend(webrtcLink, data);
+  webrtcImpl.linkSend(webrtcLink, data);
 }
 
 function webrtcLinkSetRemoteSdp(webrtcLink, sdpPtr, sdpSiz, isOffer) {
   logD("rtc setRemoteSdp", webrtcLink);
   let sdpStr = UTF8ToString(sdpPtr, sdpSiz);
-  webrtcInterface.linkSetRemoteSdp(webrtcLink, sdpStr, isOffer);
+  webrtcImpl.linkSetRemoteSdp(webrtcLink, sdpStr, isOffer);
 }
 
 function webrtcLinkUpdateIce(webrtcLink, icePtr, iceSiz) {
   logD("rtc updateIce", webrtcLink);
   let iceStr = UTF8ToString(icePtr, iceSiz);
-  webrtcInterface.linkUpdateIce(webrtcLink, iceStr)
+  webrtcImpl.linkUpdateIce(webrtcLink, iceStr)
 }
 
 /* Module object for emscripten. */
@@ -1205,4 +1204,6 @@ Module["Colonio"] = Colonio;
 Module["Value"] = ColonioValue;
 Module["Map"] = ColonioMap;
 Module["Pubsub2D"] = ColonioPubsub2D;
-Module["setWebrtcInterface"] = setWebRTCInterface;
+
+Module["setWebrtcImpl"] = setWebRTCImpl;
+Module["DefaultWebrtcImpl"] = DefaultWebrtcImpl;

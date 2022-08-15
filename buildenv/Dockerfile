@@ -8,7 +8,7 @@ ENV PATH $PATH:$GOPATH/bin:/opt/go/bin
 
 RUN apt update \
   && apt -y install --no-install-recommends ca-certificates curl make tar valgrind unzip \
-  && curl -L https://go.dev/dl/go1.17.7.linux-amd64.tar.gz | tar zx -C /opt
+  && curl -L https://go.dev/dl/go1.18.3.linux-amd64.tar.gz | tar zx -C /opt
 
 WORKDIR /work
 COPY Makefile /work/

@@ -1,7 +1,7 @@
 SHELL := /bin/bash -o pipefail
 
 # version (yyyymmdd)
-DOCKER_IMAGE_VERSION := 20220227a
+DOCKER_IMAGE_VERSION := 20220815a
 DOCKER_IMAGE_NAME := ghcr.io/llamerada-jp/colonio-buildenv
 DOCKER_IMAGE := $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_VERSION)
 
@@ -22,10 +22,10 @@ export SUDO ?= sudo
 export PROTOC := $(LOCAL_ENV_PATH)/bin/protoc
 
 # the versions of depending packages
-ASIO_TAG := asio-1-20-0
+ASIO_TAG := asio-1-24-0
 CPP_ALGORITHMS_HASH := 1ba3fde9c4b1d067986f5243a0f03daffa501ae2
-EMSCRIPTEN_VERSION := 3.0.0
-GTEST_VERSION := 1.11.0
+EMSCRIPTEN_VERSION := 3.1.18
+GTEST_VERSION := 1.12.1
 ifeq ($(shell uname -s),Darwin)
 LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m96/libwebrtc-96.0.4664.45-macos-amd64.zip"
 else ifeq ($(shell uname -s),Linux)
@@ -40,7 +40,7 @@ else ifeq ($(shell uname -s),Linux)
 	endif
 endif
 PICOJSON_VERSION := 1.3.0
-PROTOBUF_VERSION := 3.19.4
+PROTOBUF_VERSION := 21.5
 GO_PROTOBUF_VERSION := 1.5.2
 WEBSOCKETPP_VERSION := 0.8.2
 
