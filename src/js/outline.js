@@ -149,6 +149,7 @@ function convertError(ptr) {
 
 function setWebRTCImpl(w) {
   webrtcImpl = w;
+  w.setCb(new WebrtcLinkCb());
 }
 
 /**
@@ -365,7 +366,7 @@ class Colonio {
   connect(url, token) {
     // check webrtcImpl and use default module if it isn't set.
     if (webrtcImpl === null) {
-      webrtcImpl = new DefaultWebrtcImpl(new WebrtcLinkCb());
+      setWebRTCImpl(new DefaultWebrtcImpl());
     }
 
     const promise = new Promise((resolve, reject) => {
@@ -812,10 +813,13 @@ function utilsGetRandomSeed() {
 }
 
 class DefaultWebrtcImpl {
-  constructor(cb) {
+  constructor() {
     this.webrtcContextPcConfig = null;
     this.webrtcContextDcConfig = null;
     this.availableWebrtcLinks = new Map();
+  }
+
+  setCb(cb) {
     this.cb = cb;
   }
 
