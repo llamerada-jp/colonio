@@ -93,6 +93,71 @@ TEST(ConnectTest, connect_multi) {
   node1->disconnect();
 }
 
+TEST(ConnectTest, sendSingle) {
+  const std::string URL      = "http://localhost:8080/test";
+  const std::string TOKEN    = "";
+  const std::string MAP_NAME = "map";
+
+  AsyncHelper helper;
+  TestSeed seed;
+  seed.run();
+
+  std::string name = "node";
+  std::unique_ptr<Colonio> node(Colonio::new_instance([&](Colonio&, const std::string& message) {
+    std::cout << name << ":" << message << std::endl;
+  }));
+
+  printf("connect node\n");
+  node->connect(URL, TOKEN);
+
+  printf("node: %s\n", node->get_local_nid().c_str());
+
+  node->on_call("nearby", [&](Colonio& c, const Colonio::CallParameter& parameter) {
+    printf("receive nearby\n");
+    EXPECT_EQ(parameter.options, Colonio::CALL_ACCEPT_NEARBY);
+    EXPECT_STREQ(parameter.name.c_str(), "nearby");
+    EXPECT_STREQ(parameter.value.get<std::string>().c_str(), "data nearby");
+    return Value("result nearby");
+  });
+
+  node->on_call("expect", [&](Colonio& c, const Colonio::CallParameter& parameter) {
+    printf("receive expect\n");
+    EXPECT_EQ(parameter.options, 0);
+    EXPECT_STREQ(parameter.name.c_str(), "expect");
+    EXPECT_STREQ(parameter.value.get<std::string>().c_str(), "data expect");
+    return Value("result expect");
+  });
+
+  // todo: avoid block without CALL_IGNORE_REPLY option.
+  node->call_by_nid(
+      "00000000000000000000000000000000", "nearby", Value("data nearby"), Colonio::CALL_ACCEPT_NEARBY,
+      [&](Colonio&, const Value& result) {
+        printf("receive reply from nearby\n");
+        EXPECT_STREQ(result.get<std::string>().c_str(), "result nearby");
+        helper.pass_signal("a");
+      },
+      [&](Colonio&, const Error&) {
+        ADD_FAILURE();
+      });
+
+  node->call_by_nid(
+      node->get_local_nid(), "expect", Value("data expect"), 0,
+      [&](Colonio&, const Value& result) {
+        printf("receive reply from expect\n");
+        EXPECT_STREQ(result.get<std::string>().c_str(), "result expect");
+        helper.pass_signal("b");
+      },
+      [&](Colonio&, const Error&) {
+        ADD_FAILURE();
+      });
+
+  helper.wait_signal("a");
+  helper.wait_signal("b");
+
+  printf("disconnect node\n");
+  node->disconnect();
+}
+
 TEST(ConnectTest, send) {
   const std::string URL      = "http://localhost:8080/test";
   const std::string TOKEN    = "";
