@@ -40,7 +40,7 @@ There is an output file below.
 ```console
 $ make build WITH_TEST=ON
 $ make build-seed
-$ make test
+$ make test [CTEST_ARGS=--verbose]
 ```
 
 Flags for build script are below.
