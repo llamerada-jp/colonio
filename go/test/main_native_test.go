@@ -30,6 +30,7 @@ func TestNative(t *testing.T) {
 	err := setup()
 	assert.NoError(t, err)
 
+	suite.Run(t, new(SingleNodeSuite))
 	suite.Run(t, new(E2eSuite))
 
 	err = teardown()
