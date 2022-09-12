@@ -72,8 +72,6 @@ setup:
 	else \
 		echo "this platform is not supported yet."; \
 	fi
-	go get github.com/onsi/ginkgo/ginkgo/outline@v1.16.5
-	go install github.com/onsi/ginkgo/ginkgo@v1.16.5
 
 .PHONY: setup-linux
 setup-linux:
@@ -233,15 +231,14 @@ test:
 	# golang
 	$(MAKE) test-seed-native
 
-.PHONY: test-seed-native
-test-seed-native: build-seed
+.PHONY: test-go-native
+test-go-native: build-seed
 	COLONIO_SEED_BIN_PATH=$(OUTPUT_PATH)/seed CGO_LDFLAGS="-L$(OUTPUT_PATH) -L$(OUTPUT_PATH)/lib" go test ./go/test/ -v
 
-.PHONY: test-seed-wasm
-test-seed-wasm: build-seed
+.PHONY: test-go-wasm
+test-go-wasm: build-seed
 	cp $(shell go env GOROOT)/misc/wasm/wasm_exec.js ./go/test
-	GOOS=js GOARCH=wasm ginkgo build ./go/test/
-	mv ./go/test/test.test ./go/test/test.wasm
+	GOOS=js GOARCH=wasm go test -c -o ./go/test/test.wasm ./go/test/
 	$(OUTPUT_PATH)/seed -c $(ROOT_PATH)/go/test/seed.json
 
 .PHONY: format-code
