@@ -17,161 +17,157 @@ package test
  */
 
 import (
-	"fmt"
-	"os"
-	"os/exec"
-	"path"
-	"runtime"
+	"log"
 	"time"
 	"unicode/utf8"
 
 	"github.com/llamerada-jp/colonio/go/colonio"
-
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/suite"
 )
 
-func E2e(generator func(colonio.Logger) (colonio.Colonio, error)) {
-	It("does E2E test", func() {
-		if runtime.GOOS != "js" {
-			By("starting seed for test")
-			cur, _ := os.Getwd()
-			cmd := exec.Command(os.Getenv("COLONIO_SEED_BIN_PATH"), "--config", path.Join(cur, "seed.json"))
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			err := cmd.Start()
-			Expect(err).ShouldNot(HaveOccurred())
-			defer func() {
-				err = cmd.Process.Kill()
-				Expect(err).ShouldNot(HaveOccurred())
-			}()
+type E2eSuite struct {
+	suite.Suite
+	node1 colonio.Colonio
+	node2 colonio.Colonio
+}
+
+func (suite *E2eSuite) SetupSuite() {
+	var err error
+	suite.T().Log("creating a new colonio instance")
+	suite.node1, err = colonio.NewColonio(colonio.DefaultLogger)
+	suite.NoError(err)
+	suite.node2, err = colonio.NewColonio(colonio.DefaultLogger)
+	suite.NoError(err)
+
+	suite.T().Log("node1 connect to seed")
+	suite.Eventually(func() bool {
+		return suite.node1.Connect("ws://localhost:8080/test", "") == nil
+	}, time.Minute, time.Second)
+	suite.T().Log("node2 connect to seed")
+	suite.Eventually(func() bool {
+		return suite.node2.Connect("ws://localhost:8080/test", "") == nil
+	}, time.Minute, time.Second)
+}
+
+func (suite *E2eSuite) TearDownSuite() {
+	suite.T().Log("node1 disconnect from seed")
+	err := suite.node1.Disconnect()
+	suite.NoError(err)
+	suite.T().Log("node2 disconnect from seed")
+	err = suite.node2.Disconnect()
+	suite.NoError(err)
+
+	suite.T().Log("node1 quit colonio instance")
+	err = suite.node1.Quit()
+	suite.NoError(err)
+	suite.T().Log("node2 quit colonio instance")
+	err = suite.node2.Quit()
+	suite.NoError(err)
+}
+
+func (suite *E2eSuite) TestE2E() {
+	suite.T().Log("checking nid")
+	suite.Equal(utf8.RuneCountInString(suite.node1.GetLocalNid()), 32)
+
+	suite.Eventually(func() bool {
+		suite.T().Log("sending message and waiting it")
+		suite.node1.OnCall("twice", func(parameter *colonio.CallParameter) interface{} {
+			str, err := parameter.Value.GetString()
+			suite.NoError(err)
+			return str + str
+		})
+		result, err := suite.node2.CallByNid(suite.node1.GetLocalNid(), "twice", "test", 0)
+		if err != nil {
+			log.Println(err)
+			return false
 		}
+		resultStr, err := result.GetString()
+		if err != nil {
+			log.Println(err)
+			return false
+		}
+		suite.Equal("testtest", resultStr)
+		return true
+	}, time.Minute, time.Second)
 
-		By("creating a new colonio instance")
-		node1, err := generator(colonio.DefaultLogger)
-		Expect(err).ShouldNot(HaveOccurred())
-		node2, err := generator(colonio.DefaultLogger)
-		Expect(err).ShouldNot(HaveOccurred())
+	suite.T().Log("node1 set 2D position")
+	suite.node1.SetPosition(1.0, 0.0)
+	ps1, err := suite.node1.AccessPubsub2D("ps")
+	suite.NoError(err)
 
-		By("node1 connect to seed")
-		Eventually(func() error {
-			return node1.Connect("ws://localhost:8080/test", "")
-		}).ShouldNot(HaveOccurred())
-		By("node2 connect to seed")
-		Eventually(func() error {
-			return node2.Connect("ws://localhost:8080/test", "")
-		}).ShouldNot(HaveOccurred())
+	suite.T().Log("node2 set 2D position")
+	suite.node2.SetPosition(2.0, 0.0)
+	ps2, err := suite.node2.AccessPubsub2D("ps")
+	suite.NoError(err)
 
-		By("checking nid")
-		Expect(utf8.RuneCountInString(node1.GetLocalNid())).Should(Equal(32))
-
-		Eventually(func() error {
-			By("sending message and waiting it")
-			node1.OnCall("twice", func(parameter *colonio.CallParameter) interface{} {
-				str, err := parameter.Value.GetString()
-				Expect(err).ShouldNot(HaveOccurred())
-				return str + str
-			})
-			result, err := node2.CallByNid(node1.GetLocalNid(), "twice", "test", 0)
-			if err != nil {
-				return err
-			}
-			resultStr, err := result.GetString()
-			if err != nil {
-				return err
-			}
-			if resultStr != "testtest" {
-				return fmt.Errorf("wrong text")
-			}
-			return nil
-		}, time.Second*60, time.Second*1).Should(Succeed())
-
-		By("node1 set 2D position")
-		node1.SetPosition(1.0, 0.0)
-		ps1, err := node1.AccessPubsub2D("ps")
-		Expect(err).ShouldNot(HaveOccurred())
-
-		By("node2 set 2D position")
-		node2.SetPosition(2.0, 0.0)
-		ps2, err := node2.AccessPubsub2D("ps")
-		Expect(err).ShouldNot(HaveOccurred())
-
-		// set 1 to avoid dead-lock caused by ps1.Publish waits finish of ps2.On.
-		recvPS2 := make(chan string, 1)
-		ps2.On("hoge", func(v colonio.Value) {
-			str, err := v.GetString()
-			Expect(err).ShouldNot(HaveOccurred())
-			recvPS2 <- str
-		})
-
-		By("publishing message and waiting it")
-		Eventually(func() error {
-			select {
-			case v, ok := <-recvPS2:
-				Expect(ok).Should(BeTrue())
-				Expect(v).Should(Equal("test publish"))
-				return nil
-
-			default:
-				err := ps1.Publish("hoge", 2.0, 0.0, 1.1, "test publish", 0)
-				Expect(err).ShouldNot(HaveOccurred())
-				return fmt.Errorf("the message was not received")
-			}
-		}, time.Second*60, time.Second*1).Should(Succeed())
-
-		By("getting a not existed value")
-		map1, err := node1.AccessMap("map")
-		Expect(err).ShouldNot(HaveOccurred())
-		map2, err := node2.AccessMap("map")
-		Expect(err).ShouldNot(HaveOccurred())
-
-		_, err = map1.Get("key1")
-		Expect(err).Should(MatchError(colonio.ErrNotExistKey))
-
-		err = map2.Set("key1", "val1", colonio.MapErrorWithExist)
-		Expect(err).ShouldNot(HaveOccurred())
-
-		v, err := map1.Get("key1")
-		Expect(v.GetString()).Should(Equal("val1"))
-		Expect(err).ShouldNot(HaveOccurred())
-
-		err = map2.Set("key1", "val2", colonio.MapErrorWithExist)
-		Expect(err).Should(MatchError(colonio.ErrExistKey))
-
-		err = map1.Set("key2", "val2", 0)
-		Expect(err).ShouldNot(HaveOccurred())
-
-		stored := make(map[string]string)
-		map1.ForeachLocalValue(func(vKey, vValue colonio.Value, attr uint32) {
-			key, _ := vKey.GetString()
-			val, _ := vValue.GetString()
-			_, ok := stored[key]
-			Expect(ok).Should(BeFalse())
-			stored[key] = val
-		})
-		map2.ForeachLocalValue(func(vKey, vValue colonio.Value, attr uint32) {
-			key, _ := vKey.GetString()
-			val, _ := vValue.GetString()
-			_, ok := stored[key]
-			Expect(ok).Should(BeFalse())
-			stored[key] = val
-		})
-		Expect(stored).Should(HaveLen(2))
-		Expect(stored["key1"]).Should(Equal("val1"))
-		Expect(stored["key2"]).Should(Equal("val2"))
-
-		By("node1 disconnect from seed")
-		err = node1.Disconnect()
-		Expect(err).ShouldNot(HaveOccurred())
-		By("node2 disconnect from seed")
-		err = node2.Disconnect()
-		Expect(err).ShouldNot(HaveOccurred())
-
-		By("node1 quit colonio instance")
-		err = node1.Quit()
-		Expect(err).ShouldNot(HaveOccurred())
-		By("node2 quit colonio instance")
-		err = node2.Quit()
-		Expect(err).ShouldNot(HaveOccurred())
+	// set 1 to avoid dead-lock caused by ps1.Publish waits finish of ps2.On.
+	recvPS2 := make(chan string, 1)
+	ps2.On("hoge", func(v colonio.Value) {
+		str, err := v.GetString()
+		suite.NoError(err)
+		recvPS2 <- str
 	})
+
+	suite.T().Log("publishing message and waiting it")
+	suite.Eventually(func() bool {
+		select {
+		case v, ok := <-recvPS2:
+			suite.True(ok)
+			suite.Equal("test publish", v)
+			return true
+
+		default:
+			err := ps1.Publish("hoge", 2.0, 0.0, 1.1, "test publish", 0)
+			suite.NoError(err)
+			log.Println("the message was not received")
+			return false
+		}
+	}, time.Minute, time.Second)
+
+	suite.T().Log("getting a not existed value")
+	map1, err := suite.node1.AccessMap("map")
+	suite.NoError(err)
+	map2, err := suite.node2.AccessMap("map")
+	suite.NoError(err)
+
+	_, err = map1.Get("key1")
+	if suite.Error(err) {
+		suite.ErrorIs(colonio.ErrNotExistKey, err)
+	}
+
+	err = map2.Set("key1", "val1", colonio.MapErrorWithExist)
+	suite.NoError(err)
+
+	v, err := map1.Get("key1")
+	suite.NoError(err)
+	s, err := v.GetString()
+	suite.NoError(err)
+	suite.Equal("val1", s)
+
+	err = map2.Set("key1", "val2", colonio.MapErrorWithExist)
+	if suite.Error(err) {
+		suite.ErrorIs(colonio.ErrExistKey, err)
+	}
+
+	err = map1.Set("key2", "val2", 0)
+	suite.NoError(err)
+
+	stored := make(map[string]string)
+	map1.ForeachLocalValue(func(vKey, vValue colonio.Value, attr uint32) {
+		key, _ := vKey.GetString()
+		val, _ := vValue.GetString()
+		_, ok := stored[key]
+		suite.False(ok)
+		stored[key] = val
+	})
+	map2.ForeachLocalValue(func(vKey, vValue colonio.Value, attr uint32) {
+		key, _ := vKey.GetString()
+		val, _ := vValue.GetString()
+		_, ok := stored[key]
+		suite.False(ok)
+		stored[key] = val
+	})
+	suite.Len(stored, 2)
+	suite.Equal("val1", stored["key1"])
+	suite.Equal("val2", stored["key2"])
 }
