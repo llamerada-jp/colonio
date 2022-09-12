@@ -343,6 +343,14 @@ func (l *defaultLogger) Output(message string) {
 	jsSuite.Call("outputDefaultLog", js.ValueOf(message))
 }
 
+func NewValue(v interface{}) (Value, error) {
+	val := &valueImpl{}
+	if err := val.Set(v); err != nil {
+		return nil, err
+	}
+	return val, nil
+}
+
 func (v *valueImpl) IsNil() bool {
 	return v.valueType == valueTypeNull
 }

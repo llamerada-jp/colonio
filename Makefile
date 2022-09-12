@@ -229,7 +229,7 @@ test:
 	# C/C++
 	LD_LIBRARY_PATH=$(OUTPUT_PATH)/lib $(MAKE) -C $(NATIVE_BUILD_PATH) CTEST_OUTPUT_ON_FAILURE=1 test ARGS='$(CTEST_ARGS)'
 	# golang
-	$(MAKE) test-seed-native
+	$(MAKE) test-go-native
 
 .PHONY: test-go-native
 test-go-native: build-seed

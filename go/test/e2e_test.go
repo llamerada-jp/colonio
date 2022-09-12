@@ -19,7 +19,6 @@ package test
 import (
 	"log"
 	"time"
-	"unicode/utf8"
 
 	"github.com/llamerada-jp/colonio/go/colonio"
 	"github.com/stretchr/testify/suite"
@@ -66,9 +65,6 @@ func (suite *E2eSuite) TearDownSuite() {
 }
 
 func (suite *E2eSuite) TestE2E() {
-	suite.T().Log("checking nid")
-	suite.Equal(utf8.RuneCountInString(suite.node1.GetLocalNid()), 32)
-
 	suite.Eventually(func() bool {
 		suite.T().Log("sending message and waiting it")
 		suite.node1.OnCall("twice", func(parameter *colonio.CallParameter) interface{} {
