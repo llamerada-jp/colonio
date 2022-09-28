@@ -72,6 +72,8 @@ func (suite *E2eSuite) TestE2E() {
 			suite.NoError(err)
 			return str + str
 		})
+		defer suite.node1.OffCall("twice")
+
 		result, err := suite.node2.CallByNid(suite.node1.GetLocalNid(), "twice", "test", 0)
 		if err != nil {
 			log.Println(err)
@@ -103,6 +105,7 @@ func (suite *E2eSuite) TestE2E() {
 		suite.NoError(err)
 		recvPS2 <- str
 	})
+	defer ps2.Off("hoge")
 
 	suite.T().Log("publishing message and waiting it")
 	suite.Eventually(func() bool {
@@ -166,4 +169,32 @@ func (suite *E2eSuite) TestE2E() {
 	suite.Len(stored, 2)
 	suite.Equal("val1", stored["key1"])
 	suite.Equal("val2", stored["key2"])
+}
+
+func (suite *E2eSuite) TestGetSetInCB() {
+	map1, err := suite.node1.AccessMap("map")
+	suite.NoError(err)
+
+	// fatal error: all goroutines are asleep - deadlock!
+	suite.node1.OnCall("set", func(cp *colonio.CallParameter) interface{} {
+		err = map1.Set("key", cp.Value, 0)
+		suite.NoError(err)
+		return true
+	})
+	defer suite.node1.OffCall("set")
+
+	suite.node1.OnCall("get", func(cp *colonio.CallParameter) interface{} {
+		v, err := map1.Get("key")
+		suite.NoError(err)
+		return v
+	})
+	defer suite.node1.OffCall("get")
+
+	_, err = suite.node2.CallByNid(suite.node1.GetLocalNid(), "set", "dummy value", 0)
+	suite.NoError(err)
+	v, err := suite.node2.CallByNid(suite.node1.GetLocalNid(), "get", "", 0)
+	suite.NoError(err)
+	s, err := v.GetString()
+	suite.NoError(err)
+	suite.Equal(s, "dummy value")
 }
