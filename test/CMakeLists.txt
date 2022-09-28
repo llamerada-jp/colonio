@@ -1,9 +1,10 @@
-##
-## Common build option for test.
-##
+# #
+# # Common build option for test.
+# #
 # Force debug when test.
 set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
+
 if("${WITH_COVERAGE}")
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -coverage")
 endif()
@@ -20,15 +21,16 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCOLONIO_SEED_BIN_PATH=\\\"${COLONIO_SE
 # Library for test.
 add_library(colonio_test STATIC
   ${CORE_FILES}
-  )
+)
 
 # Combination test
 set(test_targets_combine
+  call
   connect
   export_c
   map
   pubsub_2d
-  )
+)
 
 foreach(test_target IN LISTS test_targets_combine)
   add_executable(combine_${test_target} "combine/${test_target}_test.cpp")
@@ -46,7 +48,7 @@ set(test_targets_core
   node_id
   scheduler_native
   utils
-  )
+)
 
 foreach(test_target IN LISTS test_targets_core)
   add_executable(core_${test_target} "core/${test_target}_test.cpp")
