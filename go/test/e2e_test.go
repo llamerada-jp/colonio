@@ -17,6 +17,7 @@ package test
  */
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -172,6 +173,25 @@ func (suite *E2eSuite) TestE2E() {
 }
 
 func (suite *E2eSuite) TestGetSetInCB() {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case <-ticker.C:
+				log.Println("Hi!")
+			}
+		}
+	}()
+
 	map1, err := suite.node1.AccessMap("map")
 	suite.NoError(err)
 

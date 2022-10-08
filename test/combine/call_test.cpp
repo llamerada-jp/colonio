@@ -269,3 +269,56 @@ TEST(ConnectTest, callAndSetGet) {
   printf("disconnect node\n");
   node->disconnect();
 }
+
+// TODO: fix it
+/*
+TEST(ConnectTest, callMessageChain) {
+  const std::string URL   = "http://localhost:8080/test";
+  const std::string TOKEN = "";
+
+  AsyncHelper helper;
+  TestSeed seed;
+  seed.run();
+
+  std::string name = "node";
+  std::unique_ptr<Colonio> node(Colonio::new_instance([&](Colonio&, const std::string& message) {
+    std::cout << name << ":" << message << std::endl;
+  }));
+
+  printf("connect node\n");
+  node->connect(URL, TOKEN);
+
+  node->on_call("hop", [&](Colonio& c, const Colonio::CallParameter& parameter) {
+    std::string message = parameter.value.get<std::string>();
+
+    return node->call_by_nid(node->get_local_nid(), "step", Value(message + " hop"), 0);
+  });
+
+  node->on_call("step", [&](Colonio& c, const Colonio::CallParameter& parameter) {
+    std::string message = parameter.value.get<std::string>();
+
+    return node->call_by_nid(node->get_local_nid(), "jump", Value(message + " step"), 0);
+  });
+
+  node->on_call("jump", [&](Colonio& c, const Colonio::CallParameter& parameter) {
+    std::string message = parameter.value.get<std::string>();
+
+    return Value(message + " jump!");
+  });
+
+  node->call_by_nid(
+      node->get_local_nid(), "hop", Value("ready?"), 0,
+      [&](Colonio&, const Value& result) {
+        EXPECT_STREQ(result.get<std::string>().c_str(), "ready? hop step jump!");
+        helper.pass_signal("a");
+      },
+      [&](Colonio&, const Error&) {
+        ADD_FAILURE();
+      });
+
+  helper.wait_signal("a");
+
+  printf("disconnect node\n");
+  node->disconnect();
+}
+//*/
