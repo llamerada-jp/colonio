@@ -28,22 +28,19 @@
 #include "value_impl.hpp"
 
 namespace colonio {
-LoggerDelegate::~LoggerDelegate() {
-}
-
 Logger::L::L(
-    Logger& logger_, const std::string& file_, unsigned long line_, const std::string& level_,
-    const std::string& message_) :
-    logger(logger_), file(file_), line(line_), level(level_), message(message_) {
+    std::function<void(const std::string& json)>& f, const std::string& file_, unsigned long line_,
+    const std::string& level_, const std::string& message_) :
+    logger_func(f), file(file_), line(line_), level(level_), message(message_) {
 }
 
 Logger::L::~L() {
   picojson::object obj;
-  obj.insert(std::make_pair(LogJSONKey::FILE, picojson::value(Utils::file_basename(file))));
-  obj.insert(std::make_pair(LogJSONKey::LEVEL, picojson::value(level)));
-  obj.insert(std::make_pair(LogJSONKey::LINE, picojson::value(static_cast<double>(line))));
-  obj.insert(std::make_pair(LogJSONKey::MESSAGE, picojson::value(message)));
-  obj.insert(std::make_pair(LogJSONKey::PARAM, picojson::value(params)));
+  obj.insert(std::make_pair("file", picojson::value(Utils::file_basename(file))));
+  obj.insert(std::make_pair("level", picojson::value(level)));
+  obj.insert(std::make_pair("line", picojson::value(static_cast<double>(line))));
+  obj.insert(std::make_pair("message", picojson::value(message)));
+  obj.insert(std::make_pair("param", picojson::value(params)));
 
   std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
   std::time_t t                             = std::chrono::system_clock::to_time_t(now);
@@ -51,9 +48,9 @@ Logger::L::~L() {
   localtime_r(&t, &lt);
   std::stringstream ss;
   ss << std::put_time(&lt, "%FT%T%z");
-  obj.insert(std::make_pair(LogJSONKey::TIME, picojson::value(ss.str())));
+  obj.insert(std::make_pair("time", picojson::value(ss.str())));
 
-  logger.delegate.logger_on_output(logger, picojson::value(obj).serialize());
+  logger_func(picojson::value(obj).serialize());
 }
 
 Logger::L& Logger::L::map(const std::string& name, const std::string& value) {
@@ -71,14 +68,9 @@ Logger::L& Logger::L::map(const std::string& name, const Packet& value) {
   p.insert(std::make_pair("dst_nid", picojson::value(value.dst_nid.to_str())));
   p.insert(std::make_pair("src_nid", picojson::value(value.src_nid.to_str())));
   p.insert(std::make_pair("id", picojson::value(Convert::int2str(value.id))));
+  p.insert(std::make_pair("hop_count", picojson::value(Convert::int2str(value.hop_count))));
+  p.insert(std::make_pair("content", picojson::value(value.content->as_proto().DebugString())));
   p.insert(std::make_pair("mode", picojson::value(Convert::int2str(value.mode))));
-  p.insert(std::make_pair("channel", picojson::value(Convert::int2str(value.channel))));
-  p.insert(std::make_pair("command_id", picojson::value(Convert::int2str(value.command_id))));
-  if (value.content) {
-    p.insert(std::make_pair("content_size", picojson::value(static_cast<double>(value.content->size()))));
-  } else {
-    p.insert(std::make_pair("content", picojson::value()));
-  }
   params.insert(std::make_pair(name, picojson::value(p)));
   return *this;
 }
@@ -123,7 +115,7 @@ Logger::L& Logger::L::map_u64(const std::string& name, uint64_t value) {
   return *this;
 }
 
-Logger::Logger(LoggerDelegate& delegate_) : delegate(delegate_) {
+Logger::Logger(const std::function<void(const std::string&)>& f) : logger_func(f) {
 }
 
 Logger::~Logger() {
@@ -131,6 +123,6 @@ Logger::~Logger() {
 
 Logger::L Logger::create(
     const std::string& file, unsigned long line, const std::string& level, const std::string& message) {
-  return L(*this, file, line, level, message);
+  return L(logger_func, file, line, level, message);
 }
 }  // namespace colonio

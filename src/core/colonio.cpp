@@ -15,22 +15,45 @@
  */
 #include "colonio/colonio.hpp"
 
+#ifdef __clang__
+#  include <picojson.h>
+#else
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#  include <picojson.h>
+#  pragma GCC diagnostic pop
+#endif
+
 #include "colonio_impl.hpp"
 
 namespace colonio {
 
-const uint32_t Colonio::EXPLICIT_EVENT_THREAD;
-const uint32_t Colonio::EXPLICIT_CONTROLLER_THREAD;
-
-const uint32_t Colonio::CALL_ACCEPT_NEARBY;
-const uint32_t Colonio::CALL_IGNORE_REPLY;
-
-Colonio* Colonio::new_instance(std::function<void(Colonio&, const std::string&)>&& log_receiver, uint32_t opt) {
-  if (log_receiver == nullptr) {
-    return new ColonioImpl([](Colonio&, const ::std::string&) {}, opt);
-  } else {
-    return new ColonioImpl(log_receiver, opt);
+void default_logger_func(Colonio& colonio, const std::string& json) {
+  picojson::value v;
+  std::string err = picojson::parse(v, json);
+  if (!err.empty()) {
+    std::cerr << err << std::endl;
+    return;
   }
+
+  picojson::object json_obj = v.get<picojson::object>();
+  std::string level         = json_obj.at("level").get<std::string>();
+
+  if (level == "info") {
+    std::cout << json << std::endl;
+  } else {
+    std::cerr << json << std::endl;
+  }
+}
+
+ColonioConfig::ColonioConfig() : disable_callback_thread(false), max_user_threads(1), logger_func(default_logger_func) {
+}
+
+const uint32_t Colonio::MESSAGING_ACCEPT_NEARBY;
+const uint32_t Colonio::MESSAGING_IGNORE_RESPONSE;
+
+Colonio* Colonio::new_instance(ColonioConfig& config) {
+  return new ColonioImpl(config);
 }
 
 Colonio::Colonio() {

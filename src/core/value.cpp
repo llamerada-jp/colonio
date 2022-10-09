@@ -13,10 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "colonio/value.hpp"
-
 #include <cassert>
 
+#include "colonio/colonio.hpp"
 #include "value_impl.hpp"
 
 namespace colonio {

@@ -15,16 +15,23 @@
  */
 #pragma once
 
-#include <picojson.h>
+#ifdef __clang__
+#  include <picojson.h>
+#else
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#  include <picojson.h>
+#  pragma GCC diagnostic pop
+#endif
 
 #include <set>
 #include <string>
 #include <tuple>
 
 namespace colonio {
-namespace core {
+namespace proto {
 class NodeID;
-}  // namespace core
+}  // namespace proto
 class Random;
 
 /**
@@ -62,7 +69,7 @@ class NodeID {
   static const NodeID RANGE_7;
 
   static NodeID from_str(const std::string& str);
-  static NodeID from_pb(const core::NodeID& pb);
+  static NodeID from_pb(const proto::NodeID& pb);
   static NodeID make_hash_from_str(const std::string& str);
   static NodeID make_random(Random& random);
 
@@ -88,7 +95,7 @@ class NodeID {
   bool is_special() const;
   int log2() const;
   std::string to_str() const;
-  void to_pb(core::NodeID* pb) const;
+  void to_pb(proto::NodeID* pb) const;
   picojson::value to_json() const;
 
  private:

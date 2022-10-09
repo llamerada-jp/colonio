@@ -20,7 +20,7 @@ package colonio
 var (
 	ErrUndefined           = newErr(0, "")  // ErrUndefined meaning undefined error is occurred.
 	ErrSystemError         = newErr(1, "")  // ErrSystemError meaning an error occurred in the API, which is used inside colonio.
-	ErrConnectionFaild     = newErr(2, "")  // ErrConnectionFaild
+	ErrConnectionFailed    = newErr(2, "")  // ErrConnectionFailed
 	ErrOffline             = newErr(3, "")  // ErrOffline meaning the node cannot perform processing because of offline.
 	ErrIncorrectDataFormat = newErr(4, "")  // ErrIncorrectDataFormat meaning incorrect data format detected.
 	ErrConflictWithSetting = newErr(5, "")  // ErrConflictWithSetting meaning The calling method or setting parameter was inconsistent with the configuration in the seed.

@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 
-#include "colonio/error.hpp"
-
 #include <string>
 
+#include "colonio/colonio.hpp"
 #include "utils.hpp"
 
 namespace colonio {

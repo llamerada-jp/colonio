@@ -14,16 +14,27 @@
  * limitations under the License.
  */
 #pragma once
-#include <picojson.h>
+
+#ifdef __clang__
+#  include <picojson.h>
+#else
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#  include <picojson.h>
+#  pragma GCC diagnostic pop
+#endif
 
 #include <cstdint>
 #include <string>
 
-#include "colonio/value.hpp"
-#include "core.pb.h"
+#include "colonio/colonio.hpp"
 #include "node_id.hpp"
 
 namespace colonio {
+namespace proto {
+class Value;
+}  // namespace proto
+
 class ValueImpl {
  public:
   union Storage {
@@ -45,8 +56,8 @@ class ValueImpl {
   explicit ValueImpl(const char* v);
   virtual ~ValueImpl();
 
-  static void to_pb(core::Value* pb, const Value& value);
-  static Value from_pb(const core::Value& pb);
+  static void to_pb(proto::Value* pb, const Value& value);
+  static Value from_pb(const proto::Value& pb);
 
   static NodeID to_hash(const Value& value, const std::string& salt);
   static std::string to_str(const Value& value);

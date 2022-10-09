@@ -23,17 +23,16 @@ class CoordSystem;
 class Routing2D : public RoutingAlgorithm {
  public:
   Routing2D(
-      ModuleParam& param, RoutingAlgorithm2DDelegate& delegate_, const CoordSystem& coord_system_,
+      Logger& l, const NodeID& n, RoutingAlgorithm2DDelegate& d, const CoordSystem& coord_system_,
       unsigned int config_update_period);
 
   const std::set<NodeID>& get_required_nodes() override;
   void on_change_local_position(const Coordinate& position) override;
   void on_recv_packet(const NodeID& nid, const Packet& packet) override;
-  void send_routing_info(RoutingProtocol::RoutingInfo* param) override;
+  void send_routing_info(proto::Routing* param) override;
   bool update_routing_info(
       const std::set<NodeID>& online_links, bool has_update_ol,
-      const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>, RoutingProtocol::RoutingInfo>>& routing_infos)
-      override;
+      const std::map<NodeID, proto::Routing>& routing_infos) override;
 
   const NodeID& get_relay_nid(const Coordinate& position);
 

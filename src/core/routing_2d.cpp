@@ -29,13 +29,13 @@
 namespace colonio {
 
 Routing2D::Routing2D(
-    ModuleParam& param, RoutingAlgorithm2DDelegate& delegate_, const CoordSystem& coord_system_,
+    Logger& l, const NodeID& n, RoutingAlgorithm2DDelegate& d, const CoordSystem& coord_system_,
     unsigned int config_update_period) :
     RoutingAlgorithm("2D"),
     CONFIG_UPDATE_PERIOD(config_update_period),
-    logger(param.logger),
-    local_nid(param.local_nid),
-    delegate(delegate_),
+    logger(l),
+    local_nid(n),
+    delegate(d),
     coord_system(coord_system_) {
 }
 
@@ -51,22 +51,21 @@ void Routing2D::on_recv_packet(const NodeID& nid, const Packet& packet) {
   // Ignore
 }
 
-void Routing2D::send_routing_info(RoutingProtocol::RoutingInfo* param) {
+void Routing2D::send_routing_info(proto::Routing* param) {
   if (coord_system.get_local_position().is_enable()) {
     coord_system.get_local_position().to_pb(param->mutable_r2d_position());
 
     for (auto& nid : connected_nodes) {
       auto known_node = known_nodes.find(nid);
       if (known_node != known_nodes.end()) {
-        known_node->second.to_pb((*param->mutable_nodes())[nid.to_str()].mutable_r2d_position());
+        known_node->second.to_pb((*param->mutable_node_records())[nid.to_str()].mutable_r2d_position());
       }
     }
   }
 }
 
 bool Routing2D::update_routing_info(
-    const std::set<NodeID>& online_links, bool has_update_ol,
-    const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>, RoutingProtocol::RoutingInfo>>& routing_infos) {
+    const std::set<NodeID>& online_links, bool has_update_ol, const std::map<NodeID, proto::Routing>& routing_infos) {
   // update connected_nodes
   connected_nodes = online_links;
 
@@ -89,13 +88,13 @@ bool Routing2D::update_routing_info(
     }
   }
 
-  for (auto& it1 : routing_infos) {
-    const RoutingProtocol::RoutingInfo& routing_info = std::get<1>(it1.second);
+  for (auto& it : routing_infos) {
+    const proto::Routing& routing_info = it.second;
     if (routing_info.has_r2d_position()) {
-      RoutingInfo& new_info = routing_info_cache[it1.first];
+      RoutingInfo& new_info = routing_info_cache[it.first];
       new_info.timestamp    = Utils::get_current_msec();
       new_info.position     = Coordinate::from_pb(routing_info.r2d_position());
-      for (auto& it2 : routing_info.nodes()) {
+      for (auto& it2 : routing_info.node_records()) {
         if (it2.second.has_r2d_position()) {
           new_info.nodes.insert(
               std::make_pair(NodeID::from_str(it2.first), Coordinate::from_pb(it2.second.r2d_position())));
@@ -148,7 +147,7 @@ bool Routing2D::update_routing_info(
     links.push_back(picojson::value(one_pair));
   }
 
-  logd("routing 2d").map("nodes", picojson::value(nodes)).map("links", picojson::value(links));
+  log_debug("routing 2d").map("nodes", picojson::value(nodes)).map("links", picojson::value(links));
 #endif
 
   // return is_changed;
@@ -285,7 +284,7 @@ void Routing2D::update_node_infos() {
     for (auto& it : nearby_nodes) {
       o.insert(std::make_pair(it.first.to_str(), Convert::coordinate2json(it.second)));
     }
-    logd("routing 2d required").map("nids", picojson::value(o));
+    log_debug("routing 2d required").map("nids", picojson::value(o));
   }
 #endif
 }

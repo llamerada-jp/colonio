@@ -25,11 +25,13 @@ add_library(colonio_test STATIC
 
 # Combination test
 set(test_targets_combine
-  call
+
+  # call
   connect
-  export_c
-  map
-  pubsub_2d
+
+  # export_c
+  # map
+  # pubsub_2d
 )
 
 foreach(test_target IN LISTS test_targets_combine)
@@ -42,11 +44,13 @@ endforeach()
 
 # Unit test of core module
 set(test_targets_core
+  command_manager
   coord_system_plane
   exception
   logger
   node_id
   scheduler_native
+  user_thread_pool
   utils
 )
 

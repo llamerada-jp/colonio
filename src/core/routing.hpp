@@ -16,31 +16,38 @@
 #pragma once
 
 #include <map>
+#include <memory>
 #include <set>
+#include <tuple>
 
 #include "coordinate.hpp"
-#include "module_base.hpp"
+#include "definition.hpp"
 #include "node_id.hpp"
-#include "routing_protocol.pb.h"
 
 namespace colonio {
+namespace proto {
+class Routing;
+}  // namespace proto
+
+class CommandManager;
 class CoordSystem;
+class Logger;
 class Packet;
 class Routing;
 class Routing1D;
 class Routing2D;
+class Scheduler;
 
 class RoutingDelegate {
  public:
   virtual ~RoutingDelegate();
-  virtual void routing_do_connect_node(Routing& routing, const NodeID& nid)                                         = 0;
-  virtual void routing_do_disconnect_node(Routing& routing, const NodeID& nid)                                      = 0;
-  virtual void routing_do_connect_seed(Routing& route)                                                              = 0;
-  virtual void routing_do_disconnect_seed(Routing& route)                                                           = 0;
-  virtual void routing_on_module_1d_change_nearby(Routing& routing, const NodeID& prev_nid, const NodeID& next_nid) = 0;
-  virtual void routing_on_module_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids)                   = 0;
-  virtual void routing_on_module_2d_change_nearby_position(
-      Routing& routing, const std::map<NodeID, Coordinate>& positions) = 0;
+  virtual void routing_do_connect_node(const NodeID& nid)                                                 = 0;
+  virtual void routing_do_disconnect_node(const NodeID& nid)                                              = 0;
+  virtual void routing_do_connect_seed()                                                                  = 0;
+  virtual void routing_do_disconnect_seed()                                                               = 0;
+  virtual void routing_on_module_1d_change_nearby(const NodeID& prev_nid, const NodeID& next_nid)         = 0;
+  virtual void routing_on_module_2d_change_nearby(const std::set<NodeID>& nids)                           = 0;
+  virtual void routing_on_module_2d_change_nearby_position(const std::map<NodeID, Coordinate>& positions) = 0;
 };
 
 class RoutingAlgorithm {
@@ -52,11 +59,10 @@ class RoutingAlgorithm {
   virtual const std::set<NodeID>& get_required_nodes()                 = 0;
   virtual void on_change_local_position(const Coordinate& position)    = 0;
   virtual void on_recv_packet(const NodeID& nid, const Packet& packet) = 0;
-  virtual void send_routing_info(RoutingProtocol::RoutingInfo* param)  = 0;
+  virtual void send_routing_info(proto::Routing* param)                = 0;
   virtual bool update_routing_info(
       const std::set<NodeID>& online_links, bool has_update_ol,
-      const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>, RoutingProtocol::RoutingInfo>>&
-          routing_infos) = 0;
+      const std::map<NodeID, proto::Routing>& routing_infos) = 0;
 };
 
 class RoutingAlgorithm1DDelegate {
@@ -74,11 +80,11 @@ class RoutingAlgorithm2DDelegate {
       RoutingAlgorithm& algorithm, const std::map<NodeID, Coordinate>& positions) = 0;
 };
 
-class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public RoutingAlgorithm2DDelegate {
+class Routing : public RoutingAlgorithm1DDelegate, public RoutingAlgorithm2DDelegate {
  public:
   Routing(
-      ModuleParam& param, RoutingDelegate& routing_delegate, const CoordSystem* coord_system,
-      const picojson::object& config);
+      Logger& l, Random& r, Scheduler& s, CommandManager& c, const NodeID& n, RoutingDelegate& d,
+      const CoordSystem* coord_system, const picojson::object& config);
   virtual ~Routing();
 
   const NodeID& get_relay_nid_1d(const Packet& packet);
@@ -90,6 +96,7 @@ class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public Rou
   const NodeID& get_route_to_seed();
   bool is_direct_connect(const NodeID& nid);
   void on_change_local_position(const Coordinate& position);
+  void on_change_network_state(LinkState::Type seed_state, LinkState::Type node_state);
   void on_change_online_links(const std::set<NodeID>& nids);
   void on_recv_packet(const NodeID& nid, const Packet& packet);
 
@@ -97,11 +104,18 @@ class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public Rou
   const unsigned int CONFIG_FORCE_UPDATE_COUNT;
   const unsigned int CONFIG_SEED_CONNECT_INTERVAL;
   const unsigned int CONFIG_SEED_CONNECT_RATE;
-  const unsigned int CONFIG_SEED_DISCONNECT_THREATHOLD;
-  const unsigned int CONFIG_SEED_INFO_KEEP_THREATHOLD;
+
+  const unsigned int CONFIG_SEED_DISCONNECT_THRESHOLD;
+  const unsigned int CONFIG_SEED_INFO_KEEP_THRESHOLD;
   const unsigned int CONFIG_SEED_INFO_NIDS_COUNT;
   const double CONFIG_SEED_NEXT_POSITION;
   const unsigned int CONFIG_UPDATE_PERIOD;
+
+  Logger& logger;
+  Random& random;
+  Scheduler& scheduler;
+  CommandManager& command_manager;
+  const NodeID& local_nid;
 
   RoutingDelegate& delegate;
 
@@ -115,7 +129,8 @@ class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public Rou
   std::set<NodeID> online_links;
   bool has_update_online_links;
 
-  std::map<NodeID, std::tuple<std::unique_ptr<const Packet>, RoutingProtocol::RoutingInfo>> routing_infos;
+  // map of source node-id and Routing packet content
+  std::map<NodeID, proto::Routing> routing_infos;
   int64_t routing_countdown;
 
   // next, distance
@@ -131,15 +146,12 @@ class Routing : public ModuleBase, public RoutingAlgorithm1DDelegate, public Rou
   void algorithm_2d_on_change_nearby_position(
       RoutingAlgorithm& algorithm, const std::map<NodeID, Coordinate>& positions) override;
 
-  void module_on_change_accessor_state(LinkState::Type seed_state, LinkState::Type node_state) override;
-  void module_process_command(std::unique_ptr<const Packet> packet) override;
-
-  void recv_routing_info(std::unique_ptr<const Packet> packet);
-  void send_routing_info();
+  void recv_routing(const Packet& packet);
+  void send_routing();
   void update();
   void update_node_connection();
   void update_seed_connection();
-  void update_seed_route_by_info(const NodeID& src_nid, const RoutingProtocol::RoutingInfo& info);
+  void update_seed_route_by_info(const NodeID& src_nid, const proto::Routing& info);
   void update_seed_route_by_links();
   void update_seed_route_by_state();
 };

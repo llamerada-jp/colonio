@@ -30,29 +30,30 @@
 #include <string>
 
 #include "command.hpp"
-#include "module_base.hpp"
 #include "node_id.hpp"
 #include "packet.hpp"
 #include "webrtc_context.hpp"
 #include "webrtc_link.hpp"
 
 namespace colonio {
+class CommandManager;
+class Logger;
 class NodeAccessor;
+class Scheduler;
 
 class NodeAccessorDelegate {
  public:
   virtual ~NodeAccessorDelegate();
-  virtual void node_accessor_on_change_online_links(NodeAccessor& na, const std::set<NodeID>& nids) = 0;
-  virtual void node_accessor_on_change_state(NodeAccessor& na)                                      = 0;
-  virtual void node_accessor_on_recv_packet(
-      NodeAccessor& na, const NodeID& nid, std::unique_ptr<const Packet> packet) = 0;
+  virtual void node_accessor_on_change_online_links(const std::set<NodeID>& nids)                    = 0;
+  virtual void node_accessor_on_change_state()                                                       = 0;
+  virtual void node_accessor_on_recv_packet(const NodeID& nid, std::unique_ptr<const Packet> packet) = 0;
 };
 
-class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
+class NodeAccessor : public WebrtcLinkDelegate {
  public:
-  NodeAccessor(ModuleParam& param, NodeAccessorDelegate& na_delegate);
+  NodeAccessor(Logger& l, Scheduler& s, CommandManager& c, const NodeID& n, NodeAccessorDelegate& d);
   virtual ~NodeAccessor();
-  NodeAccessor(const NodeAccessor&) = delete;
+  NodeAccessor(const NodeAccessor&)            = delete;
   NodeAccessor& operator=(const NodeAccessor&) = delete;
 
   void connect_link(const NodeID& nid);
@@ -83,20 +84,28 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
 
   class CommandOffer : public Command {
    public:
-    CommandOffer(NodeAccessor& accessor_, const NodeID& nid_, OFFER_TYPE type_);
-    void on_success(std::unique_ptr<const Packet> packet) override;
-    void on_failure(std::unique_ptr<const Packet> packet) override;
+    CommandOffer(NodeAccessor& a, const NodeID& n, OFFER_TYPE t);
+    void on_response(const Packet& packet) override;
     void on_error(ErrorCode code, const std::string& message) override;
 
    private:
+    Logger& logger;
     NodeAccessor& accessor;
     NodeID nid;
     OFFER_TYPE type;
+
+    void on_success(const proto::SignalingOfferSuccess& content);
+    void on_failure(const proto::SignalingOfferFailure& content);
   };
 
   unsigned int CONFIG_BUFFER_INTERVAL;
   unsigned int CONFIG_HOP_COUNT_MAX;
   unsigned int CONFIG_PACKET_SIZE;
+
+  Logger& logger;
+  Scheduler& scheduler;
+  CommandManager& command_manager;
+  const NodeID& local_nid;
 
   NodeAccessorDelegate& delegate;
   std::unique_ptr<WebrtcContext> webrtc_context;
@@ -111,8 +120,8 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
   /** Closing links. */
   std::set<WebrtcLink*> closing_links;
 
-  /** Count of links which need to transrate packet by seed. */
-  unsigned int count_seed_transrate;
+  /** Count of links which need to translate packet by seed. */
+  unsigned int count_seed_translate;
 
   /** Use on update_online_links() */
   bool is_updated_line_links;
@@ -124,11 +133,9 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
   struct RecvBuffer {
     std::unique_ptr<Packet> packet;
     unsigned int last_index;
-    std::list<std::shared_ptr<const std::string>> content_list;
+    std::list<std::unique_ptr<const std::string>> content_list;
   };
   std::map<NodeID, RecvBuffer> recv_buffers;
-
-  void module_process_command(std::unique_ptr<const Packet> packet) override;
 
   void webrtc_link_on_change_dco_state(WebrtcLink& link, LinkState::Type new_dco_state) override;
   void webrtc_link_on_change_pco_state(WebrtcLink& link, LinkState::Type new_pco_state) override;
@@ -143,8 +150,8 @@ class NodeAccessor : public ModuleBase, public WebrtcLinkDelegate {
   void create_first_link();
   WebrtcLink* create_link(bool is_create_dc);
   void disconnect_link(WebrtcLink* link);
-  void recv_offer(std::unique_ptr<const Packet> packet);
-  void recv_ice(std::unique_ptr<const Packet> packet);
+  void recv_offer(const Packet& packet);
+  void recv_ice(const Packet& packet);
   void send_all_packet();
   void send_ice(WebrtcLink* link, const picojson::array& ice);
   void send_offer(WebrtcLink* link, const NodeID& prime_nid, const NodeID& second_nid, OFFER_TYPE type);

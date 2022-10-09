@@ -16,16 +16,16 @@
 #pragma once
 
 namespace colonio {
-namespace core {
+namespace proto {
 class Coordinate;
-}  // namespace core
+}  // namespace proto
 
 class Coordinate {
  public:
   double x;
   double y;
 
-  static Coordinate from_pb(const core::Coordinate& pb);
+  static Coordinate from_pb(const proto::Coordinate& pb);
 
   Coordinate();
   Coordinate(double x_, double y_);
@@ -33,6 +33,6 @@ class Coordinate {
   bool operator!=(const Coordinate& r) const;
 
   bool is_enable();
-  void to_pb(core::Coordinate* pb) const;
+  void to_pb(proto::Coordinate* pb) const;
 };
 }  // namespace colonio

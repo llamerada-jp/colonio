@@ -244,9 +244,12 @@ test-go-wasm: build-seed
 .PHONY: format-code
 format-code:
 	find {src,test} -name "*.cpp" -or -name "*.hpp" -exec clang-format -i {} \;
-	
+
+src/core/colonio.pb.cc: colonio.proto
+	$(LOCAL_ENV_PATH)/bin/protoc --cpp_out=src/core colonio.proto
+
 .PHONY: build-native
-build-native:
+build-native: src/core/colonio.pb.cc
 	mkdir -p $(NATIVE_BUILD_PATH) $(OUTPUT_PATH)/lib \
 	&& cd $(NATIVE_BUILD_PATH) \
 	&& PKG_CONFIG_PATH=$(LOCAL_ENV_PATH)/lib/pkgconfig/ \
@@ -268,7 +271,7 @@ build-native:
 	&& if [ $(shell uname -s) = "Darwin" ]; then cp $(LOCAL_ENV_PATH)/lib/lib*.a $(OUTPUT_PATH)/lib; fi
 
 .PHONY: build-wasm
-build-wasm:
+build-wasm: src/core/colonio.pb.cc
 	mkdir -p $(WASM_BUILD_PATH) $(OUTPUT_PATH) \
 	&& source $(LOCAL_ENV_PATH)/emsdk/emsdk_env.sh \
 	&& mkdir -p /tmp/em_cache \
@@ -282,18 +285,11 @@ build-wasm:
 	&& cp src/colonio.* $(OUTPUT_PATH)
 
 .PHONY: build-seed
-build-seed: go/proto/core.pb.go go/proto/node_accessor_protocol.pb.go go/proto/seed_accessor_protocol.pb.go
+build-seed: go/proto/colonio.pb.go
 	CGO_ENABLED=0 go build -o $(OUTPUT_PATH)/seed ./go/cmd/seed
 
-go/proto/core.pb.go: $(ROOT_PATH)/src/core/core.proto
-	PATH="$(LOCAL_ENV_PATH)/bin:$(PATH)" $(PROTOC) -I $(ROOT_PATH)/src --go_out=module=github.com/llamerada-jp/colonio/go:. $<
-
-go/proto/node_accessor_protocol.pb.go: $(ROOT_PATH)/src/core/node_accessor_protocol.proto
-	PATH="$(LOCAL_ENV_PATH)/bin:$(PATH)" $(PROTOC) -I $(ROOT_PATH)/src --go_out=module=github.com/llamerada-jp/colonio/go:. $<
-
-go/proto/seed_accessor_protocol.pb.go: $(ROOT_PATH)/src/core/seed_accessor_protocol.proto
-	PATH="$(LOCAL_ENV_PATH)/bin:$(PATH)" $(PROTOC) -I $(ROOT_PATH)/src --go_out=module=github.com/llamerada-jp/colonio/go:. $<
-
+go/proto/colonio.pb.go: colonio.proto
+	PATH="$(LOCAL_ENV_PATH)/bin:$(PATH)" $(PROTOC) --go_out=module=github.com/llamerada-jp/colonio:. $<
 
 .PHONY: build-docker
 build-docker: $(ROOT_PATH)/buildenv/Makefile $(ROOT_PATH)/buildenv/go.mod

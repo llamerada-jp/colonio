@@ -15,9 +15,9 @@
  */
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
-#include <tuple>
 
 #include "definition.hpp"
 #include "packet.hpp"
@@ -26,18 +26,27 @@ namespace colonio {
 
 class Command {
  public:
-  virtual ~Command();
-
-  std::tuple<CommandID::Type, PacketMode::Type> get_define();
-
-  virtual void on_error(ErrorCode code, const std::string& message);
-  virtual void on_failure(std::unique_ptr<const Packet> packet);
-  virtual void on_success(std::unique_ptr<const Packet> packet) = 0;
-
- protected:
-  const CommandID::Type id;
   const PacketMode::Type mode;
 
-  Command(CommandID::Type id_, PacketMode::Type mode_);
+  Command(PacketMode::Type mode_);
+  virtual ~Command();
+
+  virtual void on_response(const Packet& packet) = 0;
+  virtual void on_error(ErrorCode code, const std::string& message);
+};
+
+class CommandWrapper : public Command {
+ public:
+  CommandWrapper(PacketMode::Type mode, std::function<void(const Packet& packet)>& on_res);
+  CommandWrapper(
+      PacketMode::Type mode, std::function<void(const Packet& packet)>& on_res,
+      std::function<void(ErrorCode code, const std::string& message)>& on_err);
+
+  void on_response(const Packet& packet) override;
+  void on_error(ErrorCode code, const std::string& message) override;
+
+ private:
+  std::function<void(const Packet& packet)> cb_on_response;
+  std::function<void(ErrorCode code, const std::string& message)> cb_on_error;
 };
 }  // namespace colonio

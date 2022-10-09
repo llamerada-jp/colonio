@@ -18,23 +18,15 @@
 
 #include <cassert>
 #include <sstream>
-#include <tuple>
 
 #include "utils.hpp"
 
 namespace colonio {
 
-Command::Command(CommandID::Type id_, PacketMode::Type mode_) : id(id_), mode(mode_) {
+Command::Command(PacketMode::Type mode_) : mode(mode_) {
 }
 
-/**
- * Simple destructor for vtable.
- */
 Command::~Command() {
-}
-
-std::tuple<CommandID::Type, PacketMode::Type> Command::get_define() {
-  return std::make_tuple(id, mode);
 }
 
 /**
@@ -47,11 +39,26 @@ void Command::on_error(ErrorCode code, const std::string& message) {
   colonio_throw_error(ErrorCode::UNDEFINED, ss.str());
 }
 
-/**
- * It will be called when a failure reply has arrived for the send packet.
- * @param packet Received reply packet.
- */
-void Command::on_failure(std::unique_ptr<const Packet> packet) {
-  assert(false);
+CommandWrapper::CommandWrapper(PacketMode::Type mode, std::function<void(const Packet& packet)>& on_res) :
+    Command(mode), cb_on_response(on_res) {
+}
+
+CommandWrapper::CommandWrapper(
+    PacketMode::Type mode, std::function<void(const Packet& packet)>& on_res,
+    std::function<void(ErrorCode code, const std::string& message)>& on_err) :
+    Command(mode), cb_on_response(on_res), cb_on_error(on_err) {
+}
+
+void CommandWrapper::on_response(const Packet& packet) {
+  cb_on_response(packet);
+}
+
+void CommandWrapper::on_error(ErrorCode code, const std::string& message) {
+  if (cb_on_error) {
+    cb_on_error(code, message);
+    return;
+  }
+
+  Command::on_error(code, message);
 }
 }  // namespace colonio

@@ -19,32 +19,19 @@
 #include <string>
 
 #include "colonio/colonio.hpp"
+#include "command_manager.hpp"
 #include "definition.hpp"
 #include "logger.hpp"
-#include "module_1d.hpp"
-#include "module_2d.hpp"
-#include "node_accessor.hpp"
+#include "network.hpp"
 #include "node_id.hpp"
 #include "random.hpp"
-#include "routing.hpp"
 #include "scheduler.hpp"
-#include "seed_accessor.hpp"
+#include "user_thread_pool.hpp"
 
 namespace colonio {
-class ColonioModule;
-class MapImpl;
-class Pubsub2DImpl;
-
-class ColonioImpl : public Colonio,
-                    public LoggerDelegate,
-                    public ModuleDelegate,
-                    public NodeAccessorDelegate,
-                    public RoutingDelegate,
-                    public SeedAccessorDelegate,
-                    public Module1DDelegate,
-                    public Module2DDelegate {
+class ColonioImpl : public Colonio, public NetworkDelegate, public CommandManagerDelegate {
  public:
-  ColonioImpl(std::function<void(Colonio&, const std::string&)> log_receiver_, uint32_t opt);
+  ColonioImpl(const ColonioConfig& config);
   virtual ~ColonioImpl();
 
   void connect(const std::string& url, const std::string& token) override;
@@ -57,84 +44,46 @@ class ColonioImpl : public Colonio,
   bool is_connected() override;
   std::string get_local_nid() override;
 
-  Map& access_map(const std::string& name) override;
-  Pubsub2D& access_pubsub_2d(const std::string& name) override;
-
   std::tuple<double, double> set_position(double x, double y) override;
-  void set_position(
-      double x, double y, std::function<void(Colonio&, double, double)> on_success,
-      std::function<void(Colonio&, const Error&)> on_failure) override;
 
-  Value call_by_nid(
-      const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt = 0x00) override;
-  void call_by_nid(
-      const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt,
+  Value messaging_post(
+      const std::string& dst_nid, const std::string& name, const Value& message, uint32_t opt = 0x0) override;
+  void messaging_post(
+      const std::string& dst_nid, const std::string& name, const Value& message, uint32_t opt,
       std::function<void(Colonio&, const Value&)>&& on_success,
       std::function<void(Colonio&, const Error&)>&& on_failure) override;
-  void on_call(const std::string& name, std::function<Value(Colonio&, const CallParameter&)>&& func) override;
-  void off_call(const std::string& name) override;
 
-  void start_on_event_thread() override;
-  void start_on_controller_thread() override;
+  void messaging_set_handler(
+      const std::string& name, std::function<Value(Colonio&, const MessageData&)>&& func) override;
+  void messaging_set_handler(
+      const std::string& name,
+      std::function<void(Colonio&, const MessageData&, MessageResponseWriter&)>&& func) override;
+  void messaging_unset_handler(const std::string& name) override;
 
  private:
-  std::function<void(Colonio&, const std::string&)> log_receiver;
   Logger logger;
   Random random;
   std::unique_ptr<Scheduler> scheduler;
-  const NodeID local_nid;
-  ModuleParam module_param;
-  picojson::object config;
-  bool enable_retry;
+  std::unique_ptr<UserThreadPool> user_thread_pool;
+  std::unique_ptr<CommandManager> command_manager;
+  NodeID local_nid;
+  std::unique_ptr<Network> network;
 
-  std::unique_ptr<SeedAccessor> seed_accessor;
-  NodeAccessor* node_accessor;
+  picojson::object global_config;
+  const ColonioConfig local_config;
+
   std::unique_ptr<CoordSystem> coord_system;
-  Routing* routing;
-  ColonioModule* colonio_module;
 
-  std::map<Channel::Type, std::unique_ptr<ModuleBase>> modules;
-  std::map<std::string, Channel::Type> module_names;
-  std::set<Module1D*> modules_1d;
-  std::set<Module2D*> modules_2d;
-  std::map<std::string, std::unique_ptr<MapImpl>> if_map;
-  std::map<std::string, std::unique_ptr<Pubsub2DImpl>> if_pubsub2d;
+  void command_manager_do_send_packet(std::unique_ptr<const Packet> packet) override;
+  void command_manager_do_relay_packet(const NodeID& dst_nid, std::unique_ptr<const Packet> packet) override;
 
-  std::unique_ptr<std::pair<std::function<void(Colonio&)>, std::function<void(Colonio&, const Error&)>>> connect_cb;
-  LinkState::Type link_state;
+  void network_on_change_global_config(const picojson::object& config) override;
+  void network_on_change_nearby_1d(const NodeID& prev_nid, const NodeID& next_nid) override;
+  void network_on_change_nearby_2d(const std::set<NodeID>& nids) override;
+  void network_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) override;
+  const CoordSystem* network_on_require_coord_system(const picojson::object& config) override;
 
-  void logger_on_output(Logger& logger, const std::string& json) override;
-
-  void module_do_send_packet(ModuleBase& module, std::unique_ptr<const Packet> packet) override;
-  void module_do_relay_packet(ModuleBase& module, const NodeID& dst_nid, std::unique_ptr<const Packet> packet) override;
-
-  void node_accessor_on_change_online_links(NodeAccessor& na, const std::set<NodeID>& nids) override;
-  void node_accessor_on_change_state(NodeAccessor& na) override;
-  void node_accessor_on_recv_packet(NodeAccessor& na, const NodeID& nid, std::unique_ptr<const Packet> packet) override;
-
-  void routing_do_connect_node(Routing& routing, const NodeID& nid) override;
-  void routing_do_disconnect_node(Routing& routing, const NodeID& nid) override;
-  void routing_do_connect_seed(Routing& route) override;
-  void routing_do_disconnect_seed(Routing& route) override;
-  void routing_on_module_1d_change_nearby(Routing& routing, const NodeID& prev_nid, const NodeID& next_nid) override;
-  void routing_on_module_2d_change_nearby(Routing& routing, const std::set<NodeID>& nids) override;
-  void routing_on_module_2d_change_nearby_position(
-      Routing& routing, const std::map<NodeID, Coordinate>& positions) override;
-
-  void seed_accessor_on_change_state(SeedAccessor& sa) override;
-  void seed_accessor_on_recv_config(SeedAccessor& sa, const picojson::object& config) override;
-  void seed_accessor_on_recv_packet(SeedAccessor& sa, std::unique_ptr<const Packet> packet) override;
-  void seed_accessor_on_recv_require_random(SeedAccessor& sa) override;
-
-  bool module_1d_do_check_covered_range(Module1D& module_1d, const NodeID& nid) override;
-
-  const NodeID& module_2d_do_get_relay_nid(Module2D& module_2d, const Coordinate& position) override;
-
-  void check_api_connect();
-  void clear_modules();
-  void initialize_algorithms();
-  void register_module(ModuleBase* module, const std::string* name, bool is_1d, bool is_2d);
-  void relay_packet(std::unique_ptr<const Packet> packet, bool is_from_seed);
-  void update_accessor_state();
+  void allocate_resources();
+  void release_resources();
 };
 }  // namespace colonio

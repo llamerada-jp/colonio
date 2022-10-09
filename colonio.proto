@@ -1,0 +1,293 @@
+syntax = "proto3";
+
+option go_package = "github.com/llamerada-jp/colonio/go/proto";
+
+package colonio.proto;
+
+// basic types
+message Coordinate {
+  double x = 1;
+  double y = 2;
+}
+
+message NodeID {
+  uint32 type = 1;
+  uint64 id0  = 2;
+  uint64 id1  = 3;
+}
+
+message Value {
+  oneof value {
+    bool bool_v     = 1;
+    int64 int_v     = 2;
+    double double_v = 3;
+    bytes string_v  = 4;
+    bytes binary_v  = 5;
+  }
+}
+
+// node-node packet container
+message NodePackets {
+  repeated NodePacket packet = 1;
+}
+
+message NodePacketHead {
+  NodeID dst_nid   = 1;
+  NodeID src_nid   = 2;
+  uint32 hop_count = 3;
+  uint32 mode      = 4;
+}
+
+message NodePacket {
+  // Enable head if index is 0.
+  NodePacketHead head = 1;
+  // ID is common to sequence of packets.
+  uint32 id = 2;
+  // index decreses by 1 in a sequance of packets.
+  uint32 index  = 3;
+  bytes content = 4;
+}
+
+message SeedPacket {
+  oneof Payload {
+    Error error                    = 1;
+    SeedAuth auth                  = 2;
+    SeedAuthResponse auth_response = 3;
+    bool ping                      = 4;
+    SeedHint hint                  = 5;
+    bool require_random            = 6;
+    SeedRelayPacket relay_packet   = 7;
+  }
+}
+
+// node-seed packet container
+message SeedRelayPacket {
+  NodeID dst_nid        = 1;
+  NodeID src_nid        = 2;
+  uint32 hop_count      = 3;
+  uint32 id             = 4;
+  uint32 mode           = 5;
+  PacketContent content = 6;
+}
+
+//
+message PacketContent {
+  oneof Content {
+    Error error = 1;
+
+    SignalingICE signaling_ice                    = 5;
+    SignalingOffer signaling_offer                = 6;
+    SignalingOfferSuccess signaling_offer_success = 7;
+    SignalingOfferFailure signaling_offer_failure = 8;
+
+    Routing routing = 9;
+
+    Messaging messaging                = 10;
+    MessagingSuccess messaging_success = 11;
+
+    KvsAccept kvs_accept                    = 12;
+    KvsAcceptSuccess kvs_accept_success     = 13;
+    KvsAcceptFailure kvs_accept_failure     = 14;
+    KvsBalanceAcceptor kvs_balance_acceptor = 15;
+    KvsBalanceProposer kvs_balance_proposer = 16;
+    KvsGet kvs_get                          = 17;
+    KvsGetSuccess kvs_get_success           = 18;
+    KvsHint kvs_hint                        = 19;
+    KvsPrepare kvs_prepare                  = 20;
+    KvsPrepareSuccess kvs_prepare_success   = 21;
+    KvsPrepareFailure kvs_prepare_failure   = 22;
+    KvsSet kvs_set                          = 23;
+    KvsSetFailure kvs_set_failure           = 24;
+
+    Spread spread                = 25;
+    SpreadKnock spread_knock     = 26;
+    SpreadRelay spread_relay     = 27;
+    SpreadFailure spread_failure = 28;
+  }
+}
+
+message Error {
+  uint32 code    = 1;
+  string message = 2;
+}
+
+// for node-seed authenticate and hints
+message SeedAuth {
+  string version = 1;
+  NodeID nid     = 2;
+  uint32 hint    = 3;
+  string token   = 4;
+}
+
+message SeedAuthResponse {
+  bool success  = 1;
+  string config = 2;
+}
+
+message SeedHint {
+  uint32 hint = 1;
+}
+
+// for webrtc signaling
+message SignalingICE {
+  NodeID local_nid  = 1;
+  NodeID remote_nid = 2;
+  string ice        = 3;
+}
+
+message SignalingOffer {
+  NodeID prime_nid  = 1;
+  NodeID second_nid = 2;
+  string sdp        = 3;
+  uint32 type       = 4;
+}
+
+message SignalingOfferSuccess {
+  uint32 status     = 1;
+  NodeID second_nid = 2;
+  string sdp        = 3;
+}
+
+message SignalingOfferFailure {
+  uint32 status    = 1;
+  NodeID prime_nid = 2;
+}
+
+// for routing
+message RoutingSeedRecord {
+  NodeID nid     = 1;
+  int64 duration = 2;
+}
+
+message RoutingNodeRecord {
+  int64 r1d_score         = 1;
+  Coordinate r2d_position = 2;
+}
+
+message Routing {
+  uint32 seed_distance                    = 1;
+  repeated RoutingSeedRecord seed_records = 2;
+  Coordinate r2d_position                 = 3;
+  // Key type of map is string from node-id.
+  map<string, RoutingNodeRecord> node_records = 4;
+}
+
+// for messaging module
+message Messaging {
+  uint32 opt  = 1;
+  string name = 2;
+  Value value = 3;
+}
+
+message MessagingSuccess {
+  Value response = 1;
+}
+
+// for kvs module
+message KvsAccept {
+  uint32 opt        = 1;
+  uint32 n          = 2;
+  uint32 i          = 3;
+  uint32 member_idx = 4;
+  Value key         = 5;
+  Value value       = 6;
+}
+
+message KvsAcceptSuccess {
+  uint32 n = 1;
+  uint32 i = 2;
+}
+
+message KvsAcceptFailure {
+  uint32 n = 1;
+  uint32 i = 2;
+}
+
+message KvsBalanceAcceptor {
+  uint32 na         = 1;
+  uint32 np         = 2;
+  uint32 ia         = 3;
+  uint32 member_idx = 4;
+  Value key         = 5;
+  Value value       = 6;
+}
+
+message KvsBalanceProposer {
+  uint32 np   = 1;
+  uint32 ip   = 2;
+  Value key   = 3;
+  Value value = 4;
+}
+
+message KvsGet {
+  uint32 member_idx = 1;
+  Value key         = 2;
+}
+
+message KvsGetSuccess {
+  uint32 n    = 1;
+  uint32 i    = 2;
+  Value value = 3;
+}
+
+message KvsHint {
+  uint32 n    = 1;
+  uint32 i    = 2;
+  Value key   = 3;
+  Value value = 4;
+}
+
+message KvsPrepare {
+  uint32 opt        = 1;
+  uint32 n          = 2;
+  uint32 member_idx = 3;
+  Value key         = 4;
+}
+
+message KvsPrepareSuccess {
+  uint32 n = 1;
+  uint32 i = 2;
+}
+
+message KvsPrepareFailure {
+  uint32 n = 1;
+}
+
+message KvsSet {
+  uint32 opt  = 1;
+  Value key   = 2;
+  Value value = 3;
+}
+
+message KvsSetFailure {
+  uint32 reason = 1;
+}
+
+// for pubsub2d module
+message Spread {
+  Coordinate center = 1;
+  double r          = 2;
+  uint64 uid        = 3;
+  string name       = 4;
+  Value value       = 5;
+  uint32 opt        = 6;
+}
+
+message SpreadKnock {
+  Coordinate center = 1;
+  double r          = 2;
+  uint64 uid        = 3;
+}
+
+message SpreadRelay {
+  Coordinate center = 1;
+  double r          = 2;
+  uint64 uid        = 3;
+  string name       = 4;
+  Value value       = 5;
+  uint32 opt        = 6;
+}
+
+message SpreadFailure {
+  uint32 reason = 1;
+}

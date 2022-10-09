@@ -18,28 +18,36 @@
 #include <cassert>
 #include <memory>
 
+#include "colonio.pb.h"
 #include "definition.hpp"
 #include "node_id.hpp"
 
 namespace colonio {
 class Packet {
  public:
+  class Content {
+   public:
+    explicit Content(std::unique_ptr<const std::string> src);
+    explicit Content(std::unique_ptr<const proto::PacketContent> src);
+
+    const std::string& as_string() const;
+    const proto::PacketContent& as_proto() const;
+
+   private:
+    mutable std::unique_ptr<const std::string> str;
+    mutable std::unique_ptr<const proto::PacketContent> pb;
+  };
+
   const NodeID dst_nid;
   const NodeID src_nid;
-  const uint32_t hop_count;
   const uint32_t id;
-  std::shared_ptr<const std::string> content;
+  const uint32_t hop_count;
+  std::shared_ptr<Content> content;
   const PacketMode::Type mode;
-  const Channel::Type channel;
-  const CommandID::Type command_id;
 
-  template<typename T>
-  void parse_content(T* dst) const {
-    assert(content.get() != nullptr);
-    if (!dst->ParseFromString(*content)) {
-      /// @todo error
-      assert(false);
-    }
-  }
+  Packet(
+      const NodeID& dst, const NodeID& src, uint32_t i, std::unique_ptr<const proto::PacketContent> c,
+      PacketMode::Type m);
+  Packet(const NodeID& dst, const NodeID& src, uint32_t i, uint32_t h, std::shared_ptr<Content> c, PacketMode::Type m);
 };
 }  // namespace colonio

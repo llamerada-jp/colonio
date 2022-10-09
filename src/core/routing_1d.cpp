@@ -20,7 +20,6 @@
 
 #include "convert.hpp"
 #include "logger.hpp"
-#include "module_base.hpp"
 #include "packet.hpp"
 #include "random.hpp"
 #include "utils.hpp"
@@ -39,12 +38,8 @@ Routing1D::RouteInfo::RouteInfo(const NodeID& root_nid_, int level_) :
     root_nid(root_nid_), level(level_), raw_score(0) {
 }
 
-Routing1D::Routing1D(ModuleParam& param, RoutingAlgorithm1DDelegate& delegate_) :
-    RoutingAlgorithm("1D"),
-    logger(param.logger),
-    random(param.random),
-    local_nid(param.local_nid),
-    delegate(delegate_) {
+Routing1D::Routing1D(Logger& l, Random& r, const NodeID& n, RoutingAlgorithm1DDelegate& d) :
+    RoutingAlgorithm("1D"), logger(l), random(r), local_nid(n), delegate(d) {
 }
 
 const std::set<NodeID>& Routing1D::get_required_nodes() {
@@ -94,19 +89,18 @@ void Routing1D::on_recv_packet(const NodeID& nid, const Packet& packet) {
   }
 }
 
-bool Routing1D::on_recv_routing_info(const Packet& packet, const RoutingProtocol::RoutingInfo& routing_info) {
+bool Routing1D::on_recv_routing_info(const NodeID& src_nid, const proto::Routing& routing_info) {
   // Ignore routing packet when source node has disconnected.
-  // assert(connected_nodes.find(packet.src_nid) != connected_nodes.end());
-  if (connected_nodes.find(packet.src_nid) == connected_nodes.end()) {
+  if (connected_nodes.find(src_nid) == connected_nodes.end()) {
     return false;
   }
 
-  ConnectedNode& cn = connected_nodes.at(packet.src_nid);
+  ConnectedNode& cn = connected_nodes.at(src_nid);
 
   std::set<NodeID> next_nids;
   int odd_score = 0;
 
-  for (auto& it : routing_info.nodes()) {
+  for (auto& it : routing_info.node_records()) {
     NodeID nid = NodeID::from_str(it.first);
     next_nids.insert(nid);
     if (nid == local_nid) {
@@ -125,25 +119,24 @@ bool Routing1D::on_recv_routing_info(const Packet& packet, const RoutingProtocol
   }
 }
 
-void Routing1D::send_routing_info(RoutingProtocol::RoutingInfo* param) {
+void Routing1D::send_routing_info(proto::Routing* param) {
   normalize_score();
 
   for (auto& it : connected_nodes) {
     std::string nid_str = it.first.to_str();
-    (*param->mutable_nodes())[nid_str].set_r1d_score(it.second.raw_score);
+    (*param->mutable_node_records())[nid_str].set_r1d_score(it.second.raw_score);
   }
 }
 
 bool Routing1D::update_routing_info(
-    const std::set<NodeID>& online_links, bool has_update_ol,
-    const std::map<NodeID, std::tuple<std::unique_ptr<const Packet>, RoutingProtocol::RoutingInfo>>& routing_infos) {
+    const std::set<NodeID>& online_links, bool has_update_ol, const std::map<NodeID, proto::Routing>& routing_infos) {
   bool is_changed = false;
 
   if (has_update_ol) {
     is_changed = is_changed || on_change_online_links(online_links);
   }
   for (auto& it : routing_infos) {
-    is_changed = is_changed || on_recv_routing_info(*std::get<0>(it.second), std::get<1>(it.second));
+    is_changed = is_changed || on_recv_routing_info(it.first, it.second);
   }
 
   if (is_changed) {
@@ -422,7 +415,6 @@ void Routing1D::update_required_nodes() {
       auto it = c_nids.begin();
       for (it++; it != c_nids.end(); it++) {
         const NodeID& nid = *it;
-        ConnectedNode& cn = connected_nodes.at(nid);
 
         if (required_nodes.find(nid) != required_nodes.end()) {
           need_connect = false;
@@ -442,7 +434,7 @@ void Routing1D::update_required_nodes() {
     for (auto& nid : required_nodes) {
       a.push_back(nid.to_json());
     }
-    logd("routing 1d required").map("nids", picojson::value(a));
+    log_debug("routing 1d required").map("nids", picojson::value(a));
   }
 #endif
 }
@@ -534,9 +526,9 @@ void Routing1D::update_route_infos() {
     for (auto& it : known_nids) {
       a.push_back(it.first.to_json());
     }
-    logd("routing 1d known").map("nids", picojson::value(a));
+    log_debug("routing 1d known").map("nids", picojson::value(a));
   }
-  logd("routing 1d next").map("next", next_nid).map("prev", prev_nid);
+  log_debug("routing 1d next").map("next", next_nid).map("prev", prev_nid);
 #endif
 }
 

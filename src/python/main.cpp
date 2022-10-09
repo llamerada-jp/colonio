@@ -20,7 +20,6 @@
 #include <memory>
 
 #include "colonio/colonio.hpp"
-#include "colonio/map.hpp"
 
 namespace py = pybind11;
 

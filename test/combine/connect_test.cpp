@@ -29,7 +29,8 @@ TEST(ConnectTest, connect_single) {
   TestSeed seed;
   seed.run();
 
-  std::unique_ptr<Colonio> node(Colonio::new_instance(log_receiver("node")));
+  auto config = make_config_with_name("node");
+  std::unique_ptr<Colonio> node(Colonio::new_instance(config));
 
   node->connect("http://localhost:8080/test", "");
   node->disconnect();
@@ -40,7 +41,8 @@ TEST(ConnectTest, connect_async) {
   TestSeed seed;
   seed.run();
 
-  std::unique_ptr<Colonio> node(Colonio::new_instance(log_receiver("node")));
+  auto config = make_config_with_name("node");
+  std::unique_ptr<Colonio> node(Colonio::new_instance(config));
 
   node->connect(
       "http://localhost:8080/test", "",
@@ -65,8 +67,10 @@ TEST(ConnectTest, connect_multi) {
   seed.add_module_map_paxos(MAP_NAME, 256);
   seed.run();
 
-  std::unique_ptr<Colonio> node1(Colonio::new_instance(log_receiver("node1")));
-  std::unique_ptr<Colonio> node2(Colonio::new_instance(log_receiver("node2")));
+  auto config1 = make_config_with_name("node1");
+  std::unique_ptr<Colonio> node1(Colonio::new_instance(config1));
+  auto config2 = make_config_with_name("node2");
+  std::unique_ptr<Colonio> node2(Colonio::new_instance(config2));
 
   // before connect
   EXPECT_FALSE(node1->is_connected());

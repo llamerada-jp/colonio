@@ -18,11 +18,11 @@
 #include <cstdint>
 #include <ctime>
 
-#include "colonio/definition.hpp"
+#include "colonio/colonio.hpp"
 
 namespace colonio {
 
-static const char PROTOCOL_VERSION[] = "A1";
+static const char PROTOCOL_VERSION[] = "A2";
 
 /**
  * Pipe/server connection state.
@@ -45,62 +45,10 @@ static const char SEED[] = "seed";  ///< Server is a special node.
 static const char NEXT[] = "next";  ///< Next node is nodes of connecting direct from this node.
 }  // namespace NID
 
-namespace Channel {
-typedef uint16_t Type;
-static const Type NONE           = 0;
-static const Type COLONIO        = 1;
-static const Type SEED_ACCESSOR  = 2;
-static const Type NODE_ACCESSOR  = 3;
-static const Type SYSTEM_ROUTING = 4;
-}  // namespace Channel
-
-namespace CommandID {
-typedef uint16_t Type;
-static const Type ERROR   = 0xFFFF;
-static const Type FAILURE = 0xFFFE;
-static const Type SUCCESS = 0xFFFD;
-
-namespace Colonio {
-static const Type CALL = 1;
-}  //  namespace Colonio
-
-namespace Seed {
-static const Type AUTH           = 1;
-static const Type HINT           = 2;
-static const Type PING           = 3;
-static const Type REQUIRE_RANDOM = 4;
-}  // namespace Seed
-
-namespace WebrtcConnect {
-static const Type OFFER = 1;
-static const Type ICE   = 2;
-}  // namespace WebrtcConnect
-
-namespace Routing {
-static const Type ROUTING = 1;
-}  // namespace Routing
-
-namespace MapPaxos {
-static const Type GET              = 1;
-static const Type SET              = 2;
-static const Type PREPARE          = 3;
-static const Type ACCEPT           = 4;
-static const Type HINT             = 5;
-static const Type BALANCE_ACCEPTOR = 6;
-static const Type BALANCE_PROPOSER = 7;
-}  // namespace MapPaxos
-
-namespace Pubsub2D {
-static const Type PASS    = 1;
-static const Type KNOCK   = 2;
-static const Type DEFFUSE = 3;
-}  // namespace Pubsub2D
-}  // namespace CommandID
-
 namespace SeedHint {
 typedef uint32_t Type;
 static const Type NONE     = 0x0000;
-static const Type ONLYONE  = 0x0001;
+static const Type ONLY_ONE = 0x0001;
 static const Type ASSIGNED = 0x0002;
 }  // namespace SeedHint
 
@@ -110,7 +58,7 @@ static const Type ASSIGNED = 0x0002;
 namespace PacketMode {
 typedef uint16_t Type;
 static const Type NONE       = 0x0000;
-static const Type REPLY      = 0x0001;
+static const Type RESPONSE   = 0x0001;
 static const Type EXPLICIT   = 0x0002;
 static const Type ONE_WAY    = 0x0004;
 static const Type RELAY_SEED = 0x0008;
@@ -131,14 +79,14 @@ static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MAX = 2000;  // [msec]
 
 static const unsigned int PUBSUB_2D_CACHE_TIME = 30000;  // [msec]
 
-static const unsigned int ROUTING_FORCE_UPDATE_COUNT         = 30;
-static const unsigned int ROUTING_SEED_CONNECT_INTERVAL      = 10000;  // [msec]
-static const unsigned int ROUTING_SEED_CONNECT_RATE          = 512;
-static const unsigned int ROUTING_SEED_DISCONNECT_THREATHOLD = 30000;  // [msec]
-static const unsigned int ROUTING_SEED_INFO_KEEP_THREATHOLD  = 60000;  // [msec]
-static const unsigned int ROUTING_SEED_INFO_NIDS_COUNT       = 4;
-static const double ROUTING_SEED_NEXT_POSITION               = 0.71828;
-static const unsigned int ROUTING_UPDATE_PERIOD              = 1000;  // [msec]
+static const unsigned int ROUTING_FORCE_UPDATE_COUNT        = 30;
+static const unsigned int ROUTING_SEED_CONNECT_INTERVAL     = 10000;  // [msec]
+static const unsigned int ROUTING_SEED_CONNECT_RATE         = 512;
+static const unsigned int ROUTING_SEED_DISCONNECT_THRESHOLD = 30000;  // [msec]
+static const unsigned int ROUTING_SEED_INFO_KEEP_THRESHOLD  = 60000;  // [msec]
+static const unsigned int ROUTING_SEED_INFO_NIDS_COUNT      = 4;
+static const double ROUTING_SEED_NEXT_POSITION              = 0.71828;
+static const unsigned int ROUTING_UPDATE_PERIOD             = 1000;  // [msec]
 
 // fixed parameters
 static const uint32_t ORPHAN_NODES_MAX           = 32;
