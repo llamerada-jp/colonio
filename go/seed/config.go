@@ -41,14 +41,14 @@ type ConfigIceServer struct {
 }
 
 type ConfigRouting struct {
-	ForceUpdateCount         *uint32  `json:"forceUpdateCount,omitempty"`
-	SeedConnectInterval      *uint32  `json:"seedConnectInterval,omitempty"`
-	SeedConnectRate          *uint32  `json:"seedConnectRate,omitempty"`
-	SeedDisconnectThreathold *uint32  `json:"seedDisconnectThreathold,omitempty"`
-	SeedInfoKeepThreathold   *uint32  `json:"seedInfoKeepThreathold,omitempty"`
-	SeedInfoNidsCount        *uint32  `json:"seedInfoNidsCount,omitempty"`
-	SeedNextPosition         *float64 `json:"seedNextPosition,omitempty"`
-	UpdatePeriod             *uint32  `json:"updatePeriod,omitempty"`
+	ForceUpdateCount        *uint32  `json:"forceUpdateCount,omitempty"`
+	SeedConnectInterval     *uint32  `json:"seedConnectInterval,omitempty"`
+	SeedConnectRate         *uint32  `json:"seedConnectRate,omitempty"`
+	SeedDisconnectThreshold *uint32  `json:"seedDisconnectThreshold,omitempty"`
+	SeedInfoKeepThreshold   *uint32  `json:"seedInfoKeepThreshold,omitempty"`
+	SeedInfoNidsCount       *uint32  `json:"seedInfoNidsCount,omitempty"`
+	SeedNextPosition        *float64 `json:"seedNextPosition,omitempty"`
+	UpdatePeriod            *uint32  `json:"updatePeriod,omitempty"`
 }
 
 type ConfigModule struct {
@@ -80,15 +80,15 @@ type Config struct {
 
 func (c *Config) validate() error {
 	if c.PingInterval <= 0 {
-		return errors.New("Config value of `pingInverval` must be larger then 0.")
+		return errors.New("Config value of `pingInterval` must be larger then 0")
 	}
 
 	if c.Timeout <= 0 {
-		return errors.New("Config value of `inverval` must be larger then 0.")
+		return errors.New("Config value of `interval` must be larger then 0")
 	}
 
 	if c.Node == nil {
-		return errors.New("Config value of `node` must be map type structure.")
+		return errors.New("Config value of `node` must be map type structure")
 
 	} else {
 		if c.Node.IceServers == nil || len(c.Node.IceServers) == 0 {

@@ -27,21 +27,6 @@ class Packet;
 class Value;
 
 class Logger;
-/**
- * LoggerDelegate is a delegate for Logger.
- * The upper module receives log message by implementing methods on the delegate.
- */
-class LoggerDelegate {
- public:
-  virtual ~LoggerDelegate();
-
-  /**
-   * It is the receiver for log messages from Logger.
-   * @param logger Logger instance that sends a log message.
-   * @param json JSON format log message.
-   */
-  virtual void logger_on_output(Logger& logger, const std::string& json) = 0;
-};
 
 /**
  * Logger is a class for summarizing log messages.
@@ -50,8 +35,8 @@ class Logger {
  public:
   class L {
    public:
-    L(Logger& logger_, const std::string& file_, unsigned long line_, const std::string& level_,
-      const std::string& message_);
+    L(std::function<void(const std::string& json)>& f, const std::string& file_, unsigned long line_,
+      const std::string& level_, const std::string& message_);
     virtual ~L();
     L& map(const std::string& name, const std::string& value);
     L& map(const std::string& name, const NodeID& value);
@@ -66,7 +51,7 @@ class Logger {
     L& map_u64(const std::string& name, uint64_t value);
 
    private:
-    Logger& logger;
+    std::function<void(const std::string& json)>& logger_func;
     std::string file;
     unsigned long line;
     std::string level;
@@ -121,38 +106,29 @@ class Logger {
     }
   };
 
-  explicit Logger(LoggerDelegate& delegate_);
+  explicit Logger(const std::function<void(const std::string&)>& f);
   virtual ~Logger();
 
   L create(const std::string& file, unsigned long line, const std::string& level, const std::string& message);
 
  private:
-  LoggerDelegate& delegate;
+  std::function<void(const std::string& json)> logger_func;
 };
 
-#define logi(FORMAT, ...) \
+#define log_info(FORMAT, ...) \
   this->logger.create(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
-#define logI(INSTANCE, FORMAT, ...) \
-  (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::INFO, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
-#define logw(FORMAT, ...) \
+#define log_warn(FORMAT, ...) \
   this->logger.create(__FILE__, __LINE__, LogLevel::WARN, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
-#define logW(INSTANCE, FORMAT, ...) \
-  (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::WARN, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
-#define loge(FORMAT, ...) \
+#define log_error(FORMAT, ...) \
   this->logger.create(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
-#define logE(INSTANCE, FORMAT, ...) \
-  (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::ERROR, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 #ifndef NDEBUG
-#  define logd(FORMAT, ...) \
+#  define log_debug(FORMAT, ...) \
     this->logger.create(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
-#  define logD(INSTANCE, FORMAT, ...) \
-    (INSTANCE).logger.create(__FILE__, __LINE__, LogLevel::DEBUG, Utils::format_string(FORMAT, 0, ##__VA_ARGS__))
 
 #else
-#  define logd(...) Logger::D()
-#  define logD(...) Logger::D()
+#  define log_debug(...) Logger::D()
 #endif
 }  // namespace colonio

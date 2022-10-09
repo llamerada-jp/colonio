@@ -24,13 +24,13 @@ TEST(UtilsTest, Exception) {
   unsigned int l = 0;
   try {
     l = __LINE__;
-    colonio_throw_error(ErrorCode::SYSTEM_ERROR, "test");
+    colonio_throw_error(ErrorCode::CONNECTION_FAILED, "test");
 
   } catch (Error& e) {
     EXPECT_FALSE(e.fatal);
     EXPECT_EQ(e.line, l + 1);
     EXPECT_STREQ(e.file.c_str(), "exception_test.cpp");
-    EXPECT_EQ(e.code, ErrorCode::SYSTEM_ERROR);
+    EXPECT_EQ(e.code, ErrorCode::CONNECTION_FAILED);
     EXPECT_EQ(e.message, "test");
     EXPECT_STREQ(e.what(), "test");
   }

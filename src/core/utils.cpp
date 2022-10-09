@@ -103,9 +103,7 @@ std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
   out << is << "src_nid : " << packet.src_nid.to_str() << std::endl;
   out << is << "id : " << Convert::int2str(packet.id) << std::endl;
   out << is << "mode : " << Convert::int2str(packet.mode) << std::endl;
-  out << is << "channel : " << Convert::int2str(packet.channel) << std::endl;
-  out << is << "command_id : " << Convert::int2str(packet.command_id) << std::endl;
-  out << is << "content : " << dump_binary(packet.content.get());
+  out << is << "content : " << packet.content->as_proto().DebugString();
 
   return out.str();
 }
@@ -147,7 +145,7 @@ int64_t Utils::get_current_msec() {
  * Get the last component of a pathname.
  * If suffix is matched to last of the pathname, remove it from return value.
  * @param path Pathname.
- * @param cutoff_ext Cut off the extension from basename if the basename have a externsion and option is true.
+ * @param cutoff_ext Cut off the extension from basename when the basename have it if option is true.
  * @return The last component of a pathname.
  */
 std::string Utils::file_basename(const std::string& path, bool cutoff_ext) {
@@ -173,7 +171,7 @@ std::string Utils::file_basename(const std::string& path, bool cutoff_ext) {
   }
 }
 
-bool Utils::is_safevalue(double v) {
+bool Utils::is_safe_value(double v) {
   if (
 #ifdef _MSC_VER
       !_finite(v)

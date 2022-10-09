@@ -22,8 +22,8 @@ extern "C" {
 #include <string>
 #include <tuple>
 
+#include "colonio.pb.h"
 #include "convert.hpp"
-#include "core.pb.h"
 #include "definition.hpp"
 #include "node_id.hpp"
 #include "random.hpp"
@@ -170,7 +170,7 @@ NodeID NodeID::from_str(const std::string& str) {
  * @return A node-id.
  * @exception Raise when a illegal packet was selected.
  */
-NodeID NodeID::from_pb(const core::NodeID& pb) {
+NodeID NodeID::from_pb(const proto::NodeID& pb) {
   switch (pb.type()) {
     case Type::NONE:
       return NodeID::NONE;
@@ -490,7 +490,7 @@ std::string NodeID::to_str() const {
   }
 }
 
-void NodeID::to_pb(core::NodeID* pb) const {
+void NodeID::to_pb(proto::NodeID* pb) const {
   if (type == Type::NORMAL) {
     pb->set_type(Type::NORMAL);
     pb->set_id0(id[0]);

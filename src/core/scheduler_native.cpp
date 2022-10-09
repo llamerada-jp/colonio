@@ -18,100 +18,65 @@
 #include <cassert>
 #include <cmath>
 
-#include "colonio/colonio.hpp"
 #include "logger.hpp"
 #include "utils.hpp"
 
 namespace colonio {
-SchedulerNative::SchedulerNative(Logger& logger, uint32_t opt) :
-    Scheduler(logger),
-    controller_remove_waiting(nullptr),
-    controller_remove_current(false),
-    user_remove_waiting(nullptr),
-    flg_end(false) {
-  if ((opt & Colonio::EXPLICIT_CONTROLLER_THREAD) == 0) {
-    controller_thread = std::make_unique<std::thread>(&SchedulerNative::start_controller_routine, this);
-  }
-  if ((opt & Colonio::EXPLICIT_EVENT_THREAD) == 0) {
-    user_thread = std::make_unique<std::thread>(&SchedulerNative::start_user_routine, this);
-  }
+SchedulerNative::SchedulerNative(Logger& logger) :
+    Scheduler(logger), remove_waiting(nullptr), remove_current(false), fin(false) {
+  th = std::make_unique<std::thread>(std::bind(&SchedulerNative::sub_routine, this));
 }
 
 SchedulerNative::~SchedulerNative() {
   {
-    std::lock_guard<std::mutex> lock1(controller_mtx);
-    std::lock_guard<std::mutex> lock2(user_mtx);
-    flg_end = true;
-    controller_cond.notify_all();
-    user_cond.notify_all();
+    std::lock_guard<std::mutex> lock(mtx);
+    fin = true;
+    cv.notify_all();
   }
 
-  if (controller_thread) {
-    controller_thread->join();
-  }
-  if (user_thread) {
-    user_thread->join();
+  if (th) {
+    th->join();
   }
 }
 
-void SchedulerNative::add_controller_loop(void* src, std::function<void()>&& func, unsigned int interval) {
+void SchedulerNative::repeat_task(void* src, std::function<void()>&& func, unsigned int interval) {
   assert(interval != 0);
-  std::lock_guard<std::mutex> guard(controller_mtx);
+  std::lock_guard<std::mutex> lock(mtx);
   const int64_t CURRENT_MSEC = Utils::get_current_msec();
 
-  controller_tasks.push_back(
-      Task{src, func, interval, static_cast<int64_t>(std::floor(CURRENT_MSEC / interval)) * interval});
+  tasks.push_back(Task{src, func, interval, static_cast<int64_t>(std::floor(CURRENT_MSEC / interval)) * interval});
   if (!is_controller_thread()) {
-    controller_cond.notify_all();
+    cv.notify_all();
   }
 }
 
-void SchedulerNative::add_controller_task(void* src, std::function<void()>&& func, unsigned int after) {
-  if (after == 0 && is_controller_thread() && controller_running.size() != 0) {
-    controller_running.push_back(Task{src, func, 0, 0});
+void SchedulerNative::add_task(void* src, std::function<void()>&& func, unsigned int after) {
+  if (after == 0 && is_controller_thread() && running.size() != 0) {
+    running.push_back(Task{src, func, 0, 0});
 
   } else {
-    std::lock_guard<std::mutex> guard(controller_mtx);
+    std::lock_guard<std::mutex> lock(mtx);
 
     const int64_t CURRENT_MSEC = Utils::get_current_msec();
-    controller_tasks.push_back(Task{src, func, 0, CURRENT_MSEC + after});
+    tasks.push_back(Task{src, func, 0, CURRENT_MSEC + after});
     if (!is_controller_thread()) {
-      controller_cond.notify_all();
+      cv.notify_all();
     }
   }
 }
 
-void SchedulerNative::add_user_task(void* src, std::function<void()>&& func) {
-  std::lock_guard<std::mutex> guard(user_mtx);
-  user_tasks.push_back(Task{src, func, 0, 0});
-  if (!is_user_thread()) {
-    user_cond.notify_all();
-  }
-}
-
-bool SchedulerNative::has_task(void* src) {
+bool SchedulerNative::exists(void* src) {
   assert(is_controller_thread());
-  for (auto& task : controller_running) {
+  for (auto& task : running) {
     if (task.src == src) {
       return true;
     }
   }
 
-  {
-    std::lock_guard<std::mutex> guard(controller_mtx);
-    for (auto& task : controller_tasks) {
-      if (task.src == src) {
-        return true;
-      }
-    }
-  }
-
-  {
-    std::lock_guard<std::mutex> guard(user_mtx);
-    for (auto& task : user_tasks) {
-      if (task.src == src) {
-        return true;
-      }
+  std::lock_guard<std::mutex> lock(mtx);
+  for (auto& task : tasks) {
+    if (task.src == src) {
+      return true;
     }
   }
 
@@ -119,147 +84,77 @@ bool SchedulerNative::has_task(void* src) {
 }
 
 bool SchedulerNative::is_controller_thread() const {
-  return std::this_thread::get_id() == controller_tid;
+  return std::this_thread::get_id() == tid;
 }
 
-bool SchedulerNative::is_user_thread() const {
-  return std::this_thread::get_id() == user_tid;
-}
-
-void SchedulerNative::remove_task(void* src, bool remove_current) {
-  assert(!is_user_thread());
-
+void SchedulerNative::remove(void* src, bool remove_current) {
   if (is_controller_thread()) {
-    assert(!remove_current || controller_running.front().src != src);
-    remove_deque_tasks(src, &controller_tasks, true);
-    remove_deque_tasks(src, &controller_running, remove_current);
+    assert(!remove_current || running.front().src != src);
+    remove_deque_tasks(src, &tasks, true);
+    remove_deque_tasks(src, &running, remove_current);
 
   } else {
-    std::unique_lock<std::mutex> guard(controller_mtx);
-    controller_cond.wait(guard, [this] {
-      return controller_remove_waiting == nullptr;
+    std::unique_lock<std::mutex> guard(mtx);
+    cv.wait(guard, [this] {
+      return remove_waiting == nullptr;
     });
-    controller_remove_waiting = src;
-    controller_remove_current = remove_current;
-    controller_cond.notify_all();
-    controller_cond.wait(guard, [this, src] {
-      return controller_remove_waiting != src;
-    });
-  }
-
-  {
-    std::unique_lock<std::mutex> guard(user_mtx);
-    user_cond.wait(guard, [this] {
-      return user_remove_waiting == nullptr;
-    });
-    user_remove_waiting = src;
-    user_cond.notify_all();
-    user_cond.wait(guard, [this, src] {
-      return user_remove_waiting != src;
+    remove_waiting = src;
+    remove_current = remove_current;
+    cv.notify_all();
+    cv.wait(guard, [this, src] {
+      return remove_waiting != src;
     });
   }
 }
 
-void SchedulerNative::start_controller_routine() {
-  controller_tid = std::this_thread::get_id();
+void SchedulerNative::sub_routine() {
+  tid = std::this_thread::get_id();
 
   while (true) {
     {
-      assert(controller_running.empty());
-      std::unique_lock<std::mutex> guard(controller_mtx);
+      assert(running.empty());
+      std::unique_lock<std::mutex> lock(mtx);
 
-      int64_t next    = get_next_timeing(controller_tasks);
+      int64_t next    = get_next_timing(tasks);
       int64_t CURRENT = Utils::get_current_msec();
       if (next > CURRENT) {
         std::chrono::milliseconds interval(next - CURRENT);
-        controller_cond.wait_for(guard, interval, [this, next] {
-          int64_t update_next = get_next_timeing(controller_tasks);
-          return update_next != next || controller_remove_waiting != nullptr || flg_end;
+        cv.wait_for(lock, interval, [this, next] {
+          int64_t update_next = get_next_timing(tasks);
+          return update_next != next || remove_waiting != nullptr || fin;
         });
       }
 
-      if (flg_end) {
+      if (fin) {
         return;
       }
 
-      pick_runnable_tasks(&controller_running, &controller_tasks);
+      pick_runnable_tasks(&running, &tasks);
 
-      if (controller_remove_waiting != nullptr) {
-        remove_deque_tasks(controller_remove_waiting, &controller_tasks, true);
-        remove_deque_tasks(controller_remove_waiting, &controller_running, controller_remove_current);
-        controller_remove_waiting = nullptr;
-        controller_cond.notify_all();
+      if (remove_waiting != nullptr) {
+        remove_deque_tasks(remove_waiting, &tasks, true);
+        remove_deque_tasks(remove_waiting, &running, remove_current);
+        remove_waiting = nullptr;
+        cv.notify_all();
       }
     }
 
-    while (!controller_running.empty()) {
-      Task& task = controller_running.front();
+    while (!running.empty()) {
+      Task& task = running.front();
       try {
         task.func();
 
       } catch (Error& e) {
         if (e.fatal) {
-          loge(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
+          log_error(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
           return;
 
         } else {
-          logw(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
+          log_warn(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
         }
       }
-      controller_running.pop_front();
+      running.pop_front();
     }
-  }
-}
-
-void SchedulerNative::start_user_routine() {
-  user_tid = std::this_thread::get_id();
-  std::deque<Task> running;
-
-  while (true) {
-    {
-      bool notify = false;
-      std::unique_lock<std::mutex> guard(user_mtx);
-      user_cond.wait(guard, [this] {
-        return !user_tasks.empty() || user_remove_waiting != nullptr || flg_end;
-      });
-
-      if (flg_end) {
-        return;
-      }
-
-      if (user_remove_waiting != nullptr) {
-        remove_deque_tasks(user_remove_waiting, &user_tasks, true);
-        user_remove_waiting = nullptr;
-        notify              = true;
-      }
-
-      if (!user_tasks.empty()) {
-        assert(running.empty());
-        user_tasks.swap(running);
-        notify = true;
-      }
-
-      if (notify) {
-        user_cond.notify_all();
-      }
-    }
-
-    for (auto& task : running) {
-      try {
-        task.func();
-
-      } catch (Error& e) {
-        if (e.fatal) {
-          loge(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
-          return;
-
-        } else {
-          logw(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
-        }
-      }
-    }
-
-    running.clear();
   }
 }
 }  // namespace colonio

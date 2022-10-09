@@ -17,7 +17,6 @@
 #include "colonio_module.hpp"
 
 #include "colonio/colonio.hpp"
-#include "colonio_module_protocol.pb.h"
 #include "logger.hpp"
 #include "packet.hpp"
 #include "scheduler.hpp"
@@ -123,14 +122,14 @@ void ColonioModule::recv_packet_call(std::unique_ptr<const Packet> packet) {
 
       } catch (const Error& e) {
         flg_err = true;
-        logw("an error occured in user funciton")
+        log_warn("an error occurred in user function")
             .map_u32("code", static_cast<uint32_t>(e.code))
             .map("message", e.message);
         send_error(*p, e.code, e.message);
 
       } catch (const std::exception& e) {
         flg_err = true;
-        logw("an error occured in user funciton").map("message", std::string(e.what()));
+        log_warn("an error occurred in user function").map("message", std::string(e.what()));
         send_error(*p, ErrorCode::RPC_UNDEFINED_ERROR, e.what());
       }
 
@@ -146,7 +145,7 @@ void ColonioModule::recv_packet_call(std::unique_ptr<const Packet> packet) {
     });
 
   } else if ((parameter->options & Colonio::CALL_IGNORE_REPLY) == 0) {
-    logd("receiver doesn't set").map("name", parameter->name);
+    log_debug("receiver doesn't set").map("name", parameter->name);
     send_error(*packet, ErrorCode::RPC_UNDEFINED_ERROR, "receiver doesn't set");
   }
 }

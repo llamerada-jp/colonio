@@ -23,12 +23,11 @@
 #include <string>
 #include <vector>
 
+#include "colonio.pb.h"
 #include "convert.hpp"
 #include "logger.hpp"
-#include "module_base.hpp"
 #include "packet.hpp"
 #include "scheduler.hpp"
-#include "seed_accessor_protocol.pb.h"
 #include "utils.hpp"
 
 namespace colonio {
@@ -36,13 +35,13 @@ SeedAccessorDelegate::~SeedAccessorDelegate() {
 }
 
 SeedAccessor::SeedAccessor(
-    ModuleParam& param, SeedAccessorDelegate& delegate_, const std::string& url_, const std::string& token_) :
-    logger(param.logger),
-    scheduler(param.scheduler),
-    local_nid(param.local_nid),
-    delegate(delegate_),
-    url(url_),
-    token(token_),
+    Logger& l, Scheduler& s, const NodeID& n, SeedAccessorDelegate& d, const std::string& u, const std::string& t) :
+    logger(l),
+    scheduler(s),
+    local_nid(n),
+    delegate(d),
+    url(u),
+    token(t),
     last_connect_time(0),
     auth_status(AuthStatus::NONE),
     hint(SeedHint::NONE) {
@@ -51,7 +50,7 @@ SeedAccessor::SeedAccessor(
 /**
  */
 SeedAccessor::~SeedAccessor() {
-  scheduler.remove_task(this);
+  scheduler.remove(this);
   disconnect();
 }
 
@@ -77,31 +76,31 @@ void SeedAccessor::connect(unsigned int interval) {
     link->connect(url);
 
   } else {
-    scheduler.add_controller_task(
+    scheduler.add_task(
         this,
         [this]() {
           int64_t current_msec = Utils::get_current_msec();
           last_connect_time    = current_msec;
           if (link) {
             link->connect(url);
-            delegate.seed_accessor_on_change_state(*this);
+            delegate.seed_accessor_on_change_state();
           }
         },
         last_connect_time + interval - current_msec);
   }
 
-  delegate.seed_accessor_on_change_state(*this);
+  delegate.seed_accessor_on_change_state();
 }
 
 /**
  * Disconnect from the server.
  */
 void SeedAccessor::disconnect() {
-  logd("SeedAccessor::disconnect");
+  log_debug("SeedAccessor::disconnect");
   if (get_link_state() != LinkState::OFFLINE) {
     link.reset();
 
-    delegate.seed_accessor_on_change_state(*this);
+    delegate.seed_accessor_on_change_state();
   }
 }
 
@@ -124,7 +123,7 @@ LinkState::Type SeedAccessor::get_link_state() const {
 }
 
 bool SeedAccessor::is_only_one() {
-  if (get_link_state() == LinkState::ONLINE && (hint & SeedHint::ONLYONE) != 0) {
+  if (get_link_state() == LinkState::ONLINE && (hint & SeedHint::ONLY_ONE) != 0) {
     return true;
 
   } else {
@@ -133,38 +132,36 @@ bool SeedAccessor::is_only_one() {
 }
 
 void SeedAccessor::relay_packet(std::unique_ptr<const Packet> packet) {
-  if (link) {
-    SeedAccessorProtocol::SeedAccessor packet_sa;
-    packet->dst_nid.to_pb(packet_sa.mutable_dst_nid());
-    packet->src_nid.to_pb(packet_sa.mutable_src_nid());
-    packet_sa.set_hop_count(packet->hop_count);
-    packet_sa.set_id(packet->id);
-    packet_sa.set_mode(packet->mode);
-    packet_sa.set_channel(packet->channel);
-    packet_sa.set_command_id(packet->command_id);
-    if (packet->content != nullptr) {
-      packet_sa.set_content(*packet->content);
-    }
-
-    std::string packet_bin;
-    packet_sa.SerializeToString(&packet_bin);
-    logd("binary to seed").map_int("size", packet_bin.size());  //.map_dump("data", packet_bin);
-    link->send(packet_bin);
-
-  } else {
-    logw("reject relaying packet to seed").map("packet", *packet);
+  if (!link) {
+    log_warn("reject relaying packet to seed").map("packet", *packet);
+    return;
   }
+
+  proto::SeedPacket p;
+  proto::SeedRelayPacket* rp = p.mutable_relay_packet();
+  packet->dst_nid.to_pb(rp->mutable_dst_nid());
+  packet->src_nid.to_pb(rp->mutable_src_nid());
+  rp->set_hop_count(packet->hop_count);
+  rp->set_id(packet->id);
+  rp->set_mode(packet->mode);
+  *rp->mutable_content() = packet->content->as_proto();
+
+  log_debug("relay packet to seed").map("packet", p.DebugString());
+
+  std::string bin;
+  p.SerializeToString(&bin);
+  link->send(bin);
 }
 
 void SeedAccessor::seed_link_on_connect(SeedLink& link) {
-  scheduler.add_controller_task(this, [this]() {
+  scheduler.add_task(this, [this]() {
     send_auth(token);
   });
 }
 
 void SeedAccessor::seed_link_on_disconnect(SeedLink& l) {
   if (link.get() == &l) {
-    scheduler.add_controller_task(this, [this]() {
+    scheduler.add_task(this, [this]() {
       disconnect();
     });
   }
@@ -172,130 +169,125 @@ void SeedAccessor::seed_link_on_disconnect(SeedLink& l) {
 
 void SeedAccessor::seed_link_on_error(SeedLink& l) {
   if (link.get() == &l) {
-    scheduler.add_controller_task(this, [this]() {
+    scheduler.add_task(this, [this]() {
       disconnect();
     });
   }
 }
 
 void SeedAccessor::seed_link_on_recv(SeedLink& link, const std::string& data) {
-  SeedAccessorProtocol::SeedAccessor packet_pb;
+  proto::SeedPacket packet_pb;
   if (!packet_pb.ParseFromString(data)) {
     /// @todo error
     assert(false);
   }
 
-  scheduler.add_controller_task(this, [this, packet_pb] {
-    std::shared_ptr<const std::string> content(new std::string(packet_pb.content()));
-    logd("packet size").map_int("size", packet_pb.content().size());
-    std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(Packet{
-        NodeID::from_pb(packet_pb.dst_nid()), NodeID::from_pb(packet_pb.src_nid()), packet_pb.hop_count(),
-        packet_pb.id(), content, static_cast<PacketMode::Type>(packet_pb.mode()),
-        static_cast<Channel::Type>(packet_pb.channel()), static_cast<CommandID::Type>(packet_pb.command_id())});
+  scheduler.add_task(this, [this, packet_pb] {
+    log_debug("receive packet from seed").map("packet", packet_pb.DebugString());
 
-    if (packet->src_nid == NodeID::SEED && packet->channel == Channel::SEED_ACCESSOR && packet->id == 0) {
-      switch (packet->command_id) {
-        case CommandID::SUCCESS: {
-          recv_auth_success(*packet);
-        } break;
+    switch (packet_pb.Payload_case()) {
+      case proto::SeedPacket::kError: {
+        recv_error(packet_pb.error());
+      } break;
 
-        case CommandID::FAILURE: {
-          recv_auth_failure(*packet);
-        } break;
+      case proto::SeedPacket::kAuthResponse: {
+        recv_auth_response(packet_pb.auth_response());
+      } break;
 
-        case CommandID::ERROR: {
-          recv_auth_error(*packet);
-        } break;
+      case proto::SeedPacket::kPing: {
+        recv_ping();
+      } break;
 
-        case CommandID::Seed::HINT: {
-          recv_hint(*packet);
-        } break;
+      case proto::SeedPacket::kHint: {
+        recv_hint(packet_pb.hint());
+      } break;
 
-        case CommandID::Seed::PING: {
-          recv_ping(*packet);
-        } break;
+      case proto::SeedPacket::kRequireRandom: {
+        recv_require_random();
+      } break;
 
-        case CommandID::Seed::REQUIRE_RANDOM: {
-          recv_require_random(*packet);
-        } break;
+      case proto::SeedPacket::kRelayPacket: {
+        recv_relay_packet(packet_pb.relay_packet());
+      } break;
 
-        default:
-          // @todo output warning log
-          assert(false);
-          break;
-      }
-
-    } else {
-      delegate.seed_accessor_on_recv_packet(*this, std::move(packet));
+      default: {
+        log_warn("receive unsupported packet from seed").map("packet", packet_pb.DebugString());
+      } break;
     }
   });
 }
 
-void SeedAccessor::recv_auth_success(const Packet& packet) {
-  assert(auth_status == AuthStatus::NONE);
-  SeedAccessorProtocol::AuthSuccess content;
-  packet.parse_content(&content);
-
-  std::istringstream is(content.config());
-  picojson::value v;
-  std::string err = picojson::parse(v, is);
-  if (!err.empty()) {
-    /// @todo error
-    assert(false);
-  }
-
-  auth_status = AuthStatus::SUCCESS;
-  delegate.seed_accessor_on_recv_config(*this, v.get<picojson::object>());
-  delegate.seed_accessor_on_change_state(*this);
-}
-
-void SeedAccessor::recv_auth_failure(const Packet& packet) {
-  assert(auth_status == AuthStatus::NONE);
-  auth_status = AuthStatus::FAILURE;
+void SeedAccessor::recv_error(const proto::Error& packet) {
+  log_error("receive error from seed").map_int("code", packet.code()).map("message", packet.message());
   disconnect();
 }
 
-void SeedAccessor::recv_auth_error(const Packet& packet) {
-  disconnect();
-}
+void SeedAccessor::recv_auth_response(const proto::SeedAuthResponse& packet) {
+  assert(auth_status == AuthStatus::NONE);
 
-void SeedAccessor::recv_hint(const Packet& packet) {
-  SeedHint::Type hint_old = hint;
-  SeedAccessorProtocol::Hint content;
-  packet.parse_content(&content);
-  hint = content.hint();
+  if (packet.success()) {
+    std::istringstream is(packet.config());
+    picojson::value v;
+    std::string err = picojson::parse(v, is);
+    if (!err.empty()) {
+      /// @todo error
+      assert(false);
+    }
 
-  if (hint != hint_old) {
-    delegate.seed_accessor_on_change_state(*this);
+    auth_status = AuthStatus::SUCCESS;
+    delegate.seed_accessor_on_recv_config(v.get<picojson::object>());
+    delegate.seed_accessor_on_change_state();
+  } else {
+    auth_status = AuthStatus::FAILURE;
+    disconnect();
   }
 }
 
-void SeedAccessor::recv_ping(const Packet& packet) {
+void SeedAccessor::recv_ping() {
   send_ping();
 }
 
-void SeedAccessor::recv_require_random(const Packet& packet) {
-  delegate.seed_accessor_on_recv_require_random(*this);
+void SeedAccessor::recv_hint(const proto::SeedHint& packet) {
+  SeedHint::Type hint_old = hint;
+  hint                    = packet.hint();
+
+  if (hint != hint_old) {
+    delegate.seed_accessor_on_change_state();
+  }
+}
+
+void SeedAccessor::recv_require_random() {
+  delegate.seed_accessor_on_recv_require_random();
+}
+
+void SeedAccessor::recv_relay_packet(const proto::SeedRelayPacket& seed_packet) {
+  std::unique_ptr<Packet> packet = std::make_unique<Packet>(
+      NodeID::from_pb(seed_packet.dst_nid()), NodeID::from_pb(seed_packet.src_nid()), seed_packet.id(),
+      seed_packet.hop_count(),
+      std::make_shared<Packet::Content>(std::make_unique<const proto::PacketContent>(seed_packet.content())),
+      seed_packet.mode());
+  delegate.seed_accessor_on_recv_packet(std::move(packet));
 }
 
 void SeedAccessor::send_auth(const std::string& token) {
-  SeedAccessorProtocol::Auth param;
-  param.set_version(PROTOCOL_VERSION);
-  param.set_token(token);
-  param.set_hint(hint);
-  std::shared_ptr<std::string> content(new std::string());
-  param.SerializeToString(content.get());
+  proto::SeedPacket p;
+  proto::SeedAuth* auth = p.mutable_auth();
+  auth->set_version(PROTOCOL_VERSION);
+  local_nid.to_pb(auth->mutable_nid());
+  auth->set_token(token);
+  auth->set_hint(hint);
 
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
-      Packet{NodeID::SEED, local_nid, 0, 0, content, PacketMode::NONE, Channel::SEED_ACCESSOR, CommandID::Seed::AUTH});
-
-  relay_packet(std::move(packet));
+  std::string bin;
+  p.SerializeToString(&bin);
+  link->send(bin);
 }
 
 void SeedAccessor::send_ping() {
-  std::unique_ptr<const Packet> packet = std::make_unique<const Packet>(
-      Packet{NodeID::SEED, local_nid, 0, 0, nullptr, PacketMode::NONE, Channel::SEED_ACCESSOR, CommandID::Seed::PING});
+  proto::SeedPacket p;
+  p.set_ping(true);
 
-  relay_packet(std::move(packet));
+  std::string bin;
+  p.SerializeToString(&bin);
+  link->send(bin);
 }
 }  // namespace colonio

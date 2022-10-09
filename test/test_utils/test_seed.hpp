@@ -15,8 +15,16 @@
  */
 #pragma once
 
+#ifdef __clang__
+#  include <picojson.h>
+#else
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#  include <picojson.h>
+#  pragma GCC diagnostic pop
+#endif
+
 #include <gtest/gtest.h>
-#include <picojson.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>

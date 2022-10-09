@@ -31,11 +31,11 @@
 #include <utility>
 #include <vector>
 
+#include "colonio.pb.h"
 #include "definition.hpp"
 #include "seed_link.hpp"
 
 namespace colonio {
-struct ModuleParam;
 class NodeID;
 class Packet;
 class SeedAccessor;
@@ -43,10 +43,10 @@ class SeedAccessor;
 class SeedAccessorDelegate {
  public:
   virtual ~SeedAccessorDelegate();
-  virtual void seed_accessor_on_change_state(SeedAccessor& sa)                                      = 0;
-  virtual void seed_accessor_on_recv_config(SeedAccessor& sa, const picojson::object& config)       = 0;
-  virtual void seed_accessor_on_recv_packet(SeedAccessor& sa, std::unique_ptr<const Packet> packet) = 0;
-  virtual void seed_accessor_on_recv_require_random(SeedAccessor& sa)                               = 0;
+  virtual void seed_accessor_on_change_state()                                    = 0;
+  virtual void seed_accessor_on_recv_config(const picojson::object& config)       = 0;
+  virtual void seed_accessor_on_recv_packet(std::unique_ptr<const Packet> packet) = 0;
+  virtual void seed_accessor_on_recv_require_random()                             = 0;
 };
 
 namespace AuthStatus {
@@ -61,9 +61,10 @@ static const Type FAILURE = 2;
  */
 class SeedAccessor : public SeedLinkDelegate {
  public:
-  SeedAccessor(ModuleParam& param, SeedAccessorDelegate& delegate_, const std::string& url_, const std::string& token_);
+  SeedAccessor(
+      Logger& l, Scheduler& s, const NodeID& n, SeedAccessorDelegate& d, const std::string& u, const std::string& t);
   virtual ~SeedAccessor();
-  SeedAccessor(const SeedAccessor&) = delete;
+  SeedAccessor(const SeedAccessor&)            = delete;
   SeedAccessor& operator=(const SeedAccessor&) = delete;
 
   void connect(unsigned int interval = SEED_CONNECT_INTERVAL);
@@ -95,12 +96,12 @@ class SeedAccessor : public SeedLinkDelegate {
   void seed_link_on_error(SeedLink& link) override;
   void seed_link_on_recv(SeedLink& link, const std::string& data) override;
 
-  void recv_auth_success(const Packet& packet);
-  void recv_auth_failure(const Packet& packet);
-  void recv_auth_error(const Packet& packet);
-  void recv_hint(const Packet& packet);
-  void recv_ping(const Packet& packet);
-  void recv_require_random(const Packet& packet);
+  void recv_error(const proto::Error& packet);
+  void recv_auth_response(const proto::SeedAuthResponse& packet);
+  void recv_ping();
+  void recv_hint(const proto::SeedHint& packet);
+  void recv_require_random();
+  void recv_relay_packet(const proto::SeedRelayPacket& packet);
   void send_auth(const std::string& token);
   void send_ping();
 };

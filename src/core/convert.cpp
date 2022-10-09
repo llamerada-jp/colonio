@@ -87,7 +87,7 @@ picojson::value Convert::bin2json(const uint8_t* bin, unsigned int size) {
 }
 
 picojson::value Convert::coordinate2json(const Coordinate& coordinate) {
-  assert(Utils::is_safevalue(coordinate.x) && Utils::is_safevalue(coordinate.y));
+  assert(Utils::is_safe_value(coordinate.x) && Utils::is_safe_value(coordinate.y));
   picojson::object obj;
   obj.insert(std::make_pair("x", picojson::value(coordinate.x)));
   obj.insert(std::make_pair("y", picojson::value(coordinate.y)));

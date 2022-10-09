@@ -643,7 +643,7 @@ void MapPaxosModule::debug_on_change_set() {
     a.push_back(picojson::value(o));
   }
 
-  logd("map paxos proposer").map("map", picojson::value(a));
+  log_debug("map paxos proposer").map("map", picojson::value(a));
 }
 #endif
 
@@ -668,7 +668,7 @@ void MapPaxosModule::recv_packet_accept(std::unique_ptr<const Packet> packet) {
 
     } else {
       // ignore
-      logd("receive 'accept' packet at wrong node").map("key", key);
+      log_debug("receive 'accept' packet at wrong node").map("key", key);
       return;
     }
   }
@@ -721,17 +721,17 @@ void MapPaxosModule::recv_packet_hint(std::unique_ptr<const Packet> packet) {
     }
     // Same logic with set command.
     if (proposer.reset) {
-      logd("prepare").map_u32("id", packet->id);
+      log_debug("prepare").map_u32("id", packet->id);
       send_packet_prepare(proposer, ModuleBase::copy_packet_for_reply(*packet), std::make_unique<Value>(key), 0x00);
 
     } else {
-      logd("accept").map_u32("id", packet->id);
+      log_debug("accept").map_u32("id", packet->id);
       send_packet_accept(proposer, ModuleBase::copy_packet_for_reply(*packet), std::make_unique<Value>(key), 0x00);
     }
 
   } else {
     // ignore
-    logd("receive 'hint' packet at wrong node").map("key", key);
+    log_debug("receive 'hint' packet at wrong node").map("key", key);
     return;
   }
 }
@@ -830,7 +830,7 @@ void MapPaxosModule::recv_packet_prepare(std::unique_ptr<const Packet> packet) {
 
     } else {
       // dont reply success or failure packet when the node doesn't have any value.
-      logd("receive 'prepare' packet at wrong node").map("key", key);
+      log_debug("receive 'prepare' packet at wrong node").map("key", key);
       return;
     }
 
@@ -885,7 +885,7 @@ void MapPaxosModule::recv_packet_set(std::unique_ptr<const Packet> packet) {
 
     } else {
       // ignore
-      logd("receive 'set' packet at wrong node").map("key", key);
+      log_debug("receive 'set' packet at wrong node").map("key", key);
       return;
     }
 

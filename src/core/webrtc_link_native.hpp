@@ -20,7 +20,14 @@
 #endif
 
 #include <api/peer_connection_interface.h>
-#include <picojson.h>
+#ifdef __clang__
+#  include <picojson.h>
+#else
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#  include <picojson.h>
+#  pragma GCC diagnostic pop
+#endif
 
 #include <atomic>
 #include <condition_variable>

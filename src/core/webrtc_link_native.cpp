@@ -15,7 +15,14 @@
  */
 #include "webrtc_link_native.hpp"
 
-#include <picojson.h>
+#ifdef __clang__
+#  include <picojson.h>
+#else
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#  include <picojson.h>
+#  pragma GCC diagnostic pop
+#endif
 
 #include <cassert>
 #include <string>
@@ -176,7 +183,7 @@ WebrtcLinkNative::~WebrtcLinkNative() {
 }
 
 void WebrtcLinkNative::disconnect() {
-  logd("disconnect").map("nid", nid);
+  log_debug("disconnect").map("nid", nid);
 
   init_data.reset();
   if (peer_connection != nullptr) {

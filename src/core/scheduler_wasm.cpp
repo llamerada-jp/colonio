@@ -125,11 +125,11 @@ int SchedulerWasm::exec_tasks() {
 
     } catch (Error& e) {
       if (e.fatal) {
-        loge(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
+        log_error(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
         return -1;
 
       } else {
-        logw(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
+        log_warn(e.what()).map_int("code", static_cast<int>(e.code)).map_u32("line", e.line).map("file", e.file);
       }
     }
     running.pop_front();

@@ -15,26 +15,23 @@
  */
 #pragma once
 
+#include <functional>
 #include <iostream>
 #include <string>
 
+#include "colonio/colonio.hpp"
 #include "core/logger.hpp"
 
-class LogHelper : public colonio::LoggerDelegate {
- public:
-  std::string last_log;
-
-  void logger_on_output(colonio::Logger& logger, const std::string& json) override {
-    last_log = json;
-    std::cout << json << std::endl;
-  }
-};
-
-std::function<void(colonio::Colonio&, const std::string& message)> log_receiver(const std::string& name) {
-  return [name](colonio::Colonio&, const std::string& message) {
-    std::cout << name << ":" << message << std::endl;
-  };
+void log_receiver(const std::string& json) {
+  std::cout << json << std::endl;
 }
 
-LogHelper log_helper;
-colonio::Logger logger(log_helper);
+colonio::Logger logger(log_receiver);
+
+colonio::ColonioConfig make_config_with_name(const std::string& name) {
+  colonio::ColonioConfig config;
+  config.logger_func = [name](colonio::Colonio& _, const std::string& json) {
+    std::cout << name << ":" << json << std::endl;
+  };
+  return config;
+}

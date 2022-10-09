@@ -27,7 +27,7 @@
 #include <cassert>
 #include <string>
 
-#include "colonio/error.hpp"
+#include "colonio/colonio.hpp"
 
 namespace colonio {
 class Packet;
@@ -132,7 +132,7 @@ const T* get_json_value(const picojson::object& parent, const std::string& key) 
 }
 
 std::string file_basename(const std::string& path, bool cutoff_ext = false);
-bool is_safevalue(double v);
+bool is_safe_value(double v);
 double float_mod(double a, double b);
 }  // namespace Utils
 }  // namespace colonio

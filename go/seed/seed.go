@@ -18,16 +18,15 @@ package seed
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/rand"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/golang/glog"
-	proto3 "github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
 	"github.com/llamerada-jp/colonio/go/proto"
+	proto3 "google.golang.org/protobuf/proto"
 )
 
 type Node struct {
@@ -146,14 +145,14 @@ func (seed *Seed) execEachTick() {
 			base = node.timeLastRecv
 		}
 		node.mutex.Unlock()
-		duration := timeNow.Sub(base).Milliseconds()
+		duration := timeNow.Sub(base)
 		// checking timeout
-		if duration > seed.config.Timeout {
+		if duration > time.Duration(seed.config.Timeout)*time.Millisecond {
 			node.close()
 		}
 
 		// checking ping interval
-		if duration > seed.config.PingInterval {
+		if duration > time.Duration(seed.config.PingInterval)*time.Millisecond {
 			node.sendPing()
 		}
 	}
@@ -209,7 +208,7 @@ func (node *Node) start() error {
 			return fmt.Errorf("wrong message type")
 		}
 
-		packet := &proto.SeedAccessor{}
+		packet := &proto.SeedPacket{}
 		if err := proto3.Unmarshal(message, packet); err != nil {
 			return err
 		}
@@ -218,114 +217,93 @@ func (node *Node) start() error {
 		node.timeLastRecv = time.Now()
 		node.mutex.Unlock()
 
-		if packet.DstNid.Type == NidTypeSeed {
-			if err := node.receivePacket(packet); err != nil {
-				return err
-			}
-
-		} else if (packet.Mode & ModeRelaySeed) != 0x0 {
-			if err := node.relayPacket(packet); err != nil {
-				return err
-			}
-
-		} else {
-			glog.Warning("packet dropped.")
+		err = node.routePacket(packet)
+		if err != nil {
+			return err
 		}
 	}
 }
 
-func (node *Node) receivePacket(packet *proto.SeedAccessor) error {
-	if packet.Channel == ChannelSeedAccessor {
-		switch packet.CommandId {
-		case MethodSeedAuth:
-			glog.Info("receive packet auth")
-			return node.recvPacketAuth(packet)
+func (node *Node) routePacket(packet *proto.SeedPacket) error {
+	switch payload := packet.Payload.(type) {
+	case *proto.SeedPacket_Auth:
+		glog.Info("receive packet auth")
+		return node.recvPacketAuth(payload.Auth)
 
-		case MethodSeedPing:
-			return nil
+	case *proto.SeedPacket_Ping:
+		return nil
 
-		default:
-			node.close()
-			return fmt.Errorf("wrong packet by command %+v", packet)
-		}
+	case *proto.SeedPacket_RelayPacket:
+		return node.relayPacket(payload.RelayPacket)
 
-	} else {
+	default:
 		node.close()
-		return fmt.Errorf("wrong packet by channel %v", packet)
+		return fmt.Errorf("wrong packet by command %+v", packet)
 	}
 }
 
-func (node *Node) recvPacketAuth(packet *proto.SeedAccessor) error {
-	var content proto.Auth
-	if err := proto3.Unmarshal(packet.Content, &content); err != nil {
-		return err
-	}
-
+func (node *Node) recvPacketAuth(payload *proto.SeedAuth) error {
 	node.seed.mutex.Lock()
 	defer node.seed.mutex.Unlock()
 
-	srcNidStr := nidToString(packet.SrcNid)
+	srcNidStr := nidToString(payload.Nid)
 	if l2, ok := node.seed.nidMap[srcNidStr]; ok && l2 != node {
 		// Duplicate nid.
 		glog.Warningf("Authenticate failed by duplicate nid (%s, %s)\n", node.socket.RemoteAddr().String(), srcNidStr)
-		return node.sendFailure(packet, nil)
+		return node.sendAuthResponse(false, "")
 
-	} else if content.Version != ProtocolVersion {
+	} else if payload.Version != ProtocolVersion {
 		// Unsupported version.
 		glog.Warningf("Authenticate failed by wrong protocol version (%s)\n", node.socket.RemoteAddr().String())
-		return node.sendFailure(packet, nil)
+		return node.sendAuthResponse(false, "")
 
 	} else if node.nid == nil || node.nid.Type == NidTypeNone {
-		node.nid = packet.SrcNid
+		node.nid = payload.Nid
 		node.seed.nidMap[srcNidStr] = node
 		node.seed.config.Node.Revision = node.seed.config.Revision
 		configByte, err := json.Marshal(node.seed.config.Node)
 		if err != nil {
 			return err
 		}
-		contentReply := &proto.AuthSuccess{
-			Config: (string)(configByte),
-		}
-		if err := node.sendSuccess(packet, contentReply); err == nil {
+		if err := node.sendAuthResponse(true, (string)(configByte)); err == nil {
 			glog.Infof("Authenticate success (%s, %s)", node.socket.RemoteAddr().String(), srcNidStr)
 		} else {
 			return err
 		}
 	} else {
 		glog.Warningf("Authenticate failed (%s)", node.socket.RemoteAddr().String())
-		return node.sendFailure(packet, nil)
+		return node.sendAuthResponse(false, "")
 	}
 
-	if (content.Hint&HintAssigned) != 0 || len(node.seed.assigned) == 0 {
+	if (payload.Hint&HintAssigned) != 0 || len(node.seed.assigned) == 0 {
 		node.assigned = true
-		node.seed.assigned[nidToString(packet.SrcNid)] = struct{}{}
+		node.seed.assigned[nidToString(payload.Nid)] = struct{}{}
 	}
 
 	return node.sendHint(true)
 }
 
-func (node *Node) relayPacket(packet *proto.SeedAccessor) error {
+func (node *Node) relayPacket(payload *proto.SeedRelayPacket) error {
 	// Get node id from `WEBRTC_CONNECT::OFFER` packet.
-	if packet.Channel == ChannelNodeAccessor {
-		switch packet.CommandId {
-		case MethodWebrtcConnectOffer:
-			var content proto.Offer
-			if err := proto3.Unmarshal(packet.Content, &content); err != nil {
-				return err
-			}
-			if content.Type == OfferTypeFirst {
-				node.offerID = packet.Id
-			}
+	if offer := payload.Content.GetSignalingOffer(); offer != nil {
+		if offer.Type == OfferTypeFirst {
+			node.offerID = payload.Id
 		}
 	}
 
 	node.seed.mutex.Lock()
 	defer node.seed.mutex.Unlock()
 
-	if (packet.Mode & ModeReply) != 0x0 {
-		if _, ok := node.seed.nidMap[nidToString(packet.DstNid)]; ok {
+	packet := &proto.SeedPacket{
+		Payload: &proto.SeedPacket_RelayPacket{
+			RelayPacket: payload,
+		},
+	}
+
+	if (payload.Mode & ModeReply) != 0x0 {
+		if _, ok := node.seed.nidMap[nidToString(payload.DstNid)]; ok {
 			glog.Info("Relay a packet.")
-			node.seed.nidMap[nidToString(packet.DstNid)].sendPacket(packet)
+			node.seed.nidMap[nidToString(payload.DstNid)].sendPacket(packet)
 		} else {
 			glog.Warning("A packet dropped.")
 		}
@@ -355,6 +333,20 @@ func (node *Node) relayPacket(packet *proto.SeedAccessor) error {
 	return nil
 }
 
+func (node *Node) sendAuthResponse(success bool, config string) error {
+	packet := &proto.SeedPacket{
+		Payload: &proto.SeedPacket_AuthResponse{
+			AuthResponse: &proto.SeedAuthResponse{
+				Success: success,
+				Config:  config,
+			},
+		},
+	}
+
+	glog.Infoln("Send auth response." + packet.String())
+	return node.sendPacket(packet)
+}
+
 func (node *Node) sendHint(locked bool) error {
 	var hint uint32
 	if node.assigned {
@@ -365,40 +357,26 @@ func (node *Node) sendHint(locked bool) error {
 		defer node.seed.mutex.Unlock()
 	}
 	if len(node.seed.nodes) == 1 {
-		hint = hint | HintOnlyone
-	}
-	content := &proto.Hint{
-		Hint: hint,
-	}
-	contentByte, err := proto3.Marshal(content)
-	if err != nil {
-		glog.Fatal(err)
+		hint = hint | HintOnlyOne
 	}
 
-	packet := &proto.SeedAccessor{
-		DstNid:    node.nid,
-		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
-		HopCount:  0,
-		Id:        0,
-		Mode:      ModeExplicit | ModeOneWay,
-		Channel:   ChannelSeedAccessor,
-		CommandId: MethodSeedHint,
-		Content:   contentByte,
+	packet := &proto.SeedPacket{
+		Payload: &proto.SeedPacket_Hint{
+			Hint: &proto.SeedHint{
+				Hint: hint,
+			},
+		},
 	}
 
-	glog.Infof("Send hint.(%d)\n", len(contentByte))
+	glog.Infoln("Send hint." + packet.String())
 	return node.sendPacket(packet)
 }
 
 func (node *Node) sendPing() error {
-	packet := &proto.SeedAccessor{
-		DstNid:    node.nid,
-		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
-		HopCount:  0,
-		Id:        0,
-		Mode:      ModeExplicit | ModeOneWay,
-		Channel:   ChannelSeedAccessor,
-		CommandId: MethodSeedPing,
+	packet := &proto.SeedPacket{
+		Payload: &proto.SeedPacket_Ping{
+			Ping: true,
+		},
 	}
 
 	glog.Info("Send ping.")
@@ -406,67 +384,17 @@ func (node *Node) sendPing() error {
 }
 
 func (node *Node) sendRequireRandom() error {
-	packet := &proto.SeedAccessor{
-		DstNid:    node.nid,
-		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
-		HopCount:  0,
-		Id:        0,
-		Mode:      ModeExplicit | ModeOneWay,
-		Channel:   ChannelSeedAccessor,
-		CommandId: MethodSeedRequireRandom,
+	packet := &proto.SeedPacket{
+		Payload: &proto.SeedPacket_RequireRandom{
+			RequireRandom: true,
+		},
 	}
 
 	glog.Info("Send require random.")
 	return node.sendPacket(packet)
 }
 
-func (link *Node) sendSuccess(replyFor *proto.SeedAccessor, content proto3.Message) error {
-	contentByte, err := proto3.Marshal(content)
-	if err != nil {
-		glog.Fatal(err)
-	}
-
-	packet := &proto.SeedAccessor{
-		DstNid:    replyFor.SrcNid,
-		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
-		HopCount:  0,
-		Id:        replyFor.Id,
-		Mode:      ModeExplicit | ModeOneWay,
-		Channel:   replyFor.Channel,
-		CommandId: MethodSuccess,
-		Content:   contentByte,
-	}
-
-	glog.Info("Send success.")
-	return link.sendPacket(packet)
-}
-
-func (node *Node) sendFailure(replyFor *proto.SeedAccessor, content proto3.Message) error {
-	var contentByte []byte
-	if content != nil {
-		var err error
-		contentByte, err = proto3.Marshal(content)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	packet := &proto.SeedAccessor{
-		DstNid:    replyFor.SrcNid,
-		SrcNid:    &proto.NodeID{Type: NidTypeSeed},
-		HopCount:  0,
-		Id:        replyFor.Id,
-		Mode:      ModeExplicit | ModeOneWay,
-		Channel:   replyFor.Channel,
-		CommandId: MethodFailure,
-		Content:   contentByte,
-	}
-
-	glog.Info("Send failure.")
-	return node.sendPacket(packet)
-}
-
-func (node *Node) sendPacket(packet *proto.SeedAccessor) error {
+func (node *Node) sendPacket(packet *proto.SeedPacket) error {
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
 

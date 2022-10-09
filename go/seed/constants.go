@@ -17,7 +17,7 @@ package seed
 
 const (
 	// version
-	ProtocolVersion = "A1"
+	ProtocolVersion = "A2"
 
 	// Node ID.
 	NidStrNone    = ""
@@ -59,7 +59,7 @@ const (
 	OfferTypeFirst = 0
 
 	// Hint
-	HintOnlyone  = 0x0001
+	HintOnlyOne  = 0x0001
 	HintAssigned = 0x0002
 
 	// Key of routineLocal

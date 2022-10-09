@@ -17,6 +17,7 @@
 
 #include <cassert>
 
+#include "colonio.pb.h"
 #include "convert.hpp"
 
 namespace colonio {
@@ -68,7 +69,7 @@ ValueImpl::~ValueImpl() {
   }
 }
 
-void ValueImpl::to_pb(core::Value* pb, const Value& value) {
+void ValueImpl::to_pb(proto::Value* pb, const Value& value) {
   switch (value.impl->type) {
     case Value::NULL_T:
       // pb->clear_value();
@@ -98,21 +99,21 @@ void ValueImpl::to_pb(core::Value* pb, const Value& value) {
   }
 }
 
-Value ValueImpl::from_pb(const core::Value& pb) {
+Value ValueImpl::from_pb(const proto::Value& pb) {
   switch (pb.value_case()) {
-    case core::Value::VALUE_NOT_SET:
+    case proto::Value::VALUE_NOT_SET:
       return Value();
 
-    case core::Value::kBoolV:
+    case proto::Value::kBoolV:
       return Value(pb.bool_v());
 
-    case core::Value::kIntV:
+    case proto::Value::kIntV:
       return Value(pb.int_v());
 
-    case core::Value::kDoubleV:
+    case proto::Value::kDoubleV:
       return Value(pb.double_v());
 
-    case core::Value::kStringV:
+    case proto::Value::kStringV:
       return Value(pb.string_v());
 
     default:

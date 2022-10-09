@@ -23,20 +23,15 @@ class Logger;
 
 class Scheduler {
  public:
-  static Scheduler* new_instance(Logger& logger, uint32_t opt);
+  static Scheduler* new_instance(Logger& logger);
 
   virtual ~Scheduler();
 
-  virtual void add_controller_loop(void* src, std::function<void()>&& func, unsigned int interval)  = 0;
-  virtual void add_controller_task(void* src, std::function<void()>&& func, unsigned int after = 0) = 0;
-  virtual void add_user_task(void* src, std::function<void()>&& func)                               = 0;
-  virtual bool has_task(void* src)                                                                  = 0;
-  virtual bool is_controller_thread() const                                                         = 0;
-  virtual bool is_user_thread() const                                                               = 0;
-  virtual void remove_task(void* src, bool remove_current = true)                                   = 0;
-
-  virtual void start_controller_routine() = 0;
-  virtual void start_user_routine()       = 0;
+  virtual void repeat_task(void* src, std::function<void()>&& func, unsigned int interval) = 0;
+  virtual void add_task(void* src, std::function<void()>&& func, unsigned int delay = 0)   = 0;
+  virtual bool exists(void* src)                                                           = 0;
+  virtual bool is_controller_thread() const                                                = 0;
+  virtual void remove(void* src, bool remove_current = true)                               = 0;
 
  protected:
   struct Task {
@@ -51,7 +46,7 @@ class Scheduler {
   explicit Scheduler(Logger& logger_);
   Scheduler(const Scheduler&) = delete;
 
-  int64_t get_next_timeing(std::deque<Task>& src);
+  int64_t get_next_timing(std::deque<Task>& src);
   void pick_runnable_tasks(std::deque<Task>* dst, std::deque<Task>* src);
   void remove_deque_tasks(void* src, std::deque<Task>* dq, bool remove_head);
 };

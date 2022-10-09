@@ -163,7 +163,7 @@ void WebrtcLinkWasm::on_csd_success(const std::string& sdp) {
 }
 
 void WebrtcLinkWasm::on_dco_error(const std::string& message) {
-  logw("dco error").map("message", message);
+  log_warn("dco error").map("message", message);
   delegate.webrtc_link_on_error(*this);
 }
 

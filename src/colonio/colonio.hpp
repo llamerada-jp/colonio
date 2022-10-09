@@ -15,12 +15,8 @@
  */
 #pragma once
 
-#include <colonio/definition.hpp>
-#include <colonio/error.hpp>
-#include <colonio/map.hpp>
-#include <colonio/pubsub_2d.hpp>
-#include <colonio/value.hpp>
 #include <functional>
+#include <memory>
 #include <string>
 #include <tuple>
 
@@ -28,30 +24,74 @@
  * @brief All the functions of colonio are defined in the colonio namespace.
  */
 namespace colonio {
+class Colonio;
+class Error;
+class Value;
+class ValueImpl;
+
+/**
+ * @brief The levels determine the importance of the message.
+ */
+namespace LogLevel {
+const std::string ERROR("error");
+const std::string WARN("warn");
+const std::string INFO("info");
+const std::string DEBUG("debug");
+}  // namespace LogLevel
+
+class ColonioConfig {
+ public:
+  ColonioConfig();
+
+  /**
+   * @brief `disable_callback_thread` is a switch to disable creating new threads for exec callback.
+   *
+   * The callback functions are exec on Colonio's main thread.
+   * The callback function must not block the thread. And should be lightweight. Otherwise, the main thread will be
+   * blocked, and the whole Colonio process will be slow or freeze. This option is for developing wrappers for JS,
+   * Golang, and others. You should not use this option if you don't know the internal structure of Colonio.
+   *
+   * default: false
+   */
+  bool disable_callback_thread;
+
+  /**
+   * @brief `max_user_threads` describes the maximum number of user threads.
+   *
+   * Callback functions of Colonio will be run on user threads when `disable_callback_thread` is false. User threads are
+   * created as needed up to this variable. The developer should set this value to create enough threads when callback
+   * functions depend on the other callback functions' return.
+   *
+   * default: 1
+   */
+  unsigned int max_user_threads;
+
+  /**
+   * @brief `logger` is for customizing the the log receiver.
+   *
+   * `logger` method call when output log. You should implement this method to customize log. Colonio outputs 4 types
+   * log, `info`, `warn`, `error`, and `debug`. Default logger output info level log to stdout, others are output to
+   * stderr. You can customize it by using this interface. Note that the method could be call by multi threads. You
+   * have to implement thread-safe if necessary. Log messages past from colonio are JSON format having keys below.
+   *
+   * file    : Log output file name.
+   * level   : The urgency of the log.
+   * line    : Log output line number.
+   * message : Readable log messages.
+   * param   : The parameters that attached for the log.
+   * time    : Log output time.
+   *
+   * @param json JSON formatted log message.
+   */
+  std::function<void(Colonio& colonio, const std::string& json)> logger_func;
+};
+
 /**
  * @brief Main class of colonio. One instance is equivalent to one node.
  */
 class Colonio {
  public:
-  // These options are provided for implementations of other languages or libraries. And are not normally used.
-  /// This declares that the thread for the event loop will be specified explicitly instead of created internally.
-  static const uint32_t EXPLICIT_EVENT_THREAD = 0x1;
-  /// This declares that the thread for the colonio main loop will be specified explicitly instead of created
-  /// internally.
-  static const uint32_t EXPLICIT_CONTROLLER_THREAD = 0x2;
-
-  /**
-   * Log messages in JSON format.
-   *
-   * json["file"]    : Log output file name.
-   * json["level"]   : The urgency of the log.
-   * json["line"]    : Log output line number.
-   * json["message"] : Readable log messages.
-   * json["param"]   : The parameters that attached for the log.
-   * json["time"]    : Log output time.
-   */
-  static Colonio* new_instance(
-      std::function<void(Colonio&, const std::string&)>&& log_receiver = nullptr, uint32_t opt = 0);
+  static Colonio* new_instance(ColonioConfig& config);
 
   /**
    * @brief Destroy the Colonio object.
@@ -61,40 +101,8 @@ class Colonio {
    * @sa disconnect()
    */
   virtual ~Colonio();
-  Colonio(const Colonio&) = delete;
+  Colonio(const Colonio&)            = delete;
   Colonio& operator=(const Colonio&) = delete;
-
-  /**
-   * @brief Get a @ref Map accessor.
-   *
-   * @param name The assigned name for the accessor.
-   * @return Map& Reference for the accessor.
-   *
-   * **The Map accessor is under development and is likely to change.**
-   *
-   * Get @ref Map accessor associated with the name.
-   * If you get an ACCESSOR with the same name, the reference to the same instance will return.
-   * Map's name and other parameters, pre-set to seed, are applied.
-   * If accessor is not set, @ref Error will be throw.
-   *
-   * @sa Map
-   */
-  virtual Map& access_map(const std::string& name) = 0;
-
-  /**
-   * @brief Get a @ref Pubusb2D accessor.
-   *
-   * @param name The assigned name for the accessor.
-   * @return Pubsub2D& Reference for the accessor.
-   *
-   * Get @ref Pubsub2D accessor associated with the name.
-   * If you get an ACCESSOR with the same name, the reference to the same instance will return.
-   * Pubsub2D's name and other parameters, pre-set to seed, are applied.
-   * If accessor is not set, @ref Error will be throw.
-   *
-   * @sa Pubsub2D
-   */
-  virtual Pubsub2D& access_pubsub_2d(const std::string& name) = 0;
 
   /**
    * @brief Connect to seed and join the cluster.
@@ -108,7 +116,7 @@ class Colonio {
    * If you want to work asynchronously, use a asynchronous connect method instead.
    * This method throws @ref Error when an error occurs. At successful completion, nothing is returned.
    *
-   * @sa Colonio::connect(const std::string& url, const std::string& token, std::Exce<void(Colonio&)>&& on_success,
+   * @sa Colonio::connect(const std::string& url, const std::string& token, std::Exec<void(Colonio&)>&& on_success,
    *     std::function<void(Colonio&, const Error&)>&& on_failure)
    */
   virtual void connect(const std::string& url, const std::string& token) = 0;
@@ -160,15 +168,9 @@ class Colonio {
   /**
    * @brief Sets the current position of the node.
    *
-   * This method is only available if Pubsub2d is enabled.
+   * This method is only available if the coordinate system is enabled.
    * The coordinate system depends on the settings in seed.
-   * This method works synchronously, If you want to work asynchronously, use a asynchronous set_position method
-   * instead.
-   *
-   * @sa Pubsub2D,
-   *     set_position(
-   *       double x, double y, std::function<void(Colonio&, double, double)> on_success,
-   *       std::function<void(Colonio&, const Error&)> on_failure);
+   * This method works synchronously, but other nodes know the position of this node asynchronously.
    *
    * @param x Horizontal coordinate.
    * @param y Vertical coordinate.
@@ -176,116 +178,308 @@ class Colonio {
    */
   virtual std::tuple<double, double> set_position(double x, double y) = 0;
 
-  /**
-   * @brief Sets the current position of the node asynchronously.
-   *
-   * The main purpose of the function is the same as @ref set_position(double x, double y).
-   * This method works asynchronously, and the method returns immediately. Note that the specified callback function is
-   * called in a separate thread for processing.
-   *
-   * @param x Horizontal coordinate.
-   * @param y Vertical coordinate.
-   * @param on_success The function will call when success to set the current position.
-   * @param on_failure The function will call when failure to set the current position.
-   *
-   * @sa Pubsub2D,
-   *     set_position(double x, double y)
-   */
-  virtual void set_position(
-      double x, double y, std::function<void(Colonio&, double, double)> on_success,
-      std::function<void(Colonio&, const Error&)> on_failure) = 0;
-
-  // Options for `call_by_nid` method.
-  /// If there is no node with a matching node-id, the node with the closest node-id will receive the call.
-  static const uint32_t CALL_ACCEPT_NEARBY = 0x01;
-  /// If this option is specified, call will not wait for a response. Also, no error will occur if no node receives the
-  /// call. You should return null value instead of this option if you just don't need return value.
-  static const uint32_t CALL_IGNORE_REPLY = 0x02;
+  // Options for `messaging_post` method.
+  /// If there is no node with a matching node-id, the node with the closest node-id will receive the message.
+  static const uint32_t MESSAGING_ACCEPT_NEARBY = 0x01;
+  /// If this option is specified, the post method does not wait a response or error message. You get null value as
+  /// response. No error returns even if the destination node does not exist.
+  static const uint32_t MESSAGING_IGNORE_RESPONSE = 0x02;
 
   /**
-   * @brief Call remote procedure on or neer the destination node.
+   * @brief Post a message for the destination node and wait response message.
    *
-   * This method provides the simple feature of RPC with a value.
+   * This method provides the simple feature like RPC.
    *
    * @param dst_nid Target node's ID.
-   * @param name A name to identify the procedure.
-   * @param value A value to be sent with the call.
+   * @param name
+   * @param message
    * @param opt Options.
-   *
-   * @sa call_by_nid(
-   *       const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt,
-   *       std::function<void(Colonio&, const Value&)>&& on_success,
-   *       std::function<void(Colonio&, const Error&)>&& on_failure)
-   * @sa on_call(const std::string& name, std::function<Value(Colonio&, const CallParameter&)>&& func)
-   * @sa off_call(const std::string& name)
    */
-  virtual Value call_by_nid(
-      const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt = 0x00) = 0;
+  virtual Value messaging_post(
+      const std::string& dst_nid, const std::string& name, const Value& message, uint32_t opt = 0x0) = 0;
 
   /**
-   * @brief Call remote procedure on or neer the destination node asynchronously.
-   *
-   * This method provides the simple feature of RPC with a value.
+   * @brief Post a message for the destination node and get response message asynchronously.
    *
    * @param dst_nid Target node's ID.
-   * @param name A name to identify the procedure.
-   * @param value A value to be sent.
+   * @param name
+   * @param message
    * @param opt Options.
-   * @param on_success The function will call when success to send the message.
-   * @param on_failure The function will call when failure to send the message.
-   *
-   * @sa call_by_nid(const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt)
-   * @sa on_call(const std::string& name, std::function<Value(Colonio&, const CallParameter&)>&& func)
-   * @sa off_call(const std::string& name)
+   * @param on_success A callback will be called when get response message.
+   * @param on_failure A callback will be called when get response failure or occur an error.
    */
-  virtual void call_by_nid(
-      const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt,
+  virtual void messaging_post(
+      const std::string& dst_nid, const std::string& name, const Value& message, uint32_t opt,
       std::function<void(Colonio&, const Value&)>&& on_success,
       std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
 
-  struct CallParameter {
-    const std::string name;
-    const Value value;
+  struct MessageData {
+    const Value& message;
     const uint32_t options;
   };
 
+  class MessageResponseWriter {
+    virtual void success(const Value&)       = 0;
+    virtual void failure(const std::string&) = 0;
+  };
+
   /**
-   * @brief Register a callback function to receive messages from the call_by_nid method.
+   * @brief register the handler for
    *
-   * If another function has already been registered, that registration will be overwritten.
+   * If another handler has already been registered, the old one will be overwritten.
    *
-   * @param name A name to identify the procedure.
+   * @param name A name to identify the handler.
    * @param func Receiver function.
    */
-  virtual void on_call(const std::string& name, std::function<Value(Colonio&, const CallParameter&)>&& func) = 0;
+  virtual void messaging_set_handler(
+      const std::string& name, std::function<Value(Colonio&, const MessageData&)>&& func) = 0;
+  virtual void messaging_set_handler(
+      const std::string& name, std::function<void(Colonio&, const MessageData&, MessageResponseWriter&)>&& func) = 0;
 
   /**
    * @brief Release the function registered in the on_call method.
    *
-   * @param name A name to identify the procedure.
+   * @param name A name to identify the handler.
    */
-  virtual void off_call(const std::string& name) = 0;
-
-  /**
-   * @brief This is the method to call inside the thread for events.
-   *
-   * This method is provided for implementations of other languages or libraries. And are not normally used.
-   * Used with the EXPLICIT_EVENT_THREAD option.
-   */
-  virtual void start_on_event_thread() = 0;
-
-  /**
-   * @brief This is the method to call inside the thread for colonio main loop.
-   *
-   * This method is provided for implementations of other languages or libraries. And are not normally used.
-   * Used with the EXPLICIT_CONTROLLER_THREAD option.
-   */
-  virtual void start_on_controller_thread() = 0;
+  virtual void messaging_unset_handler(const std::string& name) = 0;
 
  protected:
   /**
    * @brief Construct a new Colonio object.
    */
   Colonio();
+};
+
+/**
+ * @brief ErrorCode is assigned each error reason and is used with Error and Exception.
+ *
+ * @sa Error, Exception
+ */
+enum class ErrorCode : unsigned int {
+  UNDEFINED,  ///< Undefined error is occurred.
+  // SYSTEM_ERROR,           ///< An error occurred in the API, which is used inside colonio.
+  CONNECTION_FAILED,      ///< An error on connection start failure.
+  CONNECTION_OFFLINE,     ///< The node cannot perform processing because of offline.
+  INCORRECT_DATA_FORMAT,  ///< Incorrect data format detected.
+  CONFLICT_WITH_SETTING,  ///< The calling method or setting parameter was inconsistent with the configuration in the
+  //                         ///< seed.
+  // NOT_EXIST_KEY,          ///< Tried to get a value for a key that doesn't exist.
+  // EXIST_KEY,              ///< An error occurs when overwriting the value for an existing key.
+  // CHANGED_PROPOSER,       ///< Under developing.
+  // COLLISION_LATE,         ///< Under developing.
+  PACKET_NO_ONE_RECV,  ///< There was no node receiving the message.
+  // CALLBACK_ERROR,         ///< An error that occurred while executing the callback function.
+  // RPC_UNDEFINED_ERROR,    ///< An undefined error that occurred in callback function of call_by_nid.
+  PACKET_TIMEOUT,  ///< An error occurs when timeout.
+};
+
+/**
+ * @brief Error information. This is used when the asynchronous method calls a failed callback and is thrown when an
+ * error occurs in a synchronous method.
+ *
+ *
+ * @sa ErrorCode
+ */
+class Error : public std::exception {
+ public:
+  /// True if the error is fatal and the process of colonio can not continue.
+  const bool fatal;
+  /// Code to indicate the cause of the error.
+  const ErrorCode code;
+  /// A detailed message string for display or bug report.
+  const std::string message;
+  /// The line number where the exception was thrown (for debug).
+  const unsigned long line;
+  /// The file name where the exception was thrown (for debug).
+  const std::string file;
+
+  /**
+   * @brief Construct a new Error object.
+   *
+   * @param fatal True if the error is fatal and the process of colonio can not continue.
+   * @param code Code to indicate the cause of the error.
+   * @param message A detailed message string for display or bug report.
+   * @param line The line number where the exception was thrown.
+   * @param file The file name where the exception was thrown.
+   */
+  Error(bool fatal, ErrorCode code, const std::string& message, int line, const std::string& file);
+
+  /**
+   * @brief Override the standard method to output message.
+   *
+   * @return const char* The message is returned as it is.
+   */
+  const char* what() const noexcept override;
+};
+
+/**
+ * @brief Values in colonio are represented as instance of colonio::Value class.
+ */
+class Value {
+ public:
+  /**
+   * @brief It represents the type that the Value has.
+   */
+  enum Type {
+    NULL_T,    ///< null
+    BOOL_T,    ///< boolean
+    INT_T,     ///< integer
+    DOUBLE_T,  ///< float number
+    STRING_T,  ///< string(UTF8 is expected in C/C++)
+    BINARY_T   ///< binary
+  };
+
+  Value();
+
+  /**
+   * @brief Copy construct a new Value object.
+   *
+   * @param src The copy source object.
+   */
+  Value(const Value& src);
+
+  /**
+   * @brief Construct a new boolean Value object.
+   *
+   * @param v The source value of the object.
+   */
+  explicit Value(bool v);
+
+  /**
+   * @brief Construct a new integer Value object.
+   *
+   * @param v The source value of the object.
+   */
+  explicit Value(int64_t v);
+
+  /**
+   * @brief Construct a new float number Value object.
+   *
+   * @param v The source value of the object.
+   */
+  explicit Value(double v);
+
+  /**
+   * @brief Construct a new string Value object.
+   *
+   * The char array is converted using the std::string constructor,
+   * so up to the first `\0` is used to create a Value object.
+   *
+   * @param v The source value of the object.
+   */
+  explicit Value(const char* v);
+
+  /**
+   * @brief Construct a new string Value object.
+   *
+   * The data was transferred to other nodes is also processed as is.
+   *
+   * @param v The source value of the object.
+   */
+  explicit Value(const std::string& v);
+
+  /**
+   * @brief Construct a new Value object as a binary type.
+   *
+   * @param ptr
+   * @param len Size of binary data.
+   */
+  Value(const uint8_t* ptr, std::size_t len);
+
+  /**
+   * @brief Destroy the Value object
+   *
+   */
+  virtual ~Value();
+
+  /**
+   * @brief Copy operation.
+   *
+   * @param src The copy source object.
+   * @return Value&
+   */
+  Value& operator=(const Value& src);
+
+  /**
+   * @brief Implementation of comparison operations for std::map and other algorithms.
+   *
+   * This comparison operation should not be used as a semantic order in a user program.
+   *
+   * @param b The object to be compared.
+   * @return true
+   * @return false
+   */
+  bool operator<(const Value& b) const;
+
+  /**
+   * @brief Extract the actual value from the object.
+   *
+   * The value is passed as a reference type, which will be changed by
+   * the call to \ref reset and \ref set method.
+   * The value may be changed by the implementation of the module, such as a setter of another node.
+   * Also, depending on the implementation of the module,
+   * the value may be changed by another node's setter, etc.
+   * Do not hold the returned values as reference types or pointers.
+   *
+   * @param T Native type, which corresponds to the value stored by Value object.
+   * @return const T& The value stored by Value object.
+   */
+  template<typename T>
+  const T& get() const;
+
+  /**
+   * @brief Extract the actual value from the object.
+   *
+   * @param T Native type, which corresponds to the value stored by Value object.
+   * @return const T& The value stored by Value object.
+   */
+  template<typename T>
+  T& get();
+
+  /**
+   * @brief Get the type stored by Value object.
+   *
+   * @return Type The type stored by Value object.
+   */
+  Type get_type() const;
+
+  /**
+   * @brief Reset the value stored by Value to null.
+   */
+  void reset();
+
+  /**
+   * @brief Set a new boolean value for Value object.
+   *
+   * @param v The source value of the object.
+   */
+  void set(bool v);
+
+  /**
+   * @brief Set a new integer value for Value object.
+   *
+   * @param v The source value of the object.
+   */
+  void set(int64_t v);
+
+  /**
+   * @brief Set a new float number value for Value object.
+   *
+   * @param v The source value of the object.
+   */
+  void set(double v);
+
+  /**
+   * @brief Set a new string or byte array for Value object.
+   *
+   * @param v The source value of the object.
+   */
+  void set(const std::string& v);
+
+  void set(const uint8_t* ptr, std::size_t len);
+
+ private:
+  friend ValueImpl;
+  std::unique_ptr<ValueImpl> impl;
 };
 }  // namespace colonio

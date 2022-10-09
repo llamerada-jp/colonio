@@ -29,15 +29,15 @@ Scheduler::Scheduler(Logger& logger_) : logger(logger_) {
 Scheduler::~Scheduler() {
 }
 
-Scheduler* Scheduler::new_instance(Logger& logger, uint32_t opt) {
+Scheduler* Scheduler::new_instance(Logger& logger) {
 #ifndef EMSCRIPTEN
-  return new SchedulerNative(logger, opt);
+  return new SchedulerNative(logger);
 #else
-  return new SchedulerWasm(logger, opt);
+  return new SchedulerWasm(logger);
 #endif
 }
 
-int64_t Scheduler::get_next_timeing(std::deque<Task>& src) {
+int64_t Scheduler::get_next_timing(std::deque<Task>& src) {
   const int64_t CURRENT_MSEC = Utils::get_current_msec();
   int64_t next               = CURRENT_MSEC + 10 * 1000;  // max 10 sec
 
