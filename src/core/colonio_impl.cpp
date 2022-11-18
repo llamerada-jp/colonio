@@ -169,8 +169,11 @@ std::tuple<double, double> ColonioImpl::set_position(double x, double y) {
       it->module_2d_on_change_local_position(new_position);
     }
     //*/
-    network->change_local_position(new_position);
-    log_debug("current position").map("coordinate", Convert::coordinate2json(new_position));
+
+    scheduler->add_task(this, [this, new_position]() {
+      network->change_local_position(new_position);
+      log_debug("current position").map("coordinate", Convert::coordinate2json(new_position));
+    });
   }
 
   Coordinate adjusted = coord_system->get_local_position();
@@ -279,6 +282,130 @@ void ColonioImpl::messaging_unset_handler(const std::string& name) {
   messaging->unset_handler(name);
 }
 
+std::shared_ptr<std::map<std::string, Value>> ColonioImpl::kvs_get_local_data() {
+  assert(scheduler && kvs);
+  Pipe<std::shared_ptr<std::map<std::string, Value>>> pipe;
+
+  scheduler->add_task(this, [this, &pipe]() {
+    std::shared_ptr<std::map<std::string, Value>> data = kvs->get_local_data();
+    pipe.push(data);
+  });
+
+  return *pipe.pop_with_throw();
+}
+
+void ColonioImpl::kvs_get_local_data(
+    std::function<void(Colonio&, std::shared_ptr<std::map<std::string, Value>>)> handler) {
+  assert(scheduler && kvs);
+
+  scheduler->add_task(this, [this, handler]() {
+    std::shared_ptr<std::map<std::string, Value>> data = kvs->get_local_data();
+    if (user_thread_pool) {
+      user_thread_pool->push([this, handler, data]() {
+        handler(*this, data);
+      });
+
+    } else {
+      handler(*this, data);
+    }
+  });
+}
+
+Value ColonioImpl::kvs_get(const std::string& key) {
+  assert(scheduler && kvs);
+  Pipe<Value> pipe;
+
+  scheduler->add_task(this, [this, key, &pipe]() {
+    kvs->get(
+        key,
+        [this, &pipe](const Value& value) {
+          pipe.push(value);
+        },
+        [this, &pipe](const Error& error) {
+          pipe.push_error(error);
+        });
+  });
+  return *pipe.pop_with_throw();
+}
+
+void ColonioImpl::kvs_get(
+    const std::string& key, std::function<void(Colonio&, const Value&)>&& on_success,
+    std::function<void(Colonio&, const Error&)>&& on_failure) {
+  assert(scheduler && kvs);
+
+  scheduler->add_task(this, [this, key, on_success, on_failure]() {
+    kvs->get(
+        key,
+        [this, on_success](const Value& value) {
+          if (user_thread_pool) {
+            user_thread_pool->push([this, on_success, value] {
+              on_success(*this, value);
+            });
+          } else {
+            on_success(*this, value);
+          }
+        },
+        [this, on_failure](const Error& error) {
+          if (user_thread_pool) {
+            user_thread_pool->push([this, on_failure, error] {
+              on_failure(*this, error);
+            });
+          } else {
+            on_failure(*this, error);
+          }
+        });
+  });
+}
+
+void ColonioImpl::kvs_set(const std::string& key, const Value& value, uint32_t opt) {
+  assert(scheduler && kvs);
+  Pipe<int> pipe;
+
+  scheduler->add_task(this, [this, &pipe, key, value, opt]() {
+    kvs->set(
+        key, value, opt,
+        [&pipe]() {
+          pipe.push(1);
+        },
+        [&pipe](const Error& error) {
+          pipe.push_error(error);
+        });
+  });
+
+  pipe.pop_with_throw();
+}
+
+void ColonioImpl::kvs_set(
+    const std::string& key, const Value& value, uint32_t opt, std::function<void(Colonio&)>&& on_success,
+    std::function<void(Colonio&, const Error&)>&& on_failure) {
+  assert(scheduler && kvs);
+
+  scheduler->add_task(this, [this, key, value, opt, on_success, on_failure]() {
+    kvs->set(
+        key, value, opt,
+        [this, on_success]() {
+          if (user_thread_pool) {
+            user_thread_pool->push([this, on_success] {
+              on_success(*this);
+            });
+
+          } else {
+            on_success(*this);
+          }
+        },
+        [this, on_failure](const Error& error) {
+          if (user_thread_pool) {
+            user_thread_pool->push([this, on_failure, error] {
+              on_failure(*this, error);
+            });
+
+          } else {
+            on_failure(*this, error);
+          }
+        });
+  });
+}
+
 void ColonioImpl::command_manager_do_send_packet(std::unique_ptr<const Packet> packet) {
   network->switch_packet(std::move(packet), false);
 }
@@ -300,11 +427,15 @@ void ColonioImpl::network_on_change_global_config(const picojson::object& config
 
   // messaging
   messaging = std::make_unique<Messaging>(logger, *command_manager);
+
+  // kvs
+  kvs = std::make_unique<KVS>(
+      logger, random, *scheduler, *command_manager, *this,
+      Utils::get_json<picojson::object>(global_config, "kvs", picojson::object()));
 }
 
 void ColonioImpl::network_on_change_nearby_1d(const NodeID& prev_nid, const NodeID& next_nid) {
-  // @TODO
-  // assert(false);
+  kvs->balance_records(prev_nid, next_nid);
 }
 
 void ColonioImpl::network_on_change_nearby_2d(const std::set<NodeID>& nids) {
@@ -335,6 +466,10 @@ const CoordSystem* ColonioImpl::network_on_require_coord_system(const picojson::
   return coord_system.get();
 }
 
+bool ColonioImpl::kvs_on_check_covered_range(const NodeID& nid) {
+  return network->is_covered_range_1d(nid);
+}
+
 void ColonioImpl::allocate_resources() {
   assert(local_nid == NodeID::NONE);
 
@@ -359,59 +494,4 @@ void ColonioImpl::release_resources() {
   local_nid = NodeID::NONE;
 }
 
-/*
-
-const NodeID& Network::module_2d_do_get_relay_nid(Module2D& module_2d, const Coordinate& position) {
-  return routing->get_relay_nid_2d(position);
-}
-
-bool ColonioImpl::module_1d_do_check_covered_range(Module1D& module_1d, const NodeID& nid) {
-  assert(routing);
-  return routing->is_covered_range_1d(nid);
-}
-
-void ColonioImpl::register_module(ModuleBase* module, const std::string* name, bool is_1d, bool is_2d) {
-  assert(module->channel != Channel::NONE);
-  assert(modules.find(module->channel) == modules.end());
-  assert(name == nullptr || module_names.find(*name) == module_names.end());
-
-  modules.insert(std::make_pair(module->channel, module));
-
-  if (name != nullptr) {
-    module_names.insert(std::make_pair(*name, module->channel));
-  }
-  if (is_1d) {
-    modules_1d.insert(dynamic_cast<Module1D*>(module));
-  }
-  if (is_2d) {
-    modules_2d.insert(dynamic_cast<Module2D*>(module));
-  }
-}
-
-void ColonioImpl::initialize_algorithms() {
-  const picojson::object& modules_config = Utils::get_json<picojson::object>(config, "modules", picojson::object());
-
-  for (auto& it : modules_config) {
-    const std::string& name               = it.first;
-    const picojson::object& module_config = Utils::get_json<picojson::object>(modules_config, name);
-    const std::string& type               = Utils::get_json<std::string>(module_config, "type");
-
-    if (type == "pubsub2D") {
-      Pubsub2DModule* mod = Pubsub2DModule::new_instance(module_param, *this, *coord_system, module_config);
-      register_module(mod, &name, false, true);
-      if_pubsub2d.insert(std::make_pair(name, std::make_unique<Pubsub2DImpl>(*mod)));
-
-    } else if (type == "mapPaxos") {
-      MapPaxosModule* mod = MapPaxosModule::new_instance(module_param, *this, module_config);
-      register_module(mod, &name, true, false);
-      if_map.insert(std::make_pair(name, std::make_unique<MapImpl>(*mod)));
-
-    } else {
-      colonio_throw_fatal("unsupported algorithm(%s)", type.c_str());
-    }
-  }
-
-  check_api_connect();
-}
-//*/
 }  // namespace colonio

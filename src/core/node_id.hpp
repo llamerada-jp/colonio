@@ -70,7 +70,7 @@ class NodeID {
 
   static NodeID from_str(const std::string& str);
   static NodeID from_pb(const proto::NodeID& pb);
-  static NodeID make_hash_from_str(const std::string& str);
+  static NodeID make_hash_from_str(const std::string& str, const std::string& salt);
   static NodeID make_random(Random& random);
 
   NodeID();

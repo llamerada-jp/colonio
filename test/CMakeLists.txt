@@ -27,9 +27,9 @@ add_library(colonio_test STATIC
 set(test_targets_combine
   connect
   messaging
+  kvs
 
   # export_c
-  # map
   # pubsub_2d
 )
 

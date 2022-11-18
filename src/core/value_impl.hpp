@@ -28,7 +28,6 @@
 #include <string>
 
 #include "colonio/colonio.hpp"
-#include "node_id.hpp"
 
 namespace colonio {
 namespace proto {
@@ -59,7 +58,6 @@ class ValueImpl {
   static void to_pb(proto::Value* pb, const Value& value);
   static Value from_pb(const proto::Value& pb);
 
-  static NodeID to_hash(const Value& value, const std::string& salt);
   static std::string to_str(const Value& value);
 
   bool operator<(const ValueImpl& b) const;

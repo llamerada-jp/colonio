@@ -16,6 +16,7 @@
 #pragma once
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -416,6 +417,21 @@ class Colonio {
    */
   virtual void messaging_unset_handler(const std::string& name) = 0;
 
+  static const uint32_t KVS_MUST_EXIST_KEY     = 0x1;  // del, unlock
+  static const uint32_t KVS_PROHIBIT_OVERWRITE = 0x2;  // set
+
+  virtual std::shared_ptr<std::map<std::string, Value>> kvs_get_local_data() = 0;
+  virtual void kvs_get_local_data(
+      std::function<void(Colonio&, std::shared_ptr<std::map<std::string, Value>>)> handler) = 0;
+  virtual Value kvs_get(const std::string& key)                                             = 0;
+  virtual void kvs_get(
+      const std::string& key, std::function<void(Colonio&, const Value&)>&& on_success,
+      std::function<void(Colonio&, const Error&)>&& on_failure)                        = 0;
+  virtual void kvs_set(const std::string& key, const Value& value, uint32_t opt = 0x0) = 0;
+  virtual void kvs_set(
+      const std::string& key, const Value& value, uint32_t opt, std::function<void(Colonio&)>&& on_success,
+      std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
+
  protected:
   /**
    * @brief Construct a new Colonio object.
@@ -437,13 +453,15 @@ enum class ErrorCode : unsigned int {
   INCORRECT_DATA_FORMAT,     ///< Incorrect data format detected.
   CONFLICT_WITH_SETTING,     ///< The calling method or setting parameter was inconsistent with the configuration in the
   //                         ///< seed.
-  // NOT_EXIST_KEY,          ///< Tried to get a value for a key that doesn't exist.
-  // EXIST_KEY,              ///< An error occurs when overwriting the value for an existing key.
-  // CHANGED_PROPOSER,       ///< Under developing.
-  // COLLISION_LATE,         ///< Under developing.
-  PACKET_NO_ONE_RECV,           ///< There was no node receiving the message.
-  PACKET_TIMEOUT,               ///< An error occurs when timeout.
+
+  PACKET_NO_ONE_RECV,  ///< There was no node receiving the message.
+  PACKET_TIMEOUT,      ///< An error occurs when timeout.
+
   MESSAGING_HANDLER_NOT_FOUND,  /// An error that occur when message sent to a non-existent handler.
+
+  KVS_NOT_FOUND,  ///< Tried to get a value for a key that doesn't exist.
+  KVS_PROHIBIT_OVERWRITE,
+  KVS_COLLISION,
 };
 
 /**

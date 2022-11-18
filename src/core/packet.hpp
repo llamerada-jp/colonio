@@ -49,5 +49,7 @@ class Packet {
       const NodeID& dst, const NodeID& src, uint32_t i, std::unique_ptr<const proto::PacketContent> c,
       PacketMode::Type m);
   Packet(const NodeID& dst, const NodeID& src, uint32_t i, uint32_t h, std::shared_ptr<Content> c, PacketMode::Type m);
+
+  std::unique_ptr<Packet> make_copy() const;
 };
 }  // namespace colonio

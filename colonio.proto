@@ -80,29 +80,27 @@ message PacketContent {
     SignalingOfferSuccess signaling_offer_success = 7;
     SignalingOfferFailure signaling_offer_failure = 8;
 
-    Routing routing = 9;
+    Routing routing = 10;
 
-    Messaging messaging                  = 10;
-    MessagingResponse messaging_response = 11;
+    Messaging messaging                  = 20;
+    MessagingResponse messaging_response = 21;
 
-    KvsAccept kvs_accept                    = 12;
-    KvsAcceptSuccess kvs_accept_success     = 13;
-    KvsAcceptFailure kvs_accept_failure     = 14;
-    KvsBalanceAcceptor kvs_balance_acceptor = 15;
-    KvsBalanceProposer kvs_balance_proposer = 16;
-    KvsGet kvs_get                          = 17;
-    KvsGetSuccess kvs_get_success           = 18;
-    KvsHint kvs_hint                        = 19;
-    KvsPrepare kvs_prepare                  = 20;
-    KvsPrepareSuccess kvs_prepare_success   = 21;
-    KvsPrepareFailure kvs_prepare_failure   = 22;
-    KvsSet kvs_set                          = 23;
-    KvsSetFailure kvs_set_failure           = 24;
+    KvsAccept kvs_accept                    = 30;
+    KvsAcceptResponse kvs_accept_response   = 31;
+    KvsBalanceAcceptor kvs_balance_acceptor = 32;
+    KvsBalanceProposer kvs_balance_proposer = 33;
+    KvsGet kvs_get                          = 34;
+    KvsGetResponse kvs_get_response         = 35;
+    KvsHint kvs_hint                        = 36;
+    KvsPrepare kvs_prepare                  = 37;
+    KvsPrepareResponse kvs_prepare_response = 38;
+    KvsSet kvs_set                          = 39;
+    KvsSetResponse kvs_set_response         = 40;
 
-    Spread spread                = 25;
-    SpreadKnock spread_knock     = 26;
-    SpreadRelay spread_relay     = 27;
-    SpreadFailure spread_failure = 28;
+    Spread spread                = 50;
+    SpreadKnock spread_knock     = 51;
+    SpreadRelay spread_relay     = 52;
+    SpreadFailure spread_failure = 53;
   }
 }
 
@@ -189,18 +187,14 @@ message KvsAccept {
   uint32 n          = 2;
   uint32 i          = 3;
   uint32 member_idx = 4;
-  Value key         = 5;
+  string key        = 5;
   Value value       = 6;
 }
 
-message KvsAcceptSuccess {
-  uint32 n = 1;
-  uint32 i = 2;
-}
-
-message KvsAcceptFailure {
-  uint32 n = 1;
-  uint32 i = 2;
+message KvsAcceptResponse {
+  bool success = 1;
+  uint32 n     = 2;
+  uint32 i     = 3;
 }
 
 message KvsBalanceAcceptor {
@@ -208,32 +202,34 @@ message KvsBalanceAcceptor {
   uint32 np         = 2;
   uint32 ia         = 3;
   uint32 member_idx = 4;
-  Value key         = 5;
+  string key        = 5;
   Value value       = 6;
 }
 
 message KvsBalanceProposer {
   uint32 np   = 1;
   uint32 ip   = 2;
-  Value key   = 3;
+  string key  = 3;
   Value value = 4;
 }
 
 message KvsGet {
   uint32 member_idx = 1;
-  Value key         = 2;
+  string key        = 2;
 }
 
-message KvsGetSuccess {
-  uint32 n    = 1;
-  uint32 i    = 2;
-  Value value = 3;
+message KvsGetResponse {
+  bool success = 1;
+  // The values below are used only success response.
+  uint32 n    = 2;
+  uint32 i    = 3;
+  Value value = 4;
 }
 
 message KvsHint {
   uint32 n    = 1;
   uint32 i    = 2;
-  Value key   = 3;
+  string key  = 3;
   Value value = 4;
 }
 
@@ -241,26 +237,26 @@ message KvsPrepare {
   uint32 opt        = 1;
   uint32 n          = 2;
   uint32 member_idx = 3;
-  Value key         = 4;
+  string key        = 4;
 }
 
-message KvsPrepareSuccess {
-  uint32 n = 1;
-  uint32 i = 2;
-}
-
-message KvsPrepareFailure {
-  uint32 n = 1;
+message KvsPrepareResponse {
+  bool success = 1;
+  uint32 n     = 2;
+  // `i` is set only success response.
+  uint32 i = 3;
 }
 
 message KvsSet {
   uint32 opt  = 1;
-  Value key   = 2;
+  string key  = 2;
   Value value = 3;
 }
 
-message KvsSetFailure {
-  uint32 reason = 1;
+message KvsSetResponse {
+  bool success = 1;
+  //  `reason` are set when failed response.
+  uint32 reason = 2;
 }
 
 // for pubsub2d module

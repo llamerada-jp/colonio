@@ -95,24 +95,22 @@ class TestSeed {
     coord_system.insert(std::make_pair("yMax", picojson::value(y_max)));
   }
 
-  void add_module_map_paxos(
-      const std::string& name, unsigned int channel, unsigned int retry_interval_min = 200,
-      unsigned int retry_interval_max = 300) {
+  void config_kvs(unsigned int retry_interval_min = 200, unsigned int retry_interval_max = 300) {
     picojson::object m;
-    m.insert(std::make_pair("type", picojson::value("mapPaxos")));
-    m.insert(std::make_pair("channel", picojson::value(static_cast<double>(channel))));
     m.insert(std::make_pair("retryIntervalMin", picojson::value(static_cast<double>(retry_interval_min))));
     m.insert(std::make_pair("retryIntervalMax", picojson::value(static_cast<double>(retry_interval_max))));
-    modules.insert(std::make_pair(name, picojson::value(m)));
+    modules.insert(std::make_pair("kvs", picojson::value(m)));
   }
 
-  void add_module_pubsub_2d(const std::string& name, unsigned int channel, unsigned int cache_time = 30000) {
-    picojson::object m;
-    m.insert(std::make_pair("type", picojson::value("pubsub2D")));
-    m.insert(std::make_pair("channel", picojson::value(static_cast<double>(channel))));
-    m.insert(std::make_pair("cacheTime", picojson::value(static_cast<double>(cache_time))));
-    modules.insert(std::make_pair(name, picojson::value(m)));
-  }
+  /*
+    void add_module_pubsub_2d(const std::string& name, unsigned int channel, unsigned int cache_time = 30000) {
+      picojson::object m;
+      m.insert(std::make_pair("type", picojson::value("pubsub2D")));
+      m.insert(std::make_pair("channel", picojson::value(static_cast<double>(channel))));
+      m.insert(std::make_pair("cacheTime", picojson::value(static_cast<double>(cache_time))));
+      modules.insert(std::make_pair(name, picojson::value(m)));
+    }
+  //*/
 
   void stop() {
     kill(pid, SIGTERM);

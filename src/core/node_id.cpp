@@ -194,15 +194,17 @@ NodeID NodeID::from_pb(const proto::NodeID& pb) {
 }
 
 /**
- * Make a node-id from md5 hash of a input string.
- * @param pb A source string value.
+ * Make a node-id from md5 hash of a input string and salt.
+ * @param str A source string value.
+ * @param salt A salt string.
  * @return A node-id.
  */
-NodeID NodeID::make_hash_from_str(const std::string& str) {
+NodeID NodeID::make_hash_from_str(const std::string& str, const std::string& salt) {
   MD5_CTX ctx;
   unsigned char md5[16];
 
   MD5_Init(&ctx);
+  MD5_Update(&ctx, salt.c_str(), salt.size());
   MD5_Update(&ctx, str.c_str(), str.size());
   MD5_Final(md5, &ctx);
 

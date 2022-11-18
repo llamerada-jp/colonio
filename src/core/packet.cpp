@@ -55,4 +55,8 @@ Packet::Packet(
     dst_nid(dst), src_nid(src), id(i), hop_count(h), content(c), mode(m) {
   assert(h < 100);  // detect wrong hops.
 }
+
+std::unique_ptr<Packet> Packet::make_copy() const {
+  return std::make_unique<Packet>(dst_nid, src_nid, id, hop_count, content, mode);
+}
 }  // namespace colonio
