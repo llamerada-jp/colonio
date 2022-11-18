@@ -120,10 +120,17 @@ TEST(NodeIDTest, pb) {
 }
 
 TEST(NodeIDTest, make_hash_from_str) {
-  NodeID test00 = NodeID::make_hash_from_str("test");
   // md5 hash of "test"
-  NodeID test01 = NodeID::from_str("098f6bcd4621d373cade4e832627b4f6");
-  EXPECT_EQ(test00, test01);
+  NodeID hast_test = NodeID::from_str("098f6bcd4621d373cade4e832627b4f6");
+
+  NodeID test00 = NodeID::make_hash_from_str("test", "");
+  EXPECT_EQ(test00, hast_test);
+
+  NodeID test01 = NodeID::make_hash_from_str("st", "te");
+  EXPECT_EQ(test01, hast_test);
+
+  NodeID test02 = NodeID::make_hash_from_str("test", "?");
+  EXPECT_NE(test02, hast_test);
 }
 
 TEST(NodeIDTest, make_random) {

@@ -51,24 +51,27 @@ type ConfigRouting struct {
 	UpdatePeriod            *uint32  `json:"updatePeriod,omitempty"`
 }
 
+type ConfigKvs struct {
+	RetryMax         *uint32 `json:"retryMax,omitempty"`
+	RetryIntervalMin *uint32 `json:"retryIntervalMin,omitempty"`
+	RetryIntervalMax *uint32 `json:"retryIntervalMax,omitempty"`
+}
+
 type ConfigModule struct {
 	Type    string `json:"type"`
 	Channel uint32 `json:"channel"`
-
-	RetryMax         *uint32 `json:"retryMax,omitempty"`         // for map
-	RetryIntervalMin *uint32 `json:"retryIntervalMin,omitempty"` // for map
-	RetryIntervalMax *uint32 `json:"retryIntervalMax,omitempty"` // for map
 
 	CacheTime *uint32 `json:"cacheTime,omitempty"` // for pubsub_2d
 }
 
 type ConfigNode struct {
-	Revision      float64                 `json:"revision"`
-	NodeAccessor  *ConfigNodeAccessor     `json:"nodeAccessor,omitempty"`
-	CoordSystem2d *ConfigCoordSystem2D    `json:"coordSystem2D,omitempty"`
-	IceServers    []ConfigIceServer       `json:"iceServers,omitempty"`
-	Routing       *ConfigRouting          `json:"routing,omitempty"`
-	Modules       map[string]ConfigModule `json:"modules,omitempty"`
+	Revision      float64              `json:"revision"`
+	NodeAccessor  *ConfigNodeAccessor  `json:"nodeAccessor,omitempty"`
+	CoordSystem2d *ConfigCoordSystem2D `json:"coordSystem2D,omitempty"`
+	IceServers    []ConfigIceServer    `json:"iceServers,omitempty"`
+	Routing       *ConfigRouting       `json:"routing,omitempty"`
+	Kvs           ConfigKvs            `json:"kvs,omitempty"`
+	//Modules       map[string]ConfigModule `json:"modules,omitempty"`
 }
 
 type Config struct {

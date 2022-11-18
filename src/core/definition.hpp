@@ -73,9 +73,9 @@ static const unsigned int NODE_ACCESSOR_BUFFER_INTERVAL = 100;
 static const uint32_t NODE_ACCESSOR_HOP_COUNT_MAX       = 64;
 static const unsigned int NODE_ACCESSOR_PACKET_SIZE     = 8192;
 
-static const unsigned int MAP_PAXOS_RETRY_MAX          = 5;
-static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MIN = 1000;  // [msec]
-static const unsigned int MAP_PAXOS_RETRY_INTERVAL_MAX = 2000;  // [msec]
+static const unsigned int KVS_RETRY_MAX          = 5;
+static const unsigned int KVS_RETRY_INTERVAL_MIN = 1000;  // [msec]
+static const unsigned int KVS_RETRY_INTERVAL_MAX = 2000;  // [msec]
 
 static const unsigned int PUBSUB_2D_CACHE_TIME = 30000;  // [msec]
 

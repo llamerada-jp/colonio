@@ -103,6 +103,10 @@ void Network::change_local_position(const Coordinate& position) {
   routing->on_change_local_position(position);
 }
 
+bool Network::is_covered_range_1d(const NodeID& nid) {
+  return routing->is_covered_range_1d(nid);
+}
+
 void Network::update_accessor_state() {
   LinkState::Type seed_status = seed_accessor->get_link_state();
   LinkState::Type node_status = node_accessor->get_link_state();

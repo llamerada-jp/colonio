@@ -55,6 +55,7 @@ class Network : public NodeAccessorDelegate, public RoutingDelegate, public Seed
   void switch_packet(std::unique_ptr<const Packet> packet, bool is_from_seed);
   void relay_packet(const NodeID& dst_nid, std::unique_ptr<const Packet> packet);
   void change_local_position(const Coordinate& position);
+  bool is_covered_range_1d(const NodeID& nid);
 
  private:
   Logger& logger;

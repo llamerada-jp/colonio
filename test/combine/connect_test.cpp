@@ -64,7 +64,6 @@ TEST(ConnectTest, connect_multi) {
 
   AsyncHelper helper;
   TestSeed seed;
-  seed.add_module_map_paxos(MAP_NAME, 256);
   seed.run();
 
   auto config1 = make_config_with_name("node1");
