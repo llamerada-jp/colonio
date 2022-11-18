@@ -6,7 +6,6 @@ set(COLONIO_FILES
   core/colonio.cpp
   core/colonio_impl.cpp
 
-  # core/colonio_module.cpp
   core/colonio.pb.cc
   core/command.cpp
   core/command_manager.cpp
@@ -23,6 +22,7 @@ set(COLONIO_FILES
   # core/map.cpp
   # core/map_base.cpp
   # core/map_impl.cpp
+  core/messaging.cpp
   core/node_accessor.cpp
   core/network.cpp
   core/node_id.cpp

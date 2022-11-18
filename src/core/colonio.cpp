@@ -61,4 +61,7 @@ Colonio::Colonio() {
 
 Colonio::~Colonio() {
 }
+
+Colonio::MessagingResponseWriter::~MessagingResponseWriter() {
+}
 }  // namespace colonio

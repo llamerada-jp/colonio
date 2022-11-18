@@ -24,7 +24,7 @@
 using namespace colonio;
 using ::testing::MatchesRegex;
 
-TEST(ConnectTest, callExpect) {
+TEST(MessagingTest, callExpect) {
   const std::string URL   = "http://localhost:8080/test";
   const std::string TOKEN = "";
 
@@ -32,25 +32,22 @@ TEST(ConnectTest, callExpect) {
   TestSeed seed;
   seed.run();
 
-  std::string name = "node";
-  std::unique_ptr<Colonio> node(Colonio::new_instance([&](Colonio&, const std::string& message) {
-    std::cout << name << ":" << message << std::endl;
-  }));
+  auto config = make_config_with_name("node");
+  std::unique_ptr<Colonio> node(Colonio::new_instance(config));
 
   printf("connect node\n");
   node->connect(URL, TOKEN);
 
   printf("node: %s\n", node->get_local_nid().c_str());
 
-  node->on_call("expect", [&](Colonio& c, const Colonio::CallParameter& parameter) {
+  node->messaging_set_handler("expect", [&](Colonio& c, const Colonio::MessagingRequest& message) {
     printf("receive expect\n");
-    EXPECT_EQ(parameter.options, static_cast<const unsigned int>(0));
-    EXPECT_STREQ(parameter.name.c_str(), "expect");
-    EXPECT_STREQ(parameter.value.get<std::string>().c_str(), "data expect");
+    EXPECT_EQ(message.options, static_cast<const unsigned int>(0));
+    EXPECT_STREQ(message.message.get<std::string>().c_str(), "data expect");
     return Value("result expect");
   });
 
-  node->call_by_nid(
+  node->messaging_post(
       node->get_local_nid(), "expect", Value("data expect"), 0,
       [&](Colonio&, const Value& result) {
         printf("receive reply from expect\n");
@@ -67,7 +64,7 @@ TEST(ConnectTest, callExpect) {
   node->disconnect();
 }
 
-TEST(ConnectTest, callNearby) {
+TEST(MessagingTest, callNearby) {
   const std::string URL   = "http://localhost:8080/test";
   const std::string TOKEN = "";
 
@@ -75,27 +72,24 @@ TEST(ConnectTest, callNearby) {
   TestSeed seed;
   seed.run();
 
-  std::string name = "node";
-  std::unique_ptr<Colonio> node(Colonio::new_instance([&](Colonio&, const std::string& message) {
-    std::cout << name << ":" << message << std::endl;
-  }));
+  auto config = make_config_with_name("node");
+  std::unique_ptr<Colonio> node(Colonio::new_instance(config));
 
   printf("connect node\n");
   node->connect(URL, TOKEN);
 
   printf("node: %s\n", node->get_local_nid().c_str());
 
-  node->on_call("nearby", [&](Colonio& c, const Colonio::CallParameter& parameter) {
+  node->messaging_set_handler("nearby", [&](Colonio& c, const Colonio::MessagingRequest& message) {
     printf("receive nearby\n");
-    EXPECT_EQ(parameter.options, Colonio::CALL_ACCEPT_NEARBY);
-    EXPECT_STREQ(parameter.name.c_str(), "nearby");
-    EXPECT_STREQ(parameter.value.get<std::string>().c_str(), "data nearby");
+    EXPECT_EQ(message.options, Colonio::MESSAGING_ACCEPT_NEARBY);
+    EXPECT_STREQ(message.message.get<std::string>().c_str(), "data nearby");
     return Value("result nearby");
   });
 
-  // todo: avoid block without CALL_IGNORE_REPLY option.
-  node->call_by_nid(
-      "00000000000000000000000000000000", "nearby", Value("data nearby"), Colonio::CALL_ACCEPT_NEARBY,
+  // todo: avoid block without MESSAGING_IGNORE_RESPONSE option.
+  node->messaging_post(
+      "00000000000000000000000000000000", "nearby", Value("data nearby"), Colonio::MESSAGING_ACCEPT_NEARBY,
       [&](Colonio&, const Value& result) {
         printf("receive reply from nearby\n");
         EXPECT_STREQ(result.get<std::string>().c_str(), "result nearby");
@@ -111,7 +105,7 @@ TEST(ConnectTest, callNearby) {
   node->disconnect();
 }
 
-TEST(ConnectTest, send) {
+TEST(MessagingTest, send) {
   const std::string URL   = "http://localhost:8080/test";
   const std::string TOKEN = "";
 
@@ -119,14 +113,10 @@ TEST(ConnectTest, send) {
   TestSeed seed;
   seed.run();
 
-  std::string name1 = "node1";
-  std::string name2 = "node2";
-  std::unique_ptr<Colonio> node1(Colonio::new_instance([&](Colonio&, const std::string& message) {
-    std::cout << name1 << ":" << message << std::endl;
-  }));
-  std::unique_ptr<Colonio> node2(Colonio::new_instance([&](Colonio&, const std::string& message) {
-    std::cout << name2 << ":" << message << std::endl;
-  }));
+  auto config1 = make_config_with_name("node1");
+  std::unique_ptr<Colonio> node1(Colonio::new_instance(config1));
+  auto config2 = make_config_with_name("node2");
+  std::unique_ptr<Colonio> node2(Colonio::new_instance(config2));
 
   printf("connect node1\n");
   node1->connect(URL, TOKEN);
@@ -137,11 +127,10 @@ TEST(ConnectTest, send) {
   printf("node1 : %s\n", node1->get_local_nid().c_str());
   printf("node2 : %s\n", node2->get_local_nid().c_str());
 
-  node1->on_call("call1", [&](Colonio& c, const Colonio::CallParameter& parameter) {
+  node1->messaging_set_handler("call1", [&](Colonio& c, const Colonio::MessagingRequest& message) {
     printf("receive dummy1\n");
-    EXPECT_EQ(parameter.options, Colonio::CALL_ACCEPT_NEARBY);
-    EXPECT_STREQ(parameter.name.c_str(), "call1");
-    EXPECT_STREQ(parameter.value.get<std::string>().c_str(), "dummy1");
+    EXPECT_EQ(message.options, Colonio::MESSAGING_ACCEPT_NEARBY);
+    EXPECT_STREQ(message.message.get<std::string>().c_str(), "dummy1");
     helper.mark("1");
     helper.pass_signal("1");
 
@@ -149,7 +138,7 @@ TEST(ConnectTest, send) {
     return Value("result1");
   });
 
-  node1->on_call("call3", [&](Colonio& c, const Colonio::CallParameter& parameter) {
+  node1->messaging_set_handler("call3", [&](Colonio& c, const Colonio::MessagingRequest& message) {
     printf("receive dummy3\n");
     helper.mark("3");
     helper.pass_signal("3");
@@ -157,17 +146,16 @@ TEST(ConnectTest, send) {
     return Value();
   });
 
-  node2->on_call("call2", [&](Colonio& c, const Colonio::CallParameter& parameter) {
+  node2->messaging_set_handler("call2", [&](Colonio& c, const Colonio::MessagingRequest& message) {
     printf("receive dummy2\n");
-    EXPECT_EQ(parameter.options, Colonio::CALL_IGNORE_REPLY);
-    EXPECT_STREQ(parameter.name.c_str(), "call2");
-    EXPECT_STREQ(parameter.value.get<std::string>().c_str(), "dummy2");
+    EXPECT_EQ(message.options, Colonio::MESSAGING_IGNORE_RESPONSE);
+    EXPECT_STREQ(message.message.get<std::string>().c_str(), "dummy2");
     helper.mark("2");
     helper.pass_signal("2");
 
     printf("send dummy2\n");
-    // todo: avoid block without CALL_IGNORE_REPLY option.
-    c.call_by_nid(
+    // todo: avoid block without MESSAGING_IGNORE_RESPONSE option.
+    c.messaging_post(
         node1->get_local_nid(), "call3", Value(), 0,
         [&](Colonio&, const Value&) {
           helper.mark("4");
@@ -185,10 +173,10 @@ TEST(ConnectTest, send) {
       NodeID::center_mod(NodeID::from_str(node1->get_local_nid()), NodeID::from_str(node2->get_local_nid()));
   helper.wait_signal("1", [&] {
     printf("send dummy1\n");
-    Value result1 = node1->call_by_nid(target.to_str(), "call1", Value("dummy1"), Colonio::CALL_ACCEPT_NEARBY);
+    Value result1 = node1->messaging_post(target.to_str(), "call1", Value("dummy1"), Colonio::MESSAGING_ACCEPT_NEARBY);
     EXPECT_STREQ(result1.get<std::string>().c_str(), "result1");
     printf("send dummy0\n");
-    node2->call_by_nid(
+    node2->messaging_post(
         NodeID(0, 0).to_str(), "dummy", Value("dummy0"), 0,
         [&](Colonio&, const Value&) {
           ADD_FAILURE();
@@ -201,8 +189,8 @@ TEST(ConnectTest, send) {
 
   helper.wait_signal("2", [&] {
     printf("send dummy2\n");
-    node1->call_by_nid(
-        node2->get_local_nid(), "call2", Value("dummy2"), Colonio::CALL_IGNORE_REPLY,
+    node1->messaging_post(
+        node2->get_local_nid(), "call2", Value("dummy2"), Colonio::MESSAGING_IGNORE_RESPONSE,
         [&](Colonio&, const Value& result) {
           EXPECT_EQ(result.get_type(), Value::NULL_T);
           helper.pass_signal("2s");
@@ -226,53 +214,7 @@ TEST(ConnectTest, send) {
   node1->disconnect();
 }
 
-TEST(ConnectTest, callAndSetGet) {
-  const std::string URL      = "http://localhost:8080/test";
-  const std::string TOKEN    = "";
-  const std::string MAP_NAME = "map";
-
-  AsyncHelper helper;
-  TestSeed seed;
-  seed.add_module_map_paxos(MAP_NAME, 256);
-  seed.run();
-
-  std::string name = "node";
-  std::unique_ptr<Colonio> node(Colonio::new_instance([&](Colonio&, const std::string& message) {
-    std::cout << name << ":" << message << std::endl;
-  }));
-
-  printf("connect node\n");
-  node->connect(URL, TOKEN);
-
-  colonio::Map& m = node->access_map(MAP_NAME);
-
-  node->on_call("dest", [&](Colonio& c, const Colonio::CallParameter& parameter) {
-    printf("receive expect\n");
-
-    m.set(Value("key"), parameter.value);
-
-    return m.get(Value("key"));
-  });
-
-  node->call_by_nid(
-      node->get_local_nid(), "dest", Value("payload"), 0,
-      [&](Colonio&, const Value& result) {
-        EXPECT_STREQ(result.get<std::string>().c_str(), "payload");
-        helper.pass_signal("a");
-      },
-      [&](Colonio&, const Error&) {
-        ADD_FAILURE();
-      });
-
-  helper.wait_signal("a");
-
-  printf("disconnect node\n");
-  node->disconnect();
-}
-
-// TODO: fix it
-/*
-TEST(ConnectTest, callMessageChain) {
+TEST(MessagingTest, callMessageChain) {
   const std::string URL   = "http://localhost:8080/test";
   const std::string TOKEN = "";
 
@@ -280,33 +222,32 @@ TEST(ConnectTest, callMessageChain) {
   TestSeed seed;
   seed.run();
 
-  std::string name = "node";
-  std::unique_ptr<Colonio> node(Colonio::new_instance([&](Colonio&, const std::string& message) {
-    std::cout << name << ":" << message << std::endl;
-  }));
+  auto config             = make_config_with_name("node");
+  config.max_user_threads = 3;
+  std::unique_ptr<Colonio> node(Colonio::new_instance(config));
 
   printf("connect node\n");
   node->connect(URL, TOKEN);
 
-  node->on_call("hop", [&](Colonio& c, const Colonio::CallParameter& parameter) {
-    std::string message = parameter.value.get<std::string>();
+  node->messaging_set_handler("hop", [&](Colonio& c, const Colonio::MessagingRequest& message) {
+    std::string message_str = message.message.get<std::string>();
 
-    return node->call_by_nid(node->get_local_nid(), "step", Value(message + " hop"), 0);
+    return node->messaging_post(node->get_local_nid(), "step", Value(message_str + " hop"), 0);
   });
 
-  node->on_call("step", [&](Colonio& c, const Colonio::CallParameter& parameter) {
-    std::string message = parameter.value.get<std::string>();
+  node->messaging_set_handler("step", [&](Colonio& c, const Colonio::MessagingRequest& message) {
+    std::string message_str = message.message.get<std::string>();
 
-    return node->call_by_nid(node->get_local_nid(), "jump", Value(message + " step"), 0);
+    return node->messaging_post(node->get_local_nid(), "jump", Value(message_str + " step"), 0);
   });
 
-  node->on_call("jump", [&](Colonio& c, const Colonio::CallParameter& parameter) {
-    std::string message = parameter.value.get<std::string>();
+  node->messaging_set_handler("jump", [&](Colonio& c, const Colonio::MessagingRequest& message) {
+    std::string message_str = message.message.get<std::string>();
 
-    return Value(message + " jump!");
+    return Value(message_str + " jump!");
   });
 
-  node->call_by_nid(
+  node->messaging_post(
       node->get_local_nid(), "hop", Value("ready?"), 0,
       [&](Colonio&, const Value& result) {
         EXPECT_STREQ(result.get<std::string>().c_str(), "ready? hop step jump!");
@@ -321,4 +262,3 @@ TEST(ConnectTest, callMessageChain) {
   printf("disconnect node\n");
   node->disconnect();
 }
-//*/

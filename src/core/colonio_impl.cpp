@@ -180,34 +180,103 @@ std::tuple<double, double> ColonioImpl::set_position(double x, double y) {
 
 Value ColonioImpl::messaging_post(
     const std::string& dst_nid, const std::string& name, const Value& message, uint32_t opt) {
-  assert(false);
-  // @TODO
-  return Value();
+  assert(scheduler && messaging);
+  Pipe<Value> pipe;
+
+  scheduler->add_task(this, [&pipe, this, dst_nid, name, message, opt]() {
+    messaging->post(
+        dst_nid, name, message, opt,
+        [&pipe](const Value& response) {
+          pipe.push(response);
+        },
+        [&pipe](const Error& error) {
+          pipe.push_error(error);
+        });
+  });
+
+  return *pipe.pop_with_throw();
 }
 
 void ColonioImpl::messaging_post(
     const std::string& dst_nid, const std::string& name, const Value& message, uint32_t opt,
-    std::function<void(Colonio&, const Value&)>&& on_success,
+    std::function<void(Colonio&, const Value&)>&& on_response,
     std::function<void(Colonio&, const Error&)>&& on_failure) {
-  assert(false);
-  // @TODO
+  assert(scheduler && messaging);
+
+  scheduler->add_task(this, [this, dst_nid, name, message, opt, on_response, on_failure]() {
+    messaging->post(
+        dst_nid, name, message, opt,
+        [this, on_response](const Value& response) {
+          if (user_thread_pool) {
+            user_thread_pool->push([this, on_response, response]() {
+              on_response(*this, response);
+            });
+          } else {
+            on_response(*this, response);
+          }
+        },
+        [this, on_failure](const Error& error) {
+          if (user_thread_pool) {
+            user_thread_pool->push([this, on_failure, error]() {
+              on_failure(*this, error);
+            });
+          } else {
+            on_failure(*this, error);
+          }
+        });
+  });
 }
 
 void ColonioImpl::messaging_set_handler(
-    const std::string& name, std::function<Value(Colonio&, const MessageData&)>&& func) {
-  assert(false);
-  // @TODO
+    const std::string& name, std::function<Value(Colonio&, const MessagingRequest&)>&& handler) {
+  assert(messaging);
+  if (user_thread_pool) {
+    messaging->set_handler(
+        name, [this, handler](
+                  std::shared_ptr<const Colonio::MessagingRequest> request,
+                  std::shared_ptr<Colonio::MessagingResponseWriter> response_writer) {
+          user_thread_pool->push([this, handler, request, response_writer]() {
+            Value response = handler(*this, *request);
+            response_writer->write(response);
+          });
+        });
+  } else {
+    messaging->set_handler(
+        name, [this, handler](
+                  std::shared_ptr<const Colonio::MessagingRequest> request,
+                  std::shared_ptr<Colonio::MessagingResponseWriter> response_writer) {
+          Value response = handler(*this, *request);
+          response_writer->write(response);
+        });
+  }
 }
 
 void ColonioImpl::messaging_set_handler(
-    const std::string& name, std::function<void(Colonio&, const MessageData&, MessageResponseWriter&)>&& func) {
-  assert(false);
-  // @TODO
+    const std::string& name,
+    std::function<void(Colonio&, const MessagingRequest&, std::shared_ptr<MessagingResponseWriter>)>&& handler) {
+  assert(messaging);
+  if (user_thread_pool) {
+    messaging->set_handler(
+        name, [this, handler](
+                  std::shared_ptr<const Colonio::MessagingRequest> request,
+                  std::shared_ptr<Colonio::MessagingResponseWriter> response_writer) {
+          user_thread_pool->push([this, handler, request, response_writer]() {
+            handler(*this, *request, response_writer);
+          });
+        });
+  } else {
+    messaging->set_handler(
+        name, [this, handler](
+                  std::shared_ptr<const Colonio::MessagingRequest> request,
+                  std::shared_ptr<Colonio::MessagingResponseWriter> response_writer) {
+          handler(*this, *request, response_writer);
+        });
+  }
 }
 
 void ColonioImpl::messaging_unset_handler(const std::string& name) {
-  assert(false);
-  // @TODO
+  assert(messaging);
+  messaging->unset_handler(name);
 }
 
 void ColonioImpl::command_manager_do_send_packet(std::unique_ptr<const Packet> packet) {
@@ -229,8 +298,8 @@ void ColonioImpl::network_on_change_global_config(const picojson::object& config
   }
   global_config = config;
 
-  // @TODO: initialize modules
-  // assert(false);
+  // messaging
+  messaging = std::make_unique<Messaging>(logger, *command_manager);
 }
 
 void ColonioImpl::network_on_change_nearby_1d(const NodeID& prev_nid, const NodeID& next_nid) {
@@ -249,9 +318,10 @@ void ColonioImpl::network_on_change_nearby_position(const std::map<NodeID, Coord
 }
 
 const CoordSystem* ColonioImpl::network_on_require_coord_system(const picojson::object& config) {
+  // coord_system module is required to build routing.
+  // because of this, allocate only it before other modules.
   assert(!coord_system);
 
-  // coord_system
   picojson::object cs2d_config;
   if (Utils::check_json_optional(config, "coordSystem2D", &cs2d_config)) {
     const std::string& type = Utils::get_json<std::string>(cs2d_config, "type");
@@ -276,9 +346,11 @@ void ColonioImpl::allocate_resources() {
   coord_system.reset();
   command_manager = std::make_unique<CommandManager>(logger, random, *scheduler, local_nid, *this);
   network         = std::make_unique<Network>(logger, random, *scheduler, *command_manager, local_nid, *this);
+  messaging.reset();
 }
 
 void ColonioImpl::release_resources() {
+  messaging.reset();
   network.reset();
   command_manager.reset();
   coord_system.reset();
@@ -288,48 +360,6 @@ void ColonioImpl::release_resources() {
 }
 
 /*
-Value ColonioImpl::call_by_nid(const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt) {
-  Pipe<Value> pipe;
-
-  call_by_nid(
-      dst_nid, name, value, opt,
-      [&pipe](Colonio&, const Value& reply) {
-        pipe.push(reply);
-      },
-      [&pipe](Colonio&, const Error& error) {
-        pipe.push_error(error);
-      });
-
-  return *pipe.pop_with_throw();
-}
-
-void ColonioImpl::call_by_nid(
-    const std::string& dst_nid, const std::string& name, const Value& value, uint32_t opt,
-    std::function<void(Colonio&, const Value&)>&& on_success,
-    std::function<void(Colonio&, const Error&)>&& on_failure) {
-  try {
-    colonio_module->call_by_nid(
-        dst_nid, name, value, opt,
-        [this, on_success](const Value& reply) {
-          on_success(*this, reply);
-        },
-        [this, on_failure](const Error& err) {
-          on_failure(*this, err);
-        });
-  } catch (Error& e) {
-    on_failure(*this, e);
-  }
-}
-
-void ColonioImpl::on_call(const std::string& name, std::function<Value(Colonio&, const CallParameter&)>&& func) {
-  colonio_module->on_call(name, [this, func](const CallParameter& parameter) {
-    return func(*this, parameter);
-  });
-}
-
-void ColonioImpl::off_call(const std::string& name) {
-  colonio_module->off_call(name);
-}
 
 const NodeID& Network::module_2d_do_get_relay_nid(Module2D& module_2d, const Coordinate& position) {
   return routing->get_relay_nid_2d(position);
@@ -338,36 +368,6 @@ const NodeID& Network::module_2d_do_get_relay_nid(Module2D& module_2d, const Coo
 bool ColonioImpl::module_1d_do_check_covered_range(Module1D& module_1d, const NodeID& nid) {
   assert(routing);
   return routing->is_covered_range_1d(nid);
-}
-
-void ColonioImpl::check_api_connect() {
-  if (!connect_cb || link_state != LinkState::ONLINE) {
-    return;
-  }
-  assert(seed_accessor->get_auth_status() == AuthStatus::SUCCESS);
-
-  scheduler->add_user_task(this, [this]() {
-    if (connect_cb) {
-      auto d = Utils::defer([this] {
-        connect_cb.reset();
-      });
-      connect_cb->first(*this);
-    }
-  });
-}
-
-void ColonioImpl::clear_modules() {
-  if_map.clear();
-  if_pubsub2d.clear();
-
-  modules.clear();
-  modules_1d.clear();
-  modules_2d.clear();
-
-  node_accessor = nullptr;
-  routing       = nullptr;
-
-  seed_accessor.reset();
 }
 
 void ColonioImpl::register_module(ModuleBase* module, const std::string* name, bool is_1d, bool is_2d) {

@@ -58,6 +58,8 @@ class CommandManager {
   void send_packet_one_way(
       const NodeID& dst_nid, PacketMode::Type mode, std::unique_ptr<const proto::PacketContent> content);
   void send_response(const Packet& res_for, std::unique_ptr<const proto::PacketContent> content);
+  void send_response(
+      const NodeID& dst_nid, uint32_t id, bool relay_seed, std::unique_ptr<const proto::PacketContent> content);
   void set_handler(proto::PacketContent::ContentCase content_case, std::function<void(const Packet&)> handler);
 
  private:
