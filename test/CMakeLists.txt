@@ -25,9 +25,8 @@ add_library(colonio_test STATIC
 
 # Combination test
 set(test_targets_combine
-
-  # call
   connect
+  messaging
 
   # export_c
   # map

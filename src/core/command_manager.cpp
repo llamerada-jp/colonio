@@ -168,13 +168,18 @@ void CommandManager::send_packet_one_way(
 }
 
 void CommandManager::send_response(const Packet& res_for, std::unique_ptr<const proto::PacketContent> content) {
-  PacketMode::Type packet_mode = PacketMode::RESPONSE | PacketMode::EXPLICIT | PacketMode::ONE_WAY;
-  if (res_for.mode & PacketMode::RELAY_SEED) {
-    packet_mode |= PacketMode::RELAY_SEED;
+  send_response(res_for.src_nid, res_for.id, (res_for.mode & PacketMode::RELAY_SEED) != 0, std::move(content));
+}
+
+void CommandManager::send_response(
+    const NodeID& dst_nid, uint32_t id, bool relay_seed, std::unique_ptr<const proto::PacketContent> content) {
+  PacketMode::Type mode = PacketMode::RESPONSE | PacketMode::EXPLICIT | PacketMode::ONE_WAY;
+  if (relay_seed) {
+    mode |= PacketMode::RELAY_SEED;
   }
 
   std::unique_ptr<const Packet> packet =
-      std::make_unique<const Packet>(res_for.src_nid, local_nid, res_for.id, std::move(content), packet_mode);
+      std::make_unique<const Packet>(dst_nid, local_nid, id, std::move(content), mode);
 
   delegate.command_manager_do_send_packet(std::move(packet));
 }

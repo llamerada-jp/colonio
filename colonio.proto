@@ -82,8 +82,8 @@ message PacketContent {
 
     Routing routing = 9;
 
-    Messaging messaging                = 10;
-    MessagingSuccess messaging_success = 11;
+    Messaging messaging                  = 10;
+    MessagingResponse messaging_response = 11;
 
     KvsAccept kvs_accept                    = 12;
     KvsAcceptSuccess kvs_accept_success     = 13;
@@ -174,12 +174,12 @@ message Routing {
 
 // for messaging module
 message Messaging {
-  uint32 opt  = 1;
-  string name = 2;
-  Value value = 3;
+  uint32 opt    = 1;
+  string name   = 2;
+  Value message = 3;
 }
 
-message MessagingSuccess {
+message MessagingResponse {
   Value response = 1;
 }
 

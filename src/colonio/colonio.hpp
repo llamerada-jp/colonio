@@ -26,7 +26,6 @@
 namespace colonio {
 class Colonio;
 class Error;
-class Value;
 class ValueImpl;
 
 /**
@@ -38,279 +37,6 @@ const std::string WARN("warn");
 const std::string INFO("info");
 const std::string DEBUG("debug");
 }  // namespace LogLevel
-
-class ColonioConfig {
- public:
-  ColonioConfig();
-
-  /**
-   * @brief `disable_callback_thread` is a switch to disable creating new threads for exec callback.
-   *
-   * The callback functions are exec on Colonio's main thread.
-   * The callback function must not block the thread. And should be lightweight. Otherwise, the main thread will be
-   * blocked, and the whole Colonio process will be slow or freeze. This option is for developing wrappers for JS,
-   * Golang, and others. You should not use this option if you don't know the internal structure of Colonio.
-   *
-   * default: false
-   */
-  bool disable_callback_thread;
-
-  /**
-   * @brief `max_user_threads` describes the maximum number of user threads.
-   *
-   * Callback functions of Colonio will be run on user threads when `disable_callback_thread` is false. User threads are
-   * created as needed up to this variable. The developer should set this value to create enough threads when callback
-   * functions depend on the other callback functions' return.
-   *
-   * default: 1
-   */
-  unsigned int max_user_threads;
-
-  /**
-   * @brief `logger` is for customizing the the log receiver.
-   *
-   * `logger` method call when output log. You should implement this method to customize log. Colonio outputs 4 types
-   * log, `info`, `warn`, `error`, and `debug`. Default logger output info level log to stdout, others are output to
-   * stderr. You can customize it by using this interface. Note that the method could be call by multi threads. You
-   * have to implement thread-safe if necessary. Log messages past from colonio are JSON format having keys below.
-   *
-   * file    : Log output file name.
-   * level   : The urgency of the log.
-   * line    : Log output line number.
-   * message : Readable log messages.
-   * param   : The parameters that attached for the log.
-   * time    : Log output time.
-   *
-   * @param json JSON formatted log message.
-   */
-  std::function<void(Colonio& colonio, const std::string& json)> logger_func;
-};
-
-/**
- * @brief Main class of colonio. One instance is equivalent to one node.
- */
-class Colonio {
- public:
-  static Colonio* new_instance(ColonioConfig& config);
-
-  /**
-   * @brief Destroy the Colonio object.
-   *
-   * Run disconnect if necessary.
-   *
-   * @sa disconnect()
-   */
-  virtual ~Colonio();
-  Colonio(const Colonio&)            = delete;
-  Colonio& operator=(const Colonio&) = delete;
-
-  /**
-   * @brief Connect to seed and join the cluster.
-   *
-   * @param url Set the URL of the seed. e.g. "wss://host:1234/path".
-   * @param token token does not use. This is an argument for future expansion.
-   *
-   * Connect to the seed. Also, if there are already other nodes forming a cluster, join them.
-   * This method works synchronously and waits for the connection to the cluster to be established.
-   * If this method is successful, it will automatically reconnect until disconnect will be called.
-   * If you want to work asynchronously, use a asynchronous connect method instead.
-   * This method throws @ref Error when an error occurs. At successful completion, nothing is returned.
-   *
-   * @sa Colonio::connect(const std::string& url, const std::string& token, std::Exec<void(Colonio&)>&& on_success,
-   *     std::function<void(Colonio&, const Error&)>&& on_failure)
-   */
-  virtual void connect(const std::string& url, const std::string& token) = 0;
-
-  /**
-   * @brief Connect to seed and join the cluster asynchronously.
-   *
-   * @param url Set the URL of the seed. e.g. "wss://host:1234/path".
-   * @param token token does not use. This is an argument for future expansion.
-   * @param on_success The function will call when success to connect.
-   * @param on_failure The function will call when failure to connect with error information.
-   *
-   * The main purpose of the function is the same as @ref connect(const std::string& url, const std::string& token).
-   * This method works asynchronously, and the method returns immediately. Note that the specified callback function is
-   * called in a separate thread for processing.
-   *
-   * @sa connect(const std::string& url, const std::string& token)
-   */
-  virtual void connect(
-      const std::string& url, const std::string& token, std::function<void(Colonio&)>&& on_success,
-      std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
-
-  /**
-   * @brief Disconnect from the cluster and the seed.
-   *
-   * This method works synchronously, it will wait for disconnecting and finish thread to process.
-   * This method must not be used in any other callback in colonio because of stopping the thread and releasing
-   * resources.
-   * Once a disconnected colonio instance is reused, it is not guaranteed to work.
-   * This method throws @ref Error when an error occurs. At successful completion, nothing is returned.
-   */
-  virtual void disconnect() = 0;
-  virtual void disconnect(
-      std::function<void(Colonio&)>&& on_success, std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
-
-  virtual bool is_connected() = 0;
-
-  /**
-   * @brief Get the node-id of this node.
-   *
-   * The node-id is unique in the cluster.
-   * A new ID will be assigned to the node when connect.
-   * Return an empty string if node-id isn't assigned.
-   *
-   * @return std::string The node-id of this node.
-   */
-  virtual std::string get_local_nid() = 0;
-
-  /**
-   * @brief Sets the current position of the node.
-   *
-   * This method is only available if the coordinate system is enabled.
-   * The coordinate system depends on the settings in seed.
-   * This method works synchronously, but other nodes know the position of this node asynchronously.
-   *
-   * @param x Horizontal coordinate.
-   * @param y Vertical coordinate.
-   * @return std::tuple<double, double> The rounded coordinates will be returned to the input coordinates.
-   */
-  virtual std::tuple<double, double> set_position(double x, double y) = 0;
-
-  // Options for `messaging_post` method.
-  /// If there is no node with a matching node-id, the node with the closest node-id will receive the message.
-  static const uint32_t MESSAGING_ACCEPT_NEARBY = 0x01;
-  /// If this option is specified, the post method does not wait a response or error message. You get null value as
-  /// response. No error returns even if the destination node does not exist.
-  static const uint32_t MESSAGING_IGNORE_RESPONSE = 0x02;
-
-  /**
-   * @brief Post a message for the destination node and wait response message.
-   *
-   * This method provides the simple feature like RPC.
-   *
-   * @param dst_nid Target node's ID.
-   * @param name
-   * @param message
-   * @param opt Options.
-   */
-  virtual Value messaging_post(
-      const std::string& dst_nid, const std::string& name, const Value& message, uint32_t opt = 0x0) = 0;
-
-  /**
-   * @brief Post a message for the destination node and get response message asynchronously.
-   *
-   * @param dst_nid Target node's ID.
-   * @param name
-   * @param message
-   * @param opt Options.
-   * @param on_success A callback will be called when get response message.
-   * @param on_failure A callback will be called when get response failure or occur an error.
-   */
-  virtual void messaging_post(
-      const std::string& dst_nid, const std::string& name, const Value& message, uint32_t opt,
-      std::function<void(Colonio&, const Value&)>&& on_success,
-      std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
-
-  struct MessageData {
-    const Value& message;
-    const uint32_t options;
-  };
-
-  class MessageResponseWriter {
-    virtual void success(const Value&)       = 0;
-    virtual void failure(const std::string&) = 0;
-  };
-
-  /**
-   * @brief register the handler for
-   *
-   * If another handler has already been registered, the old one will be overwritten.
-   *
-   * @param name A name to identify the handler.
-   * @param func Receiver function.
-   */
-  virtual void messaging_set_handler(
-      const std::string& name, std::function<Value(Colonio&, const MessageData&)>&& func) = 0;
-  virtual void messaging_set_handler(
-      const std::string& name, std::function<void(Colonio&, const MessageData&, MessageResponseWriter&)>&& func) = 0;
-
-  /**
-   * @brief Release the function registered in the on_call method.
-   *
-   * @param name A name to identify the handler.
-   */
-  virtual void messaging_unset_handler(const std::string& name) = 0;
-
- protected:
-  /**
-   * @brief Construct a new Colonio object.
-   */
-  Colonio();
-};
-
-/**
- * @brief ErrorCode is assigned each error reason and is used with Error and Exception.
- *
- * @sa Error, Exception
- */
-enum class ErrorCode : unsigned int {
-  UNDEFINED,  ///< Undefined error is occurred.
-  // SYSTEM_ERROR,           ///< An error occurred in the API, which is used inside colonio.
-  CONNECTION_FAILED,      ///< An error on connection start failure.
-  CONNECTION_OFFLINE,     ///< The node cannot perform processing because of offline.
-  INCORRECT_DATA_FORMAT,  ///< Incorrect data format detected.
-  CONFLICT_WITH_SETTING,  ///< The calling method or setting parameter was inconsistent with the configuration in the
-  //                         ///< seed.
-  // NOT_EXIST_KEY,          ///< Tried to get a value for a key that doesn't exist.
-  // EXIST_KEY,              ///< An error occurs when overwriting the value for an existing key.
-  // CHANGED_PROPOSER,       ///< Under developing.
-  // COLLISION_LATE,         ///< Under developing.
-  PACKET_NO_ONE_RECV,  ///< There was no node receiving the message.
-  // CALLBACK_ERROR,         ///< An error that occurred while executing the callback function.
-  // RPC_UNDEFINED_ERROR,    ///< An undefined error that occurred in callback function of call_by_nid.
-  PACKET_TIMEOUT,  ///< An error occurs when timeout.
-};
-
-/**
- * @brief Error information. This is used when the asynchronous method calls a failed callback and is thrown when an
- * error occurs in a synchronous method.
- *
- *
- * @sa ErrorCode
- */
-class Error : public std::exception {
- public:
-  /// True if the error is fatal and the process of colonio can not continue.
-  const bool fatal;
-  /// Code to indicate the cause of the error.
-  const ErrorCode code;
-  /// A detailed message string for display or bug report.
-  const std::string message;
-  /// The line number where the exception was thrown (for debug).
-  const unsigned long line;
-  /// The file name where the exception was thrown (for debug).
-  const std::string file;
-
-  /**
-   * @brief Construct a new Error object.
-   *
-   * @param fatal True if the error is fatal and the process of colonio can not continue.
-   * @param code Code to indicate the cause of the error.
-   * @param message A detailed message string for display or bug report.
-   * @param line The line number where the exception was thrown.
-   * @param file The file name where the exception was thrown.
-   */
-  Error(bool fatal, ErrorCode code, const std::string& message, int line, const std::string& file);
-
-  /**
-   * @brief Override the standard method to output message.
-   *
-   * @return const char* The message is returned as it is.
-   */
-  const char* what() const noexcept override;
-};
 
 /**
  * @brief Values in colonio are represented as instance of colonio::Value class.
@@ -481,5 +207,281 @@ class Value {
  private:
   friend ValueImpl;
   std::unique_ptr<ValueImpl> impl;
+};
+
+class ColonioConfig {
+ public:
+  ColonioConfig();
+
+  /**
+   * @brief `disable_callback_thread` is a switch to disable creating new threads for exec callback.
+   *
+   * The callback functions are exec on Colonio's main thread.
+   * The callback function must not block the thread. And should be lightweight. Otherwise, the main thread will be
+   * blocked, and the whole Colonio process will be slow or freeze. This option is for developing wrappers for JS,
+   * Golang, and others. You should not use this option if you don't know the internal structure of Colonio.
+   *
+   * default: false
+   */
+  bool disable_callback_thread;
+
+  /**
+   * @brief `max_user_threads` describes the maximum number of user threads.
+   *
+   * Callback functions of Colonio will be run on user threads when `disable_callback_thread` is false. User threads are
+   * created as needed up to this variable. The developer should set this value to create enough threads when callback
+   * functions depend on the other callback functions' return.
+   *
+   * default: 1
+   */
+  unsigned int max_user_threads;
+
+  /**
+   * @brief `logger` is for customizing the the log receiver.
+   *
+   * `logger` method call when output log. You should implement this method to customize log. Colonio outputs 4 types
+   * log, `info`, `warn`, `error`, and `debug`. Default logger output info level log to stdout, others are output to
+   * stderr. You can customize it by using this interface. Note that the method could be call by multi threads. You
+   * have to implement thread-safe if necessary. Log messages past from colonio are JSON format having keys below.
+   *
+   * file    : Log output file name.
+   * level   : The urgency of the log.
+   * line    : Log output line number.
+   * message : Readable log messages.
+   * param   : The parameters that attached for the log.
+   * time    : Log output time.
+   *
+   * @param json JSON formatted log message.
+   */
+  std::function<void(Colonio& colonio, const std::string& json)> logger_func;
+};
+
+/**
+ * @brief Main class of colonio. One instance is equivalent to one node.
+ */
+class Colonio {
+ public:
+  static Colonio* new_instance(ColonioConfig& config);
+
+  /**
+   * @brief Destroy the Colonio object.
+   *
+   * Run disconnect if necessary.
+   *
+   * @sa disconnect()
+   */
+  virtual ~Colonio();
+  Colonio(const Colonio&)            = delete;
+  Colonio& operator=(const Colonio&) = delete;
+
+  /**
+   * @brief Connect to seed and join the cluster.
+   *
+   * @param url Set the URL of the seed. e.g. "wss://host:1234/path".
+   * @param token token does not use. This is an argument for future expansion.
+   *
+   * Connect to the seed. Also, if there are already other nodes forming a cluster, join them.
+   * This method works synchronously and waits for the connection to the cluster to be established.
+   * If this method is successful, it will automatically reconnect until disconnect will be called.
+   * If you want to work asynchronously, use a asynchronous connect method instead.
+   * This method throws @ref Error when an error occurs. At successful completion, nothing is returned.
+   *
+   * @sa Colonio::connect(const std::string& url, const std::string& token, std::Exec<void(Colonio&)>&& on_success,
+   *     std::function<void(Colonio&, const Error&)>&& on_failure)
+   */
+  virtual void connect(const std::string& url, const std::string& token) = 0;
+
+  /**
+   * @brief Connect to seed and join the cluster asynchronously.
+   *
+   * @param url Set the URL of the seed. e.g. "wss://host:1234/path".
+   * @param token token does not use. This is an argument for future expansion.
+   * @param on_success The function will call when success to connect.
+   * @param on_failure The function will call when failure to connect with error information.
+   *
+   * The main purpose of the function is the same as @ref connect(const std::string& url, const std::string& token).
+   * This method works asynchronously, and the method returns immediately. Note that the specified callback function is
+   * called in a separate thread for processing.
+   *
+   * @sa connect(const std::string& url, const std::string& token)
+   */
+  virtual void connect(
+      const std::string& url, const std::string& token, std::function<void(Colonio&)>&& on_success,
+      std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
+
+  /**
+   * @brief Disconnect from the cluster and the seed.
+   *
+   * This method works synchronously, it will wait for disconnecting and finish thread to process.
+   * This method must not be used in any other callback in colonio because of stopping the thread and releasing
+   * resources.
+   * Once a disconnected colonio instance is reused, it is not guaranteed to work.
+   * This method throws @ref Error when an error occurs. At successful completion, nothing is returned.
+   */
+  virtual void disconnect() = 0;
+  virtual void disconnect(
+      std::function<void(Colonio&)>&& on_success, std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
+
+  virtual bool is_connected() = 0;
+
+  /**
+   * @brief Get the node-id of this node.
+   *
+   * The node-id is unique in the cluster.
+   * A new ID will be assigned to the node when connect.
+   * Return an empty string if node-id isn't assigned.
+   *
+   * @return std::string The node-id of this node.
+   */
+  virtual std::string get_local_nid() = 0;
+
+  /**
+   * @brief Sets the current position of the node.
+   *
+   * This method is only available if the coordinate system is enabled.
+   * The coordinate system depends on the settings in seed.
+   * This method works synchronously, but other nodes know the position of this node asynchronously.
+   *
+   * @param x Horizontal coordinate.
+   * @param y Vertical coordinate.
+   * @return std::tuple<double, double> The rounded coordinates will be returned to the input coordinates.
+   */
+  virtual std::tuple<double, double> set_position(double x, double y) = 0;
+
+  // Options for `messaging_post` method.
+  /// If there is no node with a matching node-id, the node with the closest node-id will receive the message.
+  static const uint32_t MESSAGING_ACCEPT_NEARBY = 0x01;
+  /// If this option is specified, the post method does not wait a response or error message. You get null value as
+  /// response. No error returns even if the destination node does not exist.
+  static const uint32_t MESSAGING_IGNORE_RESPONSE = 0x02;
+
+  /**
+   * @brief Post a message for the destination node and wait response message.
+   *
+   * This method provides the simple feature like RPC.
+   *
+   * @param dst_nid Target node's ID.
+   * @param name
+   * @param message
+   * @param opt Options.
+   */
+  virtual Value messaging_post(
+      const std::string& dst_nid, const std::string& name, const Value& message, uint32_t opt = 0x0) = 0;
+
+  /**
+   * @brief Post a message for the destination node and get response message asynchronously.
+   *
+   * @param dst_nid Target node's ID.
+   * @param name
+   * @param message
+   * @param opt Options.
+   * @param on_response A callback will be called when get response message.
+   * @param on_failure A callback will be called when an error occurred.
+   */
+  virtual void messaging_post(
+      const std::string& dst_nid, const std::string& name, const Value& message, uint32_t opt,
+      std::function<void(Colonio&, const Value&)>&& on_response,
+      std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
+
+  struct MessagingRequest {
+    NodeID source;
+    Value message;
+    uint32_t options;
+  };
+
+  class MessagingResponseWriter {
+   public:
+    virtual ~MessagingResponseWriter();
+    virtual void write(const Value&) = 0;
+  };
+
+  /**
+   * @brief register the handler for
+   *
+   * If another handler has already been registered, the old one will be overwritten.
+   *
+   * @param name A name to identify the handler.
+   * @param handler The handler function.
+   */
+  virtual void messaging_set_handler(
+      const std::string& name, std::function<Value(Colonio&, const MessagingRequest&)>&& handler) = 0;
+  virtual void messaging_set_handler(
+      const std::string& name,
+      std::function<void(Colonio&, const MessagingRequest&, std::shared_ptr<MessagingResponseWriter>)>&& handler) = 0;
+
+  /**
+   * @brief Release the function registered in the on_call method.
+   *
+   * @param name A name to identify the handler.
+   */
+  virtual void messaging_unset_handler(const std::string& name) = 0;
+
+ protected:
+  /**
+   * @brief Construct a new Colonio object.
+   */
+  Colonio();
+};
+
+/**
+ * @brief ErrorCode is assigned each error reason and is used with Error and Exception.
+ *
+ * @sa Error, Exception
+ */
+enum class ErrorCode : unsigned int {
+  UNDEFINED,  ///< Undefined error is occurred.
+  // SYSTEM_ERROR,           ///< An error occurred in the API, which is used inside colonio.
+  SYSTEM_UNEXPECTED_PACKET,  ///< An error that occur when unexpected packets are received.
+  CONNECTION_FAILED,         ///< An error on connection start failure.
+  CONNECTION_OFFLINE,        ///< The node cannot perform processing because of offline.
+  INCORRECT_DATA_FORMAT,     ///< Incorrect data format detected.
+  CONFLICT_WITH_SETTING,     ///< The calling method or setting parameter was inconsistent with the configuration in the
+  //                         ///< seed.
+  // NOT_EXIST_KEY,          ///< Tried to get a value for a key that doesn't exist.
+  // EXIST_KEY,              ///< An error occurs when overwriting the value for an existing key.
+  // CHANGED_PROPOSER,       ///< Under developing.
+  // COLLISION_LATE,         ///< Under developing.
+  PACKET_NO_ONE_RECV,           ///< There was no node receiving the message.
+  PACKET_TIMEOUT,               ///< An error occurs when timeout.
+  MESSAGING_HANDLER_NOT_FOUND,  /// An error that occur when message sent to a non-existent handler.
+};
+
+/**
+ * @brief Error information. This is used when the asynchronous method calls a failed callback and is thrown when an
+ * error occurs in a synchronous method.
+ *
+ *
+ * @sa ErrorCode
+ */
+class Error : public std::exception {
+ public:
+  /// True if the error is fatal and the process of colonio can not continue.
+  const bool fatal;
+  /// Code to indicate the cause of the error.
+  const ErrorCode code;
+  /// A detailed message string for display or bug report.
+  const std::string message;
+  /// The line number where the exception was thrown (for debug).
+  const unsigned long line;
+  /// The file name where the exception was thrown (for debug).
+  const std::string file;
+
+  /**
+   * @brief Construct a new Error object.
+   *
+   * @param fatal True if the error is fatal and the process of colonio can not continue.
+   * @param code Code to indicate the cause of the error.
+   * @param message A detailed message string for display or bug report.
+   * @param line The line number where the exception was thrown.
+   * @param file The file name where the exception was thrown.
+   */
+  Error(bool fatal, ErrorCode code, const std::string& message, int line, const std::string& file);
+
+  /**
+   * @brief Override the standard method to output message.
+   *
+   * @return const char* The message is returned as it is.
+   */
+  const char* what() const noexcept override;
 };
 }  // namespace colonio
