@@ -28,9 +28,9 @@ set(test_targets_combine
   connect
   messaging
   kvs
+  spread
 
   # export_c
-  # pubsub_2d
 )
 
 foreach(test_target IN LISTS test_targets_combine)

@@ -163,13 +163,6 @@ std::tuple<double, double> ColonioImpl::set_position(double x, double y) {
   Coordinate old_position = coord_system->get_local_position();
   if (new_position != old_position) {
     coord_system->set_local_position(new_position);
-    assert(false);
-    /* TODO
-    for (auto& it : modules_2d) {
-      it->module_2d_on_change_local_position(new_position);
-    }
-    //*/
-
     scheduler->add_task(this, [this, new_position]() {
       network->change_local_position(new_position);
       log_debug("current position").map("coordinate", Convert::coordinate2json(new_position));
@@ -406,6 +399,89 @@ void ColonioImpl::kvs_set(
   });
 }
 
+void ColonioImpl::spread_post(
+    double x, double y, double r, const std::string& name, const Value& message, uint32_t opt) {
+  if (!coord_system) {
+    colonio_throw_error(ErrorCode::CONFLICT_WITH_SETTING, "coordinate system and spread feature were not enabled");
+  }
+  assert(scheduler && spread);
+
+  Pipe<int> pipe;
+
+  scheduler->add_task(this, [this, &pipe, x, y, r, name, message, opt]() {
+    spread->post(
+        x, y, r, name, message, opt,
+        [&pipe]() {
+          pipe.push(1);
+        },
+        [&pipe](const Error& error) {
+          pipe.push_error(error);
+        });
+  });
+
+  pipe.pop_with_throw();
+}
+
+void ColonioImpl::spread_post(
+    double x, double y, double r, const std::string& name, const Value& message, uint32_t opt,
+    std::function<void(Colonio&)>&& on_success, std::function<void(Colonio&, const Error&)>&& on_failure) {
+  if (!coord_system) {
+    colonio_throw_error(ErrorCode::CONFLICT_WITH_SETTING, "coordinate system and spread feature were not enabled");
+  }
+  assert(scheduler && spread);
+
+  scheduler->add_task(this, [this, x, y, r, name, message, opt, on_success, on_failure]() {
+    spread->post(
+        x, y, r, name, message, opt,
+        [this, on_success]() {
+          if (user_thread_pool) {
+            user_thread_pool->push([this, on_success]() {
+              on_success(*this);
+            });
+          } else {
+            on_success(*this);
+          }
+        },
+        [this, on_failure](const Error& error) {
+          if (user_thread_pool) {
+            user_thread_pool->push([this, on_failure, error]() {
+              on_failure(*this, error);
+            });
+          } else {
+            on_failure(*this, error);
+          }
+        });
+  });
+}
+
+void ColonioImpl::spread_set_handler(
+    const std::string& name, std::function<void(Colonio&, const SpreadRequest&)>&& handler) {
+  if (!coord_system) {
+    colonio_throw_error(ErrorCode::CONFLICT_WITH_SETTING, "coordinate system and spread feature were not enabled");
+  }
+  assert(spread);
+  if (user_thread_pool) {
+    spread->set_handler(name, [this, handler](const Colonio::SpreadRequest& request) {
+      user_thread_pool->push([this, handler, request]() {
+        handler(*this, request);
+      });
+    });
+
+  } else {
+    spread->set_handler(name, [this, handler](const Colonio::SpreadRequest& request) {
+      handler(*this, request);
+    });
+  }
+}
+
+void ColonioImpl::spread_unset_handler(const std::string& name) {
+  if (!coord_system) {
+    colonio_throw_error(ErrorCode::CONFLICT_WITH_SETTING, "coordinate system and spread feature were not enabled");
+  }
+  assert(spread);
+  spread->unset_handler(name);
+}
+
 void ColonioImpl::command_manager_do_send_packet(std::unique_ptr<const Packet> packet) {
   network->switch_packet(std::move(packet), false);
 }
@@ -432,6 +508,13 @@ void ColonioImpl::network_on_change_global_config(const picojson::object& config
   kvs = std::make_unique<KVS>(
       logger, random, *scheduler, *command_manager, *this,
       Utils::get_json<picojson::object>(global_config, "kvs", picojson::object()));
+
+  // spread
+  if (coord_system) {
+    spread = std::make_unique<Spread>(
+        logger, random, *scheduler, *command_manager, local_nid, *coord_system, *this,
+        Utils::get_json<picojson::object>(global_config, "spread", picojson::object()));
+  }
 }
 
 void ColonioImpl::network_on_change_nearby_1d(const NodeID& prev_nid, const NodeID& next_nid) {
@@ -439,13 +522,13 @@ void ColonioImpl::network_on_change_nearby_1d(const NodeID& prev_nid, const Node
 }
 
 void ColonioImpl::network_on_change_nearby_2d(const std::set<NodeID>& nids) {
-  assert(false);
-  // @TODO
+  // @TODO unused?
 }
 
 void ColonioImpl::network_on_change_nearby_position(const std::map<NodeID, Coordinate>& positions) {
-  assert(false);
-  // @TODO
+  if (spread) {
+    spread->update_next_positions(positions);
+  }
 }
 
 const CoordSystem* ColonioImpl::network_on_require_coord_system(const picojson::object& config) {
@@ -470,6 +553,10 @@ bool ColonioImpl::kvs_on_check_covered_range(const NodeID& nid) {
   return network->is_covered_range_1d(nid);
 }
 
+const NodeID& ColonioImpl::spread_do_get_relay_nid(const Coordinate& position) {
+  return network->get_relay_nid_2d(position);
+}
+
 void ColonioImpl::allocate_resources() {
   assert(local_nid == NodeID::NONE);
 
@@ -486,6 +573,8 @@ void ColonioImpl::allocate_resources() {
 
 void ColonioImpl::release_resources() {
   messaging.reset();
+  kvs.reset();
+  spread.reset();
   network.reset();
   command_manager.reset();
   coord_system.reset();

@@ -57,11 +57,8 @@ type ConfigKvs struct {
 	RetryIntervalMax *uint32 `json:"retryIntervalMax,omitempty"`
 }
 
-type ConfigModule struct {
-	Type    string `json:"type"`
-	Channel uint32 `json:"channel"`
-
-	CacheTime *uint32 `json:"cacheTime,omitempty"` // for pubsub_2d
+type ConfigSpread struct {
+	CacheTime *uint32 `json:"cacheTime,omitempty"`
 }
 
 type ConfigNode struct {
@@ -70,8 +67,8 @@ type ConfigNode struct {
 	CoordSystem2d *ConfigCoordSystem2D `json:"coordSystem2D,omitempty"`
 	IceServers    []ConfigIceServer    `json:"iceServers,omitempty"`
 	Routing       *ConfigRouting       `json:"routing,omitempty"`
-	Kvs           ConfigKvs            `json:"kvs,omitempty"`
-	//Modules       map[string]ConfigModule `json:"modules,omitempty"`
+	Kvs           *ConfigKvs           `json:"kvs,omitempty"`
+	Spread        *ConfigSpread        `json:"spread,omitempty"`
 }
 
 type Config struct {
@@ -101,6 +98,10 @@ func (c *Config) validate() error {
 		if c.Node.Routing == nil {
 			return errors.New("Config value of `node.routing` required")
 		}
+	}
+
+	if c.Node.CoordSystem2d == nil && c.Node.Spread != nil {
+		return errors.New("`spread` module require `coordSystem2D` configurations")
 	}
 
 	return nil

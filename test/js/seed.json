@@ -1,6 +1,5 @@
 {
     "revision": 20200401.1,
-
     "documentRoot": ".",
     "overrides": {
         "/colonio.js": "../../output/",
@@ -8,7 +7,6 @@
     },
     "port": 8080,
     "path": "/test",
-
     "pingInterval": 10000,
     "timeout": 30000,
     "node": {
@@ -30,16 +28,6 @@
         "coordSystem2D": {
             "type": "sphere",
             "radius": 6378137
-        },
-        "modules": {
-            "mp": {
-                "type": "mapPaxos",
-                "channel": 256
-            },
-            "ps": {
-                "type": "pubsub2D",
-                "channel": 257
-            }
         }
     }
 }

@@ -24,8 +24,6 @@ set(COLONIO_FILES
   core/network.cpp
   core/node_id.cpp
   core/packet.cpp
-
-  # core/pubsub_2d.cpp
   core/random.cpp
   core/routing.cpp
   core/routing_1d.cpp
@@ -33,6 +31,7 @@ set(COLONIO_FILES
   core/seed_accessor.cpp
   core/seed_link.cpp
   core/scheduler.cpp
+  core/spread.cpp
   core/user_thread_pool.cpp
   core/utils.cpp
   core/value.cpp
