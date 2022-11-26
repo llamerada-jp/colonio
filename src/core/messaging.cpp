@@ -156,7 +156,7 @@ void Messaging::recv_messaging(const Packet& packet) {
   proto::Messaging content                           = packet.content->as_proto().messaging();
   const std::string& name                            = content.name();
   std::shared_ptr<Colonio::MessagingRequest> request = std::make_shared<Colonio::MessagingRequest>();
-  request->source                                    = packet.src_nid;
+  request->source_nid                                = packet.src_nid.to_str();
   request->message                                   = ValueImpl::from_pb(content.message());
   request->options                                   = content.opt();
 

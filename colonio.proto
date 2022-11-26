@@ -97,10 +97,10 @@ message PacketContent {
     KvsSet kvs_set                          = 39;
     KvsSetResponse kvs_set_response         = 40;
 
-    Spread spread                = 50;
-    SpreadKnock spread_knock     = 51;
-    SpreadRelay spread_relay     = 52;
-    SpreadFailure spread_failure = 53;
+    Spread spread                  = 50;
+    SpreadKnock spread_knock       = 51;
+    SpreadRelay spread_relay       = 52;
+    SpreadResponse spread_response = 53;
   }
 }
 
@@ -259,14 +259,15 @@ message KvsSetResponse {
   uint32 reason = 2;
 }
 
-// for pubsub2d module
+// for spread module
 message Spread {
-  Coordinate center = 1;
-  double r          = 2;
-  uint64 uid        = 3;
-  string name       = 4;
-  Value value       = 5;
-  uint32 opt        = 6;
+  NodeID source     = 1;
+  Coordinate center = 2;
+  double r          = 3;
+  uint64 uid        = 4;
+  string name       = 5;
+  Value message     = 6;
+  uint32 opt        = 7;
 }
 
 message SpreadKnock {
@@ -276,14 +277,18 @@ message SpreadKnock {
 }
 
 message SpreadRelay {
-  Coordinate center = 1;
-  double r          = 2;
-  uint64 uid        = 3;
-  string name       = 4;
-  Value value       = 5;
-  uint32 opt        = 6;
+  NodeID source     = 1;
+  Coordinate center = 2;
+  double r          = 3;
+  uint64 uid        = 4;
+  string name       = 5;
+  Value message     = 6;
+  uint32 opt        = 7;
 }
 
-message SpreadFailure {
-  uint32 reason = 1;
+message SpreadResponse {
+  bool success = 1;
+  //  `code` and `message` are set when failed response.
+  uint32 code    = 2;
+  string message = 3;
 }

@@ -107,6 +107,10 @@ bool Network::is_covered_range_1d(const NodeID& nid) {
   return routing->is_covered_range_1d(nid);
 }
 
+const NodeID& Network::get_relay_nid_2d(const Coordinate& position) {
+  return routing->get_relay_nid_2d(position);
+}
+
 void Network::update_accessor_state() {
   LinkState::Type seed_status = seed_accessor->get_link_state();
   LinkState::Type node_status = node_accessor->get_link_state();

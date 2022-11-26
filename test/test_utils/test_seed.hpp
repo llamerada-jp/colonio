@@ -102,15 +102,11 @@ class TestSeed {
     modules.insert(std::make_pair("kvs", picojson::value(m)));
   }
 
-  /*
-    void add_module_pubsub_2d(const std::string& name, unsigned int channel, unsigned int cache_time = 30000) {
-      picojson::object m;
-      m.insert(std::make_pair("type", picojson::value("pubsub2D")));
-      m.insert(std::make_pair("channel", picojson::value(static_cast<double>(channel))));
-      m.insert(std::make_pair("cacheTime", picojson::value(static_cast<double>(cache_time))));
-      modules.insert(std::make_pair(name, picojson::value(m)));
-    }
-  //*/
+  void config_spread(unsigned int cache_time = 30000) {
+    picojson::object m;
+    m.insert(std::make_pair("cacheTime", picojson::value(static_cast<double>(cache_time))));
+    modules.insert(std::make_pair("spread", picojson::value(m)));
+  }
 
   void stop() {
     kill(pid, SIGTERM);

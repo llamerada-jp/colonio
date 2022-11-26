@@ -28,10 +28,15 @@
 #include "node_id.hpp"
 #include "random.hpp"
 #include "scheduler.hpp"
+#include "spread.hpp"
 #include "user_thread_pool.hpp"
 
 namespace colonio {
-class ColonioImpl : public Colonio, public NetworkDelegate, public CommandManagerDelegate, public KVSDelegate {
+class ColonioImpl : public Colonio,
+                    public NetworkDelegate,
+                    public CommandManagerDelegate,
+                    public KVSDelegate,
+                    public SpreadDelegate {
  public:
   ColonioImpl(const ColonioConfig& config);
   virtual ~ColonioImpl();
@@ -74,6 +79,14 @@ class ColonioImpl : public Colonio, public NetworkDelegate, public CommandManage
       const std::string& key, const Value& value, uint32_t opt, std::function<void(Colonio&)>&& on_success,
       std::function<void(Colonio&, const Error&)>&& on_failure) override;
 
+  void spread_post(double x, double y, double r, const std::string& name, const Value& message, uint32_t opt) override;
+  void spread_post(
+      double x, double y, double r, const std::string& name, const Value& message, uint32_t opt,
+      std::function<void(Colonio&)>&& on_success, std::function<void(Colonio&, const Error&)>&& on_failure) override;
+  void spread_set_handler(
+      const std::string& name, std::function<void(Colonio&, const SpreadRequest&)>&& handler) override;
+  void spread_unset_handler(const std::string& name) override;
+
  private:
   Logger logger;
   Random random;
@@ -89,6 +102,7 @@ class ColonioImpl : public Colonio, public NetworkDelegate, public CommandManage
   std::unique_ptr<CoordSystem> coord_system;
   std::unique_ptr<Messaging> messaging;
   std::unique_ptr<KVS> kvs;
+  std::unique_ptr<Spread> spread;
 
   void command_manager_do_send_packet(std::unique_ptr<const Packet> packet) override;
   void command_manager_do_relay_packet(const NodeID& dst_nid, std::unique_ptr<const Packet> packet) override;
@@ -100,6 +114,8 @@ class ColonioImpl : public Colonio, public NetworkDelegate, public CommandManage
   const CoordSystem* network_on_require_coord_system(const picojson::object& config) override;
 
   bool kvs_on_check_covered_range(const NodeID& nid) override;
+
+  const NodeID& spread_do_get_relay_nid(const Coordinate& position) override;
 
   void allocate_resources();
   void release_resources();

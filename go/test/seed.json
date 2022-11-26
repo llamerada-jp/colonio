@@ -1,11 +1,10 @@
 {
   "documentRoot": ".",
   "overrides": {
-      "/colonio.js": "../../output/",
-      "/colonio.wasm": "../../output/",
-      "/colonio_golang.js": "../../src/js/"
+    "/colonio.js": "../../output/",
+    "/colonio.wasm": "../../output/",
+    "/colonio_golang.js": "../../src/js/"
   },
-  
   "node": {
     "coordSystem2D": {
       "type": "sphere",
@@ -18,17 +17,8 @@
         ]
       }
     ],
-    "modules": {
-      "ps": {
-        "cacheTime": 100,
-        "channel": 256,
-        "type": "pubsub2D"
-      },
-      "map": {
-        "channel": 255,
-        "type": "mapPaxos"
-      }
-
+    "spread": {
+      "cacheTime": 100
     },
     "routing": {
       "forceUpdateTimes": 20,

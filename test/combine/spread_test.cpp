@@ -30,19 +30,19 @@ double d2r(double d) {
   return M_PI * d / 180.0;
 }
 
-TEST(Pubsub2DTest, pubsub_async) {
-  const std::string URL            = "http://localhost:8080/test";
-  const std::string TOKEN          = "";
-  const std::string PUBSUB_2D_NAME = "ps2";
+TEST(SpreadTest, async) {
+  const std::string URL   = "http://localhost:8080/test";
+  const std::string TOKEN = "";
 
   AsyncHelper helper;
   TestSeed seed;
   seed.set_coord_system_sphere();
-  seed.add_module_pubsub_2d(PUBSUB_2D_NAME, 256);
   seed.run();
 
-  std::unique_ptr<Colonio> node1(Colonio::new_instance(log_receiver("node1")));
-  std::unique_ptr<Colonio> node2(Colonio::new_instance(log_receiver("node2")));
+  auto config1 = make_config_with_name("node1");
+  std::unique_ptr<Colonio> node1(Colonio::new_instance(config1));
+  auto config2 = make_config_with_name("node2");
+  std::unique_ptr<Colonio> node2(Colonio::new_instance(config2));
 
   printf("connect node1\n");
   node1->connect(
@@ -66,14 +66,12 @@ TEST(Pubsub2DTest, pubsub_async) {
 
   printf("wait connecting\n");
   helper.wait_signal("connect");
-  Pubsub2D& ps1 = node1->access_pubsub_2d(PUBSUB_2D_NAME);
-  Pubsub2D& ps2 = node2->access_pubsub_2d(PUBSUB_2D_NAME);
-  ps1.on("key", [&helper](Pubsub2D&, const Value& v) {
-    helper.mark("1" + v.get<std::string>());
+  node1->spread_set_handler("key", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
+    helper.mark("1" + r.message.get<std::string>());
     helper.pass_signal("on1");
   });
-  ps2.on("key", [&helper](Pubsub2D&, const Value& v) {
-    helper.mark("2" + v.get<std::string>());
+  node2->spread_set_handler("key", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
+    helper.mark("2" + r.message.get<std::string>());
     helper.pass_signal("on2");
   });
 
@@ -94,20 +92,20 @@ TEST(Pubsub2DTest, pubsub_async) {
   }
 
   printf("wait publishing\n");
-  helper.wait_signal("on1", [&ps2] {
+  helper.wait_signal("on1", [&node2] {
     printf("publish position node2\n");
-    ps2.publish(
-        "key", d2r(50), d2r(50), 10, Value("b"), 0, [](Pubsub2D& _) {},
-        [](Pubsub2D& _, const Error& err) {
+    node2->spread_post(
+        d2r(50), d2r(50), 10, "key", Value("b"), 0, [](Colonio& _) {},
+        [](Colonio& _, const Error& err) {
           std::cout << err.message << std::endl;
           ADD_FAILURE();
         });
   });
-  helper.wait_signal("on2", [&ps1] {
+  helper.wait_signal("on2", [&node1] {
     printf("publish position node1\n");
-    ps1.publish(
-        "key", d2r(50), d2r(50), 10, Value("a"), 0, [](Pubsub2D& _) {},
-        [](Pubsub2D& _, const Error& err) {
+    node1->spread_post(
+        d2r(50), d2r(50), 10, "key", Value("a"), 0, [](Colonio& _) {},
+        [](Colonio& _, const Error& err) {
           std::cout << err.message << std::endl;
           ADD_FAILURE();
         });
@@ -120,48 +118,46 @@ TEST(Pubsub2DTest, pubsub_async) {
   EXPECT_THAT(helper.get_route(), MatchesRegex("^1b2a|2a1b$"));
 }
 
-TEST(Pubsub2DTest, multi_node) {
-  const std::string URL            = "http://localhost:8080/test";
-  const std::string TOKEN          = "";
-  const std::string PUBSUB_2D_NAME = "ps2";
+TEST(SpreadTest, multi_node) {
+  const std::string URL   = "http://localhost:8080/test";
+  const std::string TOKEN = "";
 
   AsyncHelper helper;
   TestSeed seed;
   seed.set_coord_system_sphere();
-  seed.add_module_pubsub_2d(PUBSUB_2D_NAME, 256);
   seed.run();
 
-  std::unique_ptr<Colonio> node1(Colonio::new_instance(log_receiver("node1")));
-  std::unique_ptr<Colonio> node2(Colonio::new_instance(log_receiver("node2")));
+  auto config1 = make_config_with_name("node1");
+  std::unique_ptr<Colonio> node1(Colonio::new_instance(config1));
+  auto config2 = make_config_with_name("node2");
+  std::unique_ptr<Colonio> node2(Colonio::new_instance(config2));
 
   try {
     // connect node1;
     printf("connect node1\n");
     node1->connect(URL, TOKEN);
-    Pubsub2D& ps1 = node1->access_pubsub_2d(PUBSUB_2D_NAME);
-    ps1.on("key1", [&helper](Pubsub2D&, const Value& v) {
+    node1->spread_set_handler("key1", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
       helper.mark("11");
-      helper.mark(v.get<std::string>());
+      helper.mark(r.message.get<std::string>());
       helper.pass_signal("on11");
     });
-    ps1.on("key2", [&helper](Pubsub2D&, const Value& v) {
+    node1->spread_set_handler("key2", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
       helper.mark("12");
-      helper.mark(v.get<std::string>());
+      helper.mark(r.message.get<std::string>());
       helper.pass_signal("on12");
     });
 
     // connect node2;
     printf("connect node2\n");
     node2->connect(URL, TOKEN);
-    Pubsub2D& ps2 = node2->access_pubsub_2d(PUBSUB_2D_NAME);
-    ps2.on("key1", [&helper](Pubsub2D&, const Value& v) {
+    node2->spread_set_handler("key1", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
       helper.mark("21");
-      helper.mark(v.get<std::string>());
+      helper.mark(r.message.get<std::string>());
       helper.pass_signal("on21");
     });
-    ps2.on("key2", [&helper](Pubsub2D&, const Value& v) {
+    node2->spread_set_handler("key2", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
       helper.mark("22");
-      helper.mark(v.get<std::string>());
+      helper.mark(r.message.get<std::string>());
       helper.pass_signal("on22");
     });
 
@@ -169,26 +165,26 @@ TEST(Pubsub2DTest, multi_node) {
     node1->set_position(d2r(100), d2r(50));
     node2->set_position(d2r(50), d2r(50));
 
-    helper.wait_signal("on21", [&ps1] {
-      printf("publish a\n");
-      ps1.publish("key1", d2r(50), d2r(50), 10, Value("a"));  // 21a
+    helper.wait_signal("on21", [&node1] {
+      printf("post a\n");
+      node1->spread_post(d2r(50), d2r(50), 10, "key1", Value("a"));  // 21a
     });
-    printf("publish b\n");
-    ps2.publish("key2", d2r(50), d2r(50), 10, Value("b"));  // none
+    printf("post b\n");
+    node2->spread_post(d2r(50), d2r(50), 10, "key2", Value("b"));  // none
 
     helper.clear_signal();
     printf("set position 2\n");
     node2->set_position(d2r(-20), d2r(10));
 
     printf("publish c\n");
-    ps1.publish("key1", d2r(50), d2r(50), 10, Value("c"));  // none
-    helper.wait_signal("on21", [&ps1] {
+    node1->spread_post(d2r(50), d2r(50), 10, "key1", Value("c"));  // none
+    helper.wait_signal("on21", [&node1] {
       printf("publish d\n");
-      ps1.publish("key1", d2r(-20), d2r(10), 10, Value("d"));  // 21d
+      node1->spread_post(d2r(-20), d2r(10), 10, "key1", Value("d"));  // 21d
     });
-    helper.wait_signal("on22", [&ps1] {
+    helper.wait_signal("on22", [&node1] {
       printf("publish e\n");
-      ps1.publish("key2", d2r(-20), d2r(10), 10, Value("e"));  // 22e
+      node1->spread_post(d2r(-20), d2r(10), 10, "key2", Value("e"));  // 22e
     });
 
   } catch (colonio::Error& err) {
@@ -204,49 +200,45 @@ TEST(Pubsub2DTest, multi_node) {
   EXPECT_THAT(helper.get_route(), MatchesRegex("^21a21d22e$"));
 }
 
-TEST(Pubsub2DTest, pubsub_plane) {
-  const std::string URL            = "http://localhost:8080/test";
-  const std::string TOKEN          = "";
-  const std::string PUBSUB_2D_NAME = "ps2";
+TEST(SpreadTest, plane) {
+  const std::string URL   = "http://localhost:8080/test";
+  const std::string TOKEN = "";
 
   printf("setup seed\n");
   AsyncHelper helper;
   TestSeed seed;
   seed.set_coord_system_plane();
-  seed.add_module_pubsub_2d(PUBSUB_2D_NAME, 256);
   seed.run();
 
-  printf("create instance1\n");
-  std::unique_ptr<Colonio> node1(Colonio::new_instance(log_receiver("node1")));
-  printf("create instance2\n");
-  std::unique_ptr<Colonio> node2(Colonio::new_instance(log_receiver("node2")));
+  auto config1 = make_config_with_name("node1");
+  std::unique_ptr<Colonio> node1(Colonio::new_instance(config1));
+  auto config2 = make_config_with_name("node2");
+  std::unique_ptr<Colonio> node2(Colonio::new_instance(config2));
 
   // connect node1;
   printf("connect node1\n");
   node1->connect(URL, TOKEN);
   printf("connect node1 fin\n");
-  Pubsub2D& ps1 = node1->access_pubsub_2d(PUBSUB_2D_NAME);
-  ps1.on("key1", [&helper](Pubsub2D&, const Value& v) {
+  node1->spread_set_handler("key1", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
     helper.mark("11");
-    helper.mark(v.get<std::string>());
+    helper.mark(r.message.get<std::string>());
   });
-  ps1.on("key2", [&helper](Pubsub2D&, const Value& v) {
+  node1->spread_set_handler("key2", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
     helper.mark("12");
-    helper.mark(v.get<std::string>());
+    helper.mark(r.message.get<std::string>());
   });
 
   // connect node2;
   printf("connect node2\n");
   node2->connect(URL, TOKEN);
   printf("connect node2 fin\n");
-  Pubsub2D& ps2 = node2->access_pubsub_2d(PUBSUB_2D_NAME);
-  ps2.on("key1", [&helper](Pubsub2D&, const Value& v) {
+  node2->spread_set_handler("key1", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
     helper.mark("21");
-    helper.mark(v.get<std::string>());
+    helper.mark(r.message.get<std::string>());
   });
-  ps2.on("key2", [&helper](Pubsub2D&, const Value& v) {
+  node2->spread_set_handler("key2", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
     helper.mark("22");
-    helper.mark(v.get<std::string>());
+    helper.mark(r.message.get<std::string>());
   });
 
   double x1, y1;

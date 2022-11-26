@@ -385,7 +385,7 @@ class Colonio {
       std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
 
   struct MessagingRequest {
-    NodeID source;
+    std::string source_nid;
     Value message;
     uint32_t options;
   };
@@ -432,6 +432,24 @@ class Colonio {
       const std::string& key, const Value& value, uint32_t opt, std::function<void(Colonio&)>&& on_success,
       std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
 
+  struct SpreadRequest {
+    std::string source_nid;
+    Value message;
+    uint32_t options;
+  };
+
+  /// let raise an error if no one node that can be received a message within the specified range.
+  static const uint32_t SPREAD_SOMEONE_MUST_RECEIVE = 0x01;
+
+  virtual void spread_post(
+      double x, double y, double r, const std::string& name, const Value& message, uint32_t opt = 0x0) = 0;
+  virtual void spread_post(
+      double x, double y, double r, const std::string& name, const Value& message, uint32_t opt,
+      std::function<void(Colonio&)>&& on_success, std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
+  virtual void spread_set_handler(
+      const std::string& name, std::function<void(Colonio&, const SpreadRequest&)>&& handler) = 0;
+  virtual void spread_unset_handler(const std::string& name)                                  = 0;
+
  protected:
   /**
    * @brief Construct a new Colonio object.
@@ -462,6 +480,8 @@ enum class ErrorCode : unsigned int {
   KVS_NOT_FOUND,  ///< Tried to get a value for a key that doesn't exist.
   KVS_PROHIBIT_OVERWRITE,
   KVS_COLLISION,
+
+  SPREAD_NO_ONE_RECEIVE,
 };
 
 /**
