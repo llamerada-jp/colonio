@@ -156,7 +156,7 @@ std::string ColonioImpl::get_local_nid() {
 
 std::tuple<double, double> ColonioImpl::set_position(double x, double y) {
   if (!coord_system) {
-    colonio_throw_error(ErrorCode::CONFLICT_WITH_SETTING, "coordinate system was not enabled");
+    colonio_throw_error(ErrorCode::SYSTEM_CONFLICT_WITH_SETTING, "coordinate system was not enabled");
   }
 
   Coordinate new_position(x, y);
@@ -402,7 +402,8 @@ void ColonioImpl::kvs_set(
 void ColonioImpl::spread_post(
     double x, double y, double r, const std::string& name, const Value& message, uint32_t opt) {
   if (!coord_system) {
-    colonio_throw_error(ErrorCode::CONFLICT_WITH_SETTING, "coordinate system and spread feature were not enabled");
+    colonio_throw_error(
+        ErrorCode::SYSTEM_CONFLICT_WITH_SETTING, "coordinate system and spread feature were not enabled");
   }
   assert(scheduler && spread);
 
@@ -426,7 +427,8 @@ void ColonioImpl::spread_post(
     double x, double y, double r, const std::string& name, const Value& message, uint32_t opt,
     std::function<void(Colonio&)>&& on_success, std::function<void(Colonio&, const Error&)>&& on_failure) {
   if (!coord_system) {
-    colonio_throw_error(ErrorCode::CONFLICT_WITH_SETTING, "coordinate system and spread feature were not enabled");
+    colonio_throw_error(
+        ErrorCode::SYSTEM_CONFLICT_WITH_SETTING, "coordinate system and spread feature were not enabled");
   }
   assert(scheduler && spread);
 
@@ -457,7 +459,8 @@ void ColonioImpl::spread_post(
 void ColonioImpl::spread_set_handler(
     const std::string& name, std::function<void(Colonio&, const SpreadRequest&)>&& handler) {
   if (!coord_system) {
-    colonio_throw_error(ErrorCode::CONFLICT_WITH_SETTING, "coordinate system and spread feature were not enabled");
+    colonio_throw_error(
+        ErrorCode::SYSTEM_CONFLICT_WITH_SETTING, "coordinate system and spread feature were not enabled");
   }
   assert(spread);
   if (user_thread_pool) {
@@ -476,7 +479,8 @@ void ColonioImpl::spread_set_handler(
 
 void ColonioImpl::spread_unset_handler(const std::string& name) {
   if (!coord_system) {
-    colonio_throw_error(ErrorCode::CONFLICT_WITH_SETTING, "coordinate system and spread feature were not enabled");
+    colonio_throw_error(
+        ErrorCode::SYSTEM_CONFLICT_WITH_SETTING, "coordinate system and spread feature were not enabled");
   }
   assert(spread);
   spread->unset_handler(name);

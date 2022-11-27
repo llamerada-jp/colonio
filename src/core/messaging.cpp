@@ -91,7 +91,9 @@ void Messaging::CommandMessage::on_response(const Packet& packet) {
   const proto::PacketContent& c = packet.content->as_proto();
   if (!c.has_messaging_response()) {
     log_debug("an unexpected packet received").map("packet", packet);
-    Error e = colonio_error(ErrorCode::SYSTEM_UNEXPECTED_PACKET, "an unexpected packet received");
+    Error e = colonio_error(ErrorCode::SYSTEM_INCORRECT_DATA_FORMAT, "an unexpected packet received");
+    cb_failure(e);
+    return;
   }
 
   const proto::MessagingResponse& response = c.messaging_response();

@@ -163,6 +163,8 @@ class Value {
   template<typename T>
   T& get();
 
+  size_t get_binary_size() const;
+
   /**
    * @brief Get the type stored by Value object.
    *
@@ -197,12 +199,18 @@ class Value {
   void set(double v);
 
   /**
-   * @brief Set a new string or byte array for Value object.
+   * @brief Set a new string for Value object.
    *
    * @param v The source value of the object.
    */
   void set(const std::string& v);
 
+  /**
+   * @brief Set a new binary data for Value object.
+   *
+   * @param ptr
+   * @param len
+   */
   void set(const uint8_t* ptr, std::size_t len);
 
  private:
@@ -463,14 +471,12 @@ class Colonio {
  * @sa Error, Exception
  */
 enum class ErrorCode : unsigned int {
-  UNDEFINED,  ///< Undefined error is occurred.
-  // SYSTEM_ERROR,           ///< An error occurred in the API, which is used inside colonio.
-  SYSTEM_UNEXPECTED_PACKET,  ///< An error that occur when unexpected packets are received.
-  CONNECTION_FAILED,         ///< An error on connection start failure.
-  CONNECTION_OFFLINE,        ///< The node cannot perform processing because of offline.
-  INCORRECT_DATA_FORMAT,     ///< Incorrect data format detected.
-  CONFLICT_WITH_SETTING,     ///< The calling method or setting parameter was inconsistent with the configuration in the
-  //                         ///< seed.
+  UNDEFINED,                     ///< Undefined error is occurred.
+  SYSTEM_INCORRECT_DATA_FORMAT,  ///< Incorrect data format detected.
+  SYSTEM_CONFLICT_WITH_SETTING,  ///< The calling method or setting parameter was inconsistent with the configuration in
+                                 ///< the seed.
+  CONNECTION_FAILED,             ///< An error on connection start failure.
+  CONNECTION_OFFLINE,            ///< The node cannot perform processing because of offline.
 
   PACKET_NO_ONE_RECV,  ///< There was no node receiving the message.
   PACKET_TIMEOUT,      ///< An error occurs when timeout.
