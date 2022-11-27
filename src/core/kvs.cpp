@@ -177,7 +177,7 @@ void KVS::CommandSet::on_response(const Packet& packet) {
   const proto::PacketContent& c = packet.content->as_proto();
   if (!c.has_kvs_set_response()) {
     log_debug("an unexpected packet received").map("packet", packet);
-    info->cb_on_failure(colonio_error(ErrorCode::SYSTEM_UNEXPECTED_PACKET, "an unexpected packet received"));
+    info->cb_on_failure(colonio_error(ErrorCode::SYSTEM_INCORRECT_DATA_FORMAT, "an unexpected packet received"));
     return;
   }
 

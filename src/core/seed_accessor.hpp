@@ -64,7 +64,7 @@ class SeedAccessor : public SeedLinkDelegate {
   SeedAccessor(
       Logger& l, Scheduler& s, const NodeID& n, SeedAccessorDelegate& d, const std::string& u, const std::string& t);
   virtual ~SeedAccessor();
-  SeedAccessor(const SeedAccessor&)            = delete;
+  SeedAccessor(const SeedAccessor&) = delete;
   SeedAccessor& operator=(const SeedAccessor&) = delete;
 
   void connect(unsigned int interval = SEED_CONNECT_INTERVAL);

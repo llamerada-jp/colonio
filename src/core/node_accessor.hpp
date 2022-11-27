@@ -53,7 +53,7 @@ class NodeAccessor : public WebrtcLinkDelegate {
  public:
   NodeAccessor(Logger& l, Scheduler& s, CommandManager& c, const NodeID& n, NodeAccessorDelegate& d);
   virtual ~NodeAccessor();
-  NodeAccessor(const NodeAccessor&)            = delete;
+  NodeAccessor(const NodeAccessor&) = delete;
   NodeAccessor& operator=(const NodeAccessor&) = delete;
 
   void connect_link(const NodeID& nid);

@@ -41,12 +41,12 @@ Coordinate CoordSystemPlane::get_local_position() const {
 void CoordSystemPlane::set_local_position(const Coordinate& position) {
   if (position.x < MIN_X || MAX_X <= position.x) {
     colonio_throw_error(
-        ErrorCode::CONFLICT_WITH_SETTING, "The specified X coordinate is out of range (x:%f, min:%f, max:%f)",
+        ErrorCode::SYSTEM_CONFLICT_WITH_SETTING, "The specified X coordinate is out of range (x:%f, min:%f, max:%f)",
         position.x, MIN_X, MAX_X);
   }
   if (position.y < MIN_Y || MAX_Y <= position.y) {
     colonio_throw_error(
-        ErrorCode::CONFLICT_WITH_SETTING, "The specified Y coordinate is out of range (y:%f, min:%f, max:%f)",
+        ErrorCode::SYSTEM_CONFLICT_WITH_SETTING, "The specified Y coordinate is out of range (y:%f, min:%f, max:%f)",
         position.y, MIN_Y, MAX_Y);
   }
   local_position = position;
