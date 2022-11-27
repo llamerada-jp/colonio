@@ -50,7 +50,6 @@ Flags for build script are below.
 | `BUILD_TYPE`    | `Release`, `Debug` | `Release` | build type option used as CMAKE_BUILD_TYPE |
 | `WITH_COVERAGE` | `ON`, `OFF`        | `OFF`     | output coverage when run test programs     |
 | `WITH_GPROF`    | `ON`, `OFF`        | `OFF`     | enable build option for gprof              |
-| `WITH_PYTHON`   | `ON`, `OFF`        | `ON`      | enable build for python                    |
 | `WITH_SAMPLE`   | `ON`, `OFF`        | `OFF`     | build sample programs                      |
 | `WITH_TEST`     | `ON`, `OFF`        | `OFF`     | build test programs                        |
 

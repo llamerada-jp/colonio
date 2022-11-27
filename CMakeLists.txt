@@ -3,20 +3,19 @@ project(colonio)
 find_package(PkgConfig)
 
 # Read options.
-option(TEST_TIMEOUT  "Timeout seconds for each test." 180)
+option(TEST_TIMEOUT "Timeout seconds for each test." 180)
 option(WITH_COVERAGE "Build test with coverage. (For native only)" OFF)
-option(WITH_GPROF    "Enable build option for gprof. (For native only)" OFF)
-option(WITH_PYTHON   "Generate library for python. (For native only)" OFF)
-option(WITH_SAMPLE   "Generate simulate program. (For native only)" OFF)
-option(WITH_TEST     "Generate test program. (For native only)" OFF)
+option(WITH_GPROF "Enable build option for gprof. (For native only)" OFF)
+option(WITH_SAMPLE "Generate simulate program. (For native only)" OFF)
+option(WITH_TEST "Generate test program. (For native only)" OFF)
 
 # Common settings
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
-  ##
-  ## Build for WebAssembly environment.
-  ##
+  # #
+  # # Build for WebAssembly environment.
+  # #
 
   # Enable C++14
   # I cannot use CMAKE_CXX_STANDARD when emscripten?
@@ -39,6 +38,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_TABLE_GROWTH=1")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s MODULARIZE=1")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s EXPORT_NAME='ColonioModule'")
+
   # set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s EXPORT_ES6=1")
   # set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_MEMORY_GROWTH=1")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s EXIT_RUNTIME=0")
@@ -66,9 +66,9 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   add_subdirectory(${PROJECT_SOURCE_DIR}/src)
 
 else()
-  ##
-  ## Build for native environment.
-  ##
+  # #
+  # # Build for native environment.
+  # #
 
   # Enable C++14
   set(CMAKE_CXX_STANDARD 14)
@@ -84,10 +84,12 @@ else()
   link_directories(/usr/local/lib)
 
   list(APPEND webrtc_libs "webrtc")
+
   if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     # macOS
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWEBRTC_MAC=1 -DWEBRTC_POSIX=1")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden")
+
     # Extra libs for WebRTC
     find_library(FOUNDATION Foundation)
     list(APPEND webrtc_libs ${FOUNDATION})
@@ -96,6 +98,7 @@ else()
     # Linux
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWEBRTC_LINUX=1 -DWEBRTC_POSIX=1")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden -fvisibility-inlines-hidden")
+
     # avoid warning caused by ABSL_MUST_USE_RESULT with GCC
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-attributes")
   endif()
@@ -105,6 +108,7 @@ else()
     set(OPENSSL_CRYPTO_LIBRARY ${OPENSSL_ROOT_DIR}/lib/libcrypto.dylib CACHE FILEPATH "" FORCE)
     set(OPENSSL_SSL_LIBRARY ${OPENSSL_ROOT_DIR}/lib/libssl.dylib CACHE FILEPATH "" FORCE)
   endif()
+
   find_package(OpenSSL REQUIRED)
   include_directories(${OPENSSL_INCLUDE_DIR})
   list(APPEND webrtc_libs ${OPENSSL_LIBRARIES})
@@ -150,4 +154,4 @@ add_custom_target(cpplint
   --linelength=100
   --filter=-legal/copyright,-runtime/references,-build/c++11
   ${PROJECT_SOURCE_DIR}/src/*.cpp ${PROJECT_SOURCE_DIR}/src/*.hpp
-  )
+)
