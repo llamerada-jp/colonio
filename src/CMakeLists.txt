@@ -86,30 +86,6 @@ else()
   # PUBLIC_HEADER DESTINATION include/colonio
   # )
 
-  # Python
-  if(WITH_PYTHON)
-    find_package(pybind11 REQUIRED)
-    add_library(colonio_py MODULE
-      python/main.cpp
-      ${HEADER_FILES}
-      ${COLONIO_FILES}
-    )
-    target_link_libraries(colonio_py PRIVATE
-      pybind11::module
-      ${webrtc_libs}
-      ${extra_libs}
-    )
-    set_target_properties(colonio_py PROPERTIES
-      PREFIX "${PYTHON_MODULE_PREFIX}"
-      SUFFIX "${PYTHON_MODULE_EXTENSION}"
-    )
-
-    # install(TARGETS colonio_py
-    # RUNTIME DESTINATION ${PROJECT_SOURCE_DIR}/local/bin
-    # LIBRARY DESTINATION ${PROJECT_SOURCE_DIR}/local/lib
-    # ARCHIVE DESTINATION ${PROJECT_SOURCE_DIR}/local/lib)
-  endif()
-
   # Export file list for another module.
   foreach(f IN LISTS HEAD_ERFILES COLONIO_FILES)
     list(APPEND CORE_FILES "${PROJECT_SOURCE_DIR}/src/${f}")

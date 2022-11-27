@@ -52,7 +52,6 @@ SKIP_SETUP_LOCAL ?= OFF
 TEST_TIMEOUT ?= 180
 WITH_COVERAGE ?= OFF
 WITH_GPROF ?= OFF
-WITH_PYTHON ?= ON
 WITH_SAMPLE ?= OFF
 WITH_TEST ?= OFF
 
@@ -77,7 +76,7 @@ setup:
 setup-linux:
 	export DEBIAN_FRONTEND=noninteractive
 	$(SUDO) apt update
-	$(SUDO) apt -y install --no-install-recommends automake cmake build-essential ca-certificates curl git libcurl4-nss-dev libpython3-dev libssl-dev libtool pkg-config pybind11-dev python3 python3-distutils python3-pybind11
+	$(SUDO) apt -y install --no-install-recommends automake cmake build-essential ca-certificates curl git libcurl4-nss-dev libssl-dev libtool pkg-config python3
 	if [ $(SKIP_SETUP_LOCAL) = "OFF" ]; then $(MAKE) setup-local; fi
 	if [ $(SKIP_SETUP_LOCAL) = "OFF" -a $(shell uname -m) = "x86_64" ]; then $(MAKE) setup-wasm; fi
 
@@ -215,7 +214,6 @@ build:
 			BUILD_TYPE=$(BUILD_TYPE) \
 			WITH_COVERAGE=$(WITH_COVERAGE) \
 			WITH_GPROF=$(WITH_GPROF) \
-			WITH_PYTHON=$(WITH_PYTHON) \
 			WITH_SAMPLE=$(WITH_SAMPLE) \
 			WITH_TEST=$(WITH_TEST); \
 	elif [ $(shell uname -s) = "Darwin" ]; then \
@@ -260,7 +258,6 @@ build-native: src/core/colonio.pb.cc
 		-DCOLONIO_SEED_BIN_PATH=$(OUTPUT_PATH)/seed \
 		-DWITH_COVERAGE=$(WITH_COVERAGE) \
 		-DWITH_GPROF=$(WITH_GPROF) \
-		-DWITH_PYTHON=$(WITH_PYTHON) \
 		-DWITH_SAMPLE=$(WITH_SAMPLE) \
 		-DWITH_TEST=$(WITH_TEST) \
 		$(CMAKE_EXTRA_OPTS) \
