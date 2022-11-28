@@ -26,11 +26,10 @@ add_library(colonio_test STATIC
 # Combination test
 set(test_targets_combine
   connect
-  messaging
+  export_c
   kvs
+  messaging
   spread
-
-  # export_c
 )
 
 foreach(test_target IN LISTS test_targets_combine)

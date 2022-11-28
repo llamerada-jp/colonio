@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include <cstddef>
 #include <functional>
 #include <map>
 #include <memory>
@@ -111,7 +112,7 @@ class Value {
    * @param ptr
    * @param len Size of binary data.
    */
-  Value(const uint8_t* ptr, std::size_t len);
+  Value(const void* ptr, std::size_t siz);
 
   /**
    * @brief Destroy the Value object
@@ -154,14 +155,7 @@ class Value {
   template<typename T>
   const T& get() const;
 
-  /**
-   * @brief Extract the actual value from the object.
-   *
-   * @param T Native type, which corresponds to the value stored by Value object.
-   * @return const T& The value stored by Value object.
-   */
-  template<typename T>
-  T& get();
+  const void* get_binary() const;
 
   size_t get_binary_size() const;
 
@@ -211,7 +205,7 @@ class Value {
    * @param ptr
    * @param len
    */
-  void set(const uint8_t* ptr, std::size_t len);
+  void set(const void* ptr, std::size_t siz);
 
  private:
   friend ValueImpl;
@@ -280,7 +274,7 @@ class Colonio {
    * @sa disconnect()
    */
   virtual ~Colonio();
-  Colonio(const Colonio&)            = delete;
+  Colonio(const Colonio&) = delete;
   Colonio& operator=(const Colonio&) = delete;
 
   /**

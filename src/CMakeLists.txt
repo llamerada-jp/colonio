@@ -3,39 +3,37 @@
 # #
 file(GLOB HEADER_FILES "*.hpp")
 set(COLONIO_FILES
-  core/colonio.cpp
   core/colonio_impl.cpp
-
+  core/colonio.cpp
   core/colonio.pb.cc
-  core/command.cpp
   core/command_manager.cpp
+  core/command.cpp
   core/convert.cpp
-  core/coord_system.cpp
   core/coord_system_plane.cpp
   core/coord_system_sphere.cpp
+  core/coord_system.cpp
   core/coordinate.cpp
   core/error.cpp
-
-  # core/export_c.cpp
+  core/export_c.cpp
   core/kvs.cpp
   core/logger.cpp
   core/messaging.cpp
-  core/node_accessor.cpp
   core/network.cpp
+  core/node_accessor.cpp
   core/node_id.cpp
   core/packet.cpp
   core/random.cpp
-  core/routing.cpp
   core/routing_1d.cpp
   core/routing_2d.cpp
+  core/routing.cpp
+  core/scheduler.cpp
   core/seed_accessor.cpp
   core/seed_link.cpp
-  core/scheduler.cpp
   core/spread.cpp
   core/user_thread_pool.cpp
   core/utils.cpp
-  core/value.cpp
   core/value_impl.cpp
+  core/value.cpp
   core/webrtc_context.cpp
   core/webrtc_link.cpp
 )

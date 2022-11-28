@@ -40,6 +40,9 @@ Value::Value(const char* v) : impl(std::make_unique<ValueImpl>(std::string(v))) 
 Value::Value(const Value& src) : impl(std::make_unique<ValueImpl>(*src.impl)) {
 }
 
+Value::Value(const void* ptr, std::size_t siz) : impl(std::make_unique<ValueImpl>(ptr, siz)) {
+}
+
 Value::~Value() {
 }
 
@@ -59,11 +62,6 @@ bool Value::operator<(const Value& b) const {
   const CTYPE& Value::get<CTYPE>() const { \
     assert(get_type() == Value::VTYPE);    \
     return STORAGE;                        \
-  }                                        \
-  template<>                               \
-  CTYPE& Value::get<CTYPE>() {             \
-    assert(get_type() == Value::VTYPE);    \
-    return STORAGE;                        \
   }
 
 M_GET(bool, BOOL_T, impl->storage.bool_v)
@@ -71,6 +69,16 @@ M_GET(int64_t, INT_T, impl->storage.int64_v)
 M_GET(double, DOUBLE_T, impl->storage.double_v)
 M_GET(std::string, STRING_T, *impl->storage.string_v)
 #undef M_GET
+
+const void* Value::get_binary() const {
+  assert(get_type() == Value::BINARY_T);
+  return &impl->storage.binary_v->at(0);
+}
+
+size_t Value::get_binary_size() const {
+  assert(get_type() == Value::BINARY_T);
+  return impl->storage.binary_v->size();
+}
 
 Value::Type Value::get_type() const {
   return impl->type;

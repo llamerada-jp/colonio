@@ -28,7 +28,7 @@
 
 namespace colonio {
 
-void default_logger_func(Colonio& colonio, const std::string& json) {
+void default_logger_func(Colonio&, const std::string& json) {
   picojson::value v;
   std::string err = picojson::parse(v, json);
   if (!err.empty()) {

@@ -26,6 +26,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "colonio/colonio.hpp"
 
@@ -41,18 +42,19 @@ class ValueImpl {
     int64_t int64_v;
     double double_v;
     std::string* string_v;
+    std::vector<uint8_t>* binary_v;
   };
 
   Value::Type type;
   Storage storage;
 
   ValueImpl();
-  ValueImpl(const ValueImpl& src);
+  explicit ValueImpl(const ValueImpl& src);
   explicit ValueImpl(bool v);
   explicit ValueImpl(int64_t v);
   explicit ValueImpl(double v);
   explicit ValueImpl(const std::string& v);
-  explicit ValueImpl(const char* v);
+  ValueImpl(const void* v, unsigned int siz);
   virtual ~ValueImpl();
 
   static void to_pb(proto::Value* pb, const Value& value);

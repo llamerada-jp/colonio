@@ -29,8 +29,8 @@
 
 namespace colonio {
 ColonioImpl::ColonioImpl(const ColonioConfig& config) :
-    logger([&, this](const std::string& json) {
-      config.logger_func(*this, json);
+    logger([this, logger_func = config.logger_func](const std::string& json) {
+      logger_func(*this, json);
     }),
     local_config(config) {
 }
