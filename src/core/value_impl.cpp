@@ -45,9 +45,9 @@ ValueImpl::ValueImpl(const std::string& v) : type(Value::STRING_T) {
   storage.string_v = new std::string(v);
 }
 
-ValueImpl::ValueImpl(const char* v) : type(Value::STRING_T) {
+ValueImpl::ValueImpl(const void* v, unsigned int siz) : type(Value::BINARY_T) {
   memset(&storage, 0, sizeof(Storage));
-  storage.string_v = new std::string(v);
+  storage.binary_v = new std::vector<uint8_t>();
 }
 
 ValueImpl::ValueImpl(const ValueImpl& src) : type(src.type) {
@@ -55,6 +55,9 @@ ValueImpl::ValueImpl(const ValueImpl& src) : type(src.type) {
 
   if (src.type == Value::STRING_T) {
     storage.string_v = new std::string(*src.storage.string_v);
+
+  } else if (src.type == Value::BINARY_T) {
+    storage.binary_v = new std::vector<uint8_t>(*src.storage.binary_v);
 
   } else {
     storage = src.storage;
@@ -66,6 +69,11 @@ ValueImpl::~ValueImpl() {
     delete storage.string_v;
     type             = Value::NULL_T;
     storage.string_v = nullptr;
+  }
+  if (type == Value::BINARY_T) {
+    delete storage.binary_v;
+    type             = Value::NULL_T;
+    storage.binary_v = nullptr;
   }
 }
 
@@ -92,6 +100,11 @@ void ValueImpl::to_pb(proto::Value* pb, const Value& value) {
       pb->set_string_v(*(value.impl->storage.string_v));
       break;
 
+    case Value::BINARY_T:
+      pb->set_binary_v(
+          std::string(reinterpret_cast<char*>(&value.impl->storage.binary_v[0]), value.impl->storage.binary_v->size()));
+      break;
+
     default:
       assert(false);
       // pb->clear_value();
@@ -116,6 +129,9 @@ Value ValueImpl::from_pb(const proto::Value& pb) {
     case proto::Value::kStringV:
       return Value(pb.string_v());
 
+    case proto::Value::kBinaryV:
+      return Value(reinterpret_cast<const void*>(pb.binary_v().c_str()), pb.binary_v().size());
+
     default:
       assert(false);
       return Value();
@@ -135,6 +151,10 @@ std::string ValueImpl::to_str(const Value& value) {
 
     case Value::STRING_T:
       return std::string("\"") + *(value.impl->storage.string_v) + std::string("\"");
+
+    case Value::BINARY_T:
+      assert(false);
+      return std::string("binary");
 
     default:
       assert(value.impl->type == Value::NULL_T);
