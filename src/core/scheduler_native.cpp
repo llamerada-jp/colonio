@@ -44,7 +44,11 @@ void SchedulerNative::repeat_task(void* src, std::function<void()>&& func, unsig
   std::lock_guard<std::mutex> lock(mtx);
   const int64_t CURRENT_MSEC = Utils::get_current_msec();
 
-  tasks.push_back(Task{src, func, interval, static_cast<int64_t>(std::floor(CURRENT_MSEC / interval)) * interval});
+  tasks.push_back(Task{
+      .src      = src,
+      .func     = func,
+      .interval = interval,
+      .next     = static_cast<int64_t>(std::floor(CURRENT_MSEC / interval)) * interval});
   if (!is_controller_thread()) {
     cv.notify_all();
   }
@@ -52,13 +56,13 @@ void SchedulerNative::repeat_task(void* src, std::function<void()>&& func, unsig
 
 void SchedulerNative::add_task(void* src, std::function<void()>&& func, unsigned int after) {
   if (after == 0 && is_controller_thread() && running.size() != 0) {
-    running.push_back(Task{src, func, 0, 0});
+    running.push_back(Task{.src = src, .func = func, .interval = 0, .next = 0});
 
   } else {
     std::lock_guard<std::mutex> lock(mtx);
 
     const int64_t CURRENT_MSEC = Utils::get_current_msec();
-    tasks.push_back(Task{src, func, 0, CURRENT_MSEC + after});
+    tasks.push_back(Task{.src = src, .func = func, .interval = 0, .next = CURRENT_MSEC + after});
     if (!is_controller_thread()) {
       cv.notify_all();
     }

@@ -274,7 +274,7 @@ class Colonio {
    * @sa disconnect()
    */
   virtual ~Colonio();
-  Colonio(const Colonio&) = delete;
+  Colonio(const Colonio&)            = delete;
   Colonio& operator=(const Colonio&) = delete;
 
   /**
@@ -404,10 +404,8 @@ class Colonio {
    * If another handler has already been registered, the old one will be overwritten.
    *
    * @param name A name to identify the handler.
-   * @param handler The handler function.
+   * @param handler The handler function. null if the received message does not require response.
    */
-  virtual void messaging_set_handler(
-      const std::string& name, std::function<Value(Colonio&, const MessagingRequest&)>&& handler) = 0;
   virtual void messaging_set_handler(
       const std::string& name,
       std::function<void(Colonio&, const MessagingRequest&, std::shared_ptr<MessagingResponseWriter>)>&& handler) = 0;

@@ -15,8 +15,6 @@
  */
 
 mergeInto(LibraryManager.library, {
-  js_on_output_log: function (p1, p2, p3) { jsOnOutputLog(p1, p2, p3); },
-
   scheduler_release: function (p1) { schedulerRelease(p1); },
   scheduler_request_next_routine: function (p1, p2) { schedulerRequestNextRoutine(p1, p2); },
 

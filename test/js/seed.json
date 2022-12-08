@@ -3,7 +3,10 @@
     "documentRoot": ".",
     "overrides": {
         "/colonio.js": "../../output/",
-        "/colonio.wasm": "../../output/"
+        "/colonio.wasm": "../../output/",
+        "/colonio.worker.js": "../../output/",
+        "/core.js.map": "../../src/js/",
+        "/core.ts": "../../src/js/"
     },
     "port": 8080,
     "path": "/test",

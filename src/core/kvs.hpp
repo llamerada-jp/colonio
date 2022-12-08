@@ -221,7 +221,7 @@ class KVS {
   std::map<std::string, ProposerInfo> proposer_infos;
 
   bool check_key_acceptor(const std::string& key, uint32_t member_idx);
-  bool check_key_proposer(const std::__sso_string& key);
+  bool check_key_proposer(const std::string& key);
   void recv_packet_accept(const Packet& packet);
   void recv_packet_balance_acceptor(const Packet& packet);
   void recv_packet_balance_proposer(const Packet& packet);

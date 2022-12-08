@@ -107,7 +107,7 @@ typedef struct colonio_error_s {
   unsigned int message_siz;
   unsigned int line;
   const char* file;
-  const char* file_siz;
+  unsigned int file_siz;
 } colonio_error_t;
 
 typedef struct colonio_config_s {
@@ -125,7 +125,8 @@ COLONIO_PUBLIC void colonio_connect_async(
     void (*on_success)(colonio_t, void*), void (*on_failure)(colonio_t, void*, const colonio_error_t*));
 COLONIO_PUBLIC colonio_error_t* colonio_disconnect(colonio_t c);
 COLONIO_PUBLIC void colonio_disconnect_async(
-    colonio_t c, void (*on_success)(colonio_t), void (*on_failure)(colonio_t, const colonio_error_t*));
+    colonio_t c, void* ptr, void (*on_success)(colonio_t, void*),
+    void (*on_failure)(colonio_t, void*, const colonio_error_t*));
 COLONIO_PUBLIC bool colonio_is_connected(colonio_t c);
 COLONIO_PUBLIC colonio_error_t* colonio_quit(colonio_t* c);
 COLONIO_PUBLIC void colonio_get_local_nid(colonio_t c, char* dst);
@@ -138,6 +139,7 @@ typedef struct colonio_messaging_request_s {
 } colonio_messaging_request_t;
 
 typedef void* colonio_messaging_writer_t;
+#define COLONIO_MESSAGING_WRITER_NONE nullptr
 
 COLONIO_PUBLIC colonio_error_t* colonio_messaging_post(
     colonio_t c, const char* dst_nid, const char* name, unsigned int name_siz, colonio_const_value_t v, uint32_t opt,
@@ -168,31 +170,31 @@ COLONIO_PUBLIC colonio_error_t* colonio_kvs_get(
     colonio_t c, const char* key, unsigned int key_siz, colonio_value_t* dst);
 COLONIO_PUBLIC void colonio_kvs_get_async(
     colonio_t c, const char* key, unsigned int key_siz, void* ptr,
-    void (*on_success)(colonio_t, void*, const colonio_value_t),
+    void (*on_success)(colonio_t, void*, colonio_const_value_t),
     void (*on_failure)(colonio_t, void*, const colonio_error_t*));
 COLONIO_PUBLIC colonio_error_t* colonio_kvs_set(
-    colonio_t c, const char* key, unsigned int key_siz, const colonio_value_t value, uint32_t opt);
+    colonio_t c, const char* key, unsigned int key_siz, colonio_const_value_t value, uint32_t opt);
 COLONIO_PUBLIC void colonio_kvs_set_async(
-    colonio_t c, const char* key, unsigned int key_siz, const colonio_value_t value, uint32_t opt, void* ptr,
+    colonio_t c, const char* key, unsigned int key_siz, colonio_const_value_t value, uint32_t opt, void* ptr,
     void (*on_success)(colonio_t, void*), void (*on_failure)(colonio_t, void*, const colonio_error_t*));
 
 typedef struct colonio_spread_request_s {
   const char* source_nid;
-  colonio_const_value_t value;
+  colonio_const_value_t message;
   uint32_t options;
 } colonio_spread_request_t;
 
 COLONIO_PUBLIC colonio_error_t* colonio_spread_post(
-    colonio_t c, double x, double y, double r, const char* name, unsigned int name_siz, colonio_const_value_t value,
+    colonio_t c, double x, double y, double r, const char* name, unsigned int name_siz, colonio_const_value_t message,
     uint32_t opt);
 COLONIO_PUBLIC void colonio_spread_post_async(
-    colonio_t c, double x, double y, double r, const char* name, unsigned int name_siz, colonio_const_value_t value,
+    colonio_t c, double x, double y, double r, const char* name, unsigned int name_siz, colonio_const_value_t message,
     uint32_t opt, void* ptr, void (*on_success)(colonio_t, void*),
     void (*on_failure)(colonio_t, void*, const colonio_error_t*));
 COLONIO_PUBLIC void colonio_spread_set_handler(
     colonio_t c, const char* name, unsigned int name_siz, void* ptr,
     void (*handler)(colonio_t, void*, const colonio_spread_request_t*));
-COLONIO_PUBLIC void colonio_unset_handler(colonio_t c, const char* name, unsigned int name_siz);
+COLONIO_PUBLIC void colonio_spread_unset_handler(colonio_t c, const char* name, unsigned int name_siz);
 
 COLONIO_PUBLIC void colonio_value_create(colonio_value_t* v);
 COLONIO_PUBLIC COLONIO_VALUE_TYPE colonio_value_get_type(colonio_const_value_t v);

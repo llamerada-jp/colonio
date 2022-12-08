@@ -24,19 +24,6 @@
 
 namespace colonio {
 
-class ResponseWriterEmpty : public Colonio::MessagingResponseWriter {
- public:
-  ResponseWriterEmpty(Logger& l) : logger(l) {
-  }
-
-  void write(const Value&) override {
-    log_warn("a response is written but it is not used.");
-  }
-
- private:
-  Logger& logger;
-};
-
 class ResponseWriterImpl : public Colonio::MessagingResponseWriter {
  public:
   ResponseWriterImpl(Logger& l, CommandManager& c, const Packet& p) :
@@ -173,12 +160,10 @@ void Messaging::recv_messaging(const Packet& packet) {
 
   auto& handler = it_handler->second;
   if ((request->options & Colonio::MESSAGING_IGNORE_RESPONSE) != 0) {
-    handler(request, std::shared_ptr<Colonio::MessagingResponseWriter>(new ResponseWriterEmpty(logger)));
+    handler(request, std::shared_ptr<Colonio::MessagingResponseWriter>());
 
   } else {
-    handler(
-        request,
-        std::shared_ptr<Colonio::MessagingResponseWriter>(new ResponseWriterImpl(logger, command_manager, packet)));
+    handler(request, std::make_shared<ResponseWriterImpl>(logger, command_manager, packet));
   }
 }
 }  //  namespace colonio

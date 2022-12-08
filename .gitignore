@@ -11,6 +11,8 @@
 /go/test/wasm_exec.js
 /local/
 /output/
+/src/js/core.js
+/src/js/core.js.map
 /test/js/colonio.js
 /test/js/colonio.wasm
 /test/js/colonio.worker.js

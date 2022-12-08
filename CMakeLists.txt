@@ -13,9 +13,9 @@ option(WITH_TEST "Generate test program. (For native only)" OFF)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
-  # #
-  # # Build for WebAssembly environment.
-  # #
+  ##
+  ## Build for WebAssembly environment.
+  ##
 
   # Enable C++14
   # I cannot use CMAKE_CXX_STANDARD when emscripten?
@@ -32,20 +32,20 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
 
   # WebAssembly(emscripten) compile options.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s DISABLE_EXCEPTION_CATCHING=0")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s USE_PTHREADS=1")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s USE_PTHREADS=0")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -flto")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s WASM=1")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_TABLE_GROWTH=1")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s MODULARIZE=1")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s EXPORT_NAME='ColonioModule'")
-
   # set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s EXPORT_ES6=1")
   # set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_MEMORY_GROWTH=1")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s EXIT_RUNTIME=0")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s FILESYSTEM=0")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s EXPORTED_RUNTIME_METHODS=['addFunction','ccall','cwrap']")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ERROR_ON_UNDEFINED_SYMBOLS=0")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --pre-js ${CMAKE_CURRENT_SOURCE_DIR}/src/js/outline.js")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --pre-js ${CMAKE_CURRENT_SOURCE_DIR}/src/js/core.js")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --pre-js ${CMAKE_CURRENT_SOURCE_DIR}/src/js/export.js")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --js-library ${CMAKE_CURRENT_SOURCE_DIR}/src/js/api.js")
 
   # Use -s ASSERTIONS=2 to get some useful information about the function pointer being called, and its type.
@@ -56,7 +56,8 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s EXCEPTION_DEBUG=1")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ASSERTIONS=2")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s DEMANGLE_SUPPORT=1")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s STACK_OVERFLOW_CHECK=2")
+    # set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s SAFE_HEAP=1")
   endif()
 
   # ProtocolBuffers
@@ -66,9 +67,9 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   add_subdirectory(${PROJECT_SOURCE_DIR}/src)
 
 else()
-  # #
-  # # Build for native environment.
-  # #
+  ##
+  ## Build for native environment.
+  ##
 
   # Enable C++14
   set(CMAKE_CXX_STANDARD 14)

@@ -61,8 +61,6 @@ class ColonioImpl : public Colonio,
       std::function<void(Colonio&, const Error&)>&& on_failure) override;
 
   void messaging_set_handler(
-      const std::string& name, std::function<Value(Colonio&, const MessagingRequest&)>&& func) override;
-  void messaging_set_handler(
       const std::string& name,
       std::function<void(Colonio&, const MessagingRequest&, std::shared_ptr<MessagingResponseWriter>)>&& func) override;
   void messaging_unset_handler(const std::string& name) override;

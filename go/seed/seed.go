@@ -81,7 +81,7 @@ func (seed *Seed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Upgrading to WebSocket.
 	socket, err := seed.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		glog.Warning("Failed upgrading to WebSocket")
+		glog.Warning("Failed upgrading to WebSocket", err)
 		return
 	}
 

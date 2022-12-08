@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "sourceMap": true,
+    "target": "ES2019",
+    "module": "ESNext",
+    "declaration": true,
+    "strict": true,
+    "lib": ["ES2020", "dom", "ES2021.WeakRef"]
+  },
+  "include": ["src/js/**/*"],
+  "files": ["./src/js/core.ts"]
+}
