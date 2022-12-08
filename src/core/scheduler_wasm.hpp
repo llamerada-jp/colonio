@@ -22,21 +22,16 @@
 namespace colonio {
 class SchedulerWasm : public Scheduler {
  public:
-  SchedulerWasm(Logger& logger, uint32_t opt);
+  SchedulerWasm(Logger& logger);
   virtual ~SchedulerWasm();
 
-  void add_controller_loop(void* src, std::function<void()>&& func, unsigned int interval) override;
-  void add_controller_task(void* src, std::function<void()>&& func, unsigned int after = 0) override;
-  void add_user_task(void* src, std::function<void()>&& func) override;
-  bool has_task(void* src) override;
+  void repeat_task(void* src, std::function<void()>&& func, unsigned int interval) override;
+  void add_task(void* src, std::function<void()>&& func, unsigned int delay = 0) override;
+  bool exists(void* src) override;
   bool is_controller_thread() const override;
-  bool is_user_thread() const override;
-  void remove_task(void* src, bool remove_current = true) override;
+  void remove(void* src, bool remove_current = true) override;
 
-  void start_controller_routine() override;
-  void start_user_routine() override;
-
-  int exec_tasks();
+  int invoke();
 
  private:
   std::deque<Task> tasks;

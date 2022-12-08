@@ -134,9 +134,8 @@ void Spread::CommandKnock::on_response(const Packet& packet) {
   }
 }
 
-Spread::CommandRelay::CommandRelay(
-    Spread& p, uint64_t u, std::function<void()>& s, std::function<void(const Error&)>& f) :
-    Command(PacketMode::NONE), logger(p.logger), parent(p), uid(u), cb_on_success(s), cb_on_failure(f) {
+Spread::CommandRelay::CommandRelay(Spread& p, std::function<void()>& s, std::function<void(const Error&)>& f) :
+    Command(PacketMode::NONE), logger(p.logger), parent(p), cb_on_success(s), cb_on_failure(f) {
 }
 
 void Spread::CommandRelay::on_response(const Packet& packet) {
@@ -346,7 +345,7 @@ void Spread::send_relay(
   ValueImpl::to_pb(param.mutable_message(), cache.message);
   param.set_opt(cache.opt);
 
-  std::shared_ptr<Command> command = std::make_shared<CommandRelay>(*this, cache.uid, on_success, on_failure);
+  std::shared_ptr<Command> command = std::make_shared<CommandRelay>(*this, on_success, on_failure);
   const NodeID& nid                = delegate.spread_do_get_relay_nid(cache.center);
   command_manager.send_packet(nid, std::move(content), command);
 }

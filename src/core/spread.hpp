@@ -81,7 +81,7 @@ class Spread {
 
   class CommandRelay : public Command {
    public:
-    CommandRelay(Spread& p, uint64_t u, std::function<void()>& s, std::function<void(const Error&)>& f);
+    CommandRelay(Spread& p, std::function<void()>& s, std::function<void(const Error&)>& f);
 
     void on_response(const Packet& packet) override;
     void on_error(ErrorCode code, const std::string& message) override;
@@ -89,7 +89,6 @@ class Spread {
    private:
     Logger& logger;
     Spread& parent;
-    const uint64_t uid;
     std::function<void()> cb_on_success;
     std::function<void(const Error&)> cb_on_failure;
   };

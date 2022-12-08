@@ -30,53 +30,45 @@ extern void scheduler_request_next_routine(COLONIO_PTR_T this_ptr, int msec);
 
 EMSCRIPTEN_KEEPALIVE int scheduler_invoke(COLONIO_PTR_T this_ptr) {
   colonio::SchedulerWasm& THIS = *reinterpret_cast<colonio::SchedulerWasm*>(this_ptr);
-  return THIS.exec_tasks();
+  return THIS.invoke();
 }
 }  // extern "C"
 
 namespace colonio {
-SchedulerWasm::SchedulerWasm(Logger& logger, uint32_t opt) : Scheduler(logger) {
-  assert(opt == 0);
+SchedulerWasm::SchedulerWasm(Logger& logger) : Scheduler(logger) {
 }
 
 SchedulerWasm::~SchedulerWasm() {
   scheduler_release(reinterpret_cast<COLONIO_PTR_T>(this));
 }
 
-void SchedulerWasm::add_controller_loop(void* src, std::function<void()>&& func, unsigned int interval) {
+void SchedulerWasm::repeat_task(void* src, std::function<void()>&& func, unsigned int interval) {
   assert(interval != 0);
   const int64_t CURRENT_MSEC = Utils::get_current_msec();
-  tasks.push_back(Task{src, func, interval, static_cast<int64_t>(std::floor(CURRENT_MSEC / interval)) * interval});
+  tasks.push_back(Task{
+      .src      = src,
+      .func     = func,
+      .interval = interval,
+      .next     = static_cast<int64_t>(std::floor(CURRENT_MSEC / interval)) * interval});
   if (running.size() == 0) {
     request_next_routine();
   }
 }
 
-void SchedulerWasm::add_controller_task(void* src, std::function<void()>&& func, unsigned int after) {
+void SchedulerWasm::add_task(void* src, std::function<void()>&& func, unsigned int after) {
   if (after == 0 && running.size() != 0) {
-    running.push_back(Task{src, func, 0, 0});
+    running.push_back(Task{.src = src, .func = func, .interval = 0, .next = 0});
 
   } else {
     const int64_t CURRENT_MSEC = Utils::get_current_msec();
-    tasks.push_back(Task{src, func, 0, CURRENT_MSEC + after});
+    tasks.push_back(Task{.src = src, .func = func, .interval = 0, .next = CURRENT_MSEC + after});
     if (running.size() == 0) {
       request_next_routine();
     }
   }
 }
 
-void SchedulerWasm::add_user_task(void* src, std::function<void()>&& func) {
-  if (running.size() != 0) {
-    running.push_back(Task{src, func, 0, 0});
-
-  } else {
-    const int64_t CURRENT_MSEC = Utils::get_current_msec();
-    tasks.push_back(Task{src, func, 0, CURRENT_MSEC});
-    request_next_routine();
-  }
-}
-
-bool SchedulerWasm::has_task(void* src) {
+bool SchedulerWasm::exists(void* src) {
   for (auto& task : running) {
     if (task.src == src) {
       return true;
@@ -96,25 +88,13 @@ bool SchedulerWasm::is_controller_thread() const {
   return true;
 }
 
-bool SchedulerWasm::is_user_thread() const {
-  return true;
-}
-
-void SchedulerWasm::remove_task(void* src, bool remove_current) {
+void SchedulerWasm::remove(void* src, bool remove_current) {
   assert(!remove_current || running.front().src != src);
   remove_deque_tasks(src, &tasks, true);
   remove_deque_tasks(src, &running, remove_current);
 }
 
-void SchedulerWasm::start_controller_routine() {
-  assert(false);
-}
-
-void SchedulerWasm::start_user_routine() {
-  assert(false);
-}
-
-int SchedulerWasm::exec_tasks() {
+int SchedulerWasm::invoke() {
   assert(running.size() == 0);
   pick_runnable_tasks(&running, &tasks);
 
@@ -135,7 +115,7 @@ int SchedulerWasm::exec_tasks() {
     running.pop_front();
   }
 
-  int64_t next = get_next_timeing(tasks);
+  int64_t next = get_next_timing(tasks);
   next -= Utils::get_current_msec();
   if (next < 0) {
     next = 0;
@@ -144,7 +124,7 @@ int SchedulerWasm::exec_tasks() {
 }
 
 void SchedulerWasm::request_next_routine() {
-  int64_t next = get_next_timeing(tasks);
+  int64_t next = get_next_timing(tasks);
   next -= Utils::get_current_msec();
   if (next < 0) {
     next = 0;

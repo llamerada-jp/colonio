@@ -12,7 +12,7 @@ if [ "${OS}" = "Linux" ]; then
     pip3 install --user cpp-coveralls
 
     # check format
-    make format-code
+    make format-code src/core/colonio.pb.cc go/proto/colonio.pb.go
     diffs=$(git diff | wc -l)
     if [ "$diffs" -ne 0 ]; then
       exit 1

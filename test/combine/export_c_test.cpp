@@ -22,6 +22,7 @@ extern "C" {
 #include <gtest/gtest.h>
 
 #include <colonio/colonio.hpp>
+#include <iostream>
 
 #include "test_utils/all.hpp"
 
@@ -64,21 +65,27 @@ TEST(ExternC, definition) {
   EXPECT_STREQ(colonio::LogLevel::DEBUG.c_str(), COLONIO_LOG_LEVEL_DEBUG);
 }
 
-void log_receiver(colonio_t*, const char* message, unsigned int len) {
-  printf("%s\n", message);
+colonio_t instance_for_test_logger;
+
+void log_receiver(colonio_t c, const char* message, unsigned int siz) {
+  std::cout << std::string(message, siz) << std::endl;
+  EXPECT_EQ(instance_for_test_logger, c);
 }
 
-TEST(ExternC, connect_sync) {
+TEST(ExportC, connect_sync) {
   TestSeed seed;
   seed.run();
 
-  colonio_t colonio;
-  colonio_error_t* err;
-
   colonio_config_t config;
   colonio_config_set_default(&config);
+  config.logger_func = log_receiver;
+
+  colonio_t colonio;
+  colonio_error_t* err;
   err = colonio_init(&colonio, &config);
   EXPECT_EQ(err, nullptr);
+
+  instance_for_test_logger = colonio;
 
   err = colonio_connect(colonio, URL, strlen(URL), TOKEN, strlen(TOKEN));
   EXPECT_EQ(err, nullptr);
@@ -109,7 +116,7 @@ void connect_async_on_failure(colonio_t, void*, const colonio_error_t*) {
   ADD_FAILURE();
 }
 
-TEST(ExternC, connect_async) {
+TEST(ExportC, connect_async) {
   AsyncHelper helper;
   TestSeed seed;
   seed.run();
@@ -131,5 +138,46 @@ TEST(ExternC, connect_async) {
   err = colonio_disconnect(colonio);
   EXPECT_EQ(err, nullptr);
   err = colonio_quit(&colonio);
+  EXPECT_EQ(err, nullptr);
+}
+
+TEST(ExportC, e2e) {
+  TestSeed seed;
+  seed.run();
+
+  colonio_error_t* err;
+
+  // init & connect colonio1
+  colonio_config_t config1;
+  colonio_config_set_default(&config1);
+
+  colonio_t colonio1;
+  err = colonio_init(&colonio1, &config1);
+  EXPECT_EQ(err, nullptr);
+
+  err = colonio_connect(colonio1, URL, strlen(URL), TOKEN, strlen(TOKEN));
+  EXPECT_EQ(err, nullptr);
+
+  // init & connect colonio2
+  colonio_config_t config2;
+  colonio_config_set_default(&config2);
+
+  colonio_t colonio2;
+  err = colonio_init(&colonio2, &config2);
+  EXPECT_EQ(err, nullptr);
+
+  err = colonio_connect(colonio2, URL, strlen(URL), TOKEN, strlen(TOKEN));
+  EXPECT_EQ(err, nullptr);
+
+  // disconnect & quit colonio1
+  err = colonio_disconnect(colonio1);
+  EXPECT_EQ(err, nullptr);
+  err = colonio_quit(&colonio1);
+  EXPECT_EQ(err, nullptr);
+
+  // disconnect & quit colonio2
+  err = colonio_disconnect(colonio2);
+  EXPECT_EQ(err, nullptr);
+  err = colonio_quit(&colonio2);
   EXPECT_EQ(err, nullptr);
 }

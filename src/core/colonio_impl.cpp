@@ -122,18 +122,24 @@ void ColonioImpl::disconnect(
           },
           [this, on_failure](const Error& e) {
             user_thread_pool->push([this, on_failure, e]() {
-              on_failure(*this, e);
               release_resources();
+              on_failure(*this, e);
             });
           });
 
     } else {
       network->disconnect(
           [this, on_success]() {
-            on_success(*this);
+            scheduler->add_task(this, [this, on_success]() {
+              release_resources();
+              on_success(*this);
+            });
           },
           [this, on_failure](const Error& e) {
-            on_failure(*this, e);
+            scheduler->add_task(this, [this, on_failure, e]() {
+              release_resources();
+              on_failure(*this, e);
+            });
           });
     }
   });
@@ -224,30 +230,6 @@ void ColonioImpl::messaging_post(
 }
 
 void ColonioImpl::messaging_set_handler(
-    const std::string& name, std::function<Value(Colonio&, const MessagingRequest&)>&& handler) {
-  assert(messaging);
-  if (user_thread_pool) {
-    messaging->set_handler(
-        name, [this, handler](
-                  std::shared_ptr<const Colonio::MessagingRequest> request,
-                  std::shared_ptr<Colonio::MessagingResponseWriter> response_writer) {
-          user_thread_pool->push([this, handler, request, response_writer]() {
-            Value response = handler(*this, *request);
-            response_writer->write(response);
-          });
-        });
-  } else {
-    messaging->set_handler(
-        name, [this, handler](
-                  std::shared_ptr<const Colonio::MessagingRequest> request,
-                  std::shared_ptr<Colonio::MessagingResponseWriter> response_writer) {
-          Value response = handler(*this, *request);
-          response_writer->write(response);
-        });
-  }
-}
-
-void ColonioImpl::messaging_set_handler(
     const std::string& name,
     std::function<void(Colonio&, const MessagingRequest&, std::shared_ptr<MessagingResponseWriter>)>&& handler) {
   assert(messaging);
@@ -311,10 +293,10 @@ Value ColonioImpl::kvs_get(const std::string& key) {
   scheduler->add_task(this, [this, key, &pipe]() {
     kvs->get(
         key,
-        [this, &pipe](const Value& value) {
+        [&pipe](const Value& value) {
           pipe.push(value);
         },
-        [this, &pipe](const Error& error) {
+        [&pipe](const Error& error) {
           pipe.push_error(error);
         });
   });
@@ -582,7 +564,7 @@ void ColonioImpl::release_resources() {
   network.reset();
   command_manager.reset();
   coord_system.reset();
-  scheduler.reset();
+  // scheduler.reset();
   // user_thread_pool.reset();
   local_nid = NodeID::NONE;
 }

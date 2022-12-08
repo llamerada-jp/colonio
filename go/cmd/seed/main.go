@@ -43,7 +43,7 @@ type config struct {
 }
 
 var cmd = &cobra.Command{
-	Use: "seed-test",
+	Use: "seed",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		flag.CommandLine.Parse([]string{})
 	},

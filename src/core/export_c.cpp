@@ -26,17 +26,18 @@
 using namespace colonio;
 
 static thread_local std::string error_message;
+static thread_local std::string error_file;
 static thread_local colonio_error_t last_error;
 
-struct kvs_local_data_internal {
+struct kvs_local_data_wrapper {
   std::shared_ptr<std::map<std::string, Value>> cpp_data;
   std::unique_ptr<std::vector<std::string>> keys;
 };
 
-struct Internal {
+struct Wrapper {
   std::unique_ptr<Colonio> colonio;
   std::map<colonio_messaging_writer_t, std::shared_ptr<Colonio::MessagingResponseWriter>> messaging_writers;
-  std::map<colonio_kvs_data_t, kvs_local_data_internal> kvs_local_data;
+  std::map<colonio_kvs_data_t, kvs_local_data_wrapper> kvs_local_data;
 };
 
 colonio_error_t* convert_error(const Error& e);
@@ -49,17 +50,20 @@ void colonio_config_set_default(colonio_config_t* config) {
 
 colonio_error_t* colonio_init(colonio_t* c, const colonio_config_t* cf) {
   try {
-    *c = new Internal();
+    Wrapper* wrapper = new Wrapper();
+
+    *c = reinterpret_cast<colonio_t>(wrapper);
+
     ColonioConfig config;
     config.disable_callback_thread = cf->disable_callback_thread;
     config.max_user_threads        = cf->max_user_threads;
     if (cf->logger_func != nullptr) {
       auto f             = cf->logger_func;
       config.logger_func = [c, f](Colonio& _, const std::string& json) {
-        f(c, json.c_str(), json.size() + 1);
+        f(*c, json.c_str(), json.size() + 1);
       };
     }
-    reinterpret_cast<Internal*>(*c)->colonio = std::unique_ptr<Colonio>(Colonio::new_instance(config));
+    wrapper->colonio = std::unique_ptr<Colonio>(Colonio::new_instance(config));
 
   } catch (const Error& e) {
     return convert_error(e);
@@ -70,8 +74,8 @@ colonio_error_t* colonio_init(colonio_t* c, const colonio_config_t* cf) {
 
 colonio_error_t* colonio_connect(
     colonio_t c, const char* url, unsigned int url_siz, const char* token, unsigned int token_siz) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   try {
     colonio->connect(std::string(url, url_siz), std::string(token, token_siz));
@@ -85,8 +89,8 @@ colonio_error_t* colonio_connect(
 void colonio_connect_async(
     colonio_t c, const char* url, unsigned int url_siz, const char* token, unsigned int token_siz, void* ptr,
     void (*on_success)(colonio_t, void*), void (*on_failure)(colonio_t, void*, const colonio_error_t*)) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   colonio->connect(
       std::string(url, url_siz), std::string(token, token_siz),
@@ -98,10 +102,9 @@ void colonio_connect_async(
       });
 }
 
-#ifndef EMSCRIPTEN
 colonio_error_t* colonio_disconnect(colonio_t c) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   try {
     colonio->disconnect();
@@ -112,49 +115,48 @@ colonio_error_t* colonio_disconnect(colonio_t c) {
   return nullptr;
 }
 
-#else
 void colonio_disconnect_async(
-    colonio_t c, void (*on_success)(colonio_t), void (*on_failure)(colonio_t, const colonio_error_t*)) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+    colonio_t c, void* ptr, void (*on_success)(colonio_t, void*),
+    void (*on_failure)(colonio_t, void*, const colonio_error_t*)) {
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   colonio->disconnect(
-      [c, on_success](Colonio&) {
-        on_success(c);
+      [c, ptr, on_success](Colonio&) {
+        on_success(c, ptr);
       },
-      [c, on_failure](Colonio&, const Error& e) {
-        on_failure(c, convert_error(e));
+      [c, ptr, on_failure](Colonio&, const Error& e) {
+        on_failure(c, ptr, convert_error(e));
       });
 }
-#endif
 
 bool colonio_is_connected(colonio_t c) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   return colonio->is_connected();
 }
 
 colonio_error_t* colonio_quit(colonio_t* c) {
-  Internal* internal = reinterpret_cast<Internal*>(*c);
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(*c);
 
-  delete internal;
+  delete wrapper;
   *c = nullptr;
 
   return nullptr;
 }
 
 void colonio_get_local_nid(colonio_t c, char* dst) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   std::string local_nid = colonio->get_local_nid();
   memcpy(dst, local_nid.c_str(), local_nid.size() + 1);
 }
 
 colonio_error_t* colonio_set_position(colonio_t c, double* x, double* y) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   try {
     std::tie(*x, *y) = colonio->set_position(*x, *y);
@@ -166,10 +168,10 @@ colonio_error_t* colonio_set_position(colonio_t c, double* x, double* y) {
 }
 
 colonio_error_t* colonio_messaging_post(
-    colonio_t c, const char* dst_nid, const char* name, unsigned int name_siz, const colonio_value_t v, uint32_t opt,
+    colonio_t c, const char* dst_nid, const char* name, unsigned int name_siz, colonio_const_value_t v, uint32_t opt,
     colonio_value_t* r) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper   = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio   = wrapper->colonio.get();
   const Value* value = reinterpret_cast<const Value*>(v);
 
   try {
@@ -188,8 +190,8 @@ void colonio_messaging_post_async(
     colonio_t c, const char* dst_nid, const char* name, unsigned int name_siz, colonio_const_value_t v, uint32_t opt,
     void* ptr, void (*on_response)(colonio_t, void*, colonio_const_value_t),
     void (*on_failure)(colonio_t, void*, const colonio_error_t*)) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper   = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio   = wrapper->colonio.get();
   const Value* value = reinterpret_cast<const Value*>(v);
 
   colonio->messaging_post(
@@ -206,14 +208,14 @@ void colonio_messaging_post_async(
 void colonio_messaging_set_handler(
     colonio_t c, const char* name, unsigned int name_siz, void* ptr,
     void (*handler)(colonio_t, void*, const colonio_messaging_request_t*, colonio_messaging_writer_t)) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   colonio->messaging_set_handler(
       std::string(name, name_siz), [c, ptr, handler](
                                        Colonio&, const Colonio::MessagingRequest& request,
                                        std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
-        Internal* internal            = reinterpret_cast<Internal*>(c);
+        Wrapper* wrapper              = reinterpret_cast<Wrapper*>(c);
         std::string src_nid           = request.source_nid.c_str();
         colonio_messaging_request_t r = colonio_messaging_request_t{
             .source_nid = src_nid.c_str(),
@@ -221,30 +223,38 @@ void colonio_messaging_set_handler(
             .options    = request.options,
         };
 
-        colonio_messaging_writer_t w = reinterpret_cast<colonio_messaging_writer_t>(writer.get());
-        internal->messaging_writers.insert(std::make_pair(w, writer));
+        colonio_messaging_writer_t w = COLONIO_MESSAGING_WRITER_NONE;
+        if (writer) {
+          w = reinterpret_cast<colonio_messaging_writer_t>(writer.get());
+          wrapper->messaging_writers.insert(std::make_pair(w, writer));
+        }
 
         handler(c, ptr, &r, w);
       });
 }
 
 void colonio_messaging_response_writer(colonio_t c, colonio_messaging_writer_t w, colonio_const_value_t message) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
 
-  auto it = internal->messaging_writers.find(w);
-  if (it == internal->messaging_writers.end()) {
+  if (w == COLONIO_MESSAGING_WRITER_NONE) {
+    // TODO warn for unnecessary response
+    return;
+  }
+
+  auto it = wrapper->messaging_writers.find(w);
+  if (it == wrapper->messaging_writers.end()) {
     // TODO warn multiple responses
     return;
   }
 
   it->second->write(*reinterpret_cast<const Value*>(message));
 
-  internal->messaging_writers.erase(it);
+  wrapper->messaging_writers.erase(it);
 }
 
 void colonio_messaging_unset_handler(colonio_t c, const char* name, unsigned int name_siz) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   colonio->messaging_unset_handler(std::string(name, name_siz));
 }
@@ -276,7 +286,9 @@ double colonio_value_get_double(colonio_const_value_t v) {
 const char* colonio_value_get_string(colonio_const_value_t v, unsigned int* siz) {
   const Value* value     = reinterpret_cast<const Value*>(v);
   const std::string& str = value->get<std::string>();
-  *siz                   = str.size();
+  if (siz != nullptr) {
+    *siz = str.size();
+  }
   return str.c_str();
 }
 
@@ -318,8 +330,8 @@ void colonio_value_free(colonio_value_t* v) {
 }
 
 colonio_kvs_data_t colonio_kvs_get_local_data(colonio_t c) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   std::shared_ptr<std::map<std::string, Value>> cpp_data = colonio->kvs_get_local_data();
   std::unique_ptr<std::vector<std::string>> keys(new std::vector<std::string>());
@@ -328,8 +340,8 @@ colonio_kvs_data_t colonio_kvs_get_local_data(colonio_t c) {
   }
 
   colonio_kvs_data_t cur = reinterpret_cast<colonio_kvs_data_t>(cpp_data.get());
-  internal->kvs_local_data.insert(std::make_pair(
-      cur, kvs_local_data_internal{
+  wrapper->kvs_local_data.insert(std::make_pair(
+      cur, kvs_local_data_wrapper{
                .cpp_data = cpp_data,
                .keys     = std::move(keys),
            }));
@@ -337,20 +349,20 @@ colonio_kvs_data_t colonio_kvs_get_local_data(colonio_t c) {
 }
 
 void colonio_kvs_get_local_data_async(colonio_t c, void* ptr, void (*handler)(colonio_t, void*, colonio_kvs_data_t)) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
   std::unique_ptr<std::vector<std::string>> keys(new std::vector<std::string>());
-  Colonio* colonio = internal->colonio.get();
+  Colonio* colonio = wrapper->colonio.get();
 
   colonio->kvs_get_local_data(
-      [c, internal, ptr, handler](Colonio&, std::shared_ptr<std::map<std::string, Value>> cpp_data) {
+      [c, wrapper, ptr, handler](Colonio&, std::shared_ptr<std::map<std::string, Value>> cpp_data) {
         std::unique_ptr<std::vector<std::string>> keys(new std::vector<std::string>());
         for (auto& it : *cpp_data) {
           keys->push_back(it.first);
         }
 
         colonio_kvs_data_t cur = reinterpret_cast<colonio_kvs_data_t>(cpp_data.get());
-        internal->kvs_local_data.insert(std::make_pair(
-            cur, kvs_local_data_internal{
+        wrapper->kvs_local_data.insert(std::make_pair(
+            cur, kvs_local_data_wrapper{
                      .cpp_data = cpp_data,
                      .keys     = std::move(keys),
                  }));
@@ -359,36 +371,38 @@ void colonio_kvs_get_local_data_async(colonio_t c, void* ptr, void (*handler)(co
 }
 
 unsigned int colonio_kvs_local_data_get_siz(colonio_t c, colonio_kvs_data_t cur) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  auto it            = internal->kvs_local_data.find(cur);
-  assert(it != internal->kvs_local_data.end());
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  auto it          = wrapper->kvs_local_data.find(cur);
+  assert(it != wrapper->kvs_local_data.end());
   return it->second.keys->size();
 }
 
 const char* colonio_kvs_local_data_get_key(
     colonio_t c, colonio_kvs_data_t data_id, unsigned int idx, unsigned int* siz) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  std::string& key   = internal->kvs_local_data.at(data_id).keys->at(idx);
-  *siz               = key.size();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  std::string& key = wrapper->kvs_local_data.at(data_id).keys->at(idx);
+  if (siz != nullptr) {
+    *siz = key.size();
+  }
   return key.c_str();
 }
 
 void colonio_kvs_local_data_get_value(colonio_t c, colonio_kvs_data_t data_id, unsigned int idx, colonio_value_t* dst) {
-  Internal* internal                           = reinterpret_cast<Internal*>(c);
-  kvs_local_data_internal& local_data_internal = internal->kvs_local_data.at(data_id);
-  std::string& key                             = local_data_internal.keys->at(idx);
-  Value& v                                     = local_data_internal.cpp_data->at(key);
-  *dst                                         = &v;
+  Wrapper* wrapper                           = reinterpret_cast<Wrapper*>(c);
+  kvs_local_data_wrapper& local_data_wrapper = wrapper->kvs_local_data.at(data_id);
+  std::string& key                           = local_data_wrapper.keys->at(idx);
+  Value& v                                   = local_data_wrapper.cpp_data->at(key);
+  *dst                                       = &v;
 }
 
 void colonio_kvs_local_data_free(colonio_t c, colonio_kvs_data_t data_id) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  internal->kvs_local_data.erase(data_id);
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  wrapper->kvs_local_data.erase(data_id);
 }
 
 colonio_error_t* colonio_kvs_get(colonio_t c, const char* key, unsigned int key_siz, colonio_value_t* dst) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   try {
     Value cpp_value = colonio->kvs_get(std::string(key, key_siz));
@@ -404,10 +418,10 @@ colonio_error_t* colonio_kvs_get(colonio_t c, const char* key, unsigned int key_
 
 void colonio_kvs_get_async(
     colonio_t c, const char* key, unsigned int key_siz, void* ptr,
-    void (*on_success)(colonio_t, void*, const colonio_value_t),
+    void (*on_success)(colonio_t, void*, colonio_const_value_t),
     void (*on_failure)(colonio_t, void*, const colonio_error_t*)) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   colonio->kvs_get(
       std::string(key, key_siz),
@@ -421,9 +435,9 @@ void colonio_kvs_get_async(
 }
 
 colonio_error_t* colonio_kvs_set(
-    colonio_t c, const char* key, unsigned int key_siz, const colonio_value_t value, uint32_t opt) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+    colonio_t c, const char* key, unsigned int key_siz, colonio_const_value_t value, uint32_t opt) {
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   try {
     const Value* v = reinterpret_cast<const Value*>(value);
@@ -436,10 +450,10 @@ colonio_error_t* colonio_kvs_set(
 }
 
 void colonio_kvs_set_async(
-    colonio_t c, const char* key, unsigned int key_siz, const colonio_value_t value, uint32_t opt, void* ptr,
+    colonio_t c, const char* key, unsigned int key_siz, colonio_const_value_t value, uint32_t opt, void* ptr,
     void (*on_success)(colonio_t, void*), void (*on_failure)(colonio_t, void*, const colonio_error_t*)) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   const Value* v = reinterpret_cast<const Value*>(value);
   colonio->kvs_set(
@@ -453,13 +467,13 @@ void colonio_kvs_set_async(
 }
 
 colonio_error_t* colonio_spread_post(
-    colonio_t c, double x, double y, double r, const char* name, unsigned int name_siz, colonio_const_value_t value,
+    colonio_t c, double x, double y, double r, const char* name, unsigned int name_siz, colonio_const_value_t message,
     uint32_t opt) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   try {
-    colonio->spread_post(x, y, r, std::string(name, name_siz), *reinterpret_cast<const Value*>(value), opt);
+    colonio->spread_post(x, y, r, std::string(name, name_siz), *reinterpret_cast<const Value*>(message), opt);
   } catch (const Error& e) {
     return convert_error(e);
   }
@@ -468,14 +482,14 @@ colonio_error_t* colonio_spread_post(
 }
 
 void colonio_spread_post_async(
-    colonio_t c, double x, double y, double r, const char* name, unsigned int name_siz, colonio_const_value_t value,
+    colonio_t c, double x, double y, double r, const char* name, unsigned int name_siz, colonio_const_value_t message,
     uint32_t opt, void* ptr, void (*on_success)(colonio_t, void*),
     void (*on_failure)(colonio_t, void*, const colonio_error_t*)) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   colonio->spread_post(
-      x, y, r, std::string(name, name_siz), *reinterpret_cast<const Value*>(value), opt,
+      x, y, r, std::string(name, name_siz), *reinterpret_cast<const Value*>(message), opt,
       [c, ptr, on_success](Colonio&) {
         on_success(c, ptr);
       },
@@ -487,30 +501,35 @@ void colonio_spread_post_async(
 void colonio_spread_set_handler(
     colonio_t c, const char* name, unsigned int name_siz, void* ptr,
     void (*handler)(colonio_t, void*, const colonio_spread_request_t*)) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
 
   colonio->spread_set_handler(
       std::string(name, name_siz), [c, ptr, handler](Colonio&, const Colonio::SpreadRequest& r) {
         colonio_spread_request_t request = colonio_spread_request_t{
             .source_nid = r.source_nid.c_str(),
-            .value      = reinterpret_cast<colonio_const_value_t>(&r.message),
+            .message    = reinterpret_cast<colonio_const_value_t>(&r.message),
             .options    = r.options,
         };
         handler(c, ptr, &request);
       });
 }
 
-void colonio_unset_handler(colonio_t c, const char* name, unsigned int name_siz) {
-  Internal* internal = reinterpret_cast<Internal*>(c);
-  Colonio* colonio   = internal->colonio.get();
+void colonio_spread_unset_handler(colonio_t c, const char* name, unsigned int name_siz) {
+  Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
+  Colonio* colonio = wrapper->colonio.get();
   colonio->spread_unset_handler(std::string(name, name_siz));
 }
 
 colonio_error_t* convert_error(const Error& e) {
   error_message          = e.message;
+  error_file             = e.file;
+  last_error.fatal       = e.fatal;
   last_error.code        = static_cast<COLONIO_ERROR_CODE>(e.code);
   last_error.message     = error_message.c_str();
   last_error.message_siz = error_message.size();
+  last_error.line        = e.line;
+  last_error.file        = error_file.c_str();
+  last_error.file_siz    = error_file.size();
   return &last_error;
 }

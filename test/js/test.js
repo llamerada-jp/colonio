@@ -9,61 +9,45 @@ const TOKEN = "";
 const KEY = "hoge";
 
 /*global ColonioModule*/
-// eslint-disable-next-line no-console
-let logD = console.log;
-// eslint-disable-next-line no-console
-let logE = console.error;
-// eslint-disable-next-line no-console
-let assert = console.assert;
+/* eslint no-console: ["error", { allow: ["assert", "error", "log"] }] */
 
 function test() {
   let node1;
   let node2;
-  let ps1;
-  let ps2;
-  let map1;
-  let map2;
-  let timer1;
-  let timer2;
+  let timer;
+  let stored = new Map();
 
   return ColonioModule().then((colonio) => {
-    logD("new node1");
-    node1 = new colonio.Colonio((str) => {
-      let j = JSON.parse(str);
-      j.node = "node1";
-      if (j.level === colonio.Colonio.LOG_LEVEL_ERROR ||
-        j.level === colonio.Colonio.LOG_LEVEL_WARN) {
-        logE(j);
-      } else {
-        logD(j);
-      }
-    });
+    console.log("new node1");
+    let config1 = new colonio.ColonioConfig();
+    config1.loggerFunc = (_, log) => {
+      log.node = "node1";
+      console.log(log);
+    };
 
-    logD("new node2");
-    node2 = new colonio.Colonio((str) => {
-      let j = JSON.parse(str);
-      j.node = "node2";
-      if (j.level === colonio.Colonio.LOG_LEVEL_ERROR ||
-        j.level === colonio.Colonio.LOG_LEVEL_WARN) {
-        logE(j);
-      } else {
-        logD(j);
-      }
-    });
+    node1 = new colonio.Colonio(config1);
 
-    logD("node1.connect");
+    console.log("new node2");
+    let config2 = new colonio.ColonioConfig();
+    config2.loggerFunc = (_, log) => {
+      log.node = "node2";
+      console.log(log);
+    };
+    node2 = new colonio.Colonio(config2);
+
+    console.log("node1.connect");
     return node1.connect(URL, TOKEN);
 
   }).then(() => {
-    logD("node2.connect");
+    console.log("node2.connect");
     return node2.connect(URL, TOKEN);
 
   }).then(() => {
-    node2.onCall("test", (param) => {
-      return "reply " + param.value.getJsValue();
+    node2.messagingSetHandler("test", (request, writer) => {
+      writer.write("reply " + request.message.getJsValue());
     });
 
-    logD("wait 5 sec");
+    console.log("wait 5 sec");
     return new Promise((resolve) => {
       setTimeout(() => {
         resolve();
@@ -71,49 +55,45 @@ function test() {
     });
 
   }).then(() => {
-    return node1.callByNid(node2.getLocalNid(), "test", "from node1");
+    return node1.messagingPost(node2.getLocalNid(), "test", "from node1");
 
   }).then((result) => {
     // check result
     if (result.getJsValue() !== "reply from node1") {
-      logE("result", result);
+      console.error("result", result);
       throw new Error("wrong result from node2.onCall");
     }
-    logD("node1.setPosition");
+    console.log("node1.setPosition");
     return node1.setPosition(0, 0);
 
   }).then((pos) => {
     // check result
     if (pos.x !== 0 || pos.y !== 0) {
-      logE("result", pos);
+      console.error("result", pos);
       throw new Error("wrong result from node1.setPosition");
     }
 
-    logD("node2.setPosition");
+    console.log("node2.setPosition");
     return node2.setPosition(0, 0);
 
   }).then((pos) => {
     // check result
     if (pos.x !== 0 || pos.y !== 0) {
-      logE("result", pos);
+      console.error("result", pos);
       throw new Error("wrong result from node1.setPosition");
     }
 
-    logD("get accessor");
-    ps1 = node1.accessPubsub2D("ps");
-    ps2 = node2.accessPubsub2D("ps");
-
-    timer2 = setInterval(() => {
-      logD("publish data");
-      ps1.publish(KEY, 0, 0, 1.0, "from ps1");
-      ps2.publish(KEY, 0, 0, 1.0, "from ps2");
+    timer = setInterval(() => {
+      console.log("post data");
+      node1.spreadPost(0, 0, 1.0, KEY, "from node1");
+      node2.spreadPost(0, 0, 1.0, KEY, "from node2");
     }, 1000);
 
     return new Promise((resolve, reject) => {
-      logD("ps1 waiting data");
-      ps1.on(KEY, (data) => {
-        logD("receive ps1", data);
-        if (data === "from ps2") {
+      console.log("node1 waiting data");
+      node1.spreadSetHandler(KEY, (request) => {
+        console.log("receive node1", request);
+        if (request.message.getJsValue() === "from node2") {
           resolve();
         } else {
           reject();
@@ -123,11 +103,11 @@ function test() {
 
   }).then(() => {
     return new Promise((resolve, reject) => {
-      logD("ps2 waiting data");
-      ps2.on(KEY, (data) => {
-        clearInterval(timer2);
-        logD("receive ps2", data);
-        if (data === "from ps1") {
+      console.log("node2 waiting data");
+      node2.spreadSetHandler(KEY, (request) => {
+        clearInterval(timer);
+        console.log("receive node2", request);
+        if (request.message.getJsValue() === "from node1") {
           resolve();
         } else {
           reject();
@@ -136,50 +116,62 @@ function test() {
     });
 
   }).then(() => {
-    logD("get map accessor");
-    map1 = node1.accessMap("mp");
-    map2 = node2.accessMap("mp");
-
-    logD("set key1");
-    return map1.setValue("key1", "value1");
+    console.log("set key1");
+    return node1.kvsSet("key1", "value1");
 
   }).then(() => {
-    logD("set key2");
-    return map2.setValue("key2", "value2");
+    console.log("set key2");
+    return node2.kvsSet("key2", "value2");
 
   }).then(() => {
-    logD("get key2");
-    return map1.getValue("key2");
+    console.log("get key2");
+    return node1.kvsGet("key2");
 
   }).then((val) => {
     return new Promise((resolve, reject) => {
-      if (val !== "value2") {
-        logD("got value is wrong");
+      if (val.getJsValue() !== "value2") {
+        console.log("got value is wrong");
         reject();
+      } else {
+        resolve();
       }
-
-      let stored = new Map();
-      map1.foreachLocalValue((key, value, _) => {
-        stored.set(key, value);
-      });
-      map2.foreachLocalValue((key, value, _) => {
-        stored.set(key, value);
-      });
-
-      if (stored.get("key1") !== "value1" || stored.get("key2") !== "value2") {
-        logD("values are wrong");
-        reject();
-      }
-
-      resolve();
     });
 
   }).then(() => {
-    logD("node1.disconnect");
+    return node1.kvsGetLocalData()
+  }).then((localData1) => {
+    for (const k of localData1.getKeys()) {
+      stored.set(k, localData1.getValue(k).getJsValue());
+    }
+    // localData1.free();
+
+    return node2.kvsGetLocalData();
+
+  }).then((localData2) => {
+    return new Promise((resolve, reject) => {
+      for (const k of localData2.getKeys()) {
+        if (stored.has(k)) {
+          console.log("duplicate local value");
+          reject();
+        }
+        stored.set(k, localData2.getValue(k).getJsValue());
+      }
+      localData2.free();
+
+      if (stored.get("key1") === "value1" && stored.get("key2") === "value2") {
+        resolve();
+      } else {
+        console.log("values are wrong", stored);
+        reject();
+      }
+    });
+
+  }).then(() => {
+    console.log("node1.disconnect");
     return node1.disconnect();
 
   }).then(() => {
-    logD("node2.disconnect");
+    console.log("node2.disconnect");
     return node2.disconnect();
 
   }).then(() => {
@@ -189,7 +181,7 @@ function test() {
   }).catch((e) => {
     let result = document.getElementById("result");
     result.innerText = "FAILURE";
-    logE(e);
+    console.error(e);
   });
 }
 

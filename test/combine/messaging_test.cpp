@@ -40,12 +40,14 @@ TEST(MessagingTest, callExpect) {
 
   printf("node: %s\n", node->get_local_nid().c_str());
 
-  node->messaging_set_handler("expect", [&](Colonio& c, const Colonio::MessagingRequest& message) {
-    printf("receive expect\n");
-    EXPECT_EQ(message.options, static_cast<const unsigned int>(0));
-    EXPECT_STREQ(message.message.get<std::string>().c_str(), "data expect");
-    return Value("result expect");
-  });
+  node->messaging_set_handler(
+      "expect", [&](Colonio& c, const Colonio::MessagingRequest& message,
+                    std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+        printf("receive expect\n");
+        EXPECT_EQ(message.options, static_cast<const unsigned int>(0));
+        EXPECT_STREQ(message.message.get<std::string>().c_str(), "data expect");
+        writer->write(Value("result expect"));
+      });
 
   node->messaging_post(
       node->get_local_nid(), "expect", Value("data expect"), 0,
@@ -80,12 +82,14 @@ TEST(MessagingTest, callNearby) {
 
   printf("node: %s\n", node->get_local_nid().c_str());
 
-  node->messaging_set_handler("nearby", [&](Colonio& c, const Colonio::MessagingRequest& message) {
-    printf("receive nearby\n");
-    EXPECT_EQ(message.options, Colonio::MESSAGING_ACCEPT_NEARBY);
-    EXPECT_STREQ(message.message.get<std::string>().c_str(), "data nearby");
-    return Value("result nearby");
-  });
+  node->messaging_set_handler(
+      "nearby", [&](Colonio& c, const Colonio::MessagingRequest& message,
+                    std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+        printf("receive nearby\n");
+        EXPECT_EQ(message.options, Colonio::MESSAGING_ACCEPT_NEARBY);
+        EXPECT_STREQ(message.message.get<std::string>().c_str(), "data nearby");
+        writer->write(Value("result nearby"));
+      });
 
   // todo: avoid block without MESSAGING_IGNORE_RESPONSE option.
   node->messaging_post(
@@ -127,47 +131,51 @@ TEST(MessagingTest, send) {
   printf("node1 : %s\n", node1->get_local_nid().c_str());
   printf("node2 : %s\n", node2->get_local_nid().c_str());
 
-  node1->messaging_set_handler("call1", [&](Colonio& c, const Colonio::MessagingRequest& message) {
-    printf("receive dummy1\n");
-    EXPECT_EQ(message.options, Colonio::MESSAGING_ACCEPT_NEARBY);
-    EXPECT_STREQ(message.message.get<std::string>().c_str(), "dummy1");
-    helper.mark("1");
-    helper.pass_signal("1");
+  node1->messaging_set_handler(
+      "call1", [&](Colonio& c, const Colonio::MessagingRequest& message,
+                   std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+        printf("receive dummy1\n");
+        EXPECT_EQ(message.options, Colonio::MESSAGING_ACCEPT_NEARBY);
+        EXPECT_STREQ(message.message.get<std::string>().c_str(), "dummy1");
+        helper.mark("1");
+        helper.pass_signal("1");
 
-    printf("send result1\n");
-    return Value("result1");
-  });
+        printf("send result1\n");
+        writer->write(Value("result1"));
+      });
 
-  node1->messaging_set_handler("call3", [&](Colonio& c, const Colonio::MessagingRequest& message) {
-    printf("receive dummy3\n");
-    helper.mark("3");
-    helper.pass_signal("3");
+  node1->messaging_set_handler(
+      "call3", [&](Colonio& c, const Colonio::MessagingRequest& message,
+                   std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+        printf("receive dummy3\n");
+        helper.mark("3");
+        helper.pass_signal("3");
 
-    return Value();
-  });
+        writer->write(Value());
+      });
 
-  node2->messaging_set_handler("call2", [&](Colonio& c, const Colonio::MessagingRequest& message) {
-    printf("receive dummy2\n");
-    EXPECT_EQ(message.options, Colonio::MESSAGING_IGNORE_RESPONSE);
-    EXPECT_STREQ(message.message.get<std::string>().c_str(), "dummy2");
-    helper.mark("2");
-    helper.pass_signal("2");
+  node2->messaging_set_handler(
+      "call2", [&](Colonio& c, const Colonio::MessagingRequest& message,
+                   std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+        printf("receive dummy2\n");
+        EXPECT_EQ(message.options, Colonio::MESSAGING_IGNORE_RESPONSE);
+        EXPECT_STREQ(message.message.get<std::string>().c_str(), "dummy2");
+        EXPECT_EQ(writer.get(), nullptr);
+        helper.mark("2");
+        helper.pass_signal("2");
 
-    printf("send dummy2\n");
-    // todo: avoid block without MESSAGING_IGNORE_RESPONSE option.
-    c.messaging_post(
-        node1->get_local_nid(), "call3", Value(), 0,
-        [&](Colonio&, const Value&) {
-          helper.mark("4");
-          helper.pass_signal("4");
-        },
-        [&](Colonio&, const Error&) {
-          ADD_FAILURE();
-        });
-
-    printf("send result2\n");
-    return Value("result2");
-  });
+        printf("send dummy2\n");
+        // todo: avoid block without MESSAGING_IGNORE_RESPONSE option.
+        c.messaging_post(
+            node1->get_local_nid(), "call3", Value(), 0,
+            [&](Colonio&, const Value&) {
+              helper.mark("4");
+              helper.pass_signal("4");
+            },
+            [&](Colonio&, const Error&) {
+              ADD_FAILURE();
+            });
+      });
 
   NodeID target =
       NodeID::center_mod(NodeID::from_str(node1->get_local_nid()), NodeID::from_str(node2->get_local_nid()));
@@ -229,23 +237,29 @@ TEST(MessagingTest, callMessageChain) {
   printf("connect node\n");
   node->connect(URL, TOKEN);
 
-  node->messaging_set_handler("hop", [&](Colonio& c, const Colonio::MessagingRequest& message) {
-    std::string message_str = message.message.get<std::string>();
+  node->messaging_set_handler(
+      "hop", [&](Colonio& c, const Colonio::MessagingRequest& message,
+                 std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+        std::string message_str = message.message.get<std::string>();
 
-    return node->messaging_post(node->get_local_nid(), "step", Value(message_str + " hop"), 0);
-  });
+        writer->write(node->messaging_post(node->get_local_nid(), "step", Value(message_str + " hop"), 0));
+      });
 
-  node->messaging_set_handler("step", [&](Colonio& c, const Colonio::MessagingRequest& message) {
-    std::string message_str = message.message.get<std::string>();
+  node->messaging_set_handler(
+      "step", [&](Colonio& c, const Colonio::MessagingRequest& message,
+                  std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+        std::string message_str = message.message.get<std::string>();
 
-    return node->messaging_post(node->get_local_nid(), "jump", Value(message_str + " step"), 0);
-  });
+        writer->write(node->messaging_post(node->get_local_nid(), "jump", Value(message_str + " step"), 0));
+      });
 
-  node->messaging_set_handler("jump", [&](Colonio& c, const Colonio::MessagingRequest& message) {
-    std::string message_str = message.message.get<std::string>();
+  node->messaging_set_handler(
+      "jump", [&](Colonio& c, const Colonio::MessagingRequest& message,
+                  std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+        std::string message_str = message.message.get<std::string>();
 
-    return Value(message_str + " jump!");
-  });
+        writer->write(Value(message_str + " jump!"));
+      });
 
   node->messaging_post(
       node->get_local_nid(), "hop", Value("ready?"), 0,

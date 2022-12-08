@@ -270,6 +270,7 @@ build-native: src/core/colonio.pb.cc
 .PHONY: build-wasm
 build-wasm: src/core/colonio.pb.cc
 	mkdir -p $(WASM_BUILD_PATH) $(OUTPUT_PATH) \
+	&& npm run build \
 	&& source $(LOCAL_ENV_PATH)/emsdk/emsdk_env.sh \
 	&& mkdir -p /tmp/em_cache \
 	&& export EM_CACHE=/tmp/em_cache \
