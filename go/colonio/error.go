@@ -18,31 +18,33 @@ package colonio
 
 // Error codes returned by failures to processing some commands.
 var (
-	ErrUndefined           = newErr(0, "")  // ErrUndefined meaning undefined error is occurred.
-	ErrSystemError         = newErr(1, "")  // ErrSystemError meaning an error occurred in the API, which is used inside colonio.
-	ErrConnectionFailed    = newErr(2, "")  // ErrConnectionFailed
-	ErrOffline             = newErr(3, "")  // ErrOffline meaning the node cannot perform processing because of offline.
-	ErrIncorrectDataFormat = newErr(4, "")  // ErrIncorrectDataFormat meaning incorrect data format detected.
-	ErrConflictWithSetting = newErr(5, "")  // ErrConflictWithSetting meaning The calling method or setting parameter was inconsistent with the configuration in the seed.
-	ErrNotExistKey         = newErr(6, "")  // ErrNotExistKey meaning tried to get a value for a key that doesn't exist.
-	ErrExistKey            = newErr(7, "")  // ErrExistKey meaning an error occurs when overwriting the value for an existing key.
-	ErrChangedProposer     = newErr(8, "")  // Developing
-	ErrCollisionLate       = newErr(9, "")  // Developing
-	ErrNoOneRecv           = newErr(10, "") // ErrNoOneRecv meaning there was no node receiving the message.
-	ErrCallbackError       = newErr(11, "") // ErrCallbackError meaning that an error occurred while executing the callback function.
-	ErrRRCUndefinedError   = newErr(12, "") // ErrRPCUndefinedError occurred in callback function of call_by_nid.
-	ErrTimeout             = newErr(13, "") // ErrTimeout meaning an error occurs when timeout.
+	ErrUndefined                 = newErr(0, "", 0, "")
+	ErrSystemIncorrectDataFormat = newErr(1, "", 0, "")
+	ErrSystemConflictWithSetting = newErr(2, "", 0, "")
+	ErrConnectionFailed          = newErr(3, "", 0, "")
+	ErrConnectionOffline         = newErr(4, "", 0, "")
+	ErrPacketNoOneRecv           = newErr(5, "", 0, "")
+	ErrPacketTimeout             = newErr(6, "", 0, "")
+	ErrMessagingHandlerNotFound  = newErr(7, "", 0, "")
+	ErrKvsNotFound               = newErr(8, "", 0, "")
+	ErrKvsProhibitOverwrite      = newErr(9, "", 0, "")
+	ErrKvsCollision              = newErr(10, "", 0, "")
+	ErrSpreadNoOneReceive        = newErr(11, "", 0, "")
 )
 
 type errImpl struct {
 	code    uint32
 	message string
+	line    uint
+	file    string
 }
 
-func newErr(code uint32, message string) error {
+func newErr(code uint32, message string, line uint, file string) error {
 	return &errImpl{
 		code:    code,
 		message: message,
+		line:    line,
+		file:    file,
 	}
 }
 

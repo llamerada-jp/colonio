@@ -34,9 +34,9 @@ type E2eSuite struct {
 func (suite *E2eSuite) SetupSuite() {
 	var err error
 	suite.T().Log("creating a new colonio instance")
-	suite.node1, err = colonio.NewColonio(colonio.DefaultLogger)
+	suite.node1, err = colonio.NewColonio(colonio.NewConfig())
 	suite.NoError(err)
-	suite.node2, err = colonio.NewColonio(colonio.DefaultLogger)
+	suite.node2, err = colonio.NewColonio(colonio.NewConfig())
 	suite.NoError(err)
 
 	suite.T().Log("node1 connect to seed")
@@ -68,14 +68,14 @@ func (suite *E2eSuite) TearDownSuite() {
 func (suite *E2eSuite) TestE2E() {
 	suite.Eventually(func() bool {
 		suite.T().Log("sending message and waiting it")
-		suite.node1.OnCall("twice", func(parameter *colonio.CallParameter) interface{} {
-			str, err := parameter.Value.GetString()
+		suite.node1.MessagingSetHandler("twice", func(request *colonio.MessagingRequest, writer colonio.MessagingResponseWriter) {
+			str, err := request.Message.GetString()
 			suite.NoError(err)
-			return str + str
+			writer.Write(str + str)
 		})
-		defer suite.node1.OffCall("twice")
+		defer suite.node1.MessagingUnsetHandler("twice")
 
-		result, err := suite.node2.CallByNid(suite.node1.GetLocalNid(), "twice", "test", 0)
+		result, err := suite.node2.MessagingPost(suite.node1.GetLocalNid(), "twice", "test", 0)
 		if err != nil {
 			log.Println(err)
 			return false
@@ -91,22 +91,18 @@ func (suite *E2eSuite) TestE2E() {
 
 	suite.T().Log("node1 set 2D position")
 	suite.node1.SetPosition(1.0, 0.0)
-	ps1, err := suite.node1.AccessPubsub2D("ps")
-	suite.NoError(err)
 
 	suite.T().Log("node2 set 2D position")
 	suite.node2.SetPosition(2.0, 0.0)
-	ps2, err := suite.node2.AccessPubsub2D("ps")
-	suite.NoError(err)
 
 	// set 1 to avoid dead-lock caused by ps1.Publish waits finish of ps2.On.
 	recvPS2 := make(chan string, 1)
-	ps2.On("hoge", func(v colonio.Value) {
-		str, err := v.GetString()
+	suite.node2.SpreadSetHandler("hoge", func(request *colonio.SpreadRequest) {
+		str, err := request.Message.GetString()
 		suite.NoError(err)
 		recvPS2 <- str
 	})
-	defer ps2.Off("hoge")
+	defer suite.node2.SpreadUnsetHandler("hoge")
 
 	suite.T().Log("publishing message and waiting it")
 	suite.Eventually(func() bool {
@@ -117,7 +113,7 @@ func (suite *E2eSuite) TestE2E() {
 			return true
 
 		default:
-			err := ps1.Publish("hoge", 2.0, 0.0, 1.1, "test publish", 0)
+			err := suite.node1.SpreadPost(2.0, 0.0, 1.1, "hoge", "test publish", 0)
 			suite.NoError(err)
 			log.Println("the message was not received")
 			return false
@@ -125,55 +121,58 @@ func (suite *E2eSuite) TestE2E() {
 	}, time.Minute, time.Second)
 
 	suite.T().Log("getting a not existed value")
-	map1, err := suite.node1.AccessMap("map")
-	suite.NoError(err)
-	map2, err := suite.node2.AccessMap("map")
-	suite.NoError(err)
 
-	_, err = map1.Get("key1")
+	_, err := suite.node1.KvsGet("key1")
 	if suite.Error(err) {
-		suite.ErrorIs(colonio.ErrNotExistKey, err)
+		suite.ErrorIs(colonio.ErrKvsNotFound, err)
 	}
 
-	err = map2.Set("key1", "val1", colonio.MapErrorWithExist)
+	err = suite.node2.KvsSet("key1", "val1", colonio.KvsProhibitOverwrite)
 	suite.NoError(err)
 
-	v, err := map1.Get("key1")
+	v, err := suite.node1.KvsGet("key1")
 	suite.NoError(err)
 	s, err := v.GetString()
 	suite.NoError(err)
 	suite.Equal("val1", s)
 
-	err = map2.Set("key1", "val2", colonio.MapErrorWithExist)
+	err = suite.node2.KvsSet("key1", "val2", colonio.KvsProhibitOverwrite)
 	if suite.Error(err) {
-		suite.ErrorIs(colonio.ErrExistKey, err)
+		suite.ErrorIs(colonio.ErrKvsProhibitOverwrite, err)
 	}
 
-	err = map1.Set("key2", "val2", 0)
+	err = suite.node1.KvsSet("key2", "val2", 0)
 	suite.NoError(err)
 
 	stored := make(map[string]string)
-	map1.ForeachLocalValue(func(vKey, vValue colonio.Value, attr uint32) {
-		key, _ := vKey.GetString()
-		val, _ := vValue.GetString()
+	kld := suite.node1.KvsGetLocalData()
+	for _, key := range kld.GetKeys() {
+		val, err := kld.GetValue(key)
+		suite.NoError(err)
+		str, err := val.GetString()
+		suite.NoError(err)
 		_, ok := stored[key]
 		suite.False(ok)
-		stored[key] = val
-	})
-	map2.ForeachLocalValue(func(vKey, vValue colonio.Value, attr uint32) {
-		key, _ := vKey.GetString()
-		val, _ := vValue.GetString()
+		stored[key] = str
+	}
+	kld.Free()
+	kld = suite.node2.KvsGetLocalData()
+	for _, key := range kld.GetKeys() {
+		val, err := kld.GetValue(key)
+		suite.NoError(err)
+		str, err := val.GetString()
+		suite.NoError(err)
 		_, ok := stored[key]
 		suite.False(ok)
-		stored[key] = val
-	})
+		stored[key] = str
+	}
+	kld.Free()
 	suite.Len(stored, 2)
 	suite.Equal("val1", stored["key1"])
 	suite.Equal("val2", stored["key2"])
 }
 
 func (suite *E2eSuite) TestGetSetInCB() {
-
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
@@ -192,27 +191,24 @@ func (suite *E2eSuite) TestGetSetInCB() {
 		}
 	}()
 
-	map1, err := suite.node1.AccessMap("map")
-	suite.NoError(err)
-
 	// fatal error: all goroutines are asleep - deadlock!
-	suite.node1.OnCall("set", func(cp *colonio.CallParameter) interface{} {
-		err = map1.Set("key", cp.Value, 0)
+	suite.node1.MessagingSetHandler("set", func(request *colonio.MessagingRequest, writer colonio.MessagingResponseWriter) {
+		err := suite.node1.KvsSet("key", request.Message, 0)
 		suite.NoError(err)
-		return true
+		writer.Write(true)
 	})
-	defer suite.node1.OffCall("set")
+	defer suite.node1.MessagingUnsetHandler("set")
 
-	suite.node1.OnCall("get", func(cp *colonio.CallParameter) interface{} {
-		v, err := map1.Get("key")
+	suite.node1.MessagingSetHandler("get", func(request *colonio.MessagingRequest, writer colonio.MessagingResponseWriter) {
+		v, err := suite.node1.KvsGet("key")
 		suite.NoError(err)
-		return v
+		writer.Write(v)
 	})
-	defer suite.node1.OffCall("get")
+	defer suite.node1.MessagingUnsetHandler("get")
 
-	_, err = suite.node2.CallByNid(suite.node1.GetLocalNid(), "set", "dummy value", 0)
+	_, err := suite.node2.MessagingPost(suite.node1.GetLocalNid(), "set", "dummy value", 0)
 	suite.NoError(err)
-	v, err := suite.node2.CallByNid(suite.node1.GetLocalNid(), "get", "", 0)
+	v, err := suite.node2.MessagingPost(suite.node1.GetLocalNid(), "get", "", 0)
 	suite.NoError(err)
 	s, err := v.GetString()
 	suite.NoError(err)

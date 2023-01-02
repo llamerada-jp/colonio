@@ -20,65 +20,56 @@ static size_t _GoStringLen(_GoString_ s) {
   return (size_t)s.n;
 }
 
-static const char *_GoStringPtr(_GoString_ s) {
+static const char* _GoStringPtr(_GoString_ s) {
   return s.p;
 }
-
 // export constant value for golang
 const unsigned int cgo_colonio_nid_length = COLONIO_NID_LENGTH;
 
 // colonio
-void cgo_cb_colonio_logger(colonio_t *colonio, const char *message, unsigned int len) {
-  cgoCbColonioLogger(colonio, (void *)message, (int)len);
+void cgo_wrap_colonio_logger(colonio_t colonio, const char* message, unsigned int len) {
+  cgoWrapColonioLogger(colonio, (void*)message, (int)len);
 }
 
-colonio_error_t *cgo_colonio_init(colonio_t *colonio) {
-  return colonio_init(colonio, cgo_cb_colonio_logger, COLONIO_COLONIO_EXPLICIT_EVENT_THREAD);
+colonio_error_t* cgo_colonio_init(colonio_t* colonio) {
+  colonio_config_t config;
+  colonio_config_set_default(&config);
+  config.logger_func = cgo_wrap_colonio_logger;
+  return colonio_init(colonio, &config);
 }
 
-colonio_error_t *cgo_colonio_connect(colonio_t *colonio, _GoString_ url, _GoString_ token) {
+colonio_error_t* cgo_colonio_connect(colonio_t colonio, _GoString_ url, _GoString_ token) {
   return colonio_connect(colonio, _GoStringPtr(url), _GoStringLen(url), _GoStringPtr(token), _GoStringLen(token));
 }
 
-int cgo_colonio_is_connected(colonio_t *colonio) {
+int cgo_colonio_is_connected(colonio_t colonio) {
   return colonio_is_connected(colonio) ? 1 : 0;
 }
 
-colonio_map_t cgo_colonio_access_map(colonio_t *colonio, _GoString_ name) {
-  return colonio_access_map(colonio, _GoStringPtr(name), _GoStringLen(name));
+// messaging
+colonio_error_t* cgo_colonio_messaging_post(
+    colonio_t colonio, _GoString_ dst, _GoString_ name, colonio_const_value_t val, uint32_t opt,
+    colonio_value_t* result) {
+  return colonio_messaging_post(colonio, _GoStringPtr(dst), _GoStringPtr(name), _GoStringLen(name), val, opt, result);
 }
 
-colonio_pubsub_2d_t cgo_colonio_access_pubsub_2d(colonio_t *colonio, _GoString_ name) {
-  return colonio_access_pubsub_2d(colonio, _GoStringPtr(name), _GoStringLen(name));
+void cgo_wrap_colonio_messaging_handler(
+    colonio_t colonio, void* id, const colonio_messaging_request_t* request, colonio_messaging_writer_t writer) {
+  cgoWrapMessagingHandler(
+      colonio, (unsigned long)id, (void*)request->source_nid, request->message, request->options, writer);
 }
 
-colonio_error_t *cgo_colonio_call_by_nid(
-    colonio_t *colonio, _GoString_ dst, _GoString_ name, const colonio_value_t *val, uint32_t opt,
-    colonio_value_t *result) {
-  return colonio_call_by_nid(colonio, _GoStringPtr(dst), _GoStringPtr(name), _GoStringLen(name), val, opt, result);
+void cgo_colonio_messaging_set_handler(colonio_t colonio, _GoString_ name, unsigned long id) {
+  colonio_messaging_set_handler(
+      colonio, _GoStringPtr(name), _GoStringLen(name), (void*)id, cgo_wrap_colonio_messaging_handler);
 }
 
-void cgo_cb_colonio_call_on(
-    colonio_t *colonio, void *ptr, const colonio_on_call_parameter_t *parameter, colonio_value_t *result) {
-  cgoCbColonioOnCall(
-      colonio, (void *)ptr, (void *)parameter->name, (int)parameter->name_siz, (void *)parameter->value,
-      (int)parameter->options, (void *)result);
+void cgo_colonio_messaging_unset_handler(colonio_t colonio, _GoString_ name) {
+  colonio_messaging_unset_handler(colonio, _GoStringPtr(name), _GoStringLen(name));
 }
 
-void cgo_colonio_call_on(colonio_t *colonio, _GoString_ name, uintptr_t ptr) {
-  colonio_on_call(colonio, _GoStringPtr(name), _GoStringLen(name), (void *)ptr, cgo_cb_colonio_call_on);
-}
-
-void cgo_colonio_call_off(colonio_t *colonio, _GoString_ name) {
-  colonio_off_call(colonio, _GoStringPtr(name), _GoStringLen(name));
-}
-
-// value
-void cgo_colonio_value_set_string(colonio_value_t *value, _GoString_ s) {
-  colonio_value_set_string(value, _GoStringPtr(s), _GoStringLen(s));
-}
-
-// map
+// kvs
+/*
 void cgo_cb_colonio_map_foreach_local_value(
     colonio_map_t *map, void *ptr, const colonio_value_t *key, const colonio_value_t *val, uint32_t attr) {
   cgoColonioMapForeachLocalValue(map, (void *)ptr, (void *)key, (void *)val, attr);
@@ -87,22 +78,35 @@ void cgo_cb_colonio_map_foreach_local_value(
 colonio_error_t *cgo_colonio_map_foreach_local_value(colonio_map_t *map, uintptr_t ptr) {
   return colonio_map_foreach_local_value(map, (void *)ptr, cgo_cb_colonio_map_foreach_local_value);
 }
-
-// pubsub
-colonio_error_t *cgo_colonio_pubsub_2d_publish(
-    colonio_pubsub_2d_t *pubsub_2d, _GoString_ name, double x, double y, double r, const colonio_value_t *value,
-    uint32_t opt) {
-  return colonio_pubsub_2d_publish(pubsub_2d, _GoStringPtr(name), _GoStringLen(name), x, y, r, value, opt);
+//*/
+colonio_error_t* cgo_colonio_kvs_get(colonio_t colonio, _GoString_ key, colonio_value_t* dst) {
+  return colonio_kvs_get(colonio, _GoStringPtr(key), _GoStringLen(key), dst);
 }
 
-void cgo_cb_colonio_pubsub_2d_on(colonio_pubsub_2d_t *pubsub_2d, void *ptr, const colonio_value_t *val) {
-  cgoCbPubsub2DOn(pubsub_2d, (void *)ptr, (void *)val);
+colonio_error_t* cgo_colonio_kvs_set(colonio_t colonio, _GoString_ key, colonio_const_value_t value, uint32_t opt) {
+  return colonio_kvs_set(colonio, _GoStringPtr(key), _GoStringLen(key), value, opt);
 }
 
-void cgo_colonio_pubsub_2d_on(colonio_pubsub_2d_t *pubsub_2d, _GoString_ name, uintptr_t ptr) {
-  colonio_pubsub_2d_on(pubsub_2d, _GoStringPtr(name), _GoStringLen(name), (void *)ptr, cgo_cb_colonio_pubsub_2d_on);
+// spread
+colonio_error_t* cgo_colonio_spread_post(
+    colonio_t colonio, double x, double y, double r, _GoString_ name, colonio_const_value_t value, uint32_t opt) {
+  return colonio_spread_post(colonio, x, y, r, _GoStringPtr(name), _GoStringLen(name), value, opt);
 }
 
-void cgo_colonio_pubsub_2d_off(colonio_pubsub_2d_t *pubsub_2d, _GoString_ name) {
-  colonio_pubsub_2d_off(pubsub_2d, _GoStringPtr(name), _GoStringLen(name));
+void cgo_wrap_colonio_spread_handler(colonio_t colonio, void* id, const colonio_spread_request_t* request) {
+  cgoWrapSpreadHandler(colonio, (unsigned long)id, (void*)request->source_nid, request->message, request->options);
+}
+
+void cgo_colonio_spread_set_handler(colonio_t colonio, _GoString_ name, unsigned long id) {
+  colonio_spread_set_handler(
+      colonio, _GoStringPtr(name), _GoStringLen(name), (void*)id, cgo_wrap_colonio_spread_handler);
+}
+
+void cgo_colonio_spread_unset_handler(colonio_t colonio, _GoString_ name) {
+  colonio_spread_unset_handler(colonio, _GoStringPtr(name), _GoStringLen(name));
+}
+
+// value
+void cgo_colonio_value_set_string(colonio_value_t value, _GoString_ s) {
+  colonio_value_set_string(value, _GoStringPtr(s), _GoStringLen(s));
 }
