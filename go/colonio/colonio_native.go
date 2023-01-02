@@ -19,548 +19,617 @@ package colonio
  */
 
 /*
-#cgo darwin LDFLAGS: -framework Foundation
 #cgo LDFLAGS: -lcolonio -lwebrtc -lm -lprotobuf -lstdc++
-#cgo linux pkg-config: openssl
+#cgo darwin LDFLAGS: -framework Foundation
 #cgo darwin LDFLAGS: -L/usr/local/opt/openssl/lib -lcrypto -lssl
+#cgo linux pkg-config: openssl
 
+#include <stdlib.h>
 #include "../../src/colonio/colonio.h"
 
 extern const unsigned int cgo_colonio_nid_length;
 
+typedef void* colonio_t;
+typedef void* colonio_value_t;
+
 // colonio
-colonio_error_t *cgo_colonio_init(colonio_t *colonio);
-colonio_error_t *cgo_colonio_connect(colonio_t *colonio, _GoString_ url, _GoString_ token);
-int cgo_colonio_is_connected(colonio_t* colonio);
-colonio_map_t cgo_colonio_access_map(colonio_t *colonio, _GoString_ name);
-colonio_pubsub_2d_t cgo_colonio_access_pubsub_2d(colonio_t *colonio, _GoString_ name);
-colonio_error_t *cgo_colonio_call_by_nid(colonio_t *colonio, _GoString_ dst, _GoString_ name, const colonio_value_t *val, uint32_t opt, colonio_value_t* result);
-void cgo_colonio_call_on(colonio_t *colonio, _GoString_ name, uintptr_t ptr);
-void cgo_colonio_call_off(colonio_t *colonio, _GoString_ name);
+colonio_error_t* cgo_colonio_init(colonio_t* colonio);
+colonio_error_t* cgo_colonio_connect(colonio_t colonio, _GoString_ url, _GoString_ token);
+int cgo_colonio_is_connected(colonio_t colonio);
+
+// messaging
+colonio_error_t* cgo_colonio_messaging_post(colonio_t colonio, _GoString_ dst, _GoString_ name, colonio_const_value_t val, uint32_t opt, colonio_value_t* result);
+void cgo_colonio_messaging_set_handler(colonio_t colonio, _GoString_ name, unsigned long id);
+void cgo_colonio_messaging_unset_handler(colonio_t colonio, _GoString_ name);
 
 // value
-void cgo_colonio_value_set_string(colonio_value_t *value, _GoString_ s);
+void cgo_colonio_value_set_string(colonio_value_t value, _GoString_ s);
 
-// map
-colonio_error_t *cgo_colonio_map_foreach_local_value(colonio_map_t *map, uintptr_t ptr);
+// kvs
+//colonio_error_t* cgo_colonio_map_foreach_local_value(colonio_map_t *map, uintptr_t ptr);
+colonio_error_t* cgo_colonio_kvs_get(colonio_t colonio, _GoString_ key, colonio_value_t* dst);
+colonio_error_t* cgo_colonio_kvs_set(colonio_t colonio, _GoString_ key, colonio_const_value_t value, uint32_t opt);
 
-// pubsub
-colonio_error_t *cgo_colonio_pubsub_2d_publish(
-    colonio_pubsub_2d_t *pubsub_2d, _GoString_ name, double x, double y, double r, const colonio_value_t *value,
+// spread
+colonio_error_t* cgo_colonio_spread_post(
+    colonio_t colonio, double x, double y, double r, _GoString_ name, colonio_const_value_t value,
     uint32_t opt);
-void cgo_cb_colonio_pubsub_2d_on(colonio_pubsub_2d_t *pubsub_2d, void *ptr, const colonio_value_t *val);
-void cgo_colonio_pubsub_2d_on(colonio_pubsub_2d_t *pubsub_2d, _GoString_ name, uintptr_t ptr);
-void cgo_colonio_pubsub_2d_off(colonio_pubsub_2d_t *pubsub_2d, _GoString_ name);
+void cgo_colonio_spread_set_handler(colonio_t colonio, _GoString_ name, unsigned long id);
+void cgo_colonio_spread_unset_handler(colonio_t colonio, _GoString_ name);
 */
 import "C"
 
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"reflect"
 	"sync"
 	"unsafe"
 )
 
 type colonioImpl struct {
-	cInstance     C.struct_colonio_s
-	mapCache      map[string]*mapImpl
-	pubsub2DCache map[string]*pubsub2dImpl
-	cbMap         map[string]func(*CallParameter) interface{}
+	colonioC              C.colonio_t
+	loggerFunc            func(string)
+	messagingMutex        sync.RWMutex
+	messagingHandlers     map[uint32]func(*MessagingRequest, MessagingResponseWriter)
+	messagingHandlerNames map[string]uint32
+	spreadMutex           sync.RWMutex
+	spreadHandlers        map[uint32]func(*SpreadRequest)
+	spreadHandlerNames    map[string]uint32
 }
 
 type valueImpl struct {
-	valueType C.enum_COLONIO_VALUE_TYPE
-	vBool     bool
-	vInt      int64
-	vDouble   float64
-	vString   string
+	valueTypeC C.enum_COLONIO_VALUE_TYPE
+	boolG      bool
+	intG       int64
+	doubleG    float64
+	stringG    string
+	binaryG    []byte
 }
 
-type mapImpl struct {
-	cInstance C.struct_colonio_map_s
+type messagingWriterImpl struct {
+	colonioC C.colonio_t
+	writerC  C.colonio_messaging_writer_t
 }
 
-type mapCbForeachImpl struct {
-	cb func(Value, Value, uint32)
+type kvsLocalDataImpl struct {
+	colonioC C.colonio_t
+	cursorC  C.colonio_kvs_data_t
+	keys     []string
+	keyMap   map[string]C.uint
 }
 
-type pubsub2dImpl struct {
-	cInstance C.struct_colonio_pubsub_2d_s
-	cbMutex   sync.RWMutex
-	cbMap     map[*string]func(Value)
-}
-
-type defaultLogger struct {
-}
-
-// DefaultLogger is the default log output module that outputs logs to the golang log module.
-var DefaultLogger *defaultLogger
-var loggerMap map[*C.struct_colonio_s]Logger
-var instanceMapMutex sync.RWMutex
-var pubsub2DMap map[*C.struct_colonio_pubsub_2d_s]*pubsub2dImpl
+var colonioMap map[C.colonio_t]*colonioImpl
 
 func init() {
-	loggerMap = make(map[*C.struct_colonio_s]Logger)
-
-	instanceMapMutex = sync.RWMutex{}
-	pubsub2DMap = make(map[*C.struct_colonio_pubsub_2d_s]*pubsub2dImpl)
+	colonioMap = make(map[C.colonio_t]*colonioImpl)
 }
 
-func convertError(err *C.struct_colonio_error_s) error {
-	if err == nil {
+func convertError(errC *C.struct_colonio_error_s) error {
+	if errC == nil {
 		return nil
 	}
-	return newErr(uint32(err.code), C.GoString(err.message))
+	return newErr(uint32(errC.code), C.GoStringN(errC.message, C.int(errC.message_siz)),
+		uint(errC.line), C.GoStringN(errC.file, C.int(errC.file_siz)))
+}
+
+func NewConfig() *ColonioConfig {
+	return &ColonioConfig{
+		LoggerFunc: func(s string) {
+			log.Println(s)
+		},
+	}
 }
 
 // NewColonio creates a new initialized instance.
-func NewColonio(logger Logger) (Colonio, error) {
-	instance := &colonioImpl{
-		mapCache:      make(map[string]*mapImpl),
-		pubsub2DCache: make(map[string]*pubsub2dImpl),
-		cbMap:         make(map[string]func(*CallParameter) interface{}),
-	}
-	loggerMap[&instance.cInstance] = logger
-
-	err := C.cgo_colonio_init(&instance.cInstance)
-	if err != nil {
-		return nil, convertError(err)
+func NewColonio(config *ColonioConfig) (Colonio, error) {
+	impl := &colonioImpl{
+		loggerFunc:            config.LoggerFunc,
+		messagingMutex:        sync.RWMutex{},
+		messagingHandlers:     make(map[uint32]func(*MessagingRequest, MessagingResponseWriter)),
+		messagingHandlerNames: make(map[string]uint32),
+		spreadMutex:           sync.RWMutex{},
+		spreadHandlers:        make(map[uint32]func(*SpreadRequest)),
+		spreadHandlerNames:    make(map[string]uint32),
 	}
 
-	go C.colonio_start_on_event_thread(&instance.cInstance)
+	errC := C.cgo_colonio_init(&impl.colonioC)
+	if errC != nil {
+		return nil, convertError(errC)
+	}
 
-	return instance, nil
+	colonioMap[impl.colonioC] = impl
+
+	return impl, nil
 }
 
-//export cgoCbColonioLogger
-func cgoCbColonioLogger(cInstancePtr *C.struct_colonio_s, messagePtr unsafe.Pointer, len C.int) {
-	logger, ok := loggerMap[cInstancePtr]
+//export cgoWrapColonioLogger
+func cgoWrapColonioLogger(colonioC C.colonio_t, messageC unsafe.Pointer, siz C.int) {
+	colonio, ok := colonioMap[colonioC]
+	messageG := C.GoStringN((*C.char)(messageC), siz)
 
 	if !ok {
-		log.Fatal("logger not found or deallocated yet")
+		log.Println(messageG)
 	}
 
-	logger.Output(C.GoStringN((*C.char)(messagePtr), len))
+	go colonio.loggerFunc(messageG)
 }
 
 // Connect to seed and join the cluster.
-func (c *colonioImpl) Connect(url, token string) error {
-	err := C.cgo_colonio_connect(&c.cInstance, url, token)
-	return convertError(err)
+func (ci *colonioImpl) Connect(url, token string) error {
+	errC := C.cgo_colonio_connect(ci.colonioC, url, token)
+	return convertError(errC)
 }
 
 // Disconnect from the cluster and the seed.
-func (c *colonioImpl) Disconnect() error {
-	err := C.colonio_disconnect(&c.cInstance)
-	return convertError(err)
+func (ci *colonioImpl) Disconnect() error {
+	errC := C.colonio_disconnect(ci.colonioC)
+	return convertError(errC)
 }
 
-func (c *colonioImpl) IsConnected() bool {
-	if C.cgo_colonio_is_connected(&c.cInstance) == 0 {
-		return false
-	}
-	return true
+func (ci *colonioImpl) IsConnected() bool {
+	return C.cgo_colonio_is_connected(ci.colonioC) != C.int(0)
 }
 
-func (c *colonioImpl) AccessMap(name string) (Map, error) {
-	if ret, ok := c.mapCache[name]; ok {
-		return ret, nil
-	}
-
-	instance := &mapImpl{
-		cInstance: C.cgo_colonio_access_map(&c.cInstance, name),
-	}
-
-	c.mapCache[name] = instance
-	return instance, nil
-}
-
-func (c *colonioImpl) AccessPubsub2D(name string) (Pubsub2D, error) {
-	if ret, ok := c.pubsub2DCache[name]; ok {
-		return ret, nil
-	}
-
-	instance := &pubsub2dImpl{
-		cInstance: C.cgo_colonio_access_pubsub_2d(&c.cInstance, name),
-		cbMutex:   sync.RWMutex{},
-		cbMap:     make(map[*string]func(Value)),
-	}
-	instanceMapMutex.Lock()
-	defer instanceMapMutex.Unlock()
-	if _, ok := pubsub2DMap[&instance.cInstance]; ok {
-
-	} else {
-		pubsub2DMap[&instance.cInstance] = instance
-	}
-
-	c.pubsub2DCache[name] = instance
-	return instance, nil
-}
-
-func (c *colonioImpl) GetLocalNid() string {
+func (ci *colonioImpl) GetLocalNid() string {
 	buf := make([]byte, C.cgo_colonio_nid_length+1)
 	data := (*reflect.SliceHeader)(unsafe.Pointer(&buf)).Data
-	C.colonio_get_local_nid(&c.cInstance, (*C.char)(unsafe.Pointer(data)))
+	C.colonio_get_local_nid(ci.colonioC, (*C.char)(unsafe.Pointer(data)))
 	return string(buf[:C.cgo_colonio_nid_length])
 }
 
-func (c *colonioImpl) SetPosition(x, y float64) (float64, float64, error) {
-	cX := C.double(x)
-	cY := C.double(y)
-	err := C.colonio_set_position(&c.cInstance, &cX, &cY)
-	if err != nil {
-		return 0, 0, convertError(err)
+func (ci *colonioImpl) SetPosition(xG, yG float64) (float64, float64, error) {
+	xC := C.double(xG)
+	yC := C.double(yG)
+	errC := C.colonio_set_position(ci.colonioC, &xC, &yC)
+	if errC != nil {
+		return 0, 0, convertError(errC)
 	}
-	return float64(cX), float64(cY), nil
-}
-
-func (c *colonioImpl) CallByNid(dst, name string, val interface{}, opt uint32) (Value, error) {
-	// value
-	vValue, err := NewValue(val)
-	if err != nil {
-		return nil, err
-	}
-	cVal := C.struct_colonio_value_s{}
-	C.colonio_value_init(&cVal)
-	defer C.colonio_value_free(&cVal)
-	writeOut(&cVal, vValue)
-
-	// result
-	cResult := C.struct_colonio_value_s{}
-	C.colonio_value_init(&cResult)
-	defer C.colonio_value_free(&cResult)
-
-	cErr := C.cgo_colonio_call_by_nid(&c.cInstance, dst, name, &cVal, C.uint32_t(opt), &cResult)
-	if cErr != nil {
-		return nil, convertError(cErr)
-	}
-
-	return newValue(&cResult), nil
-}
-
-//export cgoCbColonioOnCall
-func cgoCbColonioOnCall(cInstancePtr *C.struct_colonio_s, ptr unsafe.Pointer, namePtr unsafe.Pointer, len C.int, cVal *C.struct_colonio_value_s, opt C.int, cResult *C.struct_colonio_value_s) {
-	c := (*colonioImpl)(ptr)
-	parameter := &CallParameter{
-		Name:    C.GoStringN((*C.char)(namePtr), len),
-		Value:   newValue(cVal),
-		Options: uint32(opt),
-	}
-	gResult, err := NewValue(c.cbMap[parameter.Name](parameter))
-	if err != nil {
-		log.Fatal()
-	}
-	writeOut(cResult, gResult)
-}
-
-func (c *colonioImpl) OnCall(name string, f func(*CallParameter) interface{}) {
-	c.cbMap[name] = f
-	C.cgo_colonio_call_on(&c.cInstance, name, C.uintptr_t(uintptr(unsafe.Pointer(c))))
-}
-
-func (c *colonioImpl) OffCall(name string) {
-	C.cgo_colonio_call_off(&c.cInstance, name)
+	return float64(xC), float64(yC), nil
 }
 
 // Quit is the finalizer of the instance.
-func (c *colonioImpl) Quit() error {
-	defer delete(loggerMap, &c.cInstance)
-	err := C.colonio_quit(&c.cInstance)
-	return convertError(err)
+func (ci *colonioImpl) Quit() error {
+	defer delete(colonioMap, ci.colonioC)
+	errC := C.colonio_quit(&ci.colonioC)
+	return convertError(errC)
 }
 
-func (l *defaultLogger) Output(message string) {
-	log.Println(message)
+func (ci *colonioImpl) MessagingPost(dst, name string, messageG interface{}, opt uint32) (Value, error) {
+	// value
+	message, err := NewValue(messageG)
+	if err != nil {
+		return nil, err
+	}
+	var messageC C.colonio_value_t
+	C.colonio_value_create(&messageC)
+	defer C.colonio_value_free(&messageC)
+	writeOut(messageC, message)
+
+	// result
+	var resultC C.colonio_value_t
+	defer C.colonio_value_free(&resultC)
+
+	errC := C.cgo_colonio_messaging_post(ci.colonioC, dst, name, C.colonio_const_value_t(messageC), C.uint32_t(opt), &resultC)
+	if errC != nil {
+		return nil, convertError(errC)
+	}
+
+	return newValue(C.colonio_const_value_t(resultC)), nil
 }
 
-func newValue(cValue *C.struct_colonio_value_s) Value {
-	valueType := C.enum_COLONIO_VALUE_TYPE(C.colonio_value_get_type(cValue))
-	switch valueType {
+func (mwi *messagingWriterImpl) Write(valueG interface{}) {
+	value, err := NewValue(valueG)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	var valueC C.colonio_value_t
+	C.colonio_value_create(&valueC)
+	defer C.colonio_value_free(&valueC)
+	writeOut(valueC, value)
+
+	C.colonio_messaging_response_writer(mwi.colonioC, mwi.writerC, C.colonio_const_value_t(valueC))
+}
+
+//export cgoWrapMessagingHandler
+func cgoWrapMessagingHandler(colonioC C.colonio_t, id C.ulong, src unsafe.Pointer, messageC C.colonio_const_value_t, opt C.uint32_t, writerC C.colonio_messaging_writer_t) {
+	colonio, ok := colonioMap[colonioC]
+	if !ok {
+		log.Fatalln("colonioImpl not found")
+	}
+
+	request := &MessagingRequest{
+		SourceNid: C.GoStringN((*C.char)(src), C.int(C.cgo_colonio_nid_length)),
+		Message:   newValue(messageC),
+		Options:   uint32(opt),
+	}
+
+	colonio.messagingMutex.RLock()
+	defer colonio.messagingMutex.RUnlock()
+
+	handler, ok := colonio.messagingHandlers[uint32(id)]
+	if !ok {
+		log.Fatalln("messaging handler not found")
+	}
+
+	var writer MessagingResponseWriter
+	if writerC != C.COLONIO_MESSAGING_WRITER_NONE {
+		writer = &messagingWriterImpl{
+			colonioC: colonioC,
+			writerC:  writerC,
+		}
+	}
+
+	go handler(request, writer)
+}
+
+func (ci *colonioImpl) MessagingSetHandler(name string, handler func(*MessagingRequest, MessagingResponseWriter)) {
+	ci.messagingUnsetHandler(name)
+
+	ci.messagingMutex.Lock()
+	defer ci.messagingMutex.Unlock()
+
+	var id uint32
+	for {
+		id = rand.Uint32()
+		if _, ok := ci.messagingHandlers[id]; !ok {
+			break
+		}
+	}
+	ci.messagingHandlers[id] = handler
+	ci.messagingHandlerNames[name] = id
+
+	C.cgo_colonio_messaging_set_handler(ci.colonioC, name, C.ulong(id))
+}
+
+func (ci *colonioImpl) MessagingUnsetHandler(name string) {
+	ci.messagingMutex.Lock()
+	defer ci.messagingMutex.Unlock()
+
+	id, ok := ci.messagingHandlerNames[name]
+	// handler not found
+	if !ok {
+		return
+	}
+	delete(ci.messagingHandlers, id)
+	delete(ci.messagingHandlerNames, name)
+
+	C.cgo_colonio_messaging_unset_handler(ci.colonioC, name)
+}
+
+func newValue(valueC C.colonio_const_value_t) Value {
+	valueTypeC := C.enum_COLONIO_VALUE_TYPE(C.colonio_value_get_type(valueC))
+	switch valueTypeC {
 	case C.COLONIO_VALUE_TYPE_BOOL:
 		return &valueImpl{
-			valueType: valueType,
-			vBool:     bool(C.colonio_value_get_bool(cValue)),
+			valueTypeC: valueTypeC,
+			boolG:      bool(C.colonio_value_get_bool(valueC)),
 		}
 
 	case C.COLONIO_VALUE_TYPE_INT:
 		return &valueImpl{
-			valueType: valueType,
-			vInt:      int64(C.colonio_value_get_int(cValue)),
+			valueTypeC: valueTypeC,
+			intG:       int64(C.colonio_value_get_int(valueC)),
 		}
 
 	case C.COLONIO_VALUE_TYPE_DOUBLE:
 		return &valueImpl{
-			valueType: valueType,
-			vDouble:   float64(C.colonio_value_get_double(cValue)),
+			valueTypeC: valueTypeC,
+			doubleG:    float64(C.colonio_value_get_double(valueC)),
 		}
 
 	case C.COLONIO_VALUE_TYPE_STRING:
-		buf := make([]byte, uint(C.colonio_value_get_string_siz(cValue)))
-		data := (*reflect.SliceHeader)(unsafe.Pointer(&buf)).Data
-		C.colonio_value_get_string(cValue, (*C.char)(unsafe.Pointer(data)))
+		var siz C.uint
+		ptr := C.colonio_value_get_string(valueC, &siz)
 		return &valueImpl{
-			valueType: valueType,
-			vString:   string(buf),
+			valueTypeC: valueTypeC,
+			stringG:    C.GoStringN(ptr, C.int(siz)),
+		}
+
+	case C.COLONIO_VALUE_TYPE_BINARY:
+		var siz C.uint
+		ptr := C.colonio_value_get_binary(valueC, &siz)
+		return &valueImpl{
+			valueTypeC: valueTypeC,
+			binaryG:    C.GoBytes(ptr, C.int(siz)),
 		}
 
 	default:
 		return &valueImpl{
-			valueType: valueType,
+			valueTypeC: valueTypeC,
 		}
 	}
 }
 
+// kvs
+func (kldi *kvsLocalDataImpl) GetKeys() []string {
+	return kldi.keys
+}
+
+func (kldi *kvsLocalDataImpl) GetValue(key string) (Value, error) {
+	idx, ok := kldi.keyMap[key]
+	if !ok {
+		return nil, fmt.Errorf("key %s not found", key)
+	}
+	var valueC C.colonio_value_t
+	C.colonio_kvs_local_data_get_value(kldi.colonioC, kldi.cursorC, idx, &valueC)
+	return newValue(C.colonio_const_value_t(valueC)), nil
+}
+
+func (kldi *kvsLocalDataImpl) Free() {
+	C.colonio_kvs_local_data_free(kldi.colonioC, kldi.cursorC)
+}
+
+func (ci *colonioImpl) KvsGetLocalData() KvsLocalData {
+	cursorC := C.colonio_kvs_get_local_data(ci.colonioC)
+	dataCount := C.colonio_kvs_local_data_get_siz(ci.colonioC, cursorC)
+
+	keys := make([]string, dataCount)
+	keyMap := make(map[string]C.uint)
+	for idx := C.uint(0); idx < dataCount; idx++ {
+		var keySiz C.uint
+		ptr := C.colonio_kvs_local_data_get_key(ci.colonioC, cursorC, idx, &keySiz)
+		key := C.GoStringN(ptr, C.int(keySiz))
+		keys[idx] = key
+		keyMap[key] = idx
+	}
+
+	return &kvsLocalDataImpl{
+		colonioC: ci.colonioC,
+		cursorC:  cursorC,
+		keys:     keys,
+		keyMap:   keyMap,
+	}
+}
+
+func (ci *colonioImpl) KvsGet(key string) (Value, error) {
+	var valueC C.colonio_value_t
+
+	// get
+	errC := C.cgo_colonio_kvs_get(ci.colonioC, key, &valueC)
+	if errC != nil {
+		return nil, convertError(errC)
+	}
+
+	return newValue(C.colonio_const_value_t(valueC)), nil
+}
+
+func (ci *colonioImpl) KvsSet(key string, valueG interface{}, opt uint32) error {
+	value, err := NewValue(valueG)
+	if err != nil {
+		return err
+	}
+	var valueC C.colonio_value_t
+	C.colonio_value_create(&valueC)
+	defer C.colonio_value_free(&valueC)
+	writeOut(valueC, value)
+
+	// set
+	errC := C.cgo_colonio_kvs_set(ci.colonioC, key, C.colonio_const_value_t(valueC), C.uint32_t(opt))
+
+	return convertError(errC)
+}
+
+// spread
+func (ci *colonioImpl) SpreadPost(x, y, r float64, name string, messageG interface{}, opt uint32) error {
+	// value
+	message, err := NewValue(messageG)
+	if err != nil {
+		return err
+	}
+	var messageC C.colonio_value_t
+	C.colonio_value_create(&messageC)
+	defer C.colonio_value_free(&messageC)
+	writeOut(messageC, message)
+
+	// post
+	errC := C.cgo_colonio_spread_post(ci.colonioC, C.double(x), C.double(y), C.double(r), name, C.colonio_const_value_t(messageC), C.uint32_t(opt))
+	return convertError(errC)
+}
+
+//export cgoWrapSpreadHandler
+func cgoWrapSpreadHandler(colonioC C.colonio_t, id C.ulong, src unsafe.Pointer, messageC C.colonio_const_value_t, opt C.uint32_t) {
+	colonio, ok := colonioMap[colonioC]
+	if !ok {
+		log.Fatalln("colonioImpl not found")
+	}
+
+	request := &SpreadRequest{
+		SourceNid: C.GoStringN((*C.char)(src), C.int(C.cgo_colonio_nid_length)),
+		Message:   newValue(messageC),
+		Options:   uint32(opt),
+	}
+
+	colonio.spreadMutex.RLock()
+	defer colonio.spreadMutex.RUnlock()
+
+	handler, ok := colonio.spreadHandlers[uint32(id)]
+	if !ok {
+		log.Fatalln("messaging handler not found")
+	}
+
+	go handler(request)
+}
+
+func (ci *colonioImpl) SpreadSetHandler(name string, handler func(*SpreadRequest)) {
+	ci.SpreadUnsetHandler(name)
+
+	ci.spreadMutex.Lock()
+	defer ci.spreadMutex.Unlock()
+
+	var id uint32
+	for {
+		id = rand.Uint32()
+		if _, ok := ci.spreadHandlers[id]; !ok {
+			break
+		}
+	}
+	ci.spreadHandlers[id] = handler
+	ci.spreadHandlerNames[name] = id
+
+	C.cgo_colonio_spread_set_handler(ci.colonioC, name, C.ulong(id))
+}
+
+func (ci *colonioImpl) SpreadUnsetHandler(name string) {
+	ci.spreadMutex.Lock()
+	defer ci.spreadMutex.Unlock()
+
+	id, ok := ci.spreadHandlerNames[name]
+	// handler not found
+	if !ok {
+		return
+	}
+	delete(ci.spreadHandlers, id)
+	delete(ci.spreadHandlerNames, name)
+
+	C.cgo_colonio_spread_unset_handler(ci.colonioC, name)
+}
+
 // NewValue create a value instance managed by colonio
-func NewValue(v interface{}) (Value, error) {
-	val := &valueImpl{}
-	err := val.Set(v)
+func NewValue(valueG interface{}) (Value, error) {
+	vi := &valueImpl{}
+	err := vi.Set(valueG)
 	if err != nil {
 		return nil, err
 	}
-	return val, nil
+	return vi, nil
 }
 
-func (v *valueImpl) IsNil() bool {
-	return v.valueType == C.COLONIO_VALUE_TYPE_NULL
+func (vi *valueImpl) IsNil() bool {
+	return vi.valueTypeC == C.COLONIO_VALUE_TYPE_NULL
 }
 
-func (v *valueImpl) IsBool() bool {
-	return v.valueType == C.COLONIO_VALUE_TYPE_BOOL
+func (vi *valueImpl) IsBool() bool {
+	return vi.valueTypeC == C.COLONIO_VALUE_TYPE_BOOL
 }
 
-func (v *valueImpl) IsInt() bool {
-	return v.valueType == C.COLONIO_VALUE_TYPE_INT
+func (vi *valueImpl) IsInt() bool {
+	return vi.valueTypeC == C.COLONIO_VALUE_TYPE_INT
 }
 
-func (v *valueImpl) IsDouble() bool {
-	return v.valueType == C.COLONIO_VALUE_TYPE_DOUBLE
+func (vi *valueImpl) IsDouble() bool {
+	return vi.valueTypeC == C.COLONIO_VALUE_TYPE_DOUBLE
 }
 
-func (v *valueImpl) IsString() bool {
-	return v.valueType == C.COLONIO_VALUE_TYPE_STRING
+func (vi *valueImpl) IsString() bool {
+	return vi.valueTypeC == C.COLONIO_VALUE_TYPE_STRING
 }
 
-func (v *valueImpl) Set(val interface{}) error {
-	v.vString = ""
+func (vi *valueImpl) IsBinary() bool {
+	return vi.valueTypeC == C.COLONIO_VALUE_TYPE_BINARY
+}
 
-	if reflect.ValueOf(v).IsNil() {
-		v.valueType = C.COLONIO_VALUE_TYPE_NULL
+func (vi *valueImpl) Set(valueG interface{}) error {
+	vi.stringG = ""
+
+	if reflect.ValueOf(vi).IsNil() {
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_NULL
 		return nil
 	}
 
-	switch val := val.(type) {
+	switch v := valueG.(type) {
 	case bool:
-		v.valueType = C.COLONIO_VALUE_TYPE_BOOL
-		v.vBool = val
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_BOOL
+		vi.boolG = v
 		return nil
 
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32:
-		v.valueType = C.COLONIO_VALUE_TYPE_INT
-		v.vInt = val.(int64)
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_INT
+		vi.intG = v.(int64)
 		return nil
 
 	case float32, float64:
-		v.valueType = C.COLONIO_VALUE_TYPE_DOUBLE
-		v.vDouble = val.(float64)
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_DOUBLE
+		vi.doubleG = v.(float64)
 		return nil
 
 	case string:
-		v.valueType = C.COLONIO_VALUE_TYPE_STRING
-		v.vString = val
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_STRING
+		vi.stringG = v
+		return nil
+
+	case []byte:
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_BINARY
+		vi.binaryG = v
 		return nil
 
 	case *valueImpl:
-		*v = *val
+		*vi = *v
 		return nil
 	}
 
 	return fmt.Errorf("unsupported value type")
 }
 
-func (v *valueImpl) GetBool() (bool, error) {
-	if v.valueType != C.COLONIO_VALUE_TYPE_BOOL {
+func (vi *valueImpl) GetBool() (bool, error) {
+	if vi.valueTypeC != C.COLONIO_VALUE_TYPE_BOOL {
 		return false, fmt.Errorf("the type of value is wrong")
 	}
-	return v.vBool, nil
+	return vi.boolG, nil
 }
 
-func (v *valueImpl) GetInt() (int64, error) {
-	if v.valueType != C.COLONIO_VALUE_TYPE_INT {
+func (vi *valueImpl) GetInt() (int64, error) {
+	if vi.valueTypeC != C.COLONIO_VALUE_TYPE_INT {
 		return 0, fmt.Errorf("the type of value is wrong")
 	}
-	return v.vInt, nil
+	return vi.intG, nil
 }
 
-func (v *valueImpl) GetDouble() (float64, error) {
-	if v.valueType != C.COLONIO_VALUE_TYPE_DOUBLE {
+func (vi *valueImpl) GetDouble() (float64, error) {
+	if vi.valueTypeC != C.COLONIO_VALUE_TYPE_DOUBLE {
 		return 0, fmt.Errorf("the type of value is wrong")
 	}
-	return v.vDouble, nil
+	return vi.doubleG, nil
 }
 
-func (v *valueImpl) GetString() (string, error) {
-	if v.valueType != C.COLONIO_VALUE_TYPE_STRING {
+func (vi *valueImpl) GetString() (string, error) {
+	if vi.valueTypeC != C.COLONIO_VALUE_TYPE_STRING {
 		return "", fmt.Errorf("the type of value is wrong")
 	}
-	return v.vString, nil
+	return vi.stringG, nil
 }
 
-func writeOut(cValue *C.struct_colonio_value_s, value Value) {
+func (vi *valueImpl) GetBinary() ([]byte, error) {
+	if vi.valueTypeC != C.COLONIO_VALUE_TYPE_BINARY {
+		return nil, fmt.Errorf("the type of value is wrong")
+	}
+	return vi.binaryG, nil
+}
+
+func writeOut(valueC C.colonio_value_t, value Value) {
 	if value.IsBool() {
 		v, _ := value.GetBool()
-		C.colonio_value_set_bool(cValue, C.bool(v))
+		C.colonio_value_set_bool(valueC, C.bool(v))
 		return
 	}
 
 	if value.IsInt() {
 		v, _ := value.GetInt()
-		C.colonio_value_set_int(cValue, C.int64_t(v))
+		C.colonio_value_set_int(valueC, C.int64_t(v))
 		return
 	}
 
 	if value.IsDouble() {
 		v, _ := value.GetDouble()
-		C.colonio_value_set_double(cValue, C.double(v))
+		C.colonio_value_set_double(valueC, C.double(v))
 		return
 	}
 
 	if value.IsString() {
 		v, _ := value.GetString()
-		C.cgo_colonio_value_set_string(cValue, v)
+		C.cgo_colonio_value_set_string(valueC, v)
 		return
 	}
 
-	C.colonio_value_free(cValue)
-}
-
-//export cgoColonioMapForeachLocalValue
-func cgoColonioMapForeachLocalValue(cInstancePtr *C.struct_colonio_map_s, ptr unsafe.Pointer, cKey *C.struct_colonio_value_s, cVal *C.struct_colonio_value_s, attr C.uint32_t) {
-	cbWrap := (*mapCbForeachImpl)(ptr)
-	key := newValue(cKey)
-	value := newValue(cVal)
-	cbWrap.cb(key, value, (uint32)(attr))
-}
-
-func (m *mapImpl) ForeachLocalValue(cb func(key, value Value, attr uint32)) error {
-	cbWrap := mapCbForeachImpl{
-		cb: cb,
-	}
-	cErr := C.cgo_colonio_map_foreach_local_value(&m.cInstance, C.uintptr_t(uintptr(unsafe.Pointer(&cbWrap))))
-	return convertError(cErr)
-}
-
-func (m *mapImpl) Get(key interface{}) (Value, error) {
-	// key
-	vKey, err := NewValue(key)
-	if err != nil {
-		return nil, err
-	}
-	cKey := C.struct_colonio_value_s{}
-	C.colonio_value_init(&cKey)
-	defer C.colonio_value_free(&cKey)
-	writeOut(&cKey, vKey)
-
-	// value
-	cVal := C.struct_colonio_value_s{}
-	C.colonio_value_init(&cVal)
-	defer C.colonio_value_free(&cVal)
-
-	// get
-	cErr := C.colonio_map_get(&m.cInstance, &cKey, &cVal)
-	if cErr != nil {
-		return nil, convertError(cErr)
+	if value.IsBinary() {
+		v, _ := value.GetBinary()
+		b := C.CBytes(v)
+		defer C.free(b)
+		C.colonio_value_set_binary(valueC, b, C.uint(len(v)))
+		return
 	}
 
-	return newValue(&cVal), nil
-}
-
-func (m *mapImpl) Set(key, val interface{}, opt uint32) error {
-	// key
-	vKey, err := NewValue(key)
-	if err != nil {
-		return err
-	}
-	cKey := C.struct_colonio_value_s{}
-	C.colonio_value_init(&cKey)
-	defer C.colonio_value_free(&cKey)
-	writeOut(&cKey, vKey)
-
-	// value
-	vValue, err := NewValue(val)
-	if err != nil {
-		return err
-	}
-	cVal := C.struct_colonio_value_s{}
-	C.colonio_value_init(&cVal)
-	defer C.colonio_value_free(&cVal)
-	writeOut(&cVal, vValue)
-
-	// set
-	cErr := C.colonio_map_set(&m.cInstance, &cKey, &cVal, C.uint32_t(opt))
-	return convertError(cErr)
-}
-
-func (p *pubsub2dImpl) Publish(name string, x, y, r float64, val interface{}, opt uint32) error {
-	// value
-	vValue, err := NewValue(val)
-	if err != nil {
-		return err
-	}
-	cVal := C.struct_colonio_value_s{}
-	C.colonio_value_init(&cVal)
-	defer C.colonio_value_free(&cVal)
-	writeOut(&cVal, vValue)
-
-	// publish
-	cErr := C.cgo_colonio_pubsub_2d_publish(&p.cInstance, name, C.double(x), C.double(y), C.double(r), &cVal, C.uint32_t(opt))
-	return convertError(cErr)
-}
-
-//export cgoCbPubsub2DOn
-func cgoCbPubsub2DOn(cInstancePtr *C.struct_colonio_pubsub_2d_s, ptr unsafe.Pointer, cVal *C.struct_colonio_value_s) {
-	var ps2 *pubsub2dImpl
-	{
-		instanceMapMutex.RLock()
-		defer instanceMapMutex.RUnlock()
-		if p, ok := pubsub2DMap[cInstancePtr]; ok {
-			ps2 = p
-		} else {
-			return
-		}
-	}
-
-	var cb func(Value)
-	{
-		ps2.cbMutex.RLock()
-		defer ps2.cbMutex.RUnlock()
-		if c, ok := ps2.cbMap[(*string)(ptr)]; ok {
-			cb = c
-		} else {
-			return
-		}
-	}
-	value := newValue(cVal)
-	cb(value)
-}
-
-func (p *pubsub2dImpl) On(name string, cb func(Value)) {
-	p.cbMutex.Lock()
-	defer p.cbMutex.Unlock()
-	p.cbMap[&name] = cb
-	C.cgo_colonio_pubsub_2d_on(&p.cInstance, name, C.uintptr_t(uintptr(unsafe.Pointer(&name))))
-}
-
-func (p *pubsub2dImpl) Off(name string) {
-	C.cgo_colonio_pubsub_2d_off(&p.cInstance, name)
-
-	p.cbMutex.Lock()
-	defer p.cbMutex.Unlock()
-
-	for s := range p.cbMap {
-		if *s == name {
-			delete(p.cbMap, s)
-			return
-		}
-	}
+	C.colonio_value_free(&valueC)
 }

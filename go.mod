@@ -1,8 +1,6 @@
 module github.com/llamerada-jp/colonio
 
-go 1.18
-
-replace github.com/onsi/ginkgo => github.com/llamerada-jp/ginkgo v0.0.0-20210815150612-71ed8833b4c0
+go 1.19
 
 require (
 	github.com/golang/glog v1.0.0
