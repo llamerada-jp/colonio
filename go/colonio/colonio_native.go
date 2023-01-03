@@ -28,6 +28,7 @@ package colonio
 #include "../../src/colonio/colonio.h"
 
 extern const unsigned int cgo_colonio_nid_length;
+extern const colonio_messaging_writer_t cgo_colonio_messaging_writer_none;
 
 typedef void* colonio_t;
 typedef void* colonio_value_t;
@@ -165,6 +166,13 @@ func (ci *colonioImpl) Connect(url, token string) error {
 // Disconnect from the cluster and the seed.
 func (ci *colonioImpl) Disconnect() error {
 	errC := C.colonio_disconnect(ci.colonioC)
+	err := convertError(errC)
+	if err != nil {
+		return nil
+	}
+
+	defer delete(colonioMap, ci.colonioC)
+	errC = C.colonio_quit(&ci.colonioC)
 	return convertError(errC)
 }
 
@@ -187,13 +195,6 @@ func (ci *colonioImpl) SetPosition(xG, yG float64) (float64, float64, error) {
 		return 0, 0, convertError(errC)
 	}
 	return float64(xC), float64(yC), nil
-}
-
-// Quit is the finalizer of the instance.
-func (ci *colonioImpl) Quit() error {
-	defer delete(colonioMap, ci.colonioC)
-	errC := C.colonio_quit(&ci.colonioC)
-	return convertError(errC)
 }
 
 func (ci *colonioImpl) MessagingPost(dst, name string, messageG interface{}, opt uint32) (Value, error) {
@@ -255,7 +256,7 @@ func cgoWrapMessagingHandler(colonioC C.colonio_t, id C.ulong, src unsafe.Pointe
 	}
 
 	var writer MessagingResponseWriter
-	if writerC != C.COLONIO_MESSAGING_WRITER_NONE {
+	if writerC != C.cgo_colonio_messaging_writer_none {
 		writer = &messagingWriterImpl{
 			colonioC: colonioC,
 			writerC:  writerC,
@@ -266,7 +267,7 @@ func cgoWrapMessagingHandler(colonioC C.colonio_t, id C.ulong, src unsafe.Pointe
 }
 
 func (ci *colonioImpl) MessagingSetHandler(name string, handler func(*MessagingRequest, MessagingResponseWriter)) {
-	ci.messagingUnsetHandler(name)
+	ci.MessagingUnsetHandler(name)
 
 	ci.messagingMutex.Lock()
 	defer ci.messagingMutex.Unlock()

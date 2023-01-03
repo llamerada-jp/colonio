@@ -24,7 +24,8 @@ static const char* _GoStringPtr(_GoString_ s) {
   return s.p;
 }
 // export constant value for golang
-const unsigned int cgo_colonio_nid_length = COLONIO_NID_LENGTH;
+const unsigned int cgo_colonio_nid_length                          = COLONIO_NID_LENGTH;
+const colonio_messaging_writer_t cgo_colonio_messaging_writer_none = COLONIO_MESSAGING_WRITER_NONE;
 
 // colonio
 void cgo_wrap_colonio_logger(colonio_t colonio, const char* message, unsigned int len) {

@@ -3,7 +3,7 @@
   "overrides": {
     "/colonio.js": "../../output/",
     "/colonio.wasm": "../../output/",
-    "/colonio_golang.js": "../../src/js/"
+    "/colonio_go.js": "../../src/js/"
   },
   "node": {
     "coordSystem2D": {

@@ -5,8 +5,17 @@
     "module": "ESNext",
     "declaration": true,
     "strict": true,
-    "lib": ["ES2020", "dom", "ES2021.WeakRef"]
+    "lib": [
+      "ES2020",
+      "dom",
+      "ES2021.WeakRef"
+    ]
   },
-  "include": ["src/js/**/*"],
-  "files": ["./src/js/core.ts"]
+  "include": [
+    "src/js/**/*"
+  ],
+  "files": [
+    "./src/js/core.ts",
+    "./src/js/colonio_go.ts"
+  ]
 }
