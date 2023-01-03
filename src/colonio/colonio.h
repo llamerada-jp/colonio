@@ -139,7 +139,7 @@ typedef struct colonio_messaging_request_s {
 } colonio_messaging_request_t;
 
 typedef void* colonio_messaging_writer_t;
-#define COLONIO_MESSAGING_WRITER_NONE nullptr
+#define COLONIO_MESSAGING_WRITER_NONE 0
 
 COLONIO_PUBLIC colonio_error_t* colonio_messaging_post(
     colonio_t c, const char* dst_nid, const char* name, unsigned int name_siz, colonio_const_value_t v, uint32_t opt,

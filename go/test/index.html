@@ -10,11 +10,11 @@
   <div id="result"></div>
   <script src="wasm_exec.js" type="text/javascript"></script>
   <script src="colonio.js" type="text/javascript"></script>
-  <script src="colonio_golang.js" type="text/javascript"></script>
+  <script src="colonio_go.js" type="text/javascript"></script>
   <script type="text/javascript">
     const go = new Go();
     ColonioModule().then(colonio => {
-      globalThis.colonioSuite = new ColonioSuite(colonio);
+      globalThis.colonioGo = new ColonioGo(colonio);
       return WebAssembly.instantiateStreaming(fetch("test.wasm"), go.importObject);
 
     }).then((result) => {

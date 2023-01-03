@@ -20,6 +20,7 @@ package colonio
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"reflect"
 	"sync"
@@ -28,57 +29,51 @@ import (
 )
 
 type colonioImpl struct {
-	jsModule js.Value
-
-	childrenMtx sync.Mutex
-	onCallCbs   map[string]uint32
-	maps        map[string]*mapImpl
-	pubsub2ds   map[string]*pubsub2dImpl
+	colonioJ              js.Value
+	messagingMutex        sync.Mutex
+	messagingHandlerNames map[string]uint32
+	spreadMutex           sync.Mutex
+	spreadHandlerNames    map[string]uint32
 }
 
 type valueImpl struct {
 	valueType int32
-	value     js.Value
+	valueJ    js.Value
 }
 
-type mapImpl struct {
-	jsModule js.Value
+type messagingResponseWriterImpl struct {
+	writerJ js.Value
 }
 
-type pubsub2dImpl struct {
-	jsModule  js.Value
-	eventsMtx sync.Mutex
-	events    map[string]uint32
+type kvsLocalDataImpl struct {
+	cursorJ js.Value
+	keys    []string
 }
-
-type defaultLogger struct {
-}
-
-// DefaultLogger is the default log output module that outputs logs to the Javascript console.
-var DefaultLogger *defaultLogger
 
 const (
-	jsModuleName    = "colonioSuite"
+	helperName      = "colonioGo"
 	valueTypeNull   = 0
 	valueTypeBool   = 1
 	valueTypeInt    = 2
 	valueTypeDouble = 3
 	valueTypeString = 4
+	valueTypeBinary = 5
 )
 
 var (
-	jsSuite = js.Global().Get(jsModuleName)
-
-	eventReceivers    = make(map[uint32]func(js.Value) interface{})
-	eventReceiversMtx sync.Mutex
-	respChannels      = make(map[uint32]chan js.Value)
-	respChannelsMtx   sync.Mutex
+	helperJ             = js.Global().Get(helperName)
+	errorEntryClass     = helperJ.Get("mod").Get("ErrorEntry")
+	valueClass          = helperJ.Get("mod").Get("Value")
+	eventReceiversMutex = sync.RWMutex{}
+	eventReceivers      = make(map[uint32]func(js.Value))
+	respChannelsMutex   = sync.Mutex{}
+	respChannels        = make(map[uint32]chan js.Value)
 )
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
-	jsSuite.Set("onEvent", js.FuncOf(onEvent))
-	jsSuite.Set("onResponse", js.FuncOf(onResponse))
+	helperJ.Set("onEvent", js.FuncOf(onEvent))
+	helperJ.Set("onResponse", js.FuncOf(onResponse))
 }
 
 func checkJsError(v js.Value) error {
@@ -86,76 +81,82 @@ func checkJsError(v js.Value) error {
 		return nil
 	}
 
-	return newErr(uint32(v.Get("code").Int()), v.Get("message").String())
+	if !v.InstanceOf(errorEntryClass) {
+		return nil
+	}
+
+	return newErr(uint32(v.Get("code").Int()), v.Get("message").String(),
+		uint(v.Get("line").Int()), v.Get("file").String())
 }
 
-func assignEventReceiver(f func(js.Value) interface{}) (key uint32) {
-	eventReceiversMtx.Lock()
-	defer eventReceiversMtx.Unlock()
+func assignEventReceiver(receiver func(js.Value)) (id uint32) {
+	eventReceiversMutex.Lock()
+	defer eventReceiversMutex.Unlock()
 
 	for {
-		key = rand.Uint32()
-		if key == 0 {
+		id = rand.Uint32()
+		if id == 0 {
 			continue
 		}
-		if _, ok := eventReceivers[key]; !ok {
-			eventReceivers[key] = f
+		if _, ok := eventReceivers[id]; !ok {
+			eventReceivers[id] = receiver
 			return
 		}
 	}
 }
 
-func deleteEventReceiver(key uint32) {
-	eventReceiversMtx.Lock()
-	defer eventReceiversMtx.Unlock()
+func deleteEventReceiver(id uint32) {
+	eventReceiversMutex.Lock()
+	defer eventReceiversMutex.Unlock()
 
-	delete(eventReceivers, key)
+	delete(eventReceivers, id)
 }
 
 func onEvent(_ js.Value, args []js.Value) interface{} {
-	key := uint32(args[0].Int())
-	eventReceiversMtx.Lock()
-	eventReceiver, ok := eventReceivers[key]
-	eventReceiversMtx.Unlock()
+	id := uint32(args[0].Int())
+	eventReceiversMutex.RLock()
+	receiver, ok := eventReceivers[id]
+	eventReceiversMutex.RUnlock()
 	if !ok {
 		panic("event key does not match")
 	}
 
-	return eventReceiver(args[1])
+	receiver(args[1])
+	return nil
 }
 
-func assignRespChannel() (key uint32, respChannel chan js.Value) {
-	respChannelsMtx.Lock()
-	defer respChannelsMtx.Unlock()
+func assignRespChannel() (id uint32, respChannel chan js.Value) {
+	respChannelsMutex.Lock()
+	defer respChannelsMutex.Unlock()
 
 	for {
-		key = rand.Uint32()
-		if _, ok := respChannels[key]; !ok {
+		id = rand.Uint32()
+		if _, ok := respChannels[id]; !ok {
 			respChannel = make(chan js.Value)
-			respChannels[key] = respChannel
+			respChannels[id] = respChannel
 			return
 		}
 	}
 }
 
-func deleteRespChannel(key uint32) {
-	respChannelsMtx.Lock()
-	defer respChannelsMtx.Unlock()
+func deleteRespChannel(id uint32) {
+	respChannelsMutex.Lock()
+	defer respChannelsMutex.Unlock()
 
-	respChannel, ok := respChannels[key]
+	respChannel, ok := respChannels[id]
 	if !ok {
 		return
 	}
 
 	close(respChannel)
-	delete(respChannels, key)
+	delete(respChannels, id)
 }
 
 func onResponse(_ js.Value, args []js.Value) interface{} {
-	key := uint32(args[0].Int())
-	respChannelsMtx.Lock()
-	defer respChannelsMtx.Unlock()
-	respChannel, ok := respChannels[key]
+	id := uint32(args[0].Int())
+	respChannelsMutex.Lock()
+	defer respChannelsMutex.Unlock()
+	respChannel, ok := respChannels[id]
 	if !ok {
 		panic("response key does not match")
 	}
@@ -166,181 +167,259 @@ func onResponse(_ js.Value, args []js.Value) interface{} {
 		respChannel <- args[1]
 	}
 	close(respChannel)
-	delete(respChannels, key)
+	delete(respChannels, id)
 	return nil
 }
 
+func NewConfig() *ColonioConfig {
+	return &ColonioConfig{
+		LoggerFunc: func(s string) {
+			log.Println(s)
+		},
+	}
+}
+
 // NewColonio creates a new instance of colonio object.
-func NewColonio(logger Logger) (Colonio, error) {
+func NewColonio(config *ColonioConfig) (Colonio, error) {
 	impl := &colonioImpl{
-		jsModule: jsSuite.Call("newColonio", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-			logger.Output(args[0].String())
+		colonioJ: helperJ.Call("newColonio", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+			config.LoggerFunc(args[0].String())
 			return nil
 		})),
-		onCallCbs: make(map[string]uint32),
-		maps:      make(map[string]*mapImpl),
-		pubsub2ds: make(map[string]*pubsub2dImpl),
+		messagingMutex:        sync.Mutex{},
+		messagingHandlerNames: make(map[string]uint32),
+		spreadMutex:           sync.Mutex{},
+		spreadHandlerNames:    make(map[string]uint32),
 	}
 
 	return impl, nil
 }
 
 // Connect to seed and join the cluster.
-func (c *colonioImpl) Connect(url, token string) error {
-	key, respChannel := assignRespChannel()
-	defer deleteRespChannel(key)
+func (ci *colonioImpl) Connect(url, token string) error {
+	id, respChannel := assignRespChannel()
+	defer deleteRespChannel(id)
 
-	c.jsModule.Call("connect", key, url, token)
+	helperJ.Call("connect", ci.colonioJ, id, url, token)
 
 	return checkJsError(<-respChannel)
 }
 
 // Disconnect from the cluster and the seed.
-func (c *colonioImpl) Disconnect() error {
-	key, respChannel := assignRespChannel()
-	defer deleteRespChannel(key)
+func (ci *colonioImpl) Disconnect() error {
+	id, respChannel := assignRespChannel()
+	defer deleteRespChannel(id)
 
-	c.jsModule.Call("disconnect", key)
+	helperJ.Call("disconnect", ci.colonioJ, id)
 
 	return checkJsError(<-respChannel)
 }
 
-func (c *colonioImpl) IsConnected() bool {
-	return c.jsModule.Call("isConnected").Bool()
-}
-
-// Get Map accessor associated with the name.
-func (c *colonioImpl) AccessMap(name string) (Map, error) {
-	c.childrenMtx.Lock()
-	defer c.childrenMtx.Unlock()
-
-	if impl, ok := c.maps[name]; ok {
-		return impl, nil
-	}
-
-	impl := &mapImpl{
-		jsModule: c.jsModule.Call("accessMap", name),
-	}
-	c.maps[name] = impl
-
-	return impl, nil
-}
-
-// Get Pubsub2D accessor associated with the name.
-func (c *colonioImpl) AccessPubsub2D(name string) (Pubsub2D, error) {
-	c.childrenMtx.Lock()
-	defer c.childrenMtx.Unlock()
-
-	if impl, ok := c.pubsub2ds[name]; ok {
-		return impl, nil
-	}
-
-	impl := &pubsub2dImpl{
-		jsModule: c.jsModule.Call("accessPubsub2D", name),
-		events:   make(map[string]uint32),
-	}
-	c.pubsub2ds[name] = impl
-
-	return impl, nil
+func (ci *colonioImpl) IsConnected() bool {
+	return ci.colonioJ.Call("isConnected").Bool()
 }
 
 // Get the node-id of this node.
-func (c *colonioImpl) GetLocalNid() string {
-	return c.jsModule.Call("getLocalNid").String()
+func (ci *colonioImpl) GetLocalNid() string {
+	return ci.colonioJ.Call("getLocalNid").String()
 }
 
 // Sets the current position of the node.
-func (c *colonioImpl) SetPosition(x, y float64) (float64, float64, error) {
-	key, respChannel := assignRespChannel()
-	defer deleteRespChannel(key)
-
-	c.jsModule.Call("setPosition", key, x, y)
-
-	resp := <-respChannel
-	newX := resp.Get("x").Float()
-	newY := resp.Get("y").Float()
-	err := checkJsError(resp.Get("err"))
-	return newX, newY, err
+func (ci *colonioImpl) SetPosition(x, y float64) (float64, float64, error) {
+	resp := ci.colonioJ.Call("setPosition", x, y)
+	xG := resp.Get("x").Float()
+	yG := resp.Get("y").Float()
+	return xG, yG, checkJsError(resp)
 }
 
-func (c *colonioImpl) CallByNid(dst, name string, val interface{}, opt uint32) (Value, error) {
-	valImpl := &valueImpl{}
-	if err := valImpl.Set(val); err != nil {
+func (wi *messagingResponseWriterImpl) Write(valueG interface{}) {
+	valueJ, err := convertValueG2J(valueG)
+	if err != nil {
+		log.Fatalln(err)
+		// return err
+	}
+	wi.writerJ.Call("write", valueJ)
+}
+
+func (ci *colonioImpl) MessagingPost(dst, name string, val interface{}, opt uint32) (Value, error) {
+	vi := &valueImpl{}
+	if err := vi.Set(val); err != nil {
 		return nil, err
 	}
 
-	key, respChannel := assignRespChannel()
-	defer deleteRespChannel(key)
+	id, respChannel := assignRespChannel()
+	defer deleteRespChannel(id)
 
-	c.jsModule.Call("callByNid", key, dst, name, valImpl.valueType, js.ValueOf(valImpl.value), opt)
+	helperJ.Call("messagingPost", ci.colonioJ, id, dst, name, vi.valueType, vi.valueJ, opt)
 
 	resp := <-respChannel
-	if err := checkJsError(resp.Get("err")); err != nil {
+	if err := checkJsError(resp); err != nil {
 		return nil, err
 	}
 
-	return &valueImpl{
-		valueType: int32(resp.Get("type").Int()),
-		value:     resp.Get("value"),
-	}, nil
+	return convertValueJ2G(resp)
 }
 
-func (c *colonioImpl) OnCall(name string, f func(*CallParameter) interface{}) {
-	c.OffCall(name)
-	c.childrenMtx.Lock()
-	defer c.childrenMtx.Unlock()
-	cbKey := assignEventReceiver(func(v js.Value) interface{} {
-		parameter := &CallParameter{
-			Name: v.Get("name").String(),
-			Value: &valueImpl{
-				valueType: int32(v.Get("valueType").Int()),
-				value:     v.Get("value"),
-			},
-			Options: uint32(v.Get("options").Int()),
+func (ci *colonioImpl) MessagingSetHandler(name string, handler func(*MessagingRequest, MessagingResponseWriter)) {
+	ci.MessagingUnsetHandler(name)
+
+	id := assignEventReceiver(func(v js.Value) {
+		requestJ := v.Get("request")
+		message, err := convertValueJ2G(requestJ.Get("message"))
+		if err != nil {
+			log.Fatal(err)
 		}
-		result := f(parameter)
-		resultTmp := &valueImpl{}
-		resultTmp.Set(result)
-		return js.ValueOf(map[string]interface{}{
-			"valueType": resultTmp.valueType,
-			"value":     resultTmp.value,
-		})
-	})
-	c.onCallCbs[name] = cbKey
+		request := &MessagingRequest{
+			SourceNid: requestJ.Get("sourceNid").String(),
+			Message:   message,
+			Options:   uint32(requestJ.Get("options").Int()),
+		}
 
-	c.jsModule.Call("onCall", js.ValueOf(name), cbKey)
+		var writer MessagingResponseWriter
+		if !v.Get("writer").IsUndefined() {
+			writer = &messagingResponseWriterImpl{
+				writerJ: v.Get("writer"),
+			}
+		}
+		go handler(request, writer)
+	})
+
+	ci.messagingMutex.Lock()
+	defer ci.messagingMutex.Unlock()
+	ci.messagingHandlerNames[name] = id
+
+	helperJ.Call("messagingSetHandler", ci.colonioJ, id, name)
 }
 
-func (c *colonioImpl) OffCall(name string) {
-	c.childrenMtx.Lock()
-	defer c.childrenMtx.Unlock()
+func (ci *colonioImpl) MessagingUnsetHandler(name string) {
+	ci.messagingMutex.Lock()
+	defer ci.messagingMutex.Unlock()
 
-	cbKey, ok := c.onCallCbs[name]
+	id, ok := ci.messagingHandlerNames[name]
 	if !ok {
 		return
 	}
-	deleteEventReceiver(cbKey)
-	delete(c.onCallCbs, name)
+	deleteEventReceiver(id)
+	delete(ci.messagingHandlerNames, name)
 
-	c.jsModule.Call("offCall", js.ValueOf(name))
+	ci.colonioJ.Call("messagingUnsetHandler", name)
 }
 
-// Release some resources used by colonio object.
-func (c *colonioImpl) Quit() error {
-	// release binded events for pubsub2d
-	for _, p := range c.pubsub2ds {
-		p.eventsMtx.Lock()
-		for _, key := range p.events {
-			deleteEventReceiver(key)
-		}
-		p.eventsMtx.Unlock()
+// kvs
+func (kldi *kvsLocalDataImpl) GetKeys() []string {
+	return kldi.keys
+}
+
+func (kldi *kvsLocalDataImpl) GetValue(key string) (Value, error) {
+	valueJ := kldi.cursorJ.Call("getValue", key)
+	return convertValueJ2G(valueJ)
+}
+
+func (kldi *kvsLocalDataImpl) Free() {
+	kldi.cursorJ.Call("free")
+}
+
+func (ci *colonioImpl) KvsGetLocalData() KvsLocalData {
+	id, respChannel := assignRespChannel()
+	defer deleteRespChannel(id)
+
+	helperJ.Call("kvsGetLocalData", ci.colonioJ, id)
+
+	resp := <-respChannel
+	if err := checkJsError(resp); err != nil {
+		log.Fatal(err)
 	}
 
-	return nil
+	keysJ := resp.Call("getKeys")
+	keysG := make([]string, keysJ.Length())
+	for idx := 0; idx < keysJ.Length(); idx++ {
+		keysG[idx] = keysJ.Index(idx).String()
+	}
+
+	return &kvsLocalDataImpl{
+		cursorJ: resp,
+		keys:    keysG,
+	}
 }
 
-func (l *defaultLogger) Output(message string) {
-	jsSuite.Call("outputDefaultLog", js.ValueOf(message))
+func (ci *colonioImpl) KvsGet(key string) (Value, error) {
+	id, respChannel := assignRespChannel()
+	defer deleteRespChannel(id)
+
+	helperJ.Call("kvsGet", ci.colonioJ, id, key)
+
+	resp := <-respChannel
+	if err := checkJsError(resp); err != nil {
+		return nil, err
+	}
+
+	return convertValueJ2G(resp)
+}
+
+func (ci *colonioImpl) KvsSet(key string, valueG interface{}, opt uint32) error {
+	valueJ, err := convertValueG2J(valueG)
+	if err != nil {
+		return err
+	}
+
+	id, respChannel := assignRespChannel()
+	defer deleteRespChannel(id)
+
+	helperJ.Call("kvsSet", ci.colonioJ, id, key, valueJ, opt)
+
+	return checkJsError(<-respChannel)
+}
+
+// spread
+func (ci *colonioImpl) SpreadPost(x, y, r float64, name string, messageG interface{}, opt uint32) error {
+	messageJ, err := convertValueG2J(messageG)
+	if err != nil {
+		return err
+	}
+
+	id, respChannel := assignRespChannel()
+	defer deleteRespChannel(id)
+
+	helperJ.Call("spreadPost", ci.colonioJ, id, x, y, r, name, messageJ, opt)
+
+	return checkJsError(<-respChannel)
+}
+
+func (ci *colonioImpl) SpreadSetHandler(name string, handler func(*SpreadRequest)) {
+	ci.SpreadUnsetHandler(name)
+
+	id := assignEventReceiver(func(v js.Value) {
+		message, err := convertValueJ2G(v.Get("message"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		request := &SpreadRequest{
+			SourceNid: v.Get("sourceNid").String(),
+			Message:   message,
+			Options:   uint32(v.Get("options").Int()),
+		}
+		go handler(request)
+	})
+
+	ci.spreadMutex.Lock()
+	defer ci.spreadMutex.Unlock()
+	ci.spreadHandlerNames[name] = id
+
+	helperJ.Call("spreadSetHandler", ci.colonioJ, id, name)
+}
+
+func (ci *colonioImpl) SpreadUnsetHandler(name string) {
+	ci.spreadMutex.Lock()
+	defer ci.spreadMutex.Unlock()
+
+	id, ok := ci.spreadHandlerNames[name]
+	if !ok {
+		return
+	}
+	deleteEventReceiver(id)
+	delete(ci.spreadHandlerNames, name)
+
+	ci.colonioJ.Call("spreadUnsetHandler", name)
 }
 
 func NewValue(v interface{}) (Value, error) {
@@ -351,190 +430,139 @@ func NewValue(v interface{}) (Value, error) {
 	return val, nil
 }
 
-func (v *valueImpl) IsNil() bool {
-	return v.valueType == valueTypeNull
-}
-
-func (v *valueImpl) IsBool() bool {
-	return v.valueType == valueTypeBool
-}
-
-func (v *valueImpl) IsInt() bool {
-	return v.valueType == valueTypeInt
-}
-
-func (v *valueImpl) IsDouble() bool {
-	return v.valueType == valueTypeDouble
-}
-
-func (v *valueImpl) IsString() bool {
-	return v.valueType == valueTypeString
-}
-
-func (v *valueImpl) Set(val interface{}) error {
-	if reflect.ValueOf(v).IsNil() {
-		v.valueType = valueTypeNull
-		v.value = js.Null()
-		return nil
+func convertValueJ2G(valueJ js.Value) (Value, error) {
+	if !valueJ.InstanceOf(valueClass) {
+		return nil, fmt.Errorf("instance is not value class")
 	}
 
+	return &valueImpl{
+		valueType: int32(valueJ.Call("getType").Int()),
+		valueJ:    valueJ.Call("getJsValue"),
+	}, nil
+}
+
+func convertValueG2J(valueG interface{}) (js.Value, error) {
+	switch v := valueG.(type) {
+	case bool:
+		return helperJ.Call("newValue", valueTypeBool, valueG), nil
+
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32:
+		return helperJ.Call("newValue", valueTypeInt, valueG), nil
+
+	case float32, float64:
+		return helperJ.Call("newValue", valueTypeDouble, valueG), nil
+
+	case string:
+		return helperJ.Call("newValue", valueTypeString, valueG), nil
+
+	case []byte:
+		log.Fatal("TODO")
+		return helperJ.Call("newValue", valueTypeBinary, valueG), nil
+
+	case *valueImpl:
+		return helperJ.Call("newValue", v.valueType, v.valueJ), nil
+	}
+
+	if valueG == nil || reflect.ValueOf(valueG).IsNil() {
+		return helperJ.Call("newValue", valueTypeNull, js.Null()), nil
+	}
+
+	return js.Null(), fmt.Errorf("unsupported value type")
+}
+
+func (vi *valueImpl) IsNil() bool {
+	return vi.valueType == valueTypeNull
+}
+
+func (vi *valueImpl) IsBool() bool {
+	return vi.valueType == valueTypeBool
+}
+
+func (vi *valueImpl) IsInt() bool {
+	return vi.valueType == valueTypeInt
+}
+
+func (vi *valueImpl) IsDouble() bool {
+	return vi.valueType == valueTypeDouble
+}
+
+func (vi *valueImpl) IsString() bool {
+	return vi.valueType == valueTypeString
+}
+
+func (vi *valueImpl) IsBinary() bool {
+	return vi.valueType == valueTypeBinary
+}
+
+func (vi *valueImpl) Set(val interface{}) error {
 	switch val := val.(type) {
 	case bool:
-		v.valueType = valueTypeBool
-		v.value = js.ValueOf(val)
+		vi.valueType = valueTypeBool
+		vi.valueJ = js.ValueOf(val)
 		return nil
 
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32:
-		v.valueType = valueTypeInt
-		v.value = js.ValueOf(val)
+		vi.valueType = valueTypeInt
+		vi.valueJ = js.ValueOf(val)
 		return nil
 
 	case float32, float64:
-		v.valueType = valueTypeDouble
-		v.value = js.ValueOf(val)
+		vi.valueType = valueTypeDouble
+		vi.valueJ = js.ValueOf(val)
 		return nil
 
 	case string:
-		v.valueType = valueTypeString
-		v.value = js.ValueOf(val)
+		vi.valueType = valueTypeString
+		vi.valueJ = js.ValueOf(val)
+		return nil
+
+	case []byte:
+		log.Fatal("TODO")
 		return nil
 
 	case *valueImpl:
-		*v = *val
+		*vi = *val
+		return nil
+	}
+
+	if val == nil || reflect.ValueOf(val).IsNil() {
+		vi.valueType = valueTypeNull
+		vi.valueJ = js.Null()
 		return nil
 	}
 
 	return fmt.Errorf("unsupported value type")
 }
 
-func (v *valueImpl) GetBool() (bool, error) {
-	if v.valueType != valueTypeBool {
+func (vi *valueImpl) GetBool() (bool, error) {
+	if vi.valueType != valueTypeBool {
 		return false, fmt.Errorf("type mismatch")
 	}
-	return v.value.Bool(), nil
+	return vi.valueJ.Bool(), nil
 }
 
-func (v *valueImpl) GetInt() (int64, error) {
-	if v.valueType != valueTypeInt {
+func (vi *valueImpl) GetInt() (int64, error) {
+	if vi.valueType != valueTypeInt {
 		return 0, fmt.Errorf("type mismatch")
 	}
-	return int64(v.value.Int()), nil
+	return int64(vi.valueJ.Int()), nil
 }
 
-func (v *valueImpl) GetDouble() (float64, error) {
-	if v.valueType != valueTypeDouble {
+func (vi *valueImpl) GetDouble() (float64, error) {
+	if vi.valueType != valueTypeDouble {
 		return 0.0, fmt.Errorf("type mismatch")
 	}
-	return v.value.Float(), nil
+	return vi.valueJ.Float(), nil
 }
 
-func (v *valueImpl) GetString() (string, error) {
-	if v.valueType != valueTypeString {
+func (vi *valueImpl) GetString() (string, error) {
+	if vi.valueType != valueTypeString {
 		return "", fmt.Errorf("type mismatch")
 	}
-	return v.value.String(), nil
+	return vi.valueJ.String(), nil
 }
 
-func (m *mapImpl) ForeachLocalValue(cb func(key, value Value, attr uint32)) error {
-	key := assignEventReceiver(func(v js.Value) interface{} {
-		cb(
-			&valueImpl{
-				valueType: int32(v.Get("keyType").Int()),
-				value:     v.Get("keyValue"),
-			},
-			&valueImpl{
-				valueType: int32(v.Get("valType").Int()),
-				value:     v.Get("valValue"),
-			},
-			uint32(v.Get("attr").Int()))
-		return nil
-	})
-	defer deleteEventReceiver(key)
-
-	return checkJsError(m.jsModule.Call("foreachLocalValue", key))
-}
-
-func (m *mapImpl) Get(key interface{}) (Value, error) {
-	keyImpl := &valueImpl{}
-	if err := keyImpl.Set(key); err != nil {
-		return nil, err
-	}
-
-	rKey, respChannel := assignRespChannel()
-	defer deleteRespChannel(rKey)
-
-	m.jsModule.Call("get", rKey, keyImpl.valueType, js.ValueOf(keyImpl.value))
-
-	resp := <-respChannel
-	err := checkJsError(resp.Get("err"))
-	if err != nil {
-		return nil, err
-	}
-
-	return &valueImpl{
-		valueType: int32(resp.Get("type").Int()),
-		value:     resp.Get("value"),
-	}, nil
-}
-
-func (m *mapImpl) Set(key, val interface{}, opt uint32) error {
-	keyImpl := &valueImpl{}
-	if err := keyImpl.Set(key); err != nil {
-		return err
-	}
-
-	valImpl := &valueImpl{}
-	if err := valImpl.Set(val); err != nil {
-		return err
-	}
-
-	rKey, respChannel := assignRespChannel()
-	defer deleteRespChannel(rKey)
-
-	m.jsModule.Call("set", rKey, keyImpl.valueType, js.ValueOf(keyImpl.value), valImpl.valueType, js.ValueOf(valImpl.value), opt)
-
-	return checkJsError(<-respChannel)
-}
-
-func (p *pubsub2dImpl) Publish(name string, x, y, r float64, val interface{}, opt uint32) error {
-	valImpl := &valueImpl{}
-	if err := valImpl.Set(val); err != nil {
-		return err
-	}
-
-	key, respChannel := assignRespChannel()
-	defer deleteRespChannel(key)
-
-	p.jsModule.Call("publish", key, name, x, y, r, valImpl.valueType, js.ValueOf(valImpl.value), opt)
-
-	return checkJsError(<-respChannel)
-}
-
-func (p *pubsub2dImpl) On(name string, cb func(Value)) {
-	key := assignEventReceiver(func(v js.Value) interface{} {
-		cb(&valueImpl{
-			valueType: int32(v.Get("type").Int()),
-			value:     v.Get("value"),
-		})
-		return nil
-	})
-
-	p.eventsMtx.Lock()
-	if oldKey, ok := p.events[name]; ok {
-		deleteEventReceiver(oldKey)
-	}
-	p.events[name] = key
-	p.eventsMtx.Unlock()
-
-	p.jsModule.Call("on", key, name)
-}
-
-func (p *pubsub2dImpl) Off(name string) {
-	p.eventsMtx.Lock()
-	defer p.eventsMtx.Unlock()
-	if key, ok := p.events[name]; ok {
-		deleteEventReceiver(key)
-	}
-
-	p.jsModule.Call("off", name)
+func (vi *valueImpl) GetBinary() ([]byte, error) {
+	log.Fatal("TODO")
+	return nil, nil
 }

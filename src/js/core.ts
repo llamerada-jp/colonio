@@ -694,6 +694,8 @@ class Colonio {
 
         setTimeout((): void => {
           ccall("js_quit", null, ["number"], [this._colonio]);
+          colonioMap.delete(this._colonio);
+          this._colonio = 0;
           resolve();
         }, 0);
       }, "vii");
@@ -730,12 +732,6 @@ class Colonio {
       return e;
     }
     return { x, y }; // TODO: must return adjusted value
-  }
-
-  quit(): void {
-    ccall("js_quit", null, ["number"], [this._colonio]);
-    colonioMap.delete(this._colonio);
-    this._colonio = 0;
   }
 
   // messaging
@@ -866,7 +862,7 @@ class Colonio {
     return promise;
   }
 
-  spreadSetHandler(name: string, handler: (request: SpreadRequest) => void) {
+  spreadSetHandler(name: string, handler: (request: SpreadRequest) => void): void {
     let [namePtr, nameSiz] = allocPtrString(name);
     let id = idMapPush(this._idVsSpreadHandler, handler);
     ccall("js_spread_set_handler", null, ["number", "number", "number", "number"],
@@ -874,7 +870,7 @@ class Colonio {
     freePtr(namePtr);
   }
 
-  spreadUnsetHandler(name: string) {
+  spreadUnsetHandler(name: string): void {
     let [namePtr, nameSiz] = allocPtrString(name);
     ccall("js_spread_unset_handler", null, ["number", "number", "number"],
       [this._colonio, namePtr, nameSiz]);
@@ -883,6 +879,7 @@ class Colonio {
 
   // misc, internal
   _cleanup(): void {
+    /* TODO: fix cleanup
     for (const [cur, ref] of this._refKvsLocalData) {
       if (typeof (ref.deref()) !== "undefined") {
         continue;
@@ -891,6 +888,7 @@ class Colonio {
         ["number", "number"], [this._colonio, cur]);
       this._refKvsLocalData.delete(cur);
     }
+    //*/
   }
 }
 

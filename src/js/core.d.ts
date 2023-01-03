@@ -151,7 +151,6 @@ declare class Colonio {
         x: number;
         y: number;
     };
-    quit(): void;
     messagingPost(dst: string, name: string, val: ValueSource, opt: number): Promise<Value>;
     messagingSetHandler(name: string, handler: (request: MessagingRequest, writer?: MessagingResponseWriter) => void): void;
     messagingUnsetHandler(name: string): void;

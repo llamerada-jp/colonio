@@ -45,10 +45,6 @@ func (suite *SingleNodeSuite) TearDownSuite() {
 	suite.T().Log("node disconnect from seed")
 	err := suite.node.Disconnect()
 	suite.NoError(err)
-
-	suite.T().Log("node quit colonio instance")
-	err = suite.node.Quit()
-	suite.NoError(err)
 }
 
 func (suite *SingleNodeSuite) TestSingle() {

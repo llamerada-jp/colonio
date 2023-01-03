@@ -79,7 +79,6 @@ type Colonio interface {
 	IsConnected() bool
 	GetLocalNid() string
 	SetPosition(x, y float64) (float64, float64, error)
-	Quit() error
 	// messaging
 	MessagingPost(dst, name string, val interface{}, opt uint32) (Value, error)
 	MessagingSetHandler(name string, handler func(*MessagingRequest, MessagingResponseWriter))

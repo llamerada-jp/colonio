@@ -56,13 +56,6 @@ func (suite *E2eSuite) TearDownSuite() {
 	suite.T().Log("node2 disconnect from seed")
 	err = suite.node2.Disconnect()
 	suite.NoError(err)
-
-	suite.T().Log("node1 quit colonio instance")
-	err = suite.node1.Quit()
-	suite.NoError(err)
-	suite.T().Log("node2 quit colonio instance")
-	err = suite.node2.Quit()
-	suite.NoError(err)
 }
 
 func (suite *E2eSuite) TestE2E() {
