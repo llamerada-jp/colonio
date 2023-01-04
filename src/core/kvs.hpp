@@ -92,13 +92,13 @@ class KVS {
       std::function<void(const Value&)> cb_on_success;
       std::function<void(const Error&)> cb_on_failure;
 
-      Info(KVS& p, std::string k, int c);
+      Info(KVS& p, const std::string& k, int c);
     };
 
     Logger& logger;
     std::shared_ptr<Info> info;
 
-    CommandGet(std::shared_ptr<Info> i);
+    explicit CommandGet(std::shared_ptr<Info> i);
 
     void on_response(const Packet& packet) override;
     void on_error(ErrorCode code, const std::string& message) override;

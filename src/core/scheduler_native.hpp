@@ -26,7 +26,7 @@
 namespace colonio {
 class SchedulerNative : public Scheduler {
  public:
-  SchedulerNative(Logger& logger);
+  explicit SchedulerNative(Logger& logger);
   virtual ~SchedulerNative();
 
   void repeat_task(void* src, std::function<void()>&& func, unsigned int interval) override;

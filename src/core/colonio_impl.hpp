@@ -38,7 +38,7 @@ class ColonioImpl : public Colonio,
                     public KVSDelegate,
                     public SpreadDelegate {
  public:
-  ColonioImpl(const ColonioConfig& config);
+  explicit ColonioImpl(const ColonioConfig& config);
   virtual ~ColonioImpl();
 
   void connect(const std::string& url, const std::string& token) override;

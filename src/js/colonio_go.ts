@@ -14,18 +14,21 @@
  * limitations under the License.
  */
 
+/*global Colonio, ColonioConfig, KvsLocalData, MessagingRequest, MessagingResponseWriter, SpreadRequest, Value */
+/* eslint no-console: ["error", { allow: ["assert", "error", "log"] }] */
+
 class ColonioGo {
     mod: any // colonio module
 
     constructor(mod: any) {
-        this.mod = mod
+        this.mod = mod;
     }
 
     newColonio(logger: (log: string) => void): Colonio {
         let config = new this.mod.ColonioConfig();
         config.loggerFuncRaw = (_: Colonio, log: string): void => {
             logger(log);
-        }
+        };
 
         return new this.mod.Colonio(config);
     }
@@ -34,18 +37,18 @@ class ColonioGo {
         return new this.mod.Value(type, value);
     }
 
-    onEvent(id: number, obj: object | undefined): void {
+    onEvent(id: number, obj?: object): void {
         console.error("onEvent method must by override by golang", id, obj);
     }
 
-    onResponse(id: number, obj: object | undefined): void {
+    onResponse(id: number, obj?: object): void {
         console.error("onResponse method must by override by golang", id, obj);
     }
 
     // helpers for core module
     connect(colonio: Colonio, id: number, url: string, token: string): void {
         colonio.connect(url, token).then((): void => {
-            this.onResponse(id, undefined);
+            this.onResponse(id);
         }, (err) => {
             this.onResponse(id, err);
         });
@@ -53,7 +56,7 @@ class ColonioGo {
 
     disconnect(colonio: Colonio, id: number): void {
         colonio.disconnect().then(() => {
-            this.onResponse(id, undefined);
+            this.onResponse(id);
         }, (err) => {
             this.onResponse(id, err);
         });
@@ -69,11 +72,8 @@ class ColonioGo {
     }
 
     messagingSetHandler(colonio: Colonio, id: number, name: string) {
-        colonio.messagingSetHandler(name, (request: MessagingRequest, writer: MessagingResponseWriter | undefined) => {
-            this.onEvent(id, {
-                request: request,
-                writer: writer,
-            });
+        colonio.messagingSetHandler(name, (request: MessagingRequest, writer?: MessagingResponseWriter) => {
+            this.onEvent(id, { request, writer });
         });
     }
 
@@ -96,7 +96,7 @@ class ColonioGo {
 
     kvsSet(colonio: Colonio, id: number, key: string, val: ValueSource, opt: number) {
         colonio.kvsSet(key, val, opt).then(() => {
-            this.onResponse(id, undefined);
+            this.onResponse(id);
         }, (err) => {
             this.onResponse(id, err);
         });
@@ -105,7 +105,7 @@ class ColonioGo {
     // spread
     spreadPost(colonio: Colonio, id: number, x: number, y: number, r: number, name: string, message: ValueSource, opt: number) {
         colonio.spreadPost(x, y, r, name, message, opt).then(() => {
-            this.onResponse(id, undefined);
+            this.onResponse(id);
         }, (err) => {
             this.onResponse(id, err);
         });
@@ -113,7 +113,7 @@ class ColonioGo {
 
     spreadSetHandler(colonio: Colonio, id: number, name: string) {
         colonio.spreadSetHandler(name, (request: SpreadRequest): void => {
-            this.onEvent(id, request)
-        })
+            this.onEvent(id, request);
+        });
     }
 }

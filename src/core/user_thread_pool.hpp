@@ -39,7 +39,7 @@ class UserThreadPool {
    public:
     std::function<void()> func;
 
-    Task(std::function<void()>&);
+    explicit Task(std::function<void()>&);
   };
 
   struct Thread {
@@ -49,7 +49,7 @@ class UserThreadPool {
     std::condition_variable cv;
     bool dead;
 
-    Thread(std::function<void()>);
+    explicit Thread(std::function<void()>);
   };
 
   const unsigned int MAX_THREADS;

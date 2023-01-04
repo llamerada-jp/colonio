@@ -22,7 +22,7 @@
 namespace colonio {
 class SchedulerWasm : public Scheduler {
  public:
-  SchedulerWasm(Logger& logger);
+  explicit SchedulerWasm(Logger& logger);
   virtual ~SchedulerWasm();
 
   void repeat_task(void* src, std::function<void()>&& func, unsigned int interval) override;

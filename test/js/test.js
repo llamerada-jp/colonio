@@ -138,7 +138,7 @@ function test() {
     });
 
   }).then(() => {
-    return node1.kvsGetLocalData()
+    return node1.kvsGetLocalData();
   }).then((localData1) => {
     for (const k of localData1.getKeys()) {
       stored.set(k, localData1.getValue(k).getJsValue());

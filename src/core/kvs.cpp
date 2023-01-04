@@ -60,7 +60,7 @@ KVS::ProposerInfo::ProposerInfo(PAXOS_N np_, PAXOS_N ip_, const Value& value_) :
 }
 
 /* class KVS::CommandGet::Info */
-KVS::CommandGet::Info::Info(KVS& p, std::string k, int c) :
+KVS::CommandGet::Info::Info(KVS& p, const std::string& k, int c) :
     parent(p), key(k), count_retry(c), time_send(0), count_ng(0), is_finished(false) {
 }
 
