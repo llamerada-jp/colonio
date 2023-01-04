@@ -103,7 +103,6 @@ void SchedulerNative::remove(void* src, bool remove_current) {
       return remove_waiting == nullptr;
     });
     remove_waiting = src;
-    remove_current = remove_current;
     cv.notify_all();
     cv.wait(guard, [this, src] {
       return remove_waiting != src;

@@ -14,6 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/*global Colonio, ColonioConfig, KvsLocalData, MessagingRequest, MessagingResponseWriter, SpreadRequest, Value */
+/* eslint no-console: ["error", { allow: ["assert", "error", "log"] }] */
 class ColonioGo {
     constructor(mod) {
         this.mod = mod;
@@ -37,14 +39,14 @@ class ColonioGo {
     // helpers for core module
     connect(colonio, id, url, token) {
         colonio.connect(url, token).then(() => {
-            this.onResponse(id, undefined);
+            this.onResponse(id);
         }, (err) => {
             this.onResponse(id, err);
         });
     }
     disconnect(colonio, id) {
         colonio.disconnect().then(() => {
-            this.onResponse(id, undefined);
+            this.onResponse(id);
         }, (err) => {
             this.onResponse(id, err);
         });
@@ -59,10 +61,7 @@ class ColonioGo {
     }
     messagingSetHandler(colonio, id, name) {
         colonio.messagingSetHandler(name, (request, writer) => {
-            this.onEvent(id, {
-                request: request,
-                writer: writer,
-            });
+            this.onEvent(id, { request, writer });
         });
     }
     // kvs
@@ -82,7 +81,7 @@ class ColonioGo {
     }
     kvsSet(colonio, id, key, val, opt) {
         colonio.kvsSet(key, val, opt).then(() => {
-            this.onResponse(id, undefined);
+            this.onResponse(id);
         }, (err) => {
             this.onResponse(id, err);
         });
@@ -90,7 +89,7 @@ class ColonioGo {
     // spread
     spreadPost(colonio, id, x, y, r, name, message, opt) {
         colonio.spreadPost(x, y, r, name, message, opt).then(() => {
-            this.onResponse(id, undefined);
+            this.onResponse(id);
         }, (err) => {
             this.onResponse(id, err);
         });

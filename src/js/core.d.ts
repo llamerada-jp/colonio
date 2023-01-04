@@ -132,11 +132,11 @@ declare class Colonio {
     _colonio: number;
     _idVsPromiseValue: Map<number, {
         onSuccess: (value: Value) => void;
-        onFailure: (error: ErrorEntry | undefined) => void | undefined;
+        onFailure: (error?: ErrorEntry) => void | undefined;
     }>;
     _idVsPromise: Map<number, {
         onSuccess: (_: null) => void;
-        onFailure: (error: ErrorEntry | undefined) => void | undefined;
+        onFailure: (error?: ErrorEntry) => void | undefined;
     }>;
     _idVsMessagingHandler: Map<number, (request: MessagingRequest, writer?: MessagingResponseWriter) => void>;
     _idVsKvsLocalDataHandler: Map<number, (kld: KvsLocalData) => void>;

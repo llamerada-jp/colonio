@@ -1,4 +1,5 @@
-/*global Module */
+/*global Colonio, ColonioConfig, DefaultWebrtcImplement, ErrorEntry, Module, Value */
+/*global setWebRTCImpl */
 Module["postRun"] = [execFuncsAfterLoad];
 
 Module["Colonio"] = Colonio;

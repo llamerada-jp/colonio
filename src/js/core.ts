@@ -504,7 +504,7 @@ addFuncAfterLoad(() => {
       keys.push(key);
     }
 
-    let kld = new KvsLocalData(colonio, cur, keys)
+    let kld = new KvsLocalData(colonio, cur, keys);
     colonio._refKvsLocalData.set(cur, new WeakRef(kld));
     handler(kld);
   }, "viiiii");
@@ -625,11 +625,11 @@ class Colonio {
   _colonio: number;
   _idVsPromiseValue: Map<number, {
     onSuccess: (value: Value) => void;
-    onFailure: (error: ErrorEntry | undefined) => void | undefined;
+    onFailure: (error?: ErrorEntry) => void | undefined;
   }> = new Map();
   _idVsPromise: Map<number, {
     onSuccess: (_: null) => void;
-    onFailure: (error: ErrorEntry | undefined) => void | undefined;
+    onFailure: (error?: ErrorEntry) => void | undefined;
   }> = new Map();
   _idVsMessagingHandler: Map<number, (request: MessagingRequest, writer?: MessagingResponseWriter) => void> = new Map();
   _idVsKvsLocalDataHandler: Map<number, (kld: KvsLocalData) => void> = new Map();
