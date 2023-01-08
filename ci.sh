@@ -12,7 +12,7 @@ if [ "${OS}" = "Linux" ]; then
     pip3 install --user cpp-coveralls
 
     # check format
-    make format-code src/core/colonio.pb.cc go/proto/colonio.pb.go
+    make format-code
     diffs=$(git diff | wc -l)
     if [ "$diffs" -ne 0 ]; then
       exit 1
@@ -20,7 +20,6 @@ if [ "${OS}" = "Linux" ]; then
 
     make build BUILD_TYPE=Release
     make build BUILD_TYPE=Debug WITH_TEST=ON WITH_SAMPLE=ON WITH_COVERAGE=ON
-    make setup-protoc
     make test CTEST_ARGS='--overwrite MemoryCheckCommandOptions="--leak-check=full" -T memcheck --output-on-failure'
     export PATH=$PATH:$(python3 -m site --user-base)/bin
     coveralls -b ./build/linux_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/test -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'

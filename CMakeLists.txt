@@ -17,9 +17,9 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   ## Build for WebAssembly environment.
   ##
 
-  # Enable C++14
+  # Enable C++17
   # I cannot use CMAKE_CXX_STANDARD when emscripten?
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 
   # Add local include path.
   # include_directories(/usr/local/include)
@@ -71,8 +71,8 @@ else()
   ## Build for native environment.
   ##
 
-  # Enable C++14
-  set(CMAKE_CXX_STANDARD 14)
+  # Enable C++17
+  set(CMAKE_CXX_STANDARD 17)
 
   # Add local include path.
   include_directories(/usr/local/include)

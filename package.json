@@ -1,4 +1,7 @@
 {
+  "name": "colonio",
+  "author": "Yuji Ito <llamerada.jp@gmail.com>",
+  "license": "Apache-2.0",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -p tsconfig.json -w"

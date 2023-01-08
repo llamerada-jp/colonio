@@ -156,23 +156,30 @@ WebrtcLinkNative::WebrtcLinkNative(WebrtcLinkParam& param, bool is_create_dc) :
     ssdo(new rtc::RefCountedObject<SSDO>(*this)),
     is_remote_sdp_set(false) {
   WebrtcContextNative& wc_native = dynamic_cast<WebrtcContextNative&>(webrtc_context);
-  peer_connection =
-      wc_native.peer_connection_factory->CreatePeerConnection(wc_native.pc_config, nullptr, nullptr, &pco);
-
-  if (peer_connection.get() == nullptr) {
+  webrtc::PeerConnectionDependencies pc_dependencies(&pco);
+  auto error_or_peer_connection =
+      wc_native.peer_connection_factory->CreatePeerConnectionOrError(wc_native.pc_config, std::move(pc_dependencies));
+  if (error_or_peer_connection.ok()) {
+    peer_connection = std::move(error_or_peer_connection.value());
+  } else {
     /// @todo error
     assert(false);
   }
 
-  if (is_create_dc) {
-    data_channel = peer_connection->CreateDataChannel("data_channel", &dc_config);
-    if (data_channel.get() == nullptr) {
-      /// @todo error
-      assert(false);
-    }
-
-    data_channel->RegisterObserver(&dco);
+  // return if skip creating data channel.
+  if (!is_create_dc) {
+    return;
   }
+
+  auto error_or_data_channel = peer_connection->CreateDataChannelOrError("data_channel", &dc_config);
+  if (error_or_data_channel.ok()) {
+    data_channel = std::move(error_or_data_channel.value());
+  } else {
+    /// @todo error
+    assert(false);
+  }
+
+  data_channel->RegisterObserver(&dco);
 }
 
 /**
@@ -200,9 +207,9 @@ void WebrtcLinkNative::get_local_sdp(std::function<void(const std::string&)>&& f
   assert(link_state == LinkState::CONNECTING);
 
   if (is_remote_sdp_set) {
-    peer_connection->CreateAnswer(csdo, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
+    peer_connection->CreateAnswer(csdo.get(), webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
   } else {
-    peer_connection->CreateOffer(csdo, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
+    peer_connection->CreateOffer(csdo.get(), webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
   }
 
   {
@@ -260,8 +267,9 @@ void WebrtcLinkNative::set_remote_sdp(const std::string& sdp) {
   }
 
   webrtc::SdpParseError error;
-  webrtc::SessionDescriptionInterface* session_description(
-      webrtc::CreateSessionDescription((local_sdp.empty() ? "offer" : "answer"), sdp, &error));
+  webrtc::SdpType sdp_type = local_sdp.empty() ? webrtc::SdpType::kOffer : webrtc::SdpType::kAnswer;
+  std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
+      webrtc::CreateSessionDescription(sdp_type, sdp, &error);
 
   if (session_description == nullptr) {
     /// @todo error
@@ -270,7 +278,7 @@ void WebrtcLinkNative::set_remote_sdp(const std::string& sdp) {
     assert(false);
   }
 
-  peer_connection->SetRemoteDescription(ssdo, session_description);
+  peer_connection->SetRemoteDescription(ssdo.get(), session_description.release());
   is_remote_sdp_set = true;
 }
 
@@ -302,7 +310,7 @@ void WebrtcLinkNative::update_ice(const picojson::object& ice) {
  * Get SDP string and store.
  */
 void WebrtcLinkNative::on_csd_success(webrtc::SessionDescriptionInterface* desc) {
-  peer_connection->SetLocalDescription(ssdo, desc);
+  peer_connection->SetLocalDescription(ssdo.get(), desc);
   {
     std::lock_guard<std::mutex> guard(mutex);
     desc->ToString(&local_sdp);
