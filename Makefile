@@ -1,7 +1,7 @@
 SHELL := /bin/bash -o pipefail
 
 # version (yyyymmdd)
-DOCKER_IMAGE_VERSION := 20220815a
+DOCKER_IMAGE_VERSION := 20230108a
 DOCKER_IMAGE_NAME := ghcr.io/llamerada-jp/colonio-buildenv
 DOCKER_IMAGE := $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_VERSION)
 
@@ -22,26 +22,34 @@ export SUDO ?= sudo
 export PROTOC := $(LOCAL_ENV_PATH)/bin/protoc
 
 # the versions of depending packages
+# https://github.com/chriskohlhoff/asio/
 ASIO_TAG := asio-1-24-0
+# https://github.com/hs-nazuna/cpp_algorithms
 CPP_ALGORITHMS_HASH := 1ba3fde9c4b1d067986f5243a0f03daffa501ae2
-EMSCRIPTEN_VERSION := 3.1.18
+# https://github.com/emscripten-core/emscripten
+EMSCRIPTEN_VERSION := 3.1.29
+# https://github.com/google/googletest
 GTEST_VERSION := 1.12.1
 ifeq ($(shell uname -s),Darwin)
-LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m96/libwebrtc-96.0.4664.45-macos-amd64.zip"
+LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m108/libwebrtc-108.0.5359.124-macos-amd64.zip"
 else ifeq ($(shell uname -s),Linux)
 	ifeq ($(shell uname -m),x86_64)
-	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m96/libwebrtc-96.0.4664.45-linux-amd64.tar.gz"
+	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m108/libwebrtc-108.0.5359.124-linux-amd64.tar.gz"
 	else ifeq ($(shell uname -m),aarch64)
-	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m96/libwebrtc-96.0.4664.45-linux-arm64.tar.gz"
+	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m108/libwebrtc-108.0.5359.124-linux-arm64.tar.gz"
 	else ifeq ($(shell uname -m),arm)
-	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m96/libwebrtc-96.0.4664.45-linux-armhf.tar.gz"
+	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m108/libwebrtc-108.0.5359.124-linux-armhf.tar.gz"
 	else
 	exit 1
 	endif
 endif
+# https://github.com/kazuho/picojson
 PICOJSON_VERSION := 1.3.0
-PROTOBUF_VERSION := 21.5
+# https://github.com/protocolbuffers/protobuf
+PROTOBUF_VERSION := 21.12
+# https://github.com/golang/protobuf
 GO_PROTOBUF_VERSION := 1.5.2
+# https://github.com/zaphoyd/websocketpp
 WEBSOCKETPP_VERSION := 0.8.2
 
 # build options
@@ -54,6 +62,7 @@ WITH_COVERAGE ?= OFF
 WITH_GPROF ?= OFF
 WITH_SAMPLE ?= OFF
 WITH_TEST ?= OFF
+IN_DOCKER ?= OFF
 
 ifeq ($(shell uname -s),Darwin)
 CMAKE_EXTRA_OPTS = -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl
@@ -75,8 +84,9 @@ setup:
 .PHONY: setup-linux
 setup-linux:
 	export DEBIAN_FRONTEND=noninteractive
+	if [ "$(SUDO)" = "" ]; then curl -fsSL "https://deb.nodesource.com/setup_18.x" | bash -; else curl -fsSL https://deb.nodesource.com/setup_18.x | $(SUDO) -E bash -; fi
 	$(SUDO) apt update
-	$(SUDO) apt -y install --no-install-recommends automake cmake build-essential ca-certificates curl git libcurl4-nss-dev libssl-dev libtool pkg-config python3
+	$(SUDO) apt -y install --no-install-recommends automake cmake build-essential ca-certificates curl git libcurl4-nss-dev libssl-dev libtool nodejs pkg-config python3
 	if [ $(SKIP_SETUP_LOCAL) = "OFF" ]; then $(MAKE) setup-local; fi
 	if [ $(SKIP_SETUP_LOCAL) = "OFF" -a $(shell uname -m) = "x86_64" ]; then $(MAKE) setup-wasm; fi
 
@@ -147,7 +157,8 @@ setup-local:
 	&& cd websocketpp \
 	&& cmake -DCMAKE_INSTALL_PREFIX=$(LOCAL_ENV_PATH) . \
 	&& $(MAKE) \
-	&& $(MAKE) install \
+	&& $(MAKE) install
+
 
 .PHONY: setup-protoc
 setup-protoc:
@@ -207,10 +218,12 @@ build:
 			-v $(ROOT_PATH):$(ROOT_PATH):rw \
 			-u "$(shell id -u $(USER)):$(shell id -g $(USER))" \
 			--mount type=tmpfs,destination=/go \
+			--mount type=tmpfs,destination=/.npm \
 			--env GOCACHE=/go/.cache \
 			$(DOCKER_IMAGE) \
 			-C $(ROOT_PATH) -j $(shell nproc) \
 			$(BUILD_TARGET) \
+			IN_DOCKER=ON \
 			BUILD_TYPE=$(BUILD_TYPE) \
 			WITH_COVERAGE=$(WITH_COVERAGE) \
 			WITH_GPROF=$(WITH_GPROF) \
@@ -242,9 +255,18 @@ test-go-wasm: build-seed
 .PHONY: format-code
 format-code:
 	find {src,test} -name "*.cpp" -or -name "*.hpp" -exec clang-format -i {} \;
+	docker run \
+		-v $(ROOT_PATH):$(ROOT_PATH):rw \
+		-u "$(shell id -u $(USER)):$(shell id -g $(USER))" \
+		--mount type=tmpfs,destination=/go \
+		--env GOCACHE=/go/.cache \
+		$(DOCKER_IMAGE) \
+		-C $(ROOT_PATH) \
+		src/core/colonio.pb.cc \
+		go/proto/colonio.pb.go
 
 src/core/colonio.pb.cc: colonio.proto
-	$(LOCAL_ENV_PATH)/bin/protoc --cpp_out=src/core colonio.proto
+	$(PROTOC) --cpp_out=src/core colonio.proto
 
 .PHONY: build-native
 build-native: src/core/colonio.pb.cc
@@ -270,6 +292,7 @@ build-native: src/core/colonio.pb.cc
 .PHONY: build-wasm
 build-wasm: src/core/colonio.pb.cc
 	mkdir -p $(WASM_BUILD_PATH) $(OUTPUT_PATH) \
+	&& npm install \
 	&& npm run build \
 	&& source $(LOCAL_ENV_PATH)/emsdk/emsdk_env.sh \
 	&& mkdir -p /tmp/em_cache \
@@ -290,7 +313,7 @@ go/proto/colonio.pb.go: colonio.proto
 	PATH="$(LOCAL_ENV_PATH)/bin:$(PATH)" $(PROTOC) --go_out=module=github.com/llamerada-jp/colonio:. $<
 
 .PHONY: build-docker
-build-docker: $(ROOT_PATH)/buildenv/Makefile $(ROOT_PATH)/buildenv/go.mod
+build-docker: $(ROOT_PATH)/buildenv/Makefile $(ROOT_PATH)/buildenv/go.mod $(ROOT_PATH)/buildenv/package.json
 	docker buildx rm build-colonio || true
 	docker buildx create --name build-colonio --platform linux/amd64,linux/arm/v7,linux/arm64/v8 --use
 	docker buildx build --platform linux/amd64,linux/arm/v7,linux/arm64/v8 -t $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_VERSION) --push $(ROOT_PATH)/buildenv
@@ -301,6 +324,9 @@ $(ROOT_PATH)/buildenv/Makefile: $(ROOT_PATH)/Makefile
 
 $(ROOT_PATH)/buildenv/go.mod: $(ROOT_PATH)/go.mod
 	cp go.mod go.sum $(ROOT_PATH)/buildenv/
+
+$(ROOT_PATH)/buildenv/package.json: $(ROOT_PATH)/package.json
+	cp package.json package-lock.json $(ROOT_PATH)/buildenv/
 
 .PHONY: clean
 clean:

@@ -6,6 +6,8 @@
 /buildenv/go.mod
 /buildenv/go.sum
 /buildenv/Makefile
+/buildenv/package-lock.json
+/buildenv/package.json
 /buildenv/qemu-aarch64-static
 /go/test/test.wasm
 /go/test/wasm_exec.js

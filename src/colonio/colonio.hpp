@@ -274,7 +274,7 @@ class Colonio {
    * @sa disconnect()
    */
   virtual ~Colonio();
-  Colonio(const Colonio&)            = delete;
+  Colonio(const Colonio&) = delete;
   Colonio& operator=(const Colonio&) = delete;
 
   /**
