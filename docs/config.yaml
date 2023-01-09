@@ -1,0 +1,14 @@
+baseURL: http://www.colonio.dev/
+title: 'Colonio'
+theme: 'hugo-book'
+languageCode: 'en-us'
+
+menu:
+  after:
+  - name: 'Github'
+    url: 'https://github.com/llamerada-jp/colonio'
+    weight: 10
+
+params:
+  bookMenuBundle: '/menu'
+  customCss: 'css/custom.css'

@@ -1,0 +1,36 @@
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  font-weight: normal;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+body::before {
+  content: "";
+  height: 6px;
+  width: 100%;
+  // 
+  background: linear-gradient(90deg, #3D7EAA, #FFE47A);
+  position: fixed;
+  z-index: 1;
+}
+
+.book-menu .book-menu-content {
+  margin-top: 6px;
+}
+
+.book-menu a.active {
+  font-weight: 500;
+  color: #3D7EAA;
+}
+
+.book-page {
+  margin-top: 6px;
+}
+
+.book-toc .book-toc-content {
+  margin-top: 6px;
+}
+
+.book-toc a {
+  color: #3D7EAA;
+}

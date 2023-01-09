@@ -51,6 +51,8 @@ PROTOBUF_VERSION := 21.12
 GO_PROTOBUF_VERSION := 1.5.2
 # https://github.com/zaphoyd/websocketpp
 WEBSOCKETPP_VERSION := 0.8.2
+# https://github.com/gohugoio/hugo
+HUGO_VERSION := v0.109.0
 
 # build options
 BUILD_TYPE ?= Release
@@ -205,6 +207,18 @@ setup-wasm:
 	&& emconfigure ./configure --prefix=$(LOCAL_ENV_PATH)/wasm --disable-shared \
 	&& emmake $(MAKE) \
 	&& emmake $(MAKE) install
+
+.PHONY: setup-doc-tools
+setup-doc-tools:
+	CGO_ENABLED=1 go install --tags extended github.com/gohugoio/hugo@$(HUGO_VERSION)
+	sudo npm install -g moxygen
+
+.PHONY: generate-docs
+TMPDIR := $(shell mktemp -d)
+generate-docs:
+	TMPDIR=$(TMPDIR) doxygen Doxyfile-cpp
+	moxygen --anchors --noindex -o $(TMPDIR)/api-cpp.md $(TMPDIR)/xml-cpp
+	go run go/cmd/doc-tool/* cpp --src $(TMPDIR)/api-cpp.md --dst docs/content/api-cpp.md
 
 .PHONY: build
 ifeq ($(shell uname -m),x86_64)
