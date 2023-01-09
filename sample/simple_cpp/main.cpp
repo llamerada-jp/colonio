@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
 
     node->set_position(M_PI * 139.7604131 / 180.0, M_PI * 35.6858593 / 180.0);
 
-    node->spread_set_handler("me", [](colonio::Colonio&, const colonio::Colonio::SpreadRequest& request) {
+    node->spread_set_handler("me", [](colonio::Colonio&, const colonio::SpreadRequest& request) {
       std::cout << request.message.get<std::string>() << std::endl;
     });
 

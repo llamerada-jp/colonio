@@ -267,7 +267,7 @@ void KVS::CommandPrepare::procedure() {
     return;
   }
 
-  if ((info->opt & Colonio::KVS_PROHIBIT_OVERWRITE) != 0 && info->has_value) {
+  if ((info->opt & KVS_PROHIBIT_OVERWRITE) != 0 && info->has_value) {
     std::unique_ptr<proto::PacketContent> content = std::make_unique<proto::PacketContent>();
     proto::KvsSetResponse& response               = *content->mutable_kvs_set_response();
     response.set_success(false);
@@ -397,7 +397,7 @@ void KVS::CommandAccept::procedure() {
     return;
   }
 
-  if ((info->opt & Colonio::KVS_PROHIBIT_OVERWRITE) != 0 && info->has_value) {
+  if ((info->opt & KVS_PROHIBIT_OVERWRITE) != 0 && info->has_value) {
     std::unique_ptr<proto::PacketContent> content = std::make_unique<proto::PacketContent>();
     proto::KvsSetResponse& response               = *content->mutable_kvs_set_response();
     response.set_success(false);
@@ -803,7 +803,7 @@ void KVS::recv_packet_prepare(const Packet& packet) {
       return;
     }
 
-  } else if ((opt & Colonio::KVS_PROHIBIT_OVERWRITE) != 0) {
+  } else if ((opt & KVS_PROHIBIT_OVERWRITE) != 0) {
     // This algorithm is not perfect to detect existing value.
     AcceptorInfo& acceptor                         = acceptor_it->second;
     std::unique_ptr<proto::PacketContent> response = std::make_unique<proto::PacketContent>();
@@ -865,7 +865,7 @@ void KVS::recv_packet_set(const Packet& packet) {
       return;
     }
 
-  } else if ((opt & Colonio::KVS_PROHIBIT_OVERWRITE) != 0) {
+  } else if ((opt & KVS_PROHIBIT_OVERWRITE) != 0) {
     std::unique_ptr<proto::PacketContent> response = std::make_unique<proto::PacketContent>();
     proto::KvsSetResponse& param                   = *response->mutable_kvs_set_response();
     param.set_success(false);

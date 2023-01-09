@@ -36,7 +36,7 @@ struct kvs_local_data_wrapper {
 
 struct Wrapper {
   std::unique_ptr<Colonio> colonio;
-  std::map<colonio_messaging_writer_t, std::shared_ptr<Colonio::MessagingResponseWriter>> messaging_writers;
+  std::map<colonio_messaging_writer_t, std::shared_ptr<MessagingResponseWriter>> messaging_writers;
   std::map<colonio_kvs_data_t, kvs_local_data_wrapper> kvs_local_data;
 };
 
@@ -212,9 +212,8 @@ void colonio_messaging_set_handler(
   Colonio* colonio = wrapper->colonio.get();
 
   colonio->messaging_set_handler(
-      std::string(name, name_siz), [c, ptr, handler](
-                                       Colonio&, const Colonio::MessagingRequest& request,
-                                       std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+      std::string(name, name_siz),
+      [c, ptr, handler](Colonio&, const MessagingRequest& request, std::shared_ptr<MessagingResponseWriter> writer) {
         Wrapper* wrapper              = reinterpret_cast<Wrapper*>(c);
         std::string src_nid           = request.source_nid.c_str();
         colonio_messaging_request_t r = colonio_messaging_request_t{
@@ -504,15 +503,14 @@ void colonio_spread_set_handler(
   Wrapper* wrapper = reinterpret_cast<Wrapper*>(c);
   Colonio* colonio = wrapper->colonio.get();
 
-  colonio->spread_set_handler(
-      std::string(name, name_siz), [c, ptr, handler](Colonio&, const Colonio::SpreadRequest& r) {
-        colonio_spread_request_t request = colonio_spread_request_t{
-            .source_nid = r.source_nid.c_str(),
-            .message    = reinterpret_cast<colonio_const_value_t>(&r.message),
-            .options    = r.options,
-        };
-        handler(c, ptr, &request);
-      });
+  colonio->spread_set_handler(std::string(name, name_siz), [c, ptr, handler](Colonio&, const SpreadRequest& r) {
+    colonio_spread_request_t request = colonio_spread_request_t{
+        .source_nid = r.source_nid.c_str(),
+        .message    = reinterpret_cast<colonio_const_value_t>(&r.message),
+        .options    = r.options,
+    };
+    handler(c, ptr, &request);
+  });
 }
 
 void colonio_spread_unset_handler(colonio_t c, const char* name, unsigned int name_siz) {

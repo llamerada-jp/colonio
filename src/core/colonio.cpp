@@ -49,9 +49,6 @@ void default_logger_func(Colonio&, const std::string& json) {
 ColonioConfig::ColonioConfig() : disable_callback_thread(false), max_user_threads(1), logger_func(default_logger_func) {
 }
 
-const uint32_t Colonio::MESSAGING_ACCEPT_NEARBY;
-const uint32_t Colonio::MESSAGING_IGNORE_RESPONSE;
-
 Colonio* Colonio::new_instance(ColonioConfig& config) {
   return new ColonioImpl(config);
 }
@@ -62,6 +59,6 @@ Colonio::Colonio() {
 Colonio::~Colonio() {
 }
 
-Colonio::MessagingResponseWriter::~MessagingResponseWriter() {
+MessagingResponseWriter::~MessagingResponseWriter() {
 }
 }  // namespace colonio

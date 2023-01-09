@@ -90,7 +90,7 @@ void Spread::post(
   }
 }
 
-void Spread::set_handler(const std::string& name, std::function<void(const Colonio::SpreadRequest&)>&& handler) {
+void Spread::set_handler(const std::string& name, std::function<void(const SpreadRequest&)>&& handler) {
   if (handlers.find(name) == handlers.end()) {
     handlers.insert(std::make_pair(name, handler));
   } else {
@@ -210,7 +210,7 @@ void Spread::recv_spread(const Packet& packet) {
 
     auto handler = handlers.find(name);
     if (handler != handlers.end()) {
-      Colonio::SpreadRequest request;
+      SpreadRequest request;
       request.source_nid = c.src.to_str();
       request.message    = c.message;
       request.options    = c.opt;
@@ -265,7 +265,7 @@ void Spread::recv_relay(const Packet& packet) {
 
       auto handler = handlers.find(c.name);
       if (handler != handlers.end()) {
-        Colonio::SpreadRequest request;
+        SpreadRequest request;
         request.source_nid = c.src.to_str();
         request.message    = c.message;
         request.options    = c.opt;
@@ -276,7 +276,7 @@ void Spread::recv_relay(const Packet& packet) {
     } else {
       const NodeID& dst = delegate.spread_do_get_relay_nid(center);
       if (dst == NodeID::THIS) {
-        if (opt & Colonio::SPREAD_SOMEONE_MUST_RECEIVE) {
+        if (opt & SPREAD_SOMEONE_MUST_RECEIVE) {
           send_response(packet, false, ErrorCode::SPREAD_NO_ONE_RECEIVE, "no one receive the message");
 
         } else {
@@ -288,7 +288,7 @@ void Spread::recv_relay(const Packet& packet) {
     }
 
   } else {
-    if (opt & Colonio::SPREAD_SOMEONE_MUST_RECEIVE) {
+    if (opt & SPREAD_SOMEONE_MUST_RECEIVE) {
       send_response(packet, false, ErrorCode::SPREAD_NO_ONE_RECEIVE, "no one receive the message");
 
     } else {

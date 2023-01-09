@@ -41,8 +41,7 @@ TEST(MessagingTest, callExpect) {
   printf("node: %s\n", node->get_local_nid().c_str());
 
   node->messaging_set_handler(
-      "expect", [&](Colonio& c, const Colonio::MessagingRequest& message,
-                    std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+      "expect", [&](Colonio& c, const MessagingRequest& message, std::shared_ptr<MessagingResponseWriter> writer) {
         printf("receive expect\n");
         EXPECT_EQ(message.options, static_cast<const unsigned int>(0));
         EXPECT_STREQ(message.message.get<std::string>().c_str(), "data expect");
@@ -83,17 +82,16 @@ TEST(MessagingTest, callNearby) {
   printf("node: %s\n", node->get_local_nid().c_str());
 
   node->messaging_set_handler(
-      "nearby", [&](Colonio& c, const Colonio::MessagingRequest& message,
-                    std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+      "nearby", [&](Colonio& c, const MessagingRequest& message, std::shared_ptr<MessagingResponseWriter> writer) {
         printf("receive nearby\n");
-        EXPECT_EQ(message.options, Colonio::MESSAGING_ACCEPT_NEARBY);
+        EXPECT_EQ(message.options, MESSAGING_ACCEPT_NEARBY);
         EXPECT_STREQ(message.message.get<std::string>().c_str(), "data nearby");
         writer->write(Value("result nearby"));
       });
 
   // todo: avoid block without MESSAGING_IGNORE_RESPONSE option.
   node->messaging_post(
-      "00000000000000000000000000000000", "nearby", Value("data nearby"), Colonio::MESSAGING_ACCEPT_NEARBY,
+      "00000000000000000000000000000000", "nearby", Value("data nearby"), MESSAGING_ACCEPT_NEARBY,
       [&](Colonio&, const Value& result) {
         printf("receive reply from nearby\n");
         EXPECT_STREQ(result.get<std::string>().c_str(), "result nearby");
@@ -132,10 +130,9 @@ TEST(MessagingTest, send) {
   printf("node2 : %s\n", node2->get_local_nid().c_str());
 
   node1->messaging_set_handler(
-      "call1", [&](Colonio& c, const Colonio::MessagingRequest& message,
-                   std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+      "call1", [&](Colonio& c, const MessagingRequest& message, std::shared_ptr<MessagingResponseWriter> writer) {
         printf("receive dummy1\n");
-        EXPECT_EQ(message.options, Colonio::MESSAGING_ACCEPT_NEARBY);
+        EXPECT_EQ(message.options, MESSAGING_ACCEPT_NEARBY);
         EXPECT_STREQ(message.message.get<std::string>().c_str(), "dummy1");
         helper.mark("1");
         helper.pass_signal("1");
@@ -145,8 +142,7 @@ TEST(MessagingTest, send) {
       });
 
   node1->messaging_set_handler(
-      "call3", [&](Colonio& c, const Colonio::MessagingRequest& message,
-                   std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+      "call3", [&](Colonio& c, const MessagingRequest& message, std::shared_ptr<MessagingResponseWriter> writer) {
         printf("receive dummy3\n");
         helper.mark("3");
         helper.pass_signal("3");
@@ -155,10 +151,9 @@ TEST(MessagingTest, send) {
       });
 
   node2->messaging_set_handler(
-      "call2", [&](Colonio& c, const Colonio::MessagingRequest& message,
-                   std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+      "call2", [&](Colonio& c, const MessagingRequest& message, std::shared_ptr<MessagingResponseWriter> writer) {
         printf("receive dummy2\n");
-        EXPECT_EQ(message.options, Colonio::MESSAGING_IGNORE_RESPONSE);
+        EXPECT_EQ(message.options, MESSAGING_IGNORE_RESPONSE);
         EXPECT_STREQ(message.message.get<std::string>().c_str(), "dummy2");
         EXPECT_EQ(writer.get(), nullptr);
         helper.mark("2");
@@ -181,7 +176,7 @@ TEST(MessagingTest, send) {
       NodeID::center_mod(NodeID::from_str(node1->get_local_nid()), NodeID::from_str(node2->get_local_nid()));
   helper.wait_signal("1", [&] {
     printf("send dummy1\n");
-    Value result1 = node1->messaging_post(target.to_str(), "call1", Value("dummy1"), Colonio::MESSAGING_ACCEPT_NEARBY);
+    Value result1 = node1->messaging_post(target.to_str(), "call1", Value("dummy1"), MESSAGING_ACCEPT_NEARBY);
     EXPECT_STREQ(result1.get<std::string>().c_str(), "result1");
     printf("send dummy0\n");
     node2->messaging_post(
@@ -198,7 +193,7 @@ TEST(MessagingTest, send) {
   helper.wait_signal("2", [&] {
     printf("send dummy2\n");
     node1->messaging_post(
-        node2->get_local_nid(), "call2", Value("dummy2"), Colonio::MESSAGING_IGNORE_RESPONSE,
+        node2->get_local_nid(), "call2", Value("dummy2"), MESSAGING_IGNORE_RESPONSE,
         [&](Colonio&, const Value& result) {
           EXPECT_EQ(result.get_type(), Value::NULL_T);
           helper.pass_signal("2s");
@@ -238,24 +233,21 @@ TEST(MessagingTest, callMessageChain) {
   node->connect(URL, TOKEN);
 
   node->messaging_set_handler(
-      "hop", [&](Colonio& c, const Colonio::MessagingRequest& message,
-                 std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+      "hop", [&](Colonio& c, const MessagingRequest& message, std::shared_ptr<MessagingResponseWriter> writer) {
         std::string message_str = message.message.get<std::string>();
 
         writer->write(node->messaging_post(node->get_local_nid(), "step", Value(message_str + " hop"), 0));
       });
 
   node->messaging_set_handler(
-      "step", [&](Colonio& c, const Colonio::MessagingRequest& message,
-                  std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+      "step", [&](Colonio& c, const MessagingRequest& message, std::shared_ptr<MessagingResponseWriter> writer) {
         std::string message_str = message.message.get<std::string>();
 
         writer->write(node->messaging_post(node->get_local_nid(), "jump", Value(message_str + " step"), 0));
       });
 
   node->messaging_set_handler(
-      "jump", [&](Colonio& c, const Colonio::MessagingRequest& message,
-                  std::shared_ptr<Colonio::MessagingResponseWriter> writer) {
+      "jump", [&](Colonio& c, const MessagingRequest& message, std::shared_ptr<MessagingResponseWriter> writer) {
         std::string message_str = message.message.get<std::string>();
 
         writer->write(Value(message_str + " jump!"));
