@@ -27,7 +27,6 @@
  */
 namespace colonio {
 class Colonio;
-class Error;
 class ValueImpl;
 
 /**
@@ -39,6 +38,70 @@ const std::string WARN("warn");
 const std::string INFO("info");
 const std::string DEBUG("debug");
 }  // namespace LogLevel
+
+/**
+ * @brief ErrorCode is assigned each error reason and is used with Error and Exception.
+ *
+ * @sa Error, Exception
+ */
+enum class ErrorCode : unsigned int {
+  UNDEFINED,                     ///< Undefined error is occurred.
+  SYSTEM_INCORRECT_DATA_FORMAT,  ///< Incorrect data format detected.
+  SYSTEM_CONFLICT_WITH_SETTING,  ///< The calling method or setting parameter was inconsistent with the configuration in
+                                 ///< the seed.
+  CONNECTION_FAILED,             ///< An error on connection start failure.
+  CONNECTION_OFFLINE,            ///< The node cannot perform processing because of offline.
+
+  PACKET_NO_ONE_RECV,  ///< There was no node receiving the message.
+  PACKET_TIMEOUT,      ///< An error occurs when timeout.
+
+  MESSAGING_HANDLER_NOT_FOUND,  /// An error that occur when message sent to a non-existent handler.
+
+  KVS_NOT_FOUND,  ///< Tried to get a value for a key that doesn't exist.
+  KVS_PROHIBIT_OVERWRITE,
+  KVS_COLLISION,
+
+  SPREAD_NO_ONE_RECEIVE,
+};
+
+/**
+ * @brief Error information. This is used when the asynchronous method calls a failed callback and is thrown when an
+ * error occurs in a synchronous method.
+ *
+ *
+ * @sa ErrorCode
+ */
+class Error : public std::exception {
+ public:
+  /// True if the error is fatal and the process of colonio can not continue.
+  const bool fatal;
+  /// Code to indicate the cause of the error.
+  const ErrorCode code;
+  /// A detailed message string for display or bug report.
+  const std::string message;
+  /// The line number where the exception was thrown (for debug).
+  const unsigned long line;
+  /// The file name where the exception was thrown (for debug).
+  const std::string file;
+
+  /**
+   * @brief Construct a new Error object.
+   *
+   * @param fatal True if the error is fatal and the process of colonio can not continue.
+   * @param code Code to indicate the cause of the error.
+   * @param message A detailed message string for display or bug report.
+   * @param line The line number where the exception was thrown.
+   * @param file The file name where the exception was thrown.
+   */
+  Error(bool fatal, ErrorCode code, const std::string& message, int line, const std::string& file);
+
+  /**
+   * @brief Override the standard method to output message.
+   *
+   * @return const char* The message is returned as it is.
+   */
+  const char* what() const noexcept override;
+};
 
 /**
  * @brief Values in colonio are represented as instance of colonio::Value class.
@@ -259,6 +322,37 @@ class ColonioConfig {
   std::function<void(Colonio& colonio, const std::string& json)> logger_func;
 };
 
+// Options for `messaging_post` method.
+/// If there is no node with a matching node-id, the node with the closest node-id will receive the message.
+static const uint32_t MESSAGING_ACCEPT_NEARBY = 0x01;
+/// If this option is specified, the post method does not wait a response or error message. You get null value as
+/// response. No error returns even if the destination node does not exist.
+static const uint32_t MESSAGING_IGNORE_RESPONSE = 0x02;
+
+struct MessagingRequest {
+  std::string source_nid;
+  Value message;
+  uint32_t options;
+};
+
+class MessagingResponseWriter {
+ public:
+  virtual ~MessagingResponseWriter();
+  virtual void write(const Value&) = 0;
+};
+
+static const uint32_t KVS_MUST_EXIST_KEY     = 0x01;  // del, unlock
+static const uint32_t KVS_PROHIBIT_OVERWRITE = 0x02;  // set
+
+/// let raise an error if no one node that can be received a message within the specified range.
+static const uint32_t SPREAD_SOMEONE_MUST_RECEIVE = 0x01;
+
+struct SpreadRequest {
+  std::string source_nid;
+  Value message;
+  uint32_t options;
+};
+
 /**
  * @brief Main class of colonio. One instance is equivalent to one node.
  */
@@ -351,13 +445,6 @@ class Colonio {
    */
   virtual std::tuple<double, double> set_position(double x, double y) = 0;
 
-  // Options for `messaging_post` method.
-  /// If there is no node with a matching node-id, the node with the closest node-id will receive the message.
-  static const uint32_t MESSAGING_ACCEPT_NEARBY = 0x01;
-  /// If this option is specified, the post method does not wait a response or error message. You get null value as
-  /// response. No error returns even if the destination node does not exist.
-  static const uint32_t MESSAGING_IGNORE_RESPONSE = 0x02;
-
   /**
    * @brief Post a message for the destination node and wait response message.
    *
@@ -386,18 +473,6 @@ class Colonio {
       std::function<void(Colonio&, const Value&)>&& on_response,
       std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
 
-  struct MessagingRequest {
-    std::string source_nid;
-    Value message;
-    uint32_t options;
-  };
-
-  class MessagingResponseWriter {
-   public:
-    virtual ~MessagingResponseWriter();
-    virtual void write(const Value&) = 0;
-  };
-
   /**
    * @brief register the handler for
    *
@@ -417,9 +492,6 @@ class Colonio {
    */
   virtual void messaging_unset_handler(const std::string& name) = 0;
 
-  static const uint32_t KVS_MUST_EXIST_KEY     = 0x1;  // del, unlock
-  static const uint32_t KVS_PROHIBIT_OVERWRITE = 0x2;  // set
-
   virtual std::shared_ptr<std::map<std::string, Value>> kvs_get_local_data() = 0;
   virtual void kvs_get_local_data(
       std::function<void(Colonio&, std::shared_ptr<std::map<std::string, Value>>)> handler) = 0;
@@ -431,15 +503,6 @@ class Colonio {
   virtual void kvs_set(
       const std::string& key, const Value& value, uint32_t opt, std::function<void(Colonio&)>&& on_success,
       std::function<void(Colonio&, const Error&)>&& on_failure) = 0;
-
-  struct SpreadRequest {
-    std::string source_nid;
-    Value message;
-    uint32_t options;
-  };
-
-  /// let raise an error if no one node that can be received a message within the specified range.
-  static const uint32_t SPREAD_SOMEONE_MUST_RECEIVE = 0x01;
 
   virtual void spread_post(
       double x, double y, double r, const std::string& name, const Value& message, uint32_t opt = 0x0) = 0;
@@ -455,69 +518,5 @@ class Colonio {
    * @brief Construct a new Colonio object.
    */
   Colonio();
-};
-
-/**
- * @brief ErrorCode is assigned each error reason and is used with Error and Exception.
- *
- * @sa Error, Exception
- */
-enum class ErrorCode : unsigned int {
-  UNDEFINED,                     ///< Undefined error is occurred.
-  SYSTEM_INCORRECT_DATA_FORMAT,  ///< Incorrect data format detected.
-  SYSTEM_CONFLICT_WITH_SETTING,  ///< The calling method or setting parameter was inconsistent with the configuration in
-                                 ///< the seed.
-  CONNECTION_FAILED,             ///< An error on connection start failure.
-  CONNECTION_OFFLINE,            ///< The node cannot perform processing because of offline.
-
-  PACKET_NO_ONE_RECV,  ///< There was no node receiving the message.
-  PACKET_TIMEOUT,      ///< An error occurs when timeout.
-
-  MESSAGING_HANDLER_NOT_FOUND,  /// An error that occur when message sent to a non-existent handler.
-
-  KVS_NOT_FOUND,  ///< Tried to get a value for a key that doesn't exist.
-  KVS_PROHIBIT_OVERWRITE,
-  KVS_COLLISION,
-
-  SPREAD_NO_ONE_RECEIVE,
-};
-
-/**
- * @brief Error information. This is used when the asynchronous method calls a failed callback and is thrown when an
- * error occurs in a synchronous method.
- *
- *
- * @sa ErrorCode
- */
-class Error : public std::exception {
- public:
-  /// True if the error is fatal and the process of colonio can not continue.
-  const bool fatal;
-  /// Code to indicate the cause of the error.
-  const ErrorCode code;
-  /// A detailed message string for display or bug report.
-  const std::string message;
-  /// The line number where the exception was thrown (for debug).
-  const unsigned long line;
-  /// The file name where the exception was thrown (for debug).
-  const std::string file;
-
-  /**
-   * @brief Construct a new Error object.
-   *
-   * @param fatal True if the error is fatal and the process of colonio can not continue.
-   * @param code Code to indicate the cause of the error.
-   * @param message A detailed message string for display or bug report.
-   * @param line The line number where the exception was thrown.
-   * @param file The file name where the exception was thrown.
-   */
-  Error(bool fatal, ErrorCode code, const std::string& message, int line, const std::string& file);
-
-  /**
-   * @brief Override the standard method to output message.
-   *
-   * @return const char* The message is returned as it is.
-   */
-  const char* what() const noexcept override;
 };
 }  // namespace colonio

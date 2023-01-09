@@ -40,9 +40,7 @@ class Messaging {
       std::function<void(const Value&)>&& on_response, std::function<void(const Error&)>&& on_failure);
   void set_handler(
       const std::string& name,
-      std::function<
-          void(std::shared_ptr<const Colonio::MessagingRequest>, std::shared_ptr<Colonio::MessagingResponseWriter>)>&&
-          handler);
+      std::function<void(std::shared_ptr<const MessagingRequest>, std::shared_ptr<MessagingResponseWriter>)>&& handler);
   void unset_handler(const std::string& name);
 
  private:
@@ -65,8 +63,7 @@ class Messaging {
 
   std::map<
       std::string,
-      std::function<void(
-          std::shared_ptr<const Colonio::MessagingRequest>, std::shared_ptr<Colonio::MessagingResponseWriter>)>>
+      std::function<void(std::shared_ptr<const MessagingRequest>, std::shared_ptr<MessagingResponseWriter>)>>
       handlers;
 
   void recv_messaging(const Packet& packet);

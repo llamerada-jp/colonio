@@ -201,7 +201,7 @@ TEST(MapTest, set_get_multi) {
   // set value with exist check
   printf("set value with exist check.\n");
   try {
-    node1->kvs_set(KEY2, Value(VALUE1), Colonio::KVS_PROHIBIT_OVERWRITE);
+    node1->kvs_set(KEY2, Value(VALUE1), KVS_PROHIBIT_OVERWRITE);
   } catch (const Error& e) {
     printf("%d %s\n", static_cast<int>(e.code), e.message.c_str());
     ADD_FAILURE();
@@ -210,7 +210,7 @@ TEST(MapTest, set_get_multi) {
   // overwrite with exist check
   printf("overwrite value with exist check.\n");
   try {
-    node2->kvs_set(KEY2, Value(VALUE2), Colonio::KVS_PROHIBIT_OVERWRITE);
+    node2->kvs_set(KEY2, Value(VALUE2), KVS_PROHIBIT_OVERWRITE);
     ADD_FAILURE();
 
   } catch (const Error& e) {

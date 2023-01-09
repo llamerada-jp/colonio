@@ -66,11 +66,11 @@ TEST(SpreadTest, async) {
 
   printf("wait connecting\n");
   helper.wait_signal("connect");
-  node1->spread_set_handler("key", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
+  node1->spread_set_handler("key", [&helper](Colonio&, const SpreadRequest& r) {
     helper.mark("1" + r.message.get<std::string>());
     helper.pass_signal("on1");
   });
-  node2->spread_set_handler("key", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
+  node2->spread_set_handler("key", [&helper](Colonio&, const SpreadRequest& r) {
     helper.mark("2" + r.message.get<std::string>());
     helper.pass_signal("on2");
   });
@@ -136,12 +136,12 @@ TEST(SpreadTest, multi_node) {
     // connect node1;
     printf("connect node1\n");
     node1->connect(URL, TOKEN);
-    node1->spread_set_handler("key1", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
+    node1->spread_set_handler("key1", [&helper](Colonio&, const SpreadRequest& r) {
       helper.mark("11");
       helper.mark(r.message.get<std::string>());
       helper.pass_signal("on11");
     });
-    node1->spread_set_handler("key2", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
+    node1->spread_set_handler("key2", [&helper](Colonio&, const SpreadRequest& r) {
       helper.mark("12");
       helper.mark(r.message.get<std::string>());
       helper.pass_signal("on12");
@@ -150,12 +150,12 @@ TEST(SpreadTest, multi_node) {
     // connect node2;
     printf("connect node2\n");
     node2->connect(URL, TOKEN);
-    node2->spread_set_handler("key1", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
+    node2->spread_set_handler("key1", [&helper](Colonio&, const SpreadRequest& r) {
       helper.mark("21");
       helper.mark(r.message.get<std::string>());
       helper.pass_signal("on21");
     });
-    node2->spread_set_handler("key2", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
+    node2->spread_set_handler("key2", [&helper](Colonio&, const SpreadRequest& r) {
       helper.mark("22");
       helper.mark(r.message.get<std::string>());
       helper.pass_signal("on22");
@@ -219,11 +219,11 @@ TEST(SpreadTest, plane) {
   printf("connect node1\n");
   node1->connect(URL, TOKEN);
   printf("connect node1 fin\n");
-  node1->spread_set_handler("key1", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
+  node1->spread_set_handler("key1", [&helper](Colonio&, const SpreadRequest& r) {
     helper.mark("11");
     helper.mark(r.message.get<std::string>());
   });
-  node1->spread_set_handler("key2", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
+  node1->spread_set_handler("key2", [&helper](Colonio&, const SpreadRequest& r) {
     helper.mark("12");
     helper.mark(r.message.get<std::string>());
   });
@@ -232,11 +232,11 @@ TEST(SpreadTest, plane) {
   printf("connect node2\n");
   node2->connect(URL, TOKEN);
   printf("connect node2 fin\n");
-  node2->spread_set_handler("key1", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
+  node2->spread_set_handler("key1", [&helper](Colonio&, const SpreadRequest& r) {
     helper.mark("21");
     helper.mark(r.message.get<std::string>());
   });
-  node2->spread_set_handler("key2", [&helper](Colonio&, const Colonio::SpreadRequest& r) {
+  node2->spread_set_handler("key2", [&helper](Colonio&, const SpreadRequest& r) {
     helper.mark("22");
     helper.mark(r.message.get<std::string>());
   });

@@ -49,7 +49,7 @@ class Spread {
       double x, double y, double r, const std::string& name, const Value& message, uint32_t opt,
       std::function<void()>&& on_success, std::function<void(const Error&)>&& on_failure);
 
-  void set_handler(const std::string& name, std::function<void(const Colonio::SpreadRequest&)>&& handler);
+  void set_handler(const std::string& name, std::function<void(const SpreadRequest&)>&& handler);
   void unset_handler(const std::string& name);
 
   void update_next_positions(const std::map<NodeID, Coordinate>& positions);
@@ -107,7 +107,7 @@ class Spread {
   std::map<uint64_t, Cache> cache;
 
   std::map<NodeID, Coordinate> next_positions;
-  std::map<std::string, std::function<void(const Colonio::SpreadRequest&)>> handlers;
+  std::map<std::string, std::function<void(const SpreadRequest&)>> handlers;
 
   uint64_t assign_uid();
   void clear_cache();

@@ -235,18 +235,18 @@ void ColonioImpl::messaging_set_handler(
   assert(messaging);
   if (user_thread_pool) {
     messaging->set_handler(
-        name, [this, handler](
-                  std::shared_ptr<const Colonio::MessagingRequest> request,
-                  std::shared_ptr<Colonio::MessagingResponseWriter> response_writer) {
+        name,
+        [this, handler](
+            std::shared_ptr<const MessagingRequest> request, std::shared_ptr<MessagingResponseWriter> response_writer) {
           user_thread_pool->push([this, handler, request, response_writer]() {
             handler(*this, *request, response_writer);
           });
         });
   } else {
     messaging->set_handler(
-        name, [this, handler](
-                  std::shared_ptr<const Colonio::MessagingRequest> request,
-                  std::shared_ptr<Colonio::MessagingResponseWriter> response_writer) {
+        name,
+        [this, handler](
+            std::shared_ptr<const MessagingRequest> request, std::shared_ptr<MessagingResponseWriter> response_writer) {
           handler(*this, *request, response_writer);
         });
   }
@@ -446,14 +446,14 @@ void ColonioImpl::spread_set_handler(
   }
   assert(spread);
   if (user_thread_pool) {
-    spread->set_handler(name, [this, handler](const Colonio::SpreadRequest& request) {
+    spread->set_handler(name, [this, handler](const SpreadRequest& request) {
       user_thread_pool->push([this, handler, request]() {
         handler(*this, request);
       });
     });
 
   } else {
-    spread->set_handler(name, [this, handler](const Colonio::SpreadRequest& request) {
+    spread->set_handler(name, [this, handler](const SpreadRequest& request) {
       handler(*this, request);
     });
   }

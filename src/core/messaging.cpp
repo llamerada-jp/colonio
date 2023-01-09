@@ -24,7 +24,7 @@
 
 namespace colonio {
 
-class ResponseWriterImpl : public Colonio::MessagingResponseWriter {
+class ResponseWriterImpl : public MessagingResponseWriter {
  public:
   ResponseWriterImpl(Logger& l, CommandManager& c, const Packet& p) :
       logger(l),
@@ -111,11 +111,11 @@ void Messaging::post(
   ValueImpl::to_pb(param.mutable_message(), message);
 
   PacketMode::Type mode = 0;
-  if ((opt & Colonio::MESSAGING_ACCEPT_NEARBY) == 0) {
+  if ((opt & MESSAGING_ACCEPT_NEARBY) == 0) {
     mode |= PacketMode::EXPLICIT;
   }
 
-  if ((opt & Colonio::MESSAGING_IGNORE_RESPONSE) != 0) {
+  if ((opt & MESSAGING_IGNORE_RESPONSE) != 0) {
     command_manager.send_packet_one_way(NodeID::from_str(dst_nid), mode, std::move(content));
     on_response(Value());
 
@@ -131,9 +131,7 @@ void Messaging::post(
 
 void Messaging::set_handler(
     const std::string& name,
-    std::function<
-        void(std::shared_ptr<const Colonio::MessagingRequest>, std::shared_ptr<Colonio::MessagingResponseWriter>)>&&
-        handler) {
+    std::function<void(std::shared_ptr<const MessagingRequest>, std::shared_ptr<MessagingResponseWriter>)>&& handler) {
   handlers[name] = handler;
 }
 
@@ -142,16 +140,16 @@ void Messaging::unset_handler(const std::string& name) {
 }
 
 void Messaging::recv_messaging(const Packet& packet) {
-  proto::Messaging content                           = packet.content->as_proto().messaging();
-  const std::string& name                            = content.name();
-  std::shared_ptr<Colonio::MessagingRequest> request = std::make_shared<Colonio::MessagingRequest>();
-  request->source_nid                                = packet.src_nid.to_str();
-  request->message                                   = ValueImpl::from_pb(content.message());
-  request->options                                   = content.opt();
+  proto::Messaging content                  = packet.content->as_proto().messaging();
+  const std::string& name                   = content.name();
+  std::shared_ptr<MessagingRequest> request = std::make_shared<MessagingRequest>();
+  request->source_nid                       = packet.src_nid.to_str();
+  request->message                          = ValueImpl::from_pb(content.message());
+  request->options                          = content.opt();
 
   auto it_handler = handlers.find(name);
   if (it_handler == handlers.end()) {
-    if ((request->options & Colonio::MESSAGING_IGNORE_RESPONSE) == 0) {
+    if ((request->options & MESSAGING_IGNORE_RESPONSE) == 0) {
       log_debug("handler not found").map("name", name);
       command_manager.send_error(packet, ErrorCode::MESSAGING_HANDLER_NOT_FOUND, "handler `" + name + "` not found.");
     }
@@ -159,8 +157,8 @@ void Messaging::recv_messaging(const Packet& packet) {
   }
 
   auto& handler = it_handler->second;
-  if ((request->options & Colonio::MESSAGING_IGNORE_RESPONSE) != 0) {
-    handler(request, std::shared_ptr<Colonio::MessagingResponseWriter>());
+  if ((request->options & MESSAGING_IGNORE_RESPONSE) != 0) {
+    handler(request, std::shared_ptr<MessagingResponseWriter>());
 
   } else {
     handler(request, std::make_shared<ResponseWriterImpl>(logger, command_manager, packet));
