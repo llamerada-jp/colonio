@@ -44,6 +44,7 @@ elif [ "${OS}" = "Darwin" ]; then
   else
     make setup
   fi
+  brew cleanup
 
   make build BUILT_TYPE=Release
   make build BUILT_TYPE=Debug WITH_TEST=ON

@@ -96,6 +96,18 @@ setup-linux:
 setup-macos:
 	mkdir -p $(WORK_PATH)
 	brew update
+	rm -f \
+		/usr/local/bin/2to3 \
+		/usr/local/bin/idle3 \
+		/usr/local/bin/pydoc3 \
+		/usr/local/bin/python3 \
+		/usr/local/bin/python3-config \
+		/usr/local/bin/2to3-3.11 \
+		/usr/local/bin/idle3.11 \
+		/usr/local/bin/pydoc3.11 \
+		/usr/local/bin/python3.11 \
+		/usr/local/bin/python3.11-config
+	brew install --force python3 && brew unlink python3 && brew link --overwrite python3
 	brew list > $(WORK_PATH)/BREW_PKGS
 	install_pkgs="" && upgrade_pkgs="" \
 	&& for p in autoconf automake cmake libtool openssl@3 pkg-config pybind11; do \
@@ -104,9 +116,9 @@ setup-macos:
 			else install_pkgs="$${install_pkgs} $${p}"; \
 			fi \
 		done \
-	&& if [ "$${upgrade_pkgs}" != "" ]; then brew upgrade $${upgrade_pkgs}; fi \
-	&& if [ "$${install_pkgs}" != "" ]; then brew install $${install_pkgs}; fi \
-	&& brew link --force openssl
+	&& if [ "$${upgrade_pkgs}" != "" ]; then echo upgrade $${upgrade_pkgs}; brew upgrade $${upgrade_pkgs}; fi \
+	&& if [ "$${install_pkgs}" != "" ]; then echo install $${install_pkgs}; brew install $${install_pkgs}; fi
+	brew link --force openssl
 	if [ $(SKIP_SETUP_LOCAL) = "OFF" ]; then $(MAKE) setup-local; fi
 
 .PHONY: setup-local
