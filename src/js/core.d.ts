@@ -51,7 +51,7 @@ declare class ErrorEntry {
     file: string;
     constructor(f: boolean, c: number, m: string, l: number, fi: string);
 }
-type ValueSource = null | boolean | number | string | Value;
+type ValueSource = null | boolean | number | string | ArrayBuffer | Value;
 /**
  * Value is wrap for Value class.
  */
@@ -63,18 +63,19 @@ declare class Value {
     static readonly VALUE_TYPE_STRING: number;
     static readonly VALUE_TYPE_BINARY: number;
     _type: number;
-    _value: null | boolean | number | string;
+    _value: null | boolean | number | string | ArrayBuffer;
     static newNull(): Value;
     static newBool(value: boolean): Value;
     static newInt(value: number): Value;
     static newDouble(value: number): Value;
     static newString(value: string): Value;
+    static newBinary(value: ArrayBuffer): Value;
     static fromJsValue(value: ValueSource): Value | undefined;
     static fromCValue(valueC: number): Value;
     static free(valueC: number): void;
-    constructor(type: number, value: null | boolean | number | string);
+    constructor(type: number, value: null | boolean | number | string | ArrayBuffer);
     getType(): number;
-    getJsValue(): string | number | boolean | null;
+    getJsValue(): string | number | boolean | ArrayBuffer | null;
     write(valueC?: number): number;
 }
 declare class ColonioConfig {

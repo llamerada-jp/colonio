@@ -47,7 +47,6 @@ void cgo_colonio_messaging_unset_handler(colonio_t colonio, _GoString_ name);
 void cgo_colonio_value_set_string(colonio_value_t value, _GoString_ s);
 
 // kvs
-//colonio_error_t* cgo_colonio_map_foreach_local_value(colonio_map_t *map, uintptr_t ptr);
 colonio_error_t* cgo_colonio_kvs_get(colonio_t colonio, _GoString_ key, colonio_value_t* dst);
 colonio_error_t* cgo_colonio_kvs_set(colonio_t colonio, _GoString_ key, colonio_const_value_t value, uint32_t opt);
 
@@ -524,11 +523,7 @@ func (vi *valueImpl) IsBinary() bool {
 
 func (vi *valueImpl) Set(valueG interface{}) error {
 	vi.stringG = ""
-
-	if reflect.ValueOf(vi).IsNil() {
-		vi.valueTypeC = C.COLONIO_VALUE_TYPE_NULL
-		return nil
-	}
+	vi.binaryG = nil
 
 	switch v := valueG.(type) {
 	case bool:
@@ -536,14 +531,64 @@ func (vi *valueImpl) Set(valueG interface{}) error {
 		vi.boolG = v
 		return nil
 
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32:
+	case int:
 		vi.valueTypeC = C.COLONIO_VALUE_TYPE_INT
-		vi.intG = v.(int64)
+		vi.intG = int64(v)
 		return nil
 
-	case float32, float64:
+	case int8:
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_INT
+		vi.intG = int64(v)
+		return nil
+
+	case int16:
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_INT
+		vi.intG = int64(v)
+		return nil
+
+	case int32:
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_INT
+		vi.intG = int64(v)
+		return nil
+
+	case int64:
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_INT
+		vi.intG = v
+		return nil
+
+	case uint:
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_INT
+		vi.intG = int64(v)
+		return nil
+
+	case uint8:
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_INT
+		vi.intG = int64(v)
+		return nil
+
+	case uint16:
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_INT
+		vi.intG = int64(v)
+		return nil
+
+	case uint32:
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_INT
+		vi.intG = int64(v)
+		return nil
+
+	case uint64:
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_INT
+		vi.intG = int64(v)
+		return nil
+
+	case float32:
 		vi.valueTypeC = C.COLONIO_VALUE_TYPE_DOUBLE
-		vi.doubleG = v.(float64)
+		vi.doubleG = float64(v)
+		return nil
+
+	case float64:
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_DOUBLE
+		vi.doubleG = v
 		return nil
 
 	case string:
@@ -558,6 +603,11 @@ func (vi *valueImpl) Set(valueG interface{}) error {
 
 	case *valueImpl:
 		*vi = *v
+		return nil
+	}
+
+	if valueG == nil || reflect.ValueOf(valueG).IsNil() {
+		vi.valueTypeC = C.COLONIO_VALUE_TYPE_NULL
 		return nil
 	}
 
@@ -631,6 +681,4 @@ func writeOut(valueC C.colonio_value_t, value Value) {
 		C.colonio_value_set_binary(valueC, b, C.uint(len(v)))
 		return
 	}
-
-	C.colonio_value_free(&valueC)
 }

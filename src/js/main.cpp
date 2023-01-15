@@ -90,10 +90,13 @@ EMSCRIPTEN_KEEPALIVE int64_t js_value_get_int(VALUE_T v);
 EMSCRIPTEN_KEEPALIVE double js_value_get_double(VALUE_T v);
 EMSCRIPTEN_KEEPALIVE int js_value_get_string_length(VALUE_T v);
 EMSCRIPTEN_KEEPALIVE PTR_T js_value_get_string(VALUE_T v);
+EMSCRIPTEN_KEEPALIVE int js_value_get_binary_length(VALUE_T v);
+EMSCRIPTEN_KEEPALIVE PTR_T js_value_get_binary(VALUE_T v);
 EMSCRIPTEN_KEEPALIVE void js_value_set_bool(VALUE_T v, bool b);
 EMSCRIPTEN_KEEPALIVE void js_value_set_int(VALUE_T v, int64_t i);
 EMSCRIPTEN_KEEPALIVE void js_value_set_double(VALUE_T v, double d);
 EMSCRIPTEN_KEEPALIVE void js_value_set_string(VALUE_T v, PTR_T ptr, unsigned int siz);
+EMSCRIPTEN_KEEPALIVE void js_value_set_binary(VALUE_T v, PTR_T ptr, unsigned int siz);
 EMSCRIPTEN_KEEPALIVE void js_value_free(VALUE_T v);
 }
 
@@ -388,6 +391,18 @@ PTR_T js_value_get_string(VALUE_T v) {
   return reinterpret_cast<PTR_T>(colonio_value_get_string(value, nullptr));
 }
 
+int js_value_get_binary_length(VALUE_T v) {
+  colonio_value_t value = reinterpret_cast<colonio_value_t>(v);
+  unsigned int siz;
+  colonio_value_get_binary(value, &siz);
+  return siz;
+}
+
+PTR_T js_value_get_binary(VALUE_T v) {
+  colonio_value_t value = reinterpret_cast<colonio_value_t>(v);
+  return reinterpret_cast<PTR_T>(colonio_value_get_binary(value, nullptr));
+}
+
 void js_value_set_bool(VALUE_T v, bool b) {
   colonio_value_t value = reinterpret_cast<colonio_value_t>(v);
   colonio_value_set_bool(value, b);
@@ -406,6 +421,11 @@ void js_value_set_double(VALUE_T v, double d) {
 void js_value_set_string(VALUE_T v, PTR_T ptr, unsigned int siz) {
   colonio_value_t value = reinterpret_cast<colonio_value_t>(v);
   colonio_value_set_string(value, reinterpret_cast<const char*>(ptr), siz);
+}
+
+void js_value_set_binary(VALUE_T v, PTR_T ptr, unsigned int siz) {
+  colonio_value_t value = reinterpret_cast<colonio_value_t>(v);
+  colonio_value_set_binary(value, reinterpret_cast<const void*>(ptr), siz);
 }
 
 void js_value_free(VALUE_T v) {

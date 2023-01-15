@@ -186,7 +186,7 @@ class ErrorEntry {
   }
 }
 
-type ValueSource = null | boolean | number | string | Value;
+type ValueSource = null | boolean | number | string | ArrayBuffer | Value;
 /**
  * Value is wrap for Value class.
  */
@@ -200,7 +200,7 @@ class Value {
   static readonly VALUE_TYPE_BINARY: number = 5;
 
   _type: number;
-  _value: null | boolean | number | string;
+  _value: null | boolean | number | string | ArrayBuffer;
 
   static newNull(): Value {
     return new Value(Value.VALUE_TYPE_NULL, null);
@@ -208,23 +208,29 @@ class Value {
 
   static newBool(value: boolean): Value {
     console.assert(typeof (value) === "boolean");
-    return new Value(1, value);
+    return new Value(Value.VALUE_TYPE_BOOL, value);
   }
 
   static newInt(value: number): Value {
     console.assert(typeof (value) === "number");
     console.assert(Number.isInteger(value));
-    return new Value(2, value);
+    return new Value(Value.VALUE_TYPE_INT, value);
   }
 
   static newDouble(value: number): Value {
     console.assert(typeof (value) === "number");
-    return new Value(3, value);
+    return new Value(Value.VALUE_TYPE_DOUBLE, value);
   }
 
   static newString(value: string): Value {
     console.assert(typeof (value) === "string");
-    return new Value(4, value);
+    return new Value(Value.VALUE_TYPE_STRING, value);
+  }
+
+  static newBinary(value: ArrayBuffer): Value {
+    console.assert(value instanceof ArrayBuffer);
+    return new Value(Value.VALUE_TYPE_BINARY, value);
+
   }
 
   static fromJsValue(value: ValueSource): Value | undefined {
@@ -232,9 +238,13 @@ class Value {
       return value;
     }
 
+    if (value instanceof ArrayBuffer) {
+      return Value.newBinary(value);
+    }
+
     switch (typeof (value)) {
       case "object":
-        console.assert(value === null);
+        console.assert(value === null, value);
         return Value.newNull();
 
       case "boolean":
@@ -255,7 +265,7 @@ class Value {
 
   static fromCValue(valueC: number) {
     let type = ccall("js_value_get_type", "number", ["number"], [valueC]);
-    let value: null | boolean | number | string = null;
+    let value: null | boolean | number | string | ArrayBuffer = null;
     switch (type) {
       case Value.VALUE_TYPE_NULL:
         value = null;
@@ -273,11 +283,19 @@ class Value {
         value = ccall("js_value_get_double", "number", ["number"], [valueC]);
         break;
 
-      case Value.VALUE_TYPE_STRING:
+      case Value.VALUE_TYPE_STRING: {
         let length = ccall("js_value_get_string_length", "number", ["number"], [valueC]);
         let stringPtr = ccall("js_value_get_string", "number", ["number"], [valueC]);
         value = UTF8ToString(stringPtr, length);
-        break;
+      } break;
+
+      case Value.VALUE_TYPE_BINARY: {
+        let length = ccall("js_value_get_binary_length", "number", ["number"], [valueC]);
+        let binaryPtr = ccall("js_value_get_binary", "number", ["number"], [valueC]);
+        value = new ArrayBuffer(length);
+        let bin = new Int8Array(value);
+        bin.set(HEAP8.subarray(binaryPtr, binaryPtr + length));
+      } break;
     }
 
     return new Value(type, value);
@@ -287,7 +305,7 @@ class Value {
     ccall("js_value_free", null, ["number"], [valueC]);
   }
 
-  constructor(type: number, value: null | boolean | number | string) {
+  constructor(type: number, value: null | boolean | number | string | ArrayBuffer) {
     this._type = type;
     this._value = value;
   }
@@ -341,6 +359,16 @@ class Value {
         let [stringPtr, stringSiz] = allocPtrString(this._value);
         ccall("js_value_set_string", null, ["number", "number", "number"], [valueC, stringPtr, stringSiz]);
         freePtr(stringPtr);
+        break;
+
+      case Value.VALUE_TYPE_BINARY:
+        if (!(this._value instanceof ArrayBuffer)) {
+          console.error("logic error");
+          break;
+        }
+        let [binaryPtr, binarySiz] = allocPtrArrayBuffer(this._value);
+        ccall("js_value_set_binary", null, ["number", "number", "number"], [valueC, binaryPtr, binarySiz]);
+        freePtr(binaryPtr);
         break;
     }
 
@@ -975,7 +1003,10 @@ function seedLinkWsSend(seedLink: number, dataPtr: number, dataSiz: number) {
     data[idx] = HEAPU8[dataPtr + idx];
   }
   let socket = availableSeedLinks.get(seedLink);
-  if (typeof (socket) === "undefined") { return; }
+  if (typeof (socket) === "undefined") {
+    console.log("socket to seed undefined");
+    return;
+  }
   socket.send(new Uint8Array(data));
 }
 

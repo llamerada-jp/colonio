@@ -70,16 +70,6 @@ void cgo_colonio_messaging_unset_handler(colonio_t colonio, _GoString_ name) {
 }
 
 // kvs
-/*
-void cgo_cb_colonio_map_foreach_local_value(
-    colonio_map_t *map, void *ptr, const colonio_value_t *key, const colonio_value_t *val, uint32_t attr) {
-  cgoColonioMapForeachLocalValue(map, (void *)ptr, (void *)key, (void *)val, attr);
-}
-
-colonio_error_t *cgo_colonio_map_foreach_local_value(colonio_map_t *map, uintptr_t ptr) {
-  return colonio_map_foreach_local_value(map, (void *)ptr, cgo_cb_colonio_map_foreach_local_value);
-}
-//*/
 colonio_error_t* cgo_colonio_kvs_get(colonio_t colonio, _GoString_ key, colonio_value_t* dst) {
   return colonio_kvs_get(colonio, _GoStringPtr(key), _GoStringLen(key), dst);
 }

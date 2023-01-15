@@ -207,3 +207,89 @@ func (suite *E2eSuite) TestGetSetInCB() {
 	suite.NoError(err)
 	suite.Equal(s, "dummy value")
 }
+
+func (suite *E2eSuite) TestPassValues() {
+	suite.node1.MessagingSetHandler("nil", func(mr *colonio.MessagingRequest, mrw colonio.MessagingResponseWriter) {
+		suite.True(mr.Message.IsNil())
+		mrw.Write(nil)
+	})
+
+	suite.node1.MessagingSetHandler("bool", func(mr *colonio.MessagingRequest, mrw colonio.MessagingResponseWriter) {
+		suite.True(mr.Message.IsBool())
+		v, err := mr.Message.GetBool()
+		suite.NoError(err)
+		suite.Equal(v, true)
+		mrw.Write(false)
+	})
+
+	suite.node1.MessagingSetHandler("int", func(mr *colonio.MessagingRequest, mrw colonio.MessagingResponseWriter) {
+		suite.True(mr.Message.IsInt())
+		v, err := mr.Message.GetInt()
+		suite.NoError(err)
+		suite.Equal(int(v), 1)
+		mrw.Write(2)
+	})
+
+	suite.node1.MessagingSetHandler("double", func(mr *colonio.MessagingRequest, mrw colonio.MessagingResponseWriter) {
+		suite.True(mr.Message.IsDouble())
+		v, err := mr.Message.GetDouble()
+		suite.NoError(err)
+		suite.Equal(v, 3.14)
+		mrw.Write(2.71)
+	})
+
+	suite.node1.MessagingSetHandler("string", func(mr *colonio.MessagingRequest, mrw colonio.MessagingResponseWriter) {
+		suite.True(mr.Message.IsString())
+		v, err := mr.Message.GetString()
+		suite.NoError(err)
+		suite.Equal(v, "hello☀\n")
+		mrw.Write("world🌏\n")
+	})
+
+	suite.node1.MessagingSetHandler("binary", func(mr *colonio.MessagingRequest, mrw colonio.MessagingResponseWriter) {
+		suite.True(mr.Message.IsBinary())
+		v, err := mr.Message.GetBinary()
+		suite.NoError(err)
+		suite.Equal(string(v), "🤩👾")
+		mrw.Write([]byte("漏電対策"))
+	})
+
+	vNil, err := suite.node2.MessagingPost(suite.node1.GetLocalNid(), "nil", nil, 0)
+	suite.NoError(err)
+	suite.True(vNil.IsNil())
+
+	vBool, err := suite.node2.MessagingPost(suite.node1.GetLocalNid(), "bool", true, 0)
+	suite.NoError(err)
+	suite.True(vBool.IsBool())
+	nBool, err := vBool.GetBool()
+	suite.NoError(err)
+	suite.Equal(nBool, false)
+
+	vInt, err := suite.node2.MessagingPost(suite.node1.GetLocalNid(), "int", 1, 0)
+	suite.NoError(err)
+	suite.True(vInt.IsInt())
+	nInt, err := vInt.GetInt()
+	suite.NoError(err)
+	suite.Equal(int(nInt), 2)
+
+	vDouble, err := suite.node2.MessagingPost(suite.node1.GetLocalNid(), "double", 3.14, 0)
+	suite.NoError(err)
+	suite.True(vDouble.IsDouble())
+	nDouble, err := vDouble.GetDouble()
+	suite.NoError(err)
+	suite.Equal(nDouble, 2.71)
+
+	vString, err := suite.node2.MessagingPost(suite.node1.GetLocalNid(), "string", "hello☀\n", 0)
+	suite.NoError(err)
+	suite.True(vString.IsString())
+	nString, err := vString.GetString()
+	suite.NoError(err)
+	suite.Equal(nString, "world🌏\n")
+
+	vBinary, err := suite.node2.MessagingPost(suite.node1.GetLocalNid(), "binary", []byte("🤩👾"), 0)
+	suite.NoError(err)
+	suite.True(vBinary.IsBinary())
+	nBinary, err := vBinary.GetBinary()
+	suite.NoError(err)
+	suite.Equal(string(nBinary), "漏電対策")
+}
