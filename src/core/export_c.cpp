@@ -293,7 +293,9 @@ const char* colonio_value_get_string(colonio_const_value_t v, unsigned int* siz)
 
 const void* colonio_value_get_binary(colonio_const_value_t v, unsigned int* siz) {
   const Value* value = reinterpret_cast<const Value*>(v);
-  *siz               = value->get_binary_size();
+  if (siz != nullptr) {
+    *siz = value->get_binary_size();
+  }
   return value->get_binary();
 }
 
@@ -318,8 +320,8 @@ void colonio_value_set_string(colonio_value_t v, const char* val, unsigned int s
 }
 
 void colonio_value_set_binary(colonio_value_t v, const void* val, unsigned int siz) {
-  // TODO
-  assert(false);
+  Value* value = reinterpret_cast<Value*>(v);
+  value->set(val, siz);
 }
 
 void colonio_value_free(colonio_value_t* v) {

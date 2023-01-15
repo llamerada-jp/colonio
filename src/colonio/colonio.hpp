@@ -220,7 +220,7 @@ class Value {
 
   const void* get_binary() const;
 
-  size_t get_binary_size() const;
+  std::size_t get_binary_size() const;
 
   /**
    * @brief Get the type stored by Value object.

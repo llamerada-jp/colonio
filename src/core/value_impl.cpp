@@ -48,6 +48,8 @@ ValueImpl::ValueImpl(const std::string& v) : type(Value::STRING_T) {
 ValueImpl::ValueImpl(const void* v, unsigned int siz) : type(Value::BINARY_T) {
   memset(&storage, 0, sizeof(Storage));
   storage.binary_v = new std::vector<uint8_t>();
+  storage.binary_v->resize(siz);
+  std::memcpy(storage.binary_v->data(), v, siz);
 }
 
 ValueImpl::ValueImpl(const ValueImpl& src) : type(src.type) {
@@ -101,8 +103,8 @@ void ValueImpl::to_pb(proto::Value* pb, const Value& value) {
       break;
 
     case Value::BINARY_T:
-      pb->set_binary_v(
-          std::string(reinterpret_cast<char*>(&value.impl->storage.binary_v[0]), value.impl->storage.binary_v->size()));
+      pb->set_binary_v(std::string(
+          reinterpret_cast<char*>(value.impl->storage.binary_v->data()), value.impl->storage.binary_v->size()));
       break;
 
     default:
@@ -168,6 +170,9 @@ bool ValueImpl::operator<(const ValueImpl& b) const {
 
   } else {
     switch (type) {
+      case Value::NULL_T:
+        return false;
+
       case Value::BOOL_T:
         return storage.bool_v < b.storage.bool_v;
 
@@ -180,8 +185,27 @@ bool ValueImpl::operator<(const ValueImpl& b) const {
       case Value::STRING_T:
         return *(storage.string_v) < *(b.storage.string_v);
 
+      case Value::BINARY_T: {
+        std::size_t siz1    = storage.binary_v->size();
+        std::size_t siz2    = b.storage.binary_v->size();
+        const uint8_t* bin1 = storage.binary_v->data();
+        const uint8_t* bin2 = b.storage.binary_v->data();
+        std::size_t siz_min = siz1;
+        if (siz_min > siz2) {
+          siz_min = siz2;
+        }
+        for (std::size_t idx = 0; idx < siz_min; idx++) {
+          if (bin1[idx] < bin2[idx]) {
+            return true;
+          }
+          if (bin1[idx] > bin2[idx]) {
+            return false;
+          }
+        }
+        return siz1 < siz2;
+      }
+
       default:
-        assert(type == Value::NULL_T);
         return false;
     }
   }

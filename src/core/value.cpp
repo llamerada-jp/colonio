@@ -72,7 +72,7 @@ M_GET(std::string, STRING_T, *impl->storage.string_v)
 
 const void* Value::get_binary() const {
   assert(get_type() == Value::BINARY_T);
-  return &impl->storage.binary_v->at(0);
+  return impl->storage.binary_v->data();
 }
 
 size_t Value::get_binary_size() const {
@@ -88,6 +88,9 @@ void Value::reset() {
   if (get_type() == Value::STRING_T) {
     delete impl->storage.string_v;
   }
+  if (get_type() == Value::BINARY_T) {
+    delete impl->storage.binary_v;
+  }
   impl->type = Value::NULL_T;
   memset(&impl->storage, 0, sizeof(impl->storage));
 }
@@ -97,6 +100,9 @@ void Value::reset() {
   void Value::set(CTYPE v) {             \
     if (get_type() == Value::STRING_T) { \
       delete impl->storage.string_v;     \
+    }                                    \
+    if (get_type() == Value::BINARY_T) { \
+      delete impl->storage.binary_v;     \
     }                                    \
     impl->type    = Value::VTYPE;        \
     impl->STORAGE = v;                   \
@@ -111,7 +117,23 @@ void Value::set(const std::string& v) {
   if (get_type() == Value::STRING_T) {
     delete impl->storage.string_v;
   }
+  if (get_type() == Value::BINARY_T) {
+    delete impl->storage.binary_v;
+  }
   impl->type             = Value::STRING_T;
   impl->storage.string_v = new std::string(v);
+}
+
+void Value::set(const void* ptr, std::size_t siz) {
+  if (get_type() == Value::STRING_T) {
+    delete impl->storage.string_v;
+  }
+  if (get_type() == Value::BINARY_T) {
+    delete impl->storage.binary_v;
+  }
+  impl->type             = Value::BINARY_T;
+  impl->storage.binary_v = new std::vector<uint8_t>();
+  impl->storage.binary_v->resize(siz);
+  std::memcpy(impl->storage.binary_v->data(), ptr, siz);
 }
 }  // namespace colonio

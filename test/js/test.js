@@ -14,10 +14,12 @@ const KEY = "hoge";
 function test() {
   let node1;
   let node2;
+  let colonio;
   let timer;
   let stored = new Map();
 
-  return ColonioModule().then((colonio) => {
+  return ColonioModule().then((c) => {
+    colonio = c;
     console.log("new node1");
     let config1 = new colonio.ColonioConfig();
     config1.loggerFunc = (_, log) => {
@@ -43,10 +45,61 @@ function test() {
     return node2.connect(URL, TOKEN);
 
   }).then(() => {
-    node2.messagingSetHandler("test", (request, writer) => {
-      writer.write("reply " + request.message.getJsValue());
+    node2.messagingSetHandler("null", (request, writer) => {
+      if (request.message.getType() !== colonio.Value.VALUE_TYPE_NULL) {
+        console.error(request.message);
+        throw new Error("wrong request");
+      }
+      writer.write(null);
     });
 
+    node2.messagingSetHandler("bool", (request, writer) => {
+      if (request.message.getType() !== colonio.Value.VALUE_TYPE_BOOL ||
+        request.message.getJsValue() !== true) {
+        console.error(request.message);
+        throw new Error("wrong request");
+      }
+      writer.write(false);
+    });
+
+    node2.messagingSetHandler("int", (request, writer) => {
+      if (request.message.getType() !== colonio.Value.VALUE_TYPE_INT ||
+        request.message.getJsValue() !== 1) {
+        console.error(request.message);
+        throw new Error("wrong request");
+      }
+      writer.write(colonio.Value.newInt(2));
+    });
+
+    node2.messagingSetHandler("double", (request, writer) => {
+      if (request.message.getType() !== colonio.Value.VALUE_TYPE_DOUBLE ||
+        request.message.getJsValue() !== 3.14) {
+        console.error(request.message);
+        throw new Error("wrong request");
+      }
+      writer.write(colonio.Value.newDouble(2.71));
+    });
+
+    node2.messagingSetHandler("string", (request, writer) => {
+      if (request.message.getType() !== colonio.Value.VALUE_TYPE_STRING ||
+        request.message.getJsValue() !== "hello") {
+        console.error(request.message);
+        throw new Error("wrong request");
+      }
+      writer.write("world");
+    });
+
+    node2.messagingSetHandler("binary", (request, writer) => {
+      let arrayBuf = request.message.getJsValue();
+      let bin = new Uint8Array(arrayBuf);
+      if (request.message.getType() !== colonio.Value.VALUE_TYPE_BINARY ||
+        bin[0] !== 0 || bin[1] !== 1 || bin[2] !== 4 || bin[3] !== 9 || bin[4] !== 16 || bin[5] !== 25) {
+        console.error(request.message);
+        throw new Error("wrong request");
+      }
+      let res = new Uint8Array([25, 16, 9, 4, 1, 0]);
+      writer.write(res.buffer);
+    });
     console.log("wait 5 sec");
     return new Promise((resolve) => {
       setTimeout(() => {
@@ -55,14 +108,59 @@ function test() {
     });
 
   }).then(() => {
-    return node1.messagingPost(node2.getLocalNid(), "test", "from node1");
+    // check nil
+    return node1.messagingPost(node2.getLocalNid(), "null", null);
 
   }).then((result) => {
-    // check result
-    if (result.getJsValue() !== "reply from node1") {
+    if (result.getJsValue() !== null) {
       console.error("result", result);
-      throw new Error("wrong result from node2.onCall");
+      throw new Error("wrong result from node2.messagingSetHandler");
     }
+
+    // check bool
+    return node1.messagingPost(node2.getLocalNid(), "bool", true);
+
+  }).then((result) => {
+    if (result.getJsValue() !== false) {
+      console.error("result", result);
+      throw new Error("wrong result from node2.messagingSetHandler");
+    }
+
+    // check int
+    return node1.messagingPost(node2.getLocalNid(), "int", colonio.Value.newInt(1));
+  }).then((result) => {
+    if (result.getJsValue() !== 2) {
+      console.error("result", result);
+      throw new Error("wrong result from node2.messagingSetHandler");
+    }
+
+    // check double
+    return node1.messagingPost(node2.getLocalNid(), "double", colonio.Value.newDouble(3.14));
+  }).then((result) => {
+    if (result.getJsValue() !== 2.71) {
+      console.error("result", result);
+      throw new Error("wrong result from node2.messagingSetHandler");
+    }
+
+    // check string
+    return node1.messagingPost(node2.getLocalNid(), "string", "hello");
+  }).then((result) => {
+    if (result.getJsValue() !== "world") {
+      console.error("result", result);
+      throw new Error("wrong result from node2.messagingSetHandler");
+    }
+
+    // check binary
+    let buf = new Uint8Array([0, 1, 4, 9, 16, 25]);
+    return node1.messagingPost(node2.getLocalNid(), "binary", buf.buffer);
+  }).then((result) => {
+    let arrayBuf = result.getJsValue();
+    let bin = new Uint8Array(arrayBuf);
+    if (bin[0] !== 25 || bin[1] !== 16 || bin[2] !== 9 || bin[3] !== 4 || bin[4] !== 1 || bin[5] !== 0) {
+      console.error("result", result);
+      throw new Error("wrong result from node2.messagingSetHandler");
+    }
+
     console.log("node1.setPosition");
     return node1.setPosition(0, 0);
 

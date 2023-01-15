@@ -444,20 +444,22 @@ func convertValueJ2G(valueJ js.Value) (Value, error) {
 func convertValueG2J(valueG interface{}) (js.Value, error) {
 	switch v := valueG.(type) {
 	case bool:
-		return helperJ.Call("newValue", valueTypeBool, valueG), nil
+		return helperJ.Call("newValue", valueTypeBool, v), nil
 
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32:
-		return helperJ.Call("newValue", valueTypeInt, valueG), nil
+		return helperJ.Call("newValue", valueTypeInt, v), nil
 
 	case float32, float64:
-		return helperJ.Call("newValue", valueTypeDouble, valueG), nil
+		return helperJ.Call("newValue", valueTypeDouble, v), nil
 
 	case string:
-		return helperJ.Call("newValue", valueTypeString, valueG), nil
+		return helperJ.Call("newValue", valueTypeString, v), nil
 
 	case []byte:
-		log.Fatal("TODO")
-		return helperJ.Call("newValue", valueTypeBinary, valueG), nil
+		arrayBuf := js.Global().Get("ArrayBuffer").New(len(v))
+		u8array := js.Global().Get("Uint8Array").New(arrayBuf)
+		js.CopyBytesToJS(u8array, v)
+		return helperJ.Call("newValue", valueTypeBinary, arrayBuf), nil
 
 	case *valueImpl:
 		return helperJ.Call("newValue", v.valueType, v.valueJ), nil
@@ -517,7 +519,11 @@ func (vi *valueImpl) Set(val interface{}) error {
 		return nil
 
 	case []byte:
-		log.Fatal("TODO")
+		arrayBuf := js.Global().Get("ArrayBuffer").New(len(val))
+		u8array := js.Global().Get("Uint8Array").New(arrayBuf)
+		js.CopyBytesToJS(u8array, val)
+		vi.valueType = valueTypeBinary
+		vi.valueJ = arrayBuf
 		return nil
 
 	case *valueImpl:
@@ -563,6 +569,13 @@ func (vi *valueImpl) GetString() (string, error) {
 }
 
 func (vi *valueImpl) GetBinary() ([]byte, error) {
-	log.Fatal("TODO")
-	return nil, nil
+	if vi.valueType != valueTypeBinary {
+		return nil, fmt.Errorf("type mismatch")
+	}
+
+	u8array := js.Global().Get("Uint8Array").New(vi.valueJ)
+	buf := make([]byte, u8array.Get("byteLength").Int())
+	js.CopyBytesToGo(buf, u8array)
+
+	return buf, nil
 }
