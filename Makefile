@@ -96,6 +96,9 @@ setup-linux:
 setup-macos:
 	mkdir -p $(WORK_PATH)
 	brew update
+	# workaround to install python for macos
+	# https://github.com/ledger/ledger/pull/2161
+	brew list -1 | grep python | while read formula; do brew unlink $${formula}; brew link --overwrite $${formula}; done
 	brew list > $(WORK_PATH)/BREW_PKGS
 	install_pkgs="" && upgrade_pkgs="" \
 	&& for p in autoconf automake cmake libtool openssl@3 pkg-config pybind11; do \
