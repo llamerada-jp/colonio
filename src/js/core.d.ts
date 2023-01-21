@@ -164,6 +164,7 @@ declare class Colonio {
     _cleanup(): void;
 }
 declare let schedulerTimers: Map<number, number>;
+declare let globalScope: WindowOrWorkerGlobalScope;
 declare function schedulerRelease(schedulerPtr: number): void;
 declare function schedulerRequestNextRoutine(schedulerPtr: number, msec: number): void;
 declare let availableSeedLinks: Map<number, WebSocket>;
