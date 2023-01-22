@@ -949,21 +949,69 @@ let availableSeedLinks: Map<number, WebSocket> = new Map();
 function seedLinkWsConnect(seedLink: number, urlPtr: number, urlSiz: number) {
   let url = UTF8ToString(urlPtr, urlSiz);
   console.log("socket connect", seedLink, url);
-  let socket = new WebSocket(url);
+  let socket: WebSocket;
+  try {
+    socket = new WebSocket(url);
+  } catch (error) {
+    let [msgPtr, msgSiz] = allocPtrString(JSON.stringify(error));
+
+    ccall("seed_link_ws_on_error", null,
+      ["number", "number", "number"],
+      [seedLink, msgPtr, msgSiz]);
+
+    freePtr(msgPtr);
+    return;
+  }
+
   socket.binaryType = "arraybuffer";
   availableSeedLinks.set(seedLink, socket);
 
   socket.onopen = (_: Event): void => {
     console.log("socket open", seedLink);
-    if (availableSeedLinks.has(seedLink)) {
-      ccall("seed_link_ws_on_connect", null, ["number"], [seedLink]);
+    if (!availableSeedLinks.has(seedLink)) {
+      return;
     }
+    ccall("seed_link_ws_on_connect", null, ["number"], [seedLink]);
   };
 
-  socket.onerror = (error: Event): void => {
-    console.log("socket error", seedLink, error);
-    if (availableSeedLinks.has(seedLink)) {
-      let [msgPtr, msgSiz] = allocPtrString(JSON.stringify(error));
+  socket.onerror = (ev: Event): void => {
+    console.log("socket error", seedLink, ev);
+    if (!availableSeedLinks.has(seedLink)) {
+      return
+    }
+
+    let [msgPtr, msgSiz] = allocPtrString("");
+
+    ccall("seed_link_ws_on_error", null,
+      ["number", "number", "number"],
+      [seedLink, msgPtr, msgSiz]);
+
+    freePtr(msgPtr);
+  };
+
+  socket.onmessage = (message: MessageEvent<ArrayBuffer>): void => {
+    console.log("socket message", seedLink /*, dumpPacket(e.data) */);
+    if (!availableSeedLinks.has(seedLink)) {
+      return
+    }
+
+    let [dataPtr, dataSiz] = allocPtrArrayBuffer(message.data);
+
+    ccall("seed_link_ws_on_recv", null,
+      ["number", "number", "number"],
+      [seedLink, dataPtr, dataSiz]);
+
+    freePtr(dataPtr);
+  };
+
+  socket.onclose = (ev: CloseEvent): void => {
+    console.log("socket close", seedLink, ev);
+    if (!availableSeedLinks.has(seedLink)) {
+      return;
+    }
+
+    if (!ev.wasClean) {
+      let [msgPtr, msgSiz] = allocPtrString(ev.reason);
 
       ccall("seed_link_ws_on_error", null,
         ["number", "number", "number"],
@@ -971,26 +1019,8 @@ function seedLinkWsConnect(seedLink: number, urlPtr: number, urlSiz: number) {
 
       freePtr(msgPtr);
     }
-  };
 
-  socket.onmessage = (message: MessageEvent<ArrayBuffer>): void => {
-    console.log("socket message", seedLink /*, dumpPacket(e.data) */);
-    if (availableSeedLinks.has(seedLink)) {
-      let [dataPtr, dataSiz] = allocPtrArrayBuffer(message.data);
-
-      ccall("seed_link_ws_on_recv", null,
-        ["number", "number", "number"],
-        [seedLink, dataPtr, dataSiz]);
-
-      freePtr(dataPtr);
-    }
-  };
-
-  socket.onclose = (_: CloseEvent): void => {
-    console.log("socket close", seedLink);
-    if (availableSeedLinks.has(seedLink)) {
-      ccall("seed_link_ws_on_disconnect", null, ["number"], [seedLink]);
-    }
+    ccall("seed_link_ws_on_disconnect", null, ["number"], [seedLink]);
   };
 }
 

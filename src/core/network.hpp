@@ -89,6 +89,7 @@ class Network : public NodeAccessorDelegate, public RoutingDelegate, public Seed
   void routing_on_module_2d_change_nearby_position(const std::map<NodeID, Coordinate>& positions) override;
 
   void seed_accessor_on_change_state() override;
+  void seed_accessor_on_error(const std::string& message) override;
   void seed_accessor_on_recv_config(const picojson::object& config) override;
   void seed_accessor_on_recv_packet(std::unique_ptr<const Packet> packet) override;
   void seed_accessor_on_recv_require_random() override;

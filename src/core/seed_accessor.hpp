@@ -44,6 +44,7 @@ class SeedAccessorDelegate {
  public:
   virtual ~SeedAccessorDelegate();
   virtual void seed_accessor_on_change_state()                                    = 0;
+  virtual void seed_accessor_on_error(const std::string& message)                 = 0;
   virtual void seed_accessor_on_recv_config(const picojson::object& config)       = 0;
   virtual void seed_accessor_on_recv_packet(std::unique_ptr<const Packet> packet) = 0;
   virtual void seed_accessor_on_recv_require_random()                             = 0;
@@ -93,7 +94,7 @@ class SeedAccessor : public SeedLinkDelegate {
 
   void seed_link_on_connect(SeedLink& link) override;
   void seed_link_on_disconnect(SeedLink& link) override;
-  void seed_link_on_error(SeedLink& link) override;
+  void seed_link_on_error(SeedLink& link, const std::string& message) override;
   void seed_link_on_recv(SeedLink& link, const std::string& data) override;
 
   void recv_error(const proto::Error& packet);

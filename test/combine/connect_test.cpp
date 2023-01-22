@@ -57,6 +57,35 @@ TEST(ConnectTest, connect_async) {
   node->disconnect();
 }
 
+TEST(ConnectTest, connect_error) {
+  AsyncHelper helper;
+
+  auto config = make_config_with_name("node");
+  std::unique_ptr<Colonio> node(Colonio::new_instance(config));
+
+  ASSERT_THROW(node->connect("http://localhost:8080/not_exist", ""), Error);
+  ASSERT_THROW(node->disconnect(), Error);
+
+  node->connect(
+      "http://localhost:8080/not_exist", "",
+      [&](Colonio& c) {
+        ADD_FAILURE();
+      },
+      [&](Colonio& c, const Error& err) {
+        helper.pass_signal("connect failure");
+      });
+  helper.wait_signal("connect failure");
+
+  node->disconnect(
+      [&](Colonio& c) {
+        ADD_FAILURE();
+      },
+      [&](Colonio& c, const Error& err) {
+        helper.pass_signal("disconnect failure");
+      });
+  helper.wait_signal("disconnect failure");
+}
+
 TEST(ConnectTest, connect_multi) {
   const std::string URL      = "http://localhost:8080/test";
   const std::string TOKEN    = "";
