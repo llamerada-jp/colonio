@@ -94,17 +94,16 @@ void ColonioImpl::disconnect() {
   Pipe<int> pipe;
 
   scheduler->add_task(this, [&, this]() {
-    network->disconnect(
-        [&pipe]() {
+    disconnect(
+        [&pipe](Colonio&) {
           pipe.push(1);
         },
-        [&pipe](const Error& error) {
+        [&pipe](Colonio&, const Error& error) {
           pipe.push_error(error);
         });
   });
 
   pipe.pop_with_throw();
-  release_resources();
 }
 
 void ColonioImpl::disconnect(

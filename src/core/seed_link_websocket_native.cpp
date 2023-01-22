@@ -16,6 +16,8 @@
 
 #include "seed_link_websocket_native.hpp"
 
+#include "logger.hpp"
+
 namespace colonio {
 SeedLinkWebsocketNative::SeedLinkWebsocketNative(SeedLinkParam& param) : SeedLink(param) {
   client.clear_access_channels(websocketpp::log::alevel::all);
@@ -34,7 +36,7 @@ SeedLinkWebsocketNative::~SeedLinkWebsocketNative() {
   if (con) {
     client.close(con->get_handle(), websocketpp::close::status::going_away, "", ec);
     if (ec) {
-      // @todo error
+      log_debug("error on close websocket").map("message", ec.message());
     }
   }
 
@@ -47,23 +49,23 @@ void SeedLinkWebsocketNative::connect(const std::string& url) {
   con = client.get_connection(url, ec);
 
   if (ec) {
-    // @todo error
-    std::cout << "> Connect initialization error: " << ec.message() << std::endl;
+    this->delegate.seed_link_on_error(*this, ec.message());
+    return;
   }
 
-  con->set_open_handler([this](std::weak_ptr<void>) {
+  con->set_open_handler([this](websocketpp::connection_hdl h) {
     this->delegate.seed_link_on_connect(*this);
   });
 
-  con->set_fail_handler([this](std::weak_ptr<void>) {
-    this->delegate.seed_link_on_error(*this);
+  con->set_fail_handler([this](websocketpp::connection_hdl h) {
+    this->delegate.seed_link_on_error(*this, this->con->get_ec().message());
   });
 
-  con->set_close_handler([this](std::weak_ptr<void>) {
+  con->set_close_handler([this](websocketpp::connection_hdl h) {
     this->delegate.seed_link_on_disconnect(*this);
   });
 
-  con->set_message_handler([this](std::weak_ptr<void>, message_ptr msg) {
+  con->set_message_handler([this](websocketpp::connection_hdl h, message_ptr msg) {
     std::string msg_str(msg->get_payload());
     this->delegate.seed_link_on_recv(*this, msg_str);
   });
@@ -80,8 +82,7 @@ void SeedLinkWebsocketNative::send(const std::string& data) {
 
   client.send(con->get_handle(), data, websocketpp::frame::opcode::binary, ec);
   if (ec) {
-    // @todo error
-    std::cout << "> Error sending message: " << ec.message() << std::endl;
+    this->delegate.seed_link_on_error(*this, ec.message());
   }
 }
 }  // namespace colonio

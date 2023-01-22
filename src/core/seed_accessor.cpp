@@ -167,10 +167,11 @@ void SeedAccessor::seed_link_on_disconnect(SeedLink& l) {
   }
 }
 
-void SeedAccessor::seed_link_on_error(SeedLink& l) {
+void SeedAccessor::seed_link_on_error(SeedLink& l, const std::string& message) {
   if (link.get() == &l) {
-    scheduler.add_task(this, [this]() {
-      disconnect();
+    scheduler.add_task(this, [this, message]() {
+      delegate.seed_accessor_on_error(message);
+      // disconnect();
     });
   }
 }

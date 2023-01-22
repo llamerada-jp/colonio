@@ -52,7 +52,8 @@ void seed_link_ws_on_error(COLONIO_PTR_T this_ptr, COLONIO_PTR_T msg_ptr, int ms
   colonio::SeedLinkWebsocketWasm& THIS = *reinterpret_cast<colonio::SeedLinkWebsocketWasm*>(this_ptr);
   assert(THIS.debug_ptr == &THIS);
 
-  THIS.delegate.seed_link_on_error(THIS);
+  std::string err = std::string(reinterpret_cast<const char*>(msg_ptr), msg_siz);
+  THIS.delegate.seed_link_on_error(THIS, err);
 }
 
 void seed_link_ws_on_recv(COLONIO_PTR_T this_ptr, COLONIO_PTR_T data_ptr, int data_siz) {

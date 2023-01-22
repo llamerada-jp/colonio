@@ -33,10 +33,10 @@ struct SeedLinkParam {
 class SeedLinkDelegate {
  public:
   virtual ~SeedLinkDelegate();
-  virtual void seed_link_on_connect(SeedLink& link)                       = 0;
-  virtual void seed_link_on_disconnect(SeedLink& link)                    = 0;
-  virtual void seed_link_on_error(SeedLink& link)                         = 0;
-  virtual void seed_link_on_recv(SeedLink& link, const std::string& data) = 0;
+  virtual void seed_link_on_connect(SeedLink& link)                           = 0;
+  virtual void seed_link_on_disconnect(SeedLink& link)                        = 0;
+  virtual void seed_link_on_error(SeedLink& link, const std::string& message) = 0;
+  virtual void seed_link_on_recv(SeedLink& link, const std::string& data)     = 0;
 };
 
 class SeedLink {

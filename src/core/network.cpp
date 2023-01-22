@@ -73,18 +73,19 @@ void Network::connect(
 }
 
 void Network::disconnect(std::function<void()>&& on_success, std::function<void(const Error&)>&& on_failure) {
-  scheduler.add_task(this, [this, on_success] {
+  scheduler.add_task(this, [this, on_success, on_failure] {
+    if (!enforce_online && on_failure) {
+      on_failure(colonio_error(ErrorCode::CONNECTION_OFFLINE, "the connection had been offline"));
+      return;
+    }
     enforce_online = false;
     seed_accessor->disconnect();
     node_accessor->disconnect_all([this, on_success]() {
       scheduler.add_task(this, [this, on_success] {
         link_state = LinkState::OFFLINE;
 
-        // TODO: tell state of network to Routing or other modules required.
-        // for (auto& module : modules) {
-        //   module.second->module_on_change_accessor_state(LinkState::OFFLINE, LinkState::OFFLINE);
-        // }
-        // clear_modules();
+        seed_accessor.reset();
+        node_accessor.reset();
 
         scheduler.remove(this, false);
         if (on_success) {
@@ -112,6 +113,12 @@ const NodeID& Network::get_relay_nid_2d(const Coordinate& position) {
 }
 
 void Network::update_accessor_state() {
+  if (!seed_accessor) {
+    assert(node_accessor == nullptr);
+    link_state = LinkState::OFFLINE;
+    return;
+  }
+
   LinkState::Type seed_status = seed_accessor->get_link_state();
   LinkState::Type node_status = node_accessor->get_link_state();
 
@@ -143,11 +150,6 @@ void Network::update_accessor_state() {
 
   } else if (seed_status == LinkState::CONNECTING) {
     status = LinkState::CONNECTING;
-
-  } else if (!seed_accessor) {
-    assert(node_accessor == nullptr);
-
-    status = LinkState::OFFLINE;
 
   } else if (seed_accessor->get_auth_status() == AuthStatus::FAILURE) {
     log_error("connect failure");
@@ -325,6 +327,16 @@ void Network::seed_accessor_on_change_state() {
       routing->on_change_network_state(seed_accessor->get_link_state(), node_accessor->get_link_state());
     }
   });
+}
+
+void Network::seed_accessor_on_error(const std::string& message) {
+  if (cb_connect_failure) {
+    auto cb            = cb_connect_failure;
+    cb_connect_success = nullptr;
+    cb_connect_failure = nullptr;
+    disconnect(nullptr, nullptr);
+    cb(colonio_error(ErrorCode::CONNECTION_OFFLINE, message));
+  }
 }
 
 void Network::seed_accessor_on_recv_config(const picojson::object& config) {
