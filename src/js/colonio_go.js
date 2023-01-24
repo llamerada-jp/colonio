@@ -36,19 +36,36 @@ class ColonioGo {
     onResponse(id, obj) {
         console.error("onResponse method must by override by golang", id, obj);
     }
+    convertError(err) {
+        try {
+            if (err instanceof this.mod.ErrorEntry) {
+                return err;
+            }
+            if (err instanceof Error) {
+                console.error(err);
+                return new this.mod.ErrorEntry(true, this.mod.ErrorCode.UNDEFINED, err.message, 0, "");
+            }
+            console.error(err);
+            return err;
+        }
+        catch (e) {
+            console.error(e);
+            return err;
+        }
+    }
     // helpers for core module
     connect(colonio, id, url, token) {
         colonio.connect(url, token).then(() => {
             this.onResponse(id);
         }, (err) => {
-            this.onResponse(id, err);
+            this.onResponse(id, this.convertError(err));
         });
     }
     disconnect(colonio, id) {
         colonio.disconnect().then(() => {
             this.onResponse(id);
         }, (err) => {
-            this.onResponse(id, err);
+            this.onResponse(id, this.convertError(err));
         });
     }
     // messaging
@@ -56,7 +73,7 @@ class ColonioGo {
         colonio.messagingPost(dst, name, this.newValue(valueType, valueValue), opt).then((response) => {
             this.onResponse(id, response);
         }, (err) => {
-            this.onResponse(id, err);
+            this.onResponse(id, this.convertError(err));
         });
     }
     messagingSetHandler(colonio, id, name) {
@@ -69,21 +86,21 @@ class ColonioGo {
         colonio.kvsGetLocalData().then((kld) => {
             this.onResponse(id, kld);
         }, (err) => {
-            this.onResponse(id, err);
+            this.onResponse(id, this.convertError(err));
         });
     }
     kvsGet(colonio, id, key) {
         colonio.kvsGet(key).then((value) => {
             this.onResponse(id, value);
         }, (err) => {
-            this.onResponse(id, err);
+            this.onResponse(id, this.convertError(err));
         });
     }
     kvsSet(colonio, id, key, val, opt) {
         colonio.kvsSet(key, val, opt).then(() => {
             this.onResponse(id);
         }, (err) => {
-            this.onResponse(id, err);
+            this.onResponse(id, this.convertError(err));
         });
     }
     // spread
@@ -91,7 +108,7 @@ class ColonioGo {
         colonio.spreadPost(x, y, r, name, message, opt).then(() => {
             this.onResponse(id);
         }, (err) => {
-            this.onResponse(id, err);
+            this.onResponse(id, this.convertError(err));
         });
     }
     spreadSetHandler(colonio, id, name) {

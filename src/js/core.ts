@@ -922,20 +922,19 @@ class Colonio {
 
 /* Scheduler */
 let schedulerTimers: Map<number, number> = new Map();
-let globalScope: WindowOrWorkerGlobalScope = this.self;
 
 function schedulerRelease(schedulerPtr: number): void {
   if (schedulerTimers.has(schedulerPtr)) {
-    globalScope.clearTimeout(schedulerTimers.get(schedulerPtr));
+    globalThis.clearTimeout(schedulerTimers.get(schedulerPtr));
     schedulerTimers.delete(schedulerPtr);
   }
 }
 
 function schedulerRequestNextRoutine(schedulerPtr: number, msec: number): void {
   if (schedulerTimers.has(schedulerPtr)) {
-    globalScope.clearTimeout(schedulerTimers.get(schedulerPtr));
+    globalThis.clearTimeout(schedulerTimers.get(schedulerPtr));
   }
-  schedulerTimers.set(schedulerPtr, globalScope.setTimeout((): void => {
+  schedulerTimers.set(schedulerPtr, globalThis.setTimeout((): void => {
     let next = ccall("scheduler_invoke", "number", ["number"], [schedulerPtr]);
     if (next >= 0) {
       schedulerRequestNextRoutine(schedulerPtr, next);
