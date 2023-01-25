@@ -22,7 +22,7 @@ if [ "${OS}" = "Linux" ]; then
     make build BUILD_TYPE=Debug WITH_TEST=ON WITH_SAMPLE=ON WITH_COVERAGE=ON
     make test CTEST_ARGS='--overwrite MemoryCheckCommandOptions="--leak-check=full" -T memcheck --output-on-failure'
     export PATH=$PATH:$(python3 -m site --user-base)/bin
-    coveralls -b ./build/linux_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/test -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'
+    coveralls -b ./build/linux_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/js -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'
     exit 0
 
   elif [ "${ARCH}" = "aarch64" ]; then
