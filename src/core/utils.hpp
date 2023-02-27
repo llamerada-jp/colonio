@@ -25,6 +25,9 @@
 #endif
 
 #include <cassert>
+#include <iomanip>
+#include <istream>
+#include <sstream>
 #include <string>
 
 #include "colonio/colonio.hpp"
@@ -114,6 +117,18 @@ class Defer {
 template<typename F>
 static Defer<F> defer(F func) {
   return Defer<F>(func);
+}
+
+/**
+ * Convert integer to hex string.
+ * @param num A source integer.
+ * @return A integer as string.
+ */
+template<class T>
+std::string to_hex(T num) {
+  std::ostringstream os;
+  os << std::hex << std::setfill('0') << std::setw(sizeof(T) * 2) << num;
+  return os.str();
 }
 
 std::string dump_binary(const std::string* bin);

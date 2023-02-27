@@ -37,7 +37,6 @@
 #include <string>
 #include <thread>
 
-#include "convert.hpp"
 #include "definition.hpp"
 #include "packet.hpp"
 #include "utils.hpp"
@@ -105,8 +104,8 @@ std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
 
   out << is << "dst_nid : " << packet.dst_nid.to_str() << std::endl;
   out << is << "src_nid : " << packet.src_nid.to_str() << std::endl;
-  out << is << "id : " << Convert::int2str(packet.id) << std::endl;
-  out << is << "mode : " << Convert::int2str(packet.mode) << std::endl;
+  out << is << "id : " << Utils::to_hex(packet.id) << std::endl;
+  out << is << "mode : " << Utils::to_hex(packet.mode) << std::endl;
   out << is << "content : " << packet.content->as_proto().DebugString();
 
   return out.str();

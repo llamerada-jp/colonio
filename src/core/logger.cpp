@@ -21,7 +21,6 @@
 #include <iomanip>
 #include <sstream>
 
-#include "convert.hpp"
 #include "node_id.hpp"
 #include "packet.hpp"
 #include "utils.hpp"
@@ -67,10 +66,10 @@ Logger::L& Logger::L::map(const std::string& name, const Packet& value) {
   picojson::object p;
   p.insert(std::make_pair("dst_nid", picojson::value(value.dst_nid.to_str())));
   p.insert(std::make_pair("src_nid", picojson::value(value.src_nid.to_str())));
-  p.insert(std::make_pair("id", picojson::value(Convert::int2str(value.id))));
-  p.insert(std::make_pair("hop_count", picojson::value(Convert::int2str(value.hop_count))));
+  p.insert(std::make_pair("id", picojson::value(Utils::to_hex(value.id))));
+  p.insert(std::make_pair("hop_count", picojson::value(Utils::to_hex(value.hop_count))));
   p.insert(std::make_pair("content", picojson::value(value.content->as_proto().DebugString())));
-  p.insert(std::make_pair("mode", picojson::value(Convert::int2str(value.mode))));
+  p.insert(std::make_pair("mode", picojson::value(Utils::to_hex(value.mode))));
   params.insert(std::make_pair(name, picojson::value(p)));
   return *this;
 }
@@ -106,12 +105,12 @@ Logger::L& Logger::L::map_int(const std::string& name, int64_t value) {
 }
 
 Logger::L& Logger::L::map_u32(const std::string& name, uint32_t value) {
-  params.insert(std::make_pair(name, picojson::value(Convert::int2str(value))));
+  params.insert(std::make_pair(name, picojson::value(Utils::to_hex(value))));
   return *this;
 }
 
 Logger::L& Logger::L::map_u64(const std::string& name, uint64_t value) {
-  params.insert(std::make_pair(name, picojson::value(Convert::int2str(value))));
+  params.insert(std::make_pair(name, picojson::value(Utils::to_hex(value))));
   return *this;
 }
 

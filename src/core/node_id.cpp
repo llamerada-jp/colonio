@@ -23,7 +23,6 @@ extern "C" {
 #include <tuple>
 
 #include "colonio.pb.h"
-#include "convert.hpp"
 #include "definition.hpp"
 #include "node_id.hpp"
 #include "random.hpp"
@@ -470,7 +469,7 @@ std::string NodeID::to_str() const {
     } break;
 
     case Type::NORMAL: {
-      return Convert::int2str(id[0]) + Convert::int2str(id[1]);
+      return Utils::to_hex(id[0]) + Utils::to_hex(id[1]);
     } break;
 
     case Type::THIS: {

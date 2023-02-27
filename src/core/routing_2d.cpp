@@ -20,7 +20,6 @@
 #include <delaunay_triangulation.hpp>
 #include <list>
 
-#include "convert.hpp"
 #include "coord_system.hpp"
 #include "logger.hpp"
 #include "packet.hpp"
@@ -129,7 +128,7 @@ bool Routing2D::update_routing_info(
 
   for (auto& nid : connected_nodes) {
     if (known_nodes.find(nid) != known_nodes.end()) {
-      nodes.insert(std::make_pair(nid.to_str(), Convert::coordinate2json(known_nodes.at(nid))));
+      nodes.insert(std::make_pair(nid.to_str(), known_nodes.at(nid).to_json()));
       const NodeID& n1 = NodeID::THIS;
       const NodeID& n2 = (nid == local_nid ? NodeID::THIS : nid);
       link_tmp.push_back(
@@ -282,7 +281,7 @@ void Routing2D::update_node_infos() {
   {
     picojson::object o;
     for (auto& it : nearby_nodes) {
-      o.insert(std::make_pair(it.first.to_str(), Convert::coordinate2json(it.second)));
+      o.insert(std::make_pair(it.first.to_str(), it.second.to_json()));
     }
     log_debug("routing 2d required").map("nids", picojson::value(o));
   }

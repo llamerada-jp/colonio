@@ -17,7 +17,6 @@
 
 #include <cassert>
 
-#include "convert.hpp"
 #include "coord_system_plane.hpp"
 #include "coord_system_sphere.hpp"
 #include "logger.hpp"
@@ -170,7 +169,7 @@ std::tuple<double, double> ColonioImpl::set_position(double x, double y) {
     coord_system->set_local_position(new_position);
     scheduler->add_task(this, [this, new_position]() {
       network->change_local_position(new_position);
-      log_debug("current position").map("coordinate", Convert::coordinate2json(new_position));
+      log_debug("current position").map("coordinate", new_position.to_json());
     });
   }
 

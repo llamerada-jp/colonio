@@ -18,7 +18,6 @@
 #include <cassert>
 #include <list>
 
-#include "convert.hpp"
 #include "logger.hpp"
 #include "packet.hpp"
 #include "random.hpp"

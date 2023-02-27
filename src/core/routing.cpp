@@ -24,7 +24,6 @@
 
 #include "colonio.pb.h"
 #include "command_manager.hpp"
-#include "convert.hpp"
 #include "logger.hpp"
 #include "packet.hpp"
 #include "random.hpp"

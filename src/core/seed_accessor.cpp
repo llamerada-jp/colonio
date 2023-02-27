@@ -24,7 +24,6 @@
 #include <vector>
 
 #include "colonio.pb.h"
-#include "convert.hpp"
 #include "logger.hpp"
 #include "packet.hpp"
 #include "scheduler.hpp"
