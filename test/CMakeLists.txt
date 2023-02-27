@@ -44,6 +44,7 @@ endforeach()
 set(test_targets_core
   command_manager
   coord_system_plane
+  coordinate
   exception
   logger
   node_id

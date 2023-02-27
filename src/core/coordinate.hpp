@@ -34,7 +34,7 @@ class Coordinate {
   bool operator<(const Coordinate& r) const;
   bool operator!=(const Coordinate& r) const;
 
-  bool is_enable();
+  bool is_enable() const;
   void to_pb(proto::Coordinate* pb) const;
   picojson::value to_json() const;
 };
