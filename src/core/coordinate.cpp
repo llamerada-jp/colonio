@@ -21,6 +21,7 @@
 #include <limits>
 
 #include "colonio.pb.h"
+#include "utils.hpp"
 
 namespace colonio {
 Coordinate::Coordinate() :
@@ -63,5 +64,13 @@ bool Coordinate::is_enable() {
 void Coordinate::to_pb(proto::Coordinate* pb) const {
   pb->set_x(x);
   pb->set_y(y);
+}
+
+picojson::value Coordinate::to_json() const {
+  assert(Utils::is_safe_value(x) && Utils::is_safe_value(y));
+  picojson::object obj;
+  obj.insert(std::make_pair("x", picojson::value(x)));
+  obj.insert(std::make_pair("y", picojson::value(y)));
+  return picojson::value(obj);
 }
 }  // namespace colonio

@@ -27,7 +27,6 @@
 #include <cassert>
 #include <string>
 
-#include "convert.hpp"
 #include "logger.hpp"
 #include "scheduler.hpp"
 #include "webrtc_context_native.hpp"

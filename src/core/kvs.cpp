@@ -18,7 +18,6 @@
 #include <cassert>
 
 #include "command_manager.hpp"
-#include "convert.hpp"
 #include "definition.hpp"
 #include "logger.hpp"
 #include "random.hpp"

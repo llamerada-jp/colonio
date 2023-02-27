@@ -18,7 +18,6 @@
 #include <cassert>
 
 #include "colonio.pb.h"
-#include "convert.hpp"
 #include "utils.hpp"
 
 namespace colonio {

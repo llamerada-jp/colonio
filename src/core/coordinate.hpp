@@ -15,6 +15,8 @@
  */
 #pragma once
 
+#include <picojson.h>
+
 namespace colonio {
 namespace proto {
 class Coordinate;
@@ -34,5 +36,6 @@ class Coordinate {
 
   bool is_enable();
   void to_pb(proto::Coordinate* pb) const;
+  picojson::value to_json() const;
 };
 }  // namespace colonio

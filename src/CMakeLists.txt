@@ -8,7 +8,6 @@ set(COLONIO_FILES
   core/colonio.pb.cc
   core/command_manager.cpp
   core/command.cpp
-  core/convert.cpp
   core/coord_system_plane.cpp
   core/coord_system_sphere.cpp
   core/coord_system.cpp
