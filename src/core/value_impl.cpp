@@ -19,6 +19,7 @@
 
 #include "colonio.pb.h"
 #include "convert.hpp"
+#include "utils.hpp"
 
 namespace colonio {
 ValueImpl::ValueImpl() : type(Value::NULL_T) {
@@ -146,7 +147,7 @@ std::string ValueImpl::to_str(const Value& value) {
       return value.impl->storage.bool_v ? "true" : "false";
 
     case Value::INT_T:
-      return Convert::int2str(value.impl->storage.int64_v);
+      return std::to_string(value.impl->storage.int64_v);
 
     case Value::DOUBLE_T:
       return std::to_string(value.impl->storage.double_v);
@@ -155,8 +156,7 @@ std::string ValueImpl::to_str(const Value& value) {
       return std::string("\"") + *(value.impl->storage.string_v) + std::string("\"");
 
     case Value::BINARY_T:
-      assert(false);
-      return std::string("binary");
+      return Utils::dump_binary(value.impl->storage.binary_v->data(), value.impl->storage.binary_v->size());
 
     default:
       assert(value.impl->type == Value::NULL_T);

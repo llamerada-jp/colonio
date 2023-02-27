@@ -51,6 +51,7 @@ set(test_targets_core
   user_thread_pool
   utils
   value
+  value_impl
 )
 
 foreach(test_target IN LISTS test_targets_core)

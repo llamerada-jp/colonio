@@ -74,6 +74,10 @@ Utils::get_json<unsigned int>(const picojson::object& obj, const std::string& ke
 }
 
 std::string Utils::dump_binary(const std::string* bin) {
+  return dump_binary(bin->c_str(), bin->size());
+}
+
+std::string Utils::dump_binary(const void* bin, std::size_t len) {
   if (bin == nullptr) {
     return "null";
   }
@@ -81,11 +85,11 @@ std::string Utils::dump_binary(const std::string* bin) {
   std::stringstream out;
 
   out << std::hex;
-  for (unsigned int idx = 0; idx < bin->size(); idx++) {
+  for (unsigned int idx = 0; idx < len; idx++) {
     if (idx != 0) {
       out << " ";
     }
-    out << std::setw(2) << std::setfill('0') << (0xFF & (*bin)[idx]);
+    out << std::setw(2) << std::setfill('0') << (0xFF & reinterpret_cast<const uint8_t*>(bin)[idx]);
   }
 
   return out.str();
