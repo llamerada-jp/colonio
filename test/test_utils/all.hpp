@@ -18,3 +18,16 @@
 #include "async_helper.hpp"
 #include "log_helper.hpp"
 #include "test_seed.hpp"
+
+bool check_bin_equal(const void* ptr1, const void* ptr2, std::size_t siz) {
+  const uint8_t* bin1 = reinterpret_cast<const uint8_t*>(ptr1);
+  const uint8_t* bin2 = reinterpret_cast<const uint8_t*>(ptr2);
+
+  for (std::size_t i = 0; i < siz; i++) {
+    if (bin1[i] != bin2[i]) {
+      return false;
+    }
+  }
+
+  return true;
+}
