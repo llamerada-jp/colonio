@@ -36,7 +36,8 @@ Coordinate Coordinate::from_pb(const proto::Coordinate& pb) {
 }
 
 bool Coordinate::operator<(const Coordinate& r) const {
-  assert(!std::isnan(x) && !std::isnan(y) && !std::isnan(r.x) && !std::isnan(r.y));
+  assert(is_enable());
+  assert(r.is_enable());
 
   if (x != r.x) {
     return x < r.x;
@@ -47,12 +48,13 @@ bool Coordinate::operator<(const Coordinate& r) const {
 }
 
 bool Coordinate::operator!=(const Coordinate& r) const {
-  assert(!std::isnan(x) && !std::isnan(y) && !std::isnan(r.x) && !std::isnan(r.y));
+  assert(is_enable());
+  assert(r.is_enable());
 
   return x != r.x || y != r.y;
 }
 
-bool Coordinate::is_enable() {
+bool Coordinate::is_enable() const {
   if (!std::isnan(x) && !std::isnan(y)) {
     return true;
 
