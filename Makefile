@@ -1,7 +1,7 @@
 SHELL := /bin/bash -o pipefail
 
 # version (yyyymmdd)
-DOCKER_IMAGE_VERSION := 20230108a
+DOCKER_IMAGE_VERSION := 20230318a
 DOCKER_IMAGE_NAME := ghcr.io/llamerada-jp/colonio-buildenv
 DOCKER_IMAGE := $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_VERSION)
 
@@ -23,13 +23,13 @@ export PROTOC := $(LOCAL_ENV_PATH)/bin/protoc
 
 # the versions of depending packages
 # https://github.com/chriskohlhoff/asio/
-ASIO_TAG := asio-1-24-0
+ASIO_TAG := asio-1-26-0
 # https://github.com/hs-nazuna/cpp_algorithms
 CPP_ALGORITHMS_HASH := 1ba3fde9c4b1d067986f5243a0f03daffa501ae2
 # https://github.com/emscripten-core/emscripten
-EMSCRIPTEN_VERSION := 3.1.29
+EMSCRIPTEN_VERSION := 3.1.34
 # https://github.com/google/googletest
-GTEST_VERSION := 1.12.1
+GTEST_VERSION := 1.13.0
 ifeq ($(shell uname -s),Darwin)
 LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m108/libwebrtc-108.0.5359.124-macos-amd64.zip"
 else ifeq ($(shell uname -s),Linux)
@@ -46,13 +46,15 @@ endif
 # https://github.com/kazuho/picojson
 PICOJSON_VERSION := 1.3.0
 # https://github.com/protocolbuffers/protobuf
+# using v21.12 to build protobuf for wasm
+# protobuf v22 or later using bazel and I don't have any idea how to build it for wasm in this environment
 PROTOBUF_VERSION := 21.12
 # https://github.com/golang/protobuf
-GO_PROTOBUF_VERSION := 1.5.2
+GO_PROTOBUF_VERSION := 1.5.3
 # https://github.com/zaphoyd/websocketpp
 WEBSOCKETPP_VERSION := 0.8.2
 # https://github.com/gohugoio/hugo
-HUGO_VERSION := v0.109.0
+HUGO_VERSION := v0.111.3
 
 # build options
 BUILD_TYPE ?= Release
@@ -135,7 +137,7 @@ setup-local:
 	# gtest
 	cd $(WORK_PATH) \
 	&& $(RM) -r googletest \
-	&& git clone --depth=1 --branch release-$(GTEST_VERSION) https://github.com/google/googletest.git \
+	&& git clone --depth=1 --branch v$(GTEST_VERSION) https://github.com/google/googletest.git \
 	&& cd googletest \
 	&& git submodule update --init --recursive \
 	&& cmake -DCMAKE_INSTALL_PREFIX=$(LOCAL_ENV_PATH) . \
