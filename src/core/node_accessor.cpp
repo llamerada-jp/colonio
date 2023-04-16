@@ -65,6 +65,7 @@ NodeAccessor::~NodeAccessor() {
 void NodeAccessor::connect_link(const NodeID& nid) {
   if (first_link != nullptr) {
     log_debug("canceled to connect link until connect first link").map("nid", nid);
+    return;
   }
 
   auto it = nid_links.find(nid);
@@ -286,7 +287,12 @@ void NodeAccessor::CommandOffer::on_success(const proto::SignalingOfferSuccess& 
           if (!accessor.first_link) {
             return;
           }
-          assert(accessor.nid_links.empty());
+
+          // avoid duplicate link when creating the first link
+          if (accessor.nid_links.find(second_nid) != accessor.nid_links.end()) {
+            accessor.disconnect_link(accessor.first_link);
+            return;
+          }
 
           link = accessor.first_link;
           accessor.assign_link_nid(second_nid, accessor.first_link);

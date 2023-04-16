@@ -16,8 +16,6 @@ include(Dart)
 include_directories(${PROJECT_SOURCE_DIR}/src)
 include_directories(${PROJECT_SOURCE_DIR}/test)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCOLONIO_SEED_BIN_PATH=\\\"${COLONIO_SEED_BIN_PATH}\\\"")
-
 # Library for test.
 add_library(colonio_test STATIC
   ${CORE_FILES}
@@ -42,13 +40,14 @@ endforeach()
 
 # Unit test of core module
 set(test_targets_core
-  command_manager
   coord_system_plane
   coordinate
   exception
   logger
   node_id
   scheduler_native
+  seed_accessor
+  seed_link_native
   user_thread_pool
   utils
   value

@@ -3,6 +3,7 @@
 package test
 
 import (
+	"log"
 	"os"
 	"os/exec"
 	"path"
@@ -19,6 +20,7 @@ func setup() error {
 	seed = exec.Command(os.Getenv("COLONIO_SEED_BIN_PATH"), "--config", path.Join(cur, "seed.json"))
 	seed.Stdout = os.Stdout
 	seed.Stderr = os.Stderr
+	log.Println("start seed")
 	return seed.Start()
 }
 

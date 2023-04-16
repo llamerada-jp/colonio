@@ -15,44 +15,35 @@
  */
 #pragma once
 
+#include <functional>
 #include <string>
 
 namespace colonio {
 class Logger;
 class Scheduler;
 class SeedLink;
-class SeedLinkDelegate;
 
 struct SeedLinkParam {
-  SeedLinkDelegate& delegate;
   Logger& logger;
+  std::string url;
+  bool disable_verification;
 
-  SeedLinkParam(SeedLinkDelegate& delegate_, Logger& logger_);
-};
-
-class SeedLinkDelegate {
- public:
-  virtual ~SeedLinkDelegate();
-  virtual void seed_link_on_connect(SeedLink& link)                           = 0;
-  virtual void seed_link_on_disconnect(SeedLink& link)                        = 0;
-  virtual void seed_link_on_error(SeedLink& link, const std::string& message) = 0;
-  virtual void seed_link_on_recv(SeedLink& link, const std::string& data)     = 0;
+  SeedLinkParam(Logger& l, const std::string& u, bool v);
 };
 
 class SeedLink {
  public:
-  SeedLinkDelegate& delegate;
-
   static SeedLink* new_instance(SeedLinkParam& param);
 
   virtual ~SeedLink();
 
-  virtual void connect(const std::string& url) = 0;
-  virtual void disconnect()                    = 0;
-  virtual void send(const std::string& data)   = 0;
+  virtual void post(
+      const std::string& path, const std::string& data, std::function<void(int, const std::string&)>&& cb_response) = 0;
 
  protected:
   Logger& logger;
+  const std::string URL;
+  const bool DISABLE_VERIFICATION;
 
   SeedLink(SeedLinkParam& param);
 };

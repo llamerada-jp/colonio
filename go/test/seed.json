@@ -26,8 +26,11 @@
     }
   },
   "path": "/test",
-  "pingInterval": 20000,
   "port": 8080,
-  "revision": 20201121.1,
-  "timeout": 30000
+  "keepAliveTimeout": 30000,
+  "PollingTimeout": 10000,
+  "certFile": "../../localhost.crt",
+  "keyFile": "../../localhost.key",
+  "useTcp": true,
+  "revision": 20201121.1
 }

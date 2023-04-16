@@ -551,7 +551,8 @@ void ColonioImpl::allocate_resources() {
   scheduler.reset(Scheduler::new_instance(logger));
   coord_system.reset();
   command_manager = std::make_unique<CommandManager>(logger, random, *scheduler, local_nid, *this);
-  network         = std::make_unique<Network>(logger, random, *scheduler, *command_manager, local_nid, *this);
+  network         = std::make_unique<Network>(
+      logger, random, *scheduler, *command_manager, local_nid, *this, local_config.disable_seed_verification);
   messaging.reset();
 }
 

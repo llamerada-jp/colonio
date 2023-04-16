@@ -46,7 +46,11 @@ void default_logger_func(Colonio&, const std::string& json) {
   }
 }
 
-ColonioConfig::ColonioConfig() : disable_callback_thread(false), max_user_threads(1), logger_func(default_logger_func) {
+ColonioConfig::ColonioConfig() :
+    disable_callback_thread(false),
+    disable_seed_verification(false),
+    max_user_threads(1),
+    logger_func(default_logger_func) {
 }
 
 Colonio* Colonio::new_instance(ColonioConfig& config) {

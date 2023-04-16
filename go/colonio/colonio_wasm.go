@@ -173,6 +173,8 @@ func onResponse(_ js.Value, args []js.Value) interface{} {
 
 func NewConfig() *ColonioConfig {
 	return &ColonioConfig{
+		DisableSeedVerification: false,
+		MaxUserThreads:          1,
 		LoggerFunc: func(s string) {
 			log.Println(s)
 		},
@@ -182,10 +184,12 @@ func NewConfig() *ColonioConfig {
 // NewColonio creates a new instance of colonio object.
 func NewColonio(config *ColonioConfig) (Colonio, error) {
 	impl := &colonioImpl{
-		colonioJ: helperJ.Call("newColonio", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-			config.LoggerFunc(args[0].String())
-			return nil
-		})),
+		colonioJ: helperJ.Call("newColonio",
+			js.ValueOf(config.DisableSeedVerification),
+			js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+				config.LoggerFunc(args[0].String())
+				return nil
+			})),
 		messagingMutex:        sync.Mutex{},
 		messagingHandlerNames: make(map[string]uint32),
 		spreadMutex:           sync.Mutex{},

@@ -43,7 +43,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
   # #
   list(APPEND COLONIO_FILES core/md5/md5.c)
   list(APPEND COLONIO_FILES core/scheduler_wasm.cpp)
-  list(APPEND COLONIO_FILES core/seed_link_websocket_wasm.cpp)
+  list(APPEND COLONIO_FILES core/seed_link_wasm.cpp)
   list(APPEND COLONIO_FILES core/webrtc_context_wasm.cpp)
   list(APPEND COLONIO_FILES core/webrtc_link_wasm.cpp)
 
@@ -65,7 +65,7 @@ else()
   # # Native
   # #
   list(APPEND COLONIO_FILES core/scheduler_native.cpp)
-  list(APPEND COLONIO_FILES core/seed_link_websocket_native.cpp)
+  list(APPEND COLONIO_FILES core/seed_link_native.cpp)
   list(APPEND COLONIO_FILES core/webrtc_context_native.cpp)
   list(APPEND COLONIO_FILES core/webrtc_link_native.cpp)
 

@@ -292,6 +292,16 @@ class ColonioConfig {
   bool disable_callback_thread;
 
   /**
+   * @brief `disable_seed_verification` is a switch to disable SSL certificate verification for the seed.
+   *
+   * This switch is only for testing or developing. It is strongly recommended that this switch be set to off when
+   * publishing services.
+   *
+   * default: false
+   */
+  bool disable_seed_verification;
+
+  /**
    * @brief `max_user_threads` describes the maximum number of user threads.
    *
    * Callback functions of Colonio will be run on user threads when `disable_callback_thread` is false. User threads are
@@ -374,7 +384,7 @@ class Colonio {
   /**
    * @brief Connect to seed and join the cluster.
    *
-   * @param url Set the URL of the seed. e.g. "wss://host:1234/path".
+   * @param url Set the URL of the seed. e.g. "https://host:1234/path".
    * @param token token does not use. This is an argument for future expansion.
    *
    * Connect to the seed. Also, if there are already other nodes forming a cluster, join them.
@@ -391,7 +401,7 @@ class Colonio {
   /**
    * @brief Connect to seed and join the cluster asynchronously.
    *
-   * @param url Set the URL of the seed. e.g. "wss://host:1234/path".
+   * @param url Set the URL of the seed. e.g. "https://host:1234/path".
    * @param token token does not use. This is an argument for future expansion.
    * @param on_success The function will call when success to connect.
    * @param on_failure The function will call when failure to connect with error information.

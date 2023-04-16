@@ -22,15 +22,19 @@
 #include "colonio/colonio.hpp"
 #include "core/logger.hpp"
 
+std::string last_log;
+
 void log_receiver(const std::string& json) {
   std::cout << json << std::endl;
+  last_log = json;
 }
 
 colonio::Logger logger(log_receiver);
 
 colonio::ColonioConfig make_config_with_name(const std::string& name) {
   colonio::ColonioConfig config;
-  config.logger_func = [name](colonio::Colonio& _, const std::string& json) {
+  config.disable_seed_verification = true;
+  config.logger_func               = [name](colonio::Colonio& _, const std::string& json) {
     std::cout << name << ":" << json << std::endl;
   };
   return config;

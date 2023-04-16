@@ -32,7 +32,7 @@ const (
 
 	// Packet mode.
 	ModeNone      = 0x0000
-	ModeReply     = 0x0001
+	ModeResponse  = 0x0001
 	ModeExplicit  = 0x0002
 	ModeOneWay    = 0x0004
 	ModeRelaySeed = 0x0008
@@ -59,8 +59,8 @@ const (
 	OfferTypeFirst = 0
 
 	// Hint
-	HintOnlyOne  = 0x0001
-	HintAssigned = 0x0002
+	HintOnlyOne       = uint32(0x01)
+	HintRequireRandom = uint32(0x02)
 
 	// Key of routineLocal
 	GroupMutex = 1

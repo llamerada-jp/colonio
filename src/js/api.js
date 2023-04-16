@@ -18,10 +18,7 @@ mergeInto(LibraryManager.library, {
   scheduler_release: function (p1) { schedulerRelease(p1); },
   scheduler_request_next_routine: function (p1, p2) { schedulerRequestNextRoutine(p1, p2); },
 
-  seed_link_ws_connect: function (p1, p2, p3) { seedLinkWsConnect(p1, p2, p3); },
-  seed_link_ws_disconnect: function (p1) { seedLinkWsDisconnect(p1); },
-  seed_link_ws_finalize: function (p1) { seedLinkWsFinalize(p1); },
-  seed_link_ws_send: function (p1, p2, p3) { seedLinkWsSend(p1, p2, p3); },
+  seed_link_post: function (p1, p2, p3, p4, p5) { seedLinkPost(p1, p2, p3, p4, p5); },
 
   utils_get_random_seed: function () { return utilsGetRandomSeed(); },
 

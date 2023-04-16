@@ -40,10 +40,10 @@ class TestSeed {
   TestSeed() :
       pid(0),
       path("/test"),
-      ping_interval(20 * 1000),
       port(8080),
       revision(0.1),
-      timeout(30 * 1000),
+      keep_alive_timeout(30 * 1000),
+      polling_timeout(10 * 1000),
       update_period(500),
       force_update_times(20) {
   }
@@ -53,9 +53,12 @@ class TestSeed {
   }
 
   void run() {
-#ifndef COLONIO_SEED_BIN_PATH
-#  error Need env value COLONIO_SEED_BIN_PATH.
-#endif
+    std::string bin_path(getenv("COLONIO_SEED_BIN_PATH"));
+    if (bin_path.empty()) {
+      printf("env var 'COLONIO_SEED_BIN_PATH' should be specify");
+      FAIL();
+    }
+
     std::string config = generate_config();
     pid                = fork();
     if (pid == -1) {
@@ -64,8 +67,7 @@ class TestSeed {
 
     } else if (pid == 0) {
       // Exec seed program on the child process.
-      if (execl(COLONIO_SEED_BIN_PATH, COLONIO_SEED_BIN_PATH, "--config", config.c_str(), "--logtostderr", nullptr) ==
-          -1) {
+      if (execl(bin_path.c_str(), bin_path.c_str(), "--config", config.c_str(), nullptr) == -1) {
         perror("execl");
       }
       exit(EXIT_FAILURE);
@@ -119,10 +121,10 @@ class TestSeed {
   pid_t pid;
 
   std::string path;
-  int ping_interval;
   int port;
   double revision;
-  int timeout;
+  int keep_alive_timeout;
+  int polling_timeout;
 
   int update_period;
   int force_update_times;
@@ -140,10 +142,21 @@ class TestSeed {
 
     picojson::object config;
     config.insert(std::make_pair("path", picojson::value(path)));
-    config.insert(std::make_pair("pingInterval", picojson::value(static_cast<double>(ping_interval))));
     config.insert(std::make_pair("port", picojson::value(static_cast<double>(port))));
     config.insert(std::make_pair("revision", picojson::value(static_cast<double>(revision))));
-    config.insert(std::make_pair("timeout", picojson::value(static_cast<double>(timeout))));
+    config.insert(std::make_pair("keepAliveTimeout", picojson::value(static_cast<double>(keep_alive_timeout))));
+    config.insert(std::make_pair("pollingTimeout", picojson::value(static_cast<double>(polling_timeout))));
+    config.insert(std::make_pair("useTcp", picojson::value(true)));
+
+    std::string cert_file(getenv("COLONIO_TEST_CERT"));
+    std::string key_file(getenv("COLONIO_TEST_PRIVATE_KEY"));
+    if (cert_file.empty() || key_file.empty()) {
+      printf(
+          "cert and private key file should be specify by 'COLONIO_TEST_CERT' and 'COLONIO_TEST_PRIVATE_KEY' env var.");
+      exit(1);
+    }
+    config.insert(std::make_pair("certFile", picojson::value(cert_file)));
+    config.insert(std::make_pair("keyFile", picojson::value(key_file)));
 
     picojson::array urls;
     urls.push_back(picojson::value("stun:stun.l.google.com:19302"));

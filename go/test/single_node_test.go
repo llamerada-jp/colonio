@@ -17,6 +17,8 @@ package test
  */
 
 import (
+	"crypto/tls"
+	"net/http"
 	"time"
 	"unicode/utf8"
 
@@ -32,13 +34,26 @@ type SingleNodeSuite struct {
 func (suite *SingleNodeSuite) SetupSuite() {
 	var err error
 	suite.T().Log("creating a new colonio instance")
-	suite.node, err = colonio.NewColonio(colonio.NewConfig())
+	config := colonio.NewConfig()
+	config.DisableSeedVerification = true
+	suite.node, err = colonio.NewColonio(config)
 	suite.NoError(err)
 
 	suite.T().Log("node connect to seed")
 	suite.Eventually(func() bool {
-		return suite.node.Connect("ws://localhost:8080/test", "") == nil
-	}, time.Minute, time.Second)
+		client := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
+		}
+		_, err := client.Get("https://localhost:8080/")
+		return err == nil
+	}, 10*time.Second, time.Second)
+
+	err = suite.node.Connect("https://localhost:8080/test", "")
+	suite.NoError(err)
 }
 
 func (suite *SingleNodeSuite) TearDownSuite() {

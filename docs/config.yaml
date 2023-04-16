@@ -1,4 +1,4 @@
-baseURL: http://www.colonio.dev/
+baseURL: https://www.colonio.dev/
 title: 'Colonio'
 theme: 'hugo-book'
 languageCode: 'en-us'

@@ -22,6 +22,8 @@
 #include <string>
 #include <thread>
 
+#include "core/utils.hpp"
+
 class AsyncHelper {
  public:
   std::mutex mtx;
@@ -83,5 +85,18 @@ class AsyncHelper {
   bool check_signal(const std::string& key) {
     std::lock_guard<std::mutex> lock(mtx);
     return signals.find(key) != signals.end();
+  }
+
+  bool eventually(std::function<bool(void)> f, int64_t timeout_ms, int64_t interval_ms) {
+    int64_t start = colonio::Utils::get_current_msec();
+
+    while (start + timeout_ms > colonio::Utils::get_current_msec()) {
+      if (f()) {
+        return true;
+      }
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
+    }
+    return false;
   }
 };
