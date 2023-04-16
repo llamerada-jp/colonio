@@ -22,8 +22,6 @@ export SUDO ?= sudo
 export PROTOC := $(LOCAL_ENV_PATH)/bin/protoc
 
 # the versions of depending packages
-# https://github.com/chriskohlhoff/asio/
-ASIO_TAG := asio-1-26-0
 # https://github.com/hs-nazuna/cpp_algorithms
 CPP_ALGORITHMS_HASH := 1ba3fde9c4b1d067986f5243a0f03daffa501ae2
 # https://github.com/emscripten-core/emscripten
@@ -118,15 +116,6 @@ setup-macos:
 setup-local:
 	mkdir -p $(LOCAL_ENV_PATH) $(WORK_PATH)
 	$(MAKE) setup-protoc
-	# asio
-	cd $(WORK_PATH) \
-	&& $(RM) -r asio \
-	&& git clone --depth=1 --branch $(ASIO_TAG) https://github.com/chriskohlhoff/asio.git \
-	&& cd asio/asio \
-	&& ./autogen.sh \
-	&& ./configure --prefix=$(LOCAL_ENV_PATH) --without-boost \
-	&& $(MAKE) \
-	&& $(MAKE) install
 	# cpp_algorithms
 	cd $(WORK_PATH) \
 	&& $(RM) -r cpp_algorithms \
@@ -165,7 +154,6 @@ setup-local:
 	&& cmake -DCMAKE_INSTALL_PREFIX=$(LOCAL_ENV_PATH) . \
 	&& $(MAKE) \
 	&& $(MAKE) install
-
 
 .PHONY: setup-protoc
 setup-protoc:
@@ -255,15 +243,19 @@ build:
 	fi
 
 .PHONY: test
-test:
+test: generate-cert
 	# C/C++
-	LD_LIBRARY_PATH=$(OUTPUT_PATH)/lib $(MAKE) -C $(NATIVE_BUILD_PATH) CTEST_OUTPUT_ON_FAILURE=1 test ARGS='$(CTEST_ARGS)'
+	LD_LIBRARY_PATH=$(OUTPUT_PATH)/lib COLONIO_SEED_BIN_PATH=$(OUTPUT_PATH)/seed \
+	  COLONIO_TEST_CERT=$(ROOT_PATH)/localhost.crt COLONIO_TEST_PRIVATE_KEY=$(ROOT_PATH)/localhost.key \
+	  $(MAKE) -C $(NATIVE_BUILD_PATH) CTEST_OUTPUT_ON_FAILURE=1 test ARGS='$(CTEST_ARGS)'
 	# golang
 	$(MAKE) test-go-native
 
 .PHONY: test-go-native
 test-go-native: build-seed
-	COLONIO_SEED_BIN_PATH=$(OUTPUT_PATH)/seed CGO_LDFLAGS="-L$(OUTPUT_PATH) -L$(OUTPUT_PATH)/lib" go test ./go/test/ -v
+	COLONIO_SEED_BIN_PATH=$(OUTPUT_PATH)/seed CGO_LDFLAGS="-L$(OUTPUT_PATH) -L$(OUTPUT_PATH)/lib" \
+	  go test -v ./go/test/
+	go test -v ./go/seed/
 
 .PHONY: test-go-wasm
 test-go-wasm: build-seed
@@ -296,7 +288,6 @@ build-native: src/core/colonio.pb.cc
 		-DTEST_TIMEOUT=$(TEST_TIMEOUT) \
 		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 		-DCMAKE_INSTALL_PREFIX=$(DESTDIR) \
-		-DCOLONIO_SEED_BIN_PATH=$(OUTPUT_PATH)/seed \
 		-DWITH_COVERAGE=$(WITH_COVERAGE) \
 		-DWITH_GPROF=$(WITH_GPROF) \
 		-DWITH_SAMPLE=$(WITH_SAMPLE) \
@@ -346,6 +337,13 @@ $(ROOT_PATH)/buildenv/go.mod: $(ROOT_PATH)/go.mod
 
 $(ROOT_PATH)/buildenv/package.json: $(ROOT_PATH)/package.json
 	cp package.json package-lock.json $(ROOT_PATH)/buildenv/
+
+.PHONY: generate-cert
+generate-cert:
+	openssl req -x509 -out localhost.crt -keyout localhost.key \
+  -newkey rsa:2048 -nodes -sha256 \
+  -subj '/CN=localhost' -extensions EXT -config <( \
+   printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
 
 .PHONY: clean
 clean:

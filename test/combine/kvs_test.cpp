@@ -23,8 +23,9 @@
 using namespace colonio;
 using ::testing::MatchesRegex;
 
+const std::string SEED_URL("https://localhost:8080/test");
+
 TEST(MapTest, set_get_single) {
-  const std::string URL   = "http://localhost:8080/test";
   const std::string TOKEN = "";
   const std::string KEY   = "key";
   const std::string VALUE = "test value";
@@ -38,7 +39,7 @@ TEST(MapTest, set_get_single) {
 
   // connect node
   printf("connect node\n");
-  node->connect(URL, TOKEN);
+  node->connect(SEED_URL, TOKEN);
   // get(key) : not exist
   printf("get a not existed value.\n");
   try {
@@ -64,7 +65,6 @@ TEST(MapTest, set_get_single) {
 }
 
 TEST(MapTest, set_get_async) {
-  const std::string URL   = "http://localhost:8080/test";
   const std::string TOKEN = "";
   const std::string KEY   = "key";
   const std::string VALUE = "test value";
@@ -79,7 +79,7 @@ TEST(MapTest, set_get_async) {
   // connect node
   printf("connect node1\n");
   node->connect(
-      URL, TOKEN,
+      SEED_URL, TOKEN,
       [&](colonio::Colonio& _) {
         // get(key) : not exist
         printf("get a not existed value.\n");
@@ -124,7 +124,6 @@ TEST(MapTest, set_get_async) {
 }
 
 TEST(MapTest, set_get_multi) {
-  const std::string URL    = "http://localhost:8080/test";
   const std::string TOKEN  = "";
   const std::string KEY1   = "key1";
   const std::string KEY2   = "key2";
@@ -142,10 +141,10 @@ TEST(MapTest, set_get_multi) {
 
   // connect node1
   printf("connect node1\n");
-  node1->connect(URL, TOKEN);
+  node1->connect(SEED_URL, TOKEN);
   // connect node2
   printf("connect node2\n");
-  node2->connect(URL, TOKEN);
+  node2->connect(SEED_URL, TOKEN);
 
   // get(key) @ node1
   printf("get a not existed value.\n");

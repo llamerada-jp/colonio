@@ -20,8 +20,9 @@ class ColonioGo {
     constructor(mod) {
         this.mod = mod;
     }
-    newColonio(logger) {
+    newColonio(v, logger) {
         let config = new this.mod.ColonioConfig();
+        config.disableSeedVerification = v;
         config.loggerFuncRaw = (_, log) => {
             logger(log);
         };

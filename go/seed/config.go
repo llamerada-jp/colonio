@@ -72,19 +72,19 @@ type ConfigNode struct {
 }
 
 type Config struct {
-	Revision     float64     `json:"revision,omitempty"`
-	PingInterval int64       `json:"pingInterval"`
-	Timeout      int64       `json:"timeout"`
-	Node         *ConfigNode `json:"node,omitempty"`
+	Revision         float64     `json:"revision,omitempty"`
+	KeepAliveTimeout int64       `json:"keepAliveTimeout"`
+	PollingTimeout   int64       `json:"pollingTimeout"`
+	Node             *ConfigNode `json:"node,omitempty"`
 }
 
 func (c *Config) validate() error {
-	if c.PingInterval <= 0 {
-		return errors.New("Config value of `pingInterval` must be larger then 0")
+	if c.KeepAliveTimeout <= 0 {
+		return errors.New("Config value of `keepAliveTimeout` must be larger then 0")
 	}
 
-	if c.Timeout <= 0 {
-		return errors.New("Config value of `interval` must be larger then 0")
+	if c.PollingTimeout <= 0 {
+		return errors.New("Config value of `pollingTimeout` must be larger then 0")
 	}
 
 	if c.Node == nil {

@@ -27,7 +27,8 @@ namespace colonio {
 NetworkDelegate::~NetworkDelegate() {
 }
 
-Network::Network(Logger& l, Random& r, Scheduler& s, CommandManager& c, const NodeID& n, NetworkDelegate& d) :
+Network::Network(Logger& l, Random& r, Scheduler& s, CommandManager& c, const NodeID& n, NetworkDelegate& d, bool v) :
+    DISABLE_SEED_VERIFICATION(v),
     logger(l),
     random(r),
     scheduler(s),
@@ -59,7 +60,8 @@ void Network::connect(
 
     enforce_online = true;
 
-    seed_accessor = std::make_unique<SeedAccessor>(logger, scheduler, local_nid, *this, url, token);
+    seed_accessor =
+        std::make_unique<SeedAccessor>(logger, scheduler, local_nid, *this, url, token, DISABLE_SEED_VERIFICATION);
     node_accessor = std::make_unique<NodeAccessor>(logger, scheduler, command_manager, local_nid, *this);
 
     scheduler.add_task(this, std::bind(&Network::update_accessor_state, this));
@@ -143,27 +145,27 @@ void Network::update_accessor_state() {
   } else if (seed_status == LinkState::ONLINE) {
     if (seed_accessor->is_only_one() == true) {
       status = LinkState::ONLINE;
-    } else {
+    } else if (enforce_online) {
       node_accessor->connect_init_link();
       status = LinkState::CONNECTING;
     }
 
-  } else if (seed_status == LinkState::CONNECTING) {
-    status = LinkState::CONNECTING;
-
-  } else if (seed_accessor->get_auth_status() == AuthStatus::FAILURE) {
+  } else if (
+      cb_connect_failure &&
+      (seed_accessor->get_auth_status() == AuthStatus::FAILURE || seed_accessor->last_request_had_error())) {
     log_error("connect failure");
-    if (cb_connect_failure) {
-      cb_connect_failure(colonio_error(ErrorCode::CONNECTION_OFFLINE, "Connect failure."));
-      cb_connect_success = nullptr;
-      cb_connect_failure = nullptr;
-    }
+    cb_connect_failure(colonio_error(ErrorCode::CONNECTION_OFFLINE, "Connect failure."));
+    cb_connect_success = nullptr;
+    cb_connect_failure = nullptr;
 
     scheduler.add_task(this, std::bind(&Network::disconnect, this, nullptr, nullptr));
     status = LinkState::OFFLINE;
 
+  } else if (seed_status == LinkState::CONNECTING) {
+    status = LinkState::CONNECTING;
+
   } else if (enforce_online) {
-    seed_accessor->connect();
+    seed_accessor->enable_polling(true);
     status = LinkState::CONNECTING;
   }
 
@@ -181,6 +183,8 @@ void Network::node_accessor_on_change_online_links(const std::set<NodeID>& nids)
   if (routing) {
     routing->on_change_online_links(nids);
   }
+
+  seed_accessor->tell_online_state(!nids.empty());
 
 #ifndef NDEBUG
   {
@@ -203,9 +207,15 @@ void Network::node_accessor_on_change_state() {
 }
 
 void Network::node_accessor_on_recv_packet(const NodeID& nid, std::unique_ptr<const Packet> packet) {
+  // drop packet if disconnected
+  if (!enforce_online) {
+    return;
+  }
+
   if (routing) {
     routing->on_recv_packet(nid, *packet);
   }
+
   switch_packet(std::move(packet), false);
 }
 
@@ -215,6 +225,7 @@ void Network::switch_packet(std::unique_ptr<const Packet> packet, bool is_from_s
 
     if ((packet->mode & PacketMode::RESPONSE) != 0x0 && !is_from_seed) {
       if (seed_status == LinkState::ONLINE) {
+        log_debug("send packet via seed").map("packet", *packet);
         seed_accessor->relay_packet(std::move(packet));
       } else {
         assert(routing);
@@ -224,6 +235,7 @@ void Network::switch_packet(std::unique_ptr<const Packet> packet, bool is_from_s
 
     } else if (packet->src_nid == local_nid) {
       if (seed_status == LinkState::ONLINE) {
+        log_debug("send packet via seed").map("packet", *packet);
         seed_accessor->relay_packet(std::move(packet));
       } else {
         log_warn("drop packet").map("packet", *packet);
@@ -300,12 +312,12 @@ void Network::routing_do_disconnect_node(const NodeID& nid) {
 
 void Network::routing_do_connect_seed() {
   if (enforce_online) {
-    seed_accessor->connect();
+    seed_accessor->enable_polling(true);
   }
 }
 
 void Network::routing_do_disconnect_seed() {
-  seed_accessor->disconnect();
+  seed_accessor->enable_polling(false);
 }
 
 void Network::routing_on_module_1d_change_nearby(const NodeID& prev_nid, const NodeID& next_nid) {
@@ -354,10 +366,15 @@ void Network::seed_accessor_on_recv_config(const picojson::object& config) {
 }
 
 void Network::seed_accessor_on_recv_packet(std::unique_ptr<const Packet> packet) {
+  // drop packet if disconnected
+  if (!enforce_online) {
+    return;
+  }
+
   switch_packet(std::move(packet), true);
 }
 
-void Network::seed_accessor_on_recv_require_random() {
+void Network::seed_accessor_on_require_random() {
   if (node_accessor != nullptr) {
     node_accessor->connect_random_link();
   }

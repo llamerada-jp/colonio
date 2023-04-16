@@ -4,7 +4,7 @@
 // const { RTCPeerConnection, RTCSessionDescription } = require("wrtc");
 // const ColonioModule = require("./colonio");
 
-const URL = "ws://localhost:8080/test";
+const URL = "https://localhost:8080/test";
 const TOKEN = "";
 const KEY = "hoge";
 
@@ -22,6 +22,7 @@ function test() {
     colonio = c;
     console.log("new node1");
     let config1 = new colonio.ColonioConfig();
+    config1.disableSeedVerification = true;
     config1.loggerFunc = (_, log) => {
       log.node = "node1";
       console.log(log);
@@ -31,6 +32,7 @@ function test() {
 
     console.log("new node2");
     let config2 = new colonio.ColonioConfig();
+    config2.disableSeedVerification = true;
     config2.loggerFunc = (_, log) => {
       log.node = "node2";
       console.log(log);

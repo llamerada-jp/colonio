@@ -18,7 +18,9 @@ package test
 
 import (
 	"context"
+	"crypto/tls"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/llamerada-jp/colonio/go/colonio"
@@ -34,19 +36,32 @@ type E2eSuite struct {
 func (suite *E2eSuite) SetupSuite() {
 	var err error
 	suite.T().Log("creating a new colonio instance")
-	suite.node1, err = colonio.NewColonio(colonio.NewConfig())
+	config := colonio.NewConfig()
+	config.DisableSeedVerification = true
+	suite.node1, err = colonio.NewColonio(config)
 	suite.NoError(err)
-	suite.node2, err = colonio.NewColonio(colonio.NewConfig())
+	suite.node2, err = colonio.NewColonio(config)
 	suite.NoError(err)
 
+	suite.T().Log("check seed status")
+	suite.Eventually(func() bool {
+		client := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
+		}
+		_, err := client.Get("https://localhost:8080/")
+		return err == nil
+	}, 10*time.Second, time.Second, time.Second)
+
 	suite.T().Log("node1 connect to seed")
-	suite.Eventually(func() bool {
-		return suite.node1.Connect("ws://localhost:8080/test", "") == nil
-	}, time.Minute, time.Second)
+	err = suite.node1.Connect("https://localhost:8080/test", "")
+	suite.NoError(err)
 	suite.T().Log("node2 connect to seed")
-	suite.Eventually(func() bool {
-		return suite.node2.Connect("ws://localhost:8080/test", "") == nil
-	}, time.Minute, time.Second)
+	err = suite.node2.Connect("https://localhost:8080/test", "")
+	suite.NoError(err)
 }
 
 func (suite *E2eSuite) TearDownSuite() {
@@ -59,15 +74,15 @@ func (suite *E2eSuite) TearDownSuite() {
 }
 
 func (suite *E2eSuite) TestE2E() {
-	suite.Eventually(func() bool {
-		suite.T().Log("sending message and waiting it")
-		suite.node1.MessagingSetHandler("twice", func(request *colonio.MessagingRequest, writer colonio.MessagingResponseWriter) {
-			str, err := request.Message.GetString()
-			suite.NoError(err)
-			writer.Write(str + str)
-		})
-		defer suite.node1.MessagingUnsetHandler("twice")
+	suite.T().Log("sending message and waiting it")
+	suite.node1.MessagingSetHandler("twice", func(request *colonio.MessagingRequest, writer colonio.MessagingResponseWriter) {
+		str, err := request.Message.GetString()
+		suite.NoError(err)
+		writer.Write(str + str)
+	})
+	defer suite.node1.MessagingUnsetHandler("twice")
 
+	suite.Eventually(func() bool {
 		result, err := suite.node2.MessagingPost(suite.node1.GetLocalNid(), "twice", "test", 0)
 		if err != nil {
 			log.Println(err)

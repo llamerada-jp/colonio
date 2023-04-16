@@ -24,6 +24,8 @@
 using namespace colonio;
 using ::testing::MatchesRegex;
 
+const std::string SEED_URL("https://localhost:8080/test");
+
 TEST(ConnectTest, connect_single) {
   AsyncHelper helper;
   TestSeed seed;
@@ -32,7 +34,7 @@ TEST(ConnectTest, connect_single) {
   auto config = make_config_with_name("node");
   std::unique_ptr<Colonio> node(Colonio::new_instance(config));
 
-  node->connect("http://localhost:8080/test", "");
+  node->connect(SEED_URL, "");
   node->disconnect();
 }
 
@@ -45,7 +47,7 @@ TEST(ConnectTest, connect_async) {
   std::unique_ptr<Colonio> node(Colonio::new_instance(config));
 
   node->connect(
-      "http://localhost:8080/test", "",
+      SEED_URL, "",
       [&](Colonio& c) {
         helper.pass_signal("connect");
       },
@@ -63,11 +65,11 @@ TEST(ConnectTest, connect_error) {
   auto config = make_config_with_name("node");
   std::unique_ptr<Colonio> node(Colonio::new_instance(config));
 
-  ASSERT_THROW(node->connect("http://localhost:8080/not_exist", ""), Error);
+  ASSERT_THROW(node->connect("https://localhost:8080/not_exist", ""), Error);
   ASSERT_THROW(node->disconnect(), Error);
 
   node->connect(
-      "http://localhost:8080/not_exist", "",
+      "https://localhost:8080/not_exist", "",
       [&](Colonio& c) {
         ADD_FAILURE();
       },
@@ -87,7 +89,7 @@ TEST(ConnectTest, connect_error) {
 }
 
 TEST(ConnectTest, connect_multi) {
-  const std::string URL      = "http://localhost:8080/test";
+  const std::string URL      = SEED_URL;
   const std::string TOKEN    = "";
   const std::string MAP_NAME = "map";
 

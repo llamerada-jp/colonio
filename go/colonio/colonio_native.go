@@ -19,7 +19,7 @@ package colonio
  */
 
 /*
-#cgo LDFLAGS: -lcolonio -lwebrtc -lm -lprotobuf -lstdc++
+#cgo LDFLAGS: -lcolonio -lwebrtc -lm -lprotobuf -lstdc++ -lcurl
 #cgo darwin LDFLAGS: -framework Foundation
 #cgo darwin LDFLAGS: -L/usr/local/opt/openssl/lib -lcrypto -lssl
 #cgo linux pkg-config: openssl
@@ -34,7 +34,7 @@ typedef void* colonio_t;
 typedef void* colonio_value_t;
 
 // colonio
-colonio_error_t* cgo_colonio_init(colonio_t* colonio);
+colonio_error_t* cgo_colonio_init(colonio_t* colonio, int v, unsigned int u);
 colonio_error_t* cgo_colonio_connect(colonio_t colonio, _GoString_ url, _GoString_ token);
 int cgo_colonio_is_connected(colonio_t colonio);
 
@@ -116,6 +116,8 @@ func convertError(errC *C.struct_colonio_error_s) error {
 
 func NewConfig() *ColonioConfig {
 	return &ColonioConfig{
+		DisableSeedVerification: false,
+		MaxUserThreads:          1,
 		LoggerFunc: func(s string) {
 			log.Println(s)
 		},
@@ -134,7 +136,11 @@ func NewColonio(config *ColonioConfig) (Colonio, error) {
 		spreadHandlerNames:    make(map[string]uint32),
 	}
 
-	errC := C.cgo_colonio_init(&impl.colonioC)
+	v := 0
+	if config.DisableSeedVerification {
+		v = 1
+	}
+	errC := C.cgo_colonio_init(&impl.colonioC, C.int(v), C.uint(config.MaxUserThreads))
 	if errC != nil {
 		return nil, convertError(errC)
 	}

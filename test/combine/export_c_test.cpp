@@ -26,7 +26,7 @@ extern "C" {
 
 #include "test_utils/all.hpp"
 
-const char URL[]   = "http://localhost:8080/test";
+const char URL[]   = "https://localhost:8080/test";
 const char TOKEN[] = "";
 
 struct TestData {
@@ -78,7 +78,8 @@ TEST(ExportC, connect_sync) {
 
   colonio_config_t config;
   colonio_config_set_default(&config);
-  config.logger_func = log_receiver;
+  config.disable_seed_verification = true;
+  config.logger_func               = log_receiver;
 
   colonio_t colonio;
   colonio_error_t* err;
@@ -126,7 +127,8 @@ TEST(ExportC, connect_async) {
 
   colonio_config_t config;
   colonio_config_set_default(&config);
-  err = colonio_init(&colonio, &config);
+  config.disable_seed_verification = true;
+  err                              = colonio_init(&colonio, &config);
   EXPECT_EQ(err, nullptr);
 
   TestData data{.colonio = colonio, .helper = &helper};
@@ -150,6 +152,7 @@ TEST(ExportC, e2e) {
   // init & connect colonio1
   colonio_config_t config1;
   colonio_config_set_default(&config1);
+  config1.disable_seed_verification = true;
 
   colonio_t colonio1;
   err = colonio_init(&colonio1, &config1);
@@ -161,6 +164,7 @@ TEST(ExportC, e2e) {
   // init & connect colonio2
   colonio_config_t config2;
   colonio_config_set_default(&config2);
+  config2.disable_seed_verification = true;
 
   colonio_t colonio2;
   err = colonio_init(&colonio2, &config2);

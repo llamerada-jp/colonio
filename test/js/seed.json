@@ -1,5 +1,7 @@
 {
     "revision": 20200401.1,
+    "keepAliveTimeout": 30000,
+    "pollingTimeout": 10000,
     "documentRoot": ".",
     "overrides": {
         "/colonio.js": "../../output/",
@@ -10,8 +12,9 @@
     },
     "port": 8080,
     "path": "/test",
-    "pingInterval": 10000,
-    "timeout": 30000,
+    "certFile": "../../localhost.crt",
+    "keyFile": "../../localhost.key",
+    "useTcp": true,
     "node": {
         "nodeAccessor": {
             "packetSize": 8192,

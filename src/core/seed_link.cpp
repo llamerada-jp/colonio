@@ -17,27 +17,25 @@
 #include "seed_link.hpp"
 
 #ifndef EMSCRIPTEN
-#  include "seed_link_websocket_native.hpp"
+#  include "seed_link_native.hpp"
 #else
-#  include "seed_link_websocket_wasm.hpp"
+#  include "seed_link_wasm.hpp"
 #endif
 
 namespace colonio {
-SeedLinkParam::SeedLinkParam(SeedLinkDelegate& delegate_, Logger& logger_) : delegate(delegate_), logger(logger_) {
-}
-
-SeedLinkDelegate::~SeedLinkDelegate() {
+SeedLinkParam::SeedLinkParam(Logger& l, const std::string& u, bool v) : logger(l), url(u), disable_verification(v) {
 }
 
 SeedLink* SeedLink::new_instance(SeedLinkParam& param) {
 #ifndef EMSCRIPTEN
-  return new SeedLinkWebsocketNative(param);
+  return new SeedLinkNative(param);
 #else
-  return new SeedLinkWebsocketWasm(param);
+  return new SeedLinkWasm(param);
 #endif
 }
 
-SeedLink::SeedLink(SeedLinkParam& param) : delegate(param.delegate), logger(param.logger) {
+SeedLink::SeedLink(SeedLinkParam& param) :
+    logger(param.logger), URL(param.url), DISABLE_VERIFICATION(param.disable_verification) {
 }
 
 SeedLink::~SeedLink() {

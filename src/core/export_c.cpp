@@ -43,9 +43,10 @@ struct Wrapper {
 colonio_error_t* convert_error(const Error& e);
 
 void colonio_config_set_default(colonio_config_t* config) {
-  config->disable_callback_thread = false;
-  config->max_user_threads        = 1;
-  config->logger_func             = nullptr;
+  config->disable_callback_thread   = false;
+  config->disable_seed_verification = false;
+  config->max_user_threads          = 1;
+  config->logger_func               = nullptr;
 }
 
 colonio_error_t* colonio_init(colonio_t* c, const colonio_config_t* cf) {
@@ -55,8 +56,9 @@ colonio_error_t* colonio_init(colonio_t* c, const colonio_config_t* cf) {
     *c = reinterpret_cast<colonio_t>(wrapper);
 
     ColonioConfig config;
-    config.disable_callback_thread = cf->disable_callback_thread;
-    config.max_user_threads        = cf->max_user_threads;
+    config.disable_callback_thread   = cf->disable_callback_thread;
+    config.disable_seed_verification = cf->disable_seed_verification;
+    config.max_user_threads          = cf->max_user_threads;
     if (cf->logger_func != nullptr) {
       auto f             = cf->logger_func;
       config.logger_func = [c, f](Colonio& _, const std::string& json) {

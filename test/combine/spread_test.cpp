@@ -26,12 +26,13 @@
 using namespace colonio;
 using ::testing::MatchesRegex;
 
+const std::string SEED_URL("https://localhost:8080/test");
+
 double d2r(double d) {
   return M_PI * d / 180.0;
 }
 
 TEST(SpreadTest, async) {
-  const std::string URL   = "http://localhost:8080/test";
   const std::string TOKEN = "";
 
   AsyncHelper helper;
@@ -46,11 +47,11 @@ TEST(SpreadTest, async) {
 
   printf("connect node1\n");
   node1->connect(
-      URL, TOKEN,
-      [&URL, &TOKEN, &node2, &helper](Colonio& _) {
+      SEED_URL, TOKEN,
+      [&TOKEN, &node2, &helper](Colonio& _) {
         printf("connect node2\n");
         node2->connect(
-            URL, TOKEN,
+            SEED_URL, TOKEN,
             [&helper](Colonio& _) {
               helper.pass_signal("connect");
             },
@@ -119,7 +120,6 @@ TEST(SpreadTest, async) {
 }
 
 TEST(SpreadTest, multi_node) {
-  const std::string URL   = "http://localhost:8080/test";
   const std::string TOKEN = "";
 
   AsyncHelper helper;
@@ -135,7 +135,7 @@ TEST(SpreadTest, multi_node) {
   try {
     // connect node1;
     printf("connect node1\n");
-    node1->connect(URL, TOKEN);
+    node1->connect(SEED_URL, TOKEN);
     node1->spread_set_handler("key1", [&helper](Colonio&, const SpreadRequest& r) {
       helper.mark("11");
       helper.mark(r.message.get<std::string>());
@@ -149,7 +149,7 @@ TEST(SpreadTest, multi_node) {
 
     // connect node2;
     printf("connect node2\n");
-    node2->connect(URL, TOKEN);
+    node2->connect(SEED_URL, TOKEN);
     node2->spread_set_handler("key1", [&helper](Colonio&, const SpreadRequest& r) {
       helper.mark("21");
       helper.mark(r.message.get<std::string>());
@@ -201,7 +201,6 @@ TEST(SpreadTest, multi_node) {
 }
 
 TEST(SpreadTest, plane) {
-  const std::string URL   = "http://localhost:8080/test";
   const std::string TOKEN = "";
 
   printf("setup seed\n");
@@ -217,7 +216,7 @@ TEST(SpreadTest, plane) {
 
   // connect node1;
   printf("connect node1\n");
-  node1->connect(URL, TOKEN);
+  node1->connect(SEED_URL, TOKEN);
   printf("connect node1 fin\n");
   node1->spread_set_handler("key1", [&helper](Colonio&, const SpreadRequest& r) {
     helper.mark("11");
@@ -230,7 +229,7 @@ TEST(SpreadTest, plane) {
 
   // connect node2;
   printf("connect node2\n");
-  node2->connect(URL, TOKEN);
+  node2->connect(SEED_URL, TOKEN);
   printf("connect node2 fin\n");
   node2->spread_set_handler("key1", [&helper](Colonio&, const SpreadRequest& r) {
     helper.mark("21");

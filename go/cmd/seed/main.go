@@ -17,15 +17,19 @@ package main
  */
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/llamerada-jp/colonio/go/seed"
+	"github.com/quic-go/quic-go/http3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -35,11 +39,14 @@ var configFile string
 type config struct {
 	seed.Config
 
-	DocumentRoot string            `json:"documentRoot"`
+	DocumentRoot *string           `json:"documentRoot,omitempty"`
 	Headers      map[string]string `json:"headers"`
 	Overrides    map[string]string `json:"overrides"`
 	Port         uint16            `json:"port"`
 	Path         string            `json:"path"`
+	CertFile     string            `json:"certFile"`
+	KeyFile      string            `json:"keyFile"`
+	UseTCP       bool              `json:"useTcp"`
 }
 
 var cmd = &cobra.Command{
@@ -53,12 +60,16 @@ var cmd = &cobra.Command{
 		baseDir := filepath.Dir(configFile)
 
 		// read config file
-		configData, err := ioutil.ReadFile(configFile)
+		configData, err := os.ReadFile(configFile)
 		if err != nil {
 			return err
 		}
 		config := &config{}
 		if err := json.Unmarshal(configData, config); err != nil {
+			return err
+		}
+
+		if err := validateConf(config); err != nil {
 			return err
 		}
 
@@ -71,47 +82,101 @@ var cmd = &cobra.Command{
 		headers["Cross-Origin-Embedder-Policy"] = "require-corp"
 
 		// Publish static documents
-		mux.Handle("/", &headerWrapper{
-			handler: http.FileServer(http.Dir(filepath.Join(baseDir, config.DocumentRoot))),
-			headers: headers,
-		})
-		for pattern, path := range config.Overrides {
-			mux.Handle(pattern,
-				&headerWrapper{
-					handler: http.FileServer(http.Dir(filepath.Join(baseDir, path))),
+		if config.DocumentRoot != nil {
+			log.Printf("publish DocumentRoot: %s", *config.DocumentRoot)
+			mux.Handle("/", http.FileServer(http.Dir(calcPath(baseDir, *config.DocumentRoot))))
+			for pattern, path := range config.Overrides {
+				mux.Handle(pattern, http.FileServer(http.Dir(calcPath(baseDir, path))))
+			}
+		}
+
+		// Publish colonio-seed
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		seed, err := seed.NewSeedHandler(ctx, &config.Config, nil)
+		if err != nil {
+			return err
+		}
+		mux.Handle(config.Path+"/", http.StripPrefix(config.Path, seed))
+
+		// Start HTTP/3 service.
+		if config.UseTCP {
+			log.Println("start seed with tcp mode")
+			return http3.ListenAndServe(
+				fmt.Sprintf(":%d", config.Port),
+				calcPath(baseDir, config.CertFile),
+				calcPath(baseDir, config.KeyFile),
+				&handlerWrapper{
+					handler: mux,
 					headers: headers,
 				})
 		}
 
-		// Publish colonio-seed
-		seed, err := seed.NewSeed(&config.Config)
-		if err != nil {
-			return err
+		log.Println("start seed")
+		server := http3.Server{
+			Handler: mux,
+			Addr:    fmt.Sprintf(":%d", config.Port),
 		}
-		mux.Handle(config.Path, &headerWrapper{
-			handler: seed,
-			headers: headers,
-		})
-		if err := seed.Start(); err != nil {
-			return err
-		}
-
-		// Start HTTP service.
-		return http.ListenAndServe(fmt.Sprintf(":%d", config.Port), mux)
+		return server.ListenAndServeTLS(
+			calcPath(baseDir, config.CertFile),
+			calcPath(baseDir, config.KeyFile))
 	},
 }
 
-type headerWrapper struct {
+func validateConf(c *config) error {
+	if len(c.CertFile) == 0 {
+		return errors.New("config value of `certFile` required")
+	}
+
+	if len(c.KeyFile) == 0 {
+		return errors.New("config value of `keyFile` required")
+	}
+
+	return nil
+}
+
+func calcPath(baseDir, path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(baseDir, path)
+}
+
+// warp http response writer to get http status code
+type logWrapper struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (lw *logWrapper) WriteHeader(statusCode int) {
+	lw.statusCode = statusCode
+	lw.ResponseWriter.WriteHeader(statusCode)
+}
+
+// warp http handler to add some headers and to output access logs
+type handlerWrapper struct {
 	handler http.Handler
 	headers map[string]string
 }
 
-func (h *headerWrapper) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *handlerWrapper) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	id := rand.Int63()
+	log.Printf("(%016x) proto:%s, remote addr:%s, method:%s uri:%s size:%d\n", id, r.Proto, r.RemoteAddr, r.Method, r.RequestURI, r.ContentLength)
+
+	writerWithLog := &logWrapper{
+		ResponseWriter: w,
+	}
+	defer func() {
+		log.Printf("(%016x) status code:%d", id, writerWithLog.statusCode)
+	}()
+
 	headerWriter := w.Header()
 	for k, v := range h.headers {
 		headerWriter.Add(k, v)
 	}
-	h.handler.ServeHTTP(w, r)
+
+	h.handler.ServeHTTP(writerWithLog, r)
 }
 
 func init() {
@@ -124,7 +189,7 @@ func init() {
 
 func main() {
 	if err := cmd.Execute(); err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		os.Exit(1)
 	}
 }

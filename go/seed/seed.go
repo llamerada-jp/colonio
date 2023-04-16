@@ -16,408 +16,619 @@
 package seed
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"math/rand"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/golang/glog"
-	"github.com/gorilla/websocket"
 	"github.com/llamerada-jp/colonio/go/proto"
 	proto3 "google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-type Node struct {
-	nid          *proto.NodeID
-	seed         *Seed
-	mutex        sync.Mutex
-	timeCreate   time.Time
-	timeLastRecv time.Time
-	timeLastSend time.Time
-	socket       *websocket.Conn // WebSocket connection.
-	assigned     bool
-	offerID      uint32
+/**
+ * TokenVerifier is an interface to implement the function of verifying the token received from the node.
+ */
+type TokenVerifier interface {
+	Verify(token string) (bool, error)
 }
 
-type Seed struct {
-	mutex    sync.Mutex
-	nodes    map[*Node]struct{}
-	nidMap   map[string]*Node
-	assigned map[string]struct{}
-	config   *Config
-	upgrader *websocket.Upgrader
+type node struct {
+	timestamp   time.Time
+	sessionID   string
+	online      bool
+	chTimestamp time.Time
+	c           chan uint32
 }
 
-const (
-	maxMessageSize   = 1024 * 1024
-	pingPeriod       = 30 * time.Second
-	pongWait         = 60 * time.Second
-	socketBufferSize = 1024
-	writeWait        = 10 * time.Second
-)
+type packet struct {
+	timestamp time.Time
+	stepNid   string
+	p         *proto.SeedPacket
+}
 
-func NewSeed(config *Config) (*Seed, error) {
+type seed struct {
+	ctx   context.Context
+	mutex sync.Mutex
+	// map of node-id and node instance
+	nodes map[string]*node
+	// map of session-id and node-id
+	sessions map[string]string
+	// packets to relay
+	packets []packet
+
+	config           string
+	keepAliveTimeout time.Duration
+	pollingTimeout   time.Duration
+
+	verifier TokenVerifier
+}
+
+/**
+ * NewSeedHandler creates an http handler to provide colonio's seed.
+ * It also starts a go routine for the seed features.
+ */
+func NewSeedHandler(ctx context.Context, config *Config, verifier TokenVerifier) (http.Handler, error) {
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
 
-	upgrader := &websocket.Upgrader{
-		ReadBufferSize:  socketBufferSize,
-		WriteBufferSize: socketBufferSize,
-	}
-
-	return &Seed{
-		nodes:    make(map[*Node]struct{}),
-		nidMap:   make(map[string]*Node),
-		assigned: make(map[string]struct{}),
-		config:   config,
-		upgrader: upgrader,
-	}, nil
-}
-
-func (seed *Seed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Upgrading to WebSocket.
-	socket, err := seed.upgrader.Upgrade(w, r, nil)
+	nodeConfig := config.Node
+	nodeConfig.Revision = config.Revision
+	nodeConfigJS, err := json.Marshal(nodeConfig)
 	if err != nil {
-		glog.Warning("Failed upgrading to WebSocket", err)
-		return
+		return nil, err
 	}
 
-	node := seed.newNode(socket)
-	if err := node.start(); err != nil {
-		glog.Error(err)
+	seed := &seed{
+		ctx:              ctx,
+		mutex:            sync.Mutex{},
+		nodes:            make(map[string]*node),
+		sessions:         make(map[string]string),
+		config:           string(nodeConfigJS),
+		keepAliveTimeout: time.Duration(config.KeepAliveTimeout) * time.Millisecond,
+		pollingTimeout:   time.Duration(config.PollingTimeout) * time.Millisecond,
+		verifier:         verifier,
 	}
-}
 
-func (seed *Seed) Start() error {
-	go func() {
-		ticker := time.NewTicker(time.Duration(seed.config.PingInterval) * time.Millisecond)
+	seed.start()
 
-		for {
-			<-ticker.C
-			seed.execEachTick()
+	mux := http.NewServeMux()
+	// TODO: output client information for logs
+	mux.HandleFunc("/authenticate", func(w http.ResponseWriter, r *http.Request) {
+		request := &proto.SeedAuthenticate{}
+		if err := decodeRequest(w, r, request); err != nil {
+			log.Println(err)
+			return
 		}
 
-		// ticker.Stop()
-	}()
-
-	return nil
-}
-
-func (seed *Seed) newNode(socket *websocket.Conn) *Node {
-	node := &Node{
-		seed:       seed,
-		timeCreate: time.Now(),
-		socket:     socket,
-	}
-
-	seed.mutex.Lock()
-	defer seed.mutex.Unlock()
-	seed.nodes[node] = struct{}{}
-
-	return node
-}
-
-func (seed *Seed) deleteNode(node *Node) {
-	seed.mutex.Lock()
-	defer seed.mutex.Unlock()
-
-	if node.nid != nil && node.nid.Type != NidTypeNone {
-		nidStr := nidToString(node.nid)
-		delete(seed.nidMap, nidStr)
-		delete(seed.assigned, nidStr)
-	}
-	delete(seed.nodes, node)
-}
-
-func (seed *Seed) execEachTick() {
-	seed.mutex.Lock()
-	defer seed.mutex.Unlock()
-
-	timeNow := time.Now()
-
-	for node := range seed.nodes {
-		base := node.timeCreate
-		node.mutex.Lock()
-		if base.Before(node.timeLastRecv) {
-			base = node.timeLastRecv
-		}
-		node.mutex.Unlock()
-		duration := timeNow.Sub(base)
-		// checking timeout
-		if duration > time.Duration(seed.config.Timeout)*time.Millisecond {
-			node.close()
+		response, code, err := seed.authenticate(request)
+		if err != nil {
+			log.Println(err)
 		}
 
-		// checking ping interval
-		if duration > time.Duration(seed.config.PingInterval)*time.Millisecond {
-			node.sendPing()
+		if err := outputResponse(w, response, code); err != nil {
+			log.Println(err)
 		}
-	}
-
-	// Connect a pair of node randomly.
-	if len(seed.nidMap) >= 2 {
-		i := rand.Intn(len(seed.nidMap))
-		for _, node := range seed.nidMap {
-			if i == 0 {
-				node.sendRequireRandom()
-				break
-			}
-			i--
-		}
-	}
-}
-
-func (node *Node) start() error {
-	node.socket.SetReadLimit(maxMessageSize)
-	node.socket.SetReadDeadline(time.Now().Add(pongWait))
-	node.socket.SetPongHandler(func(string) error {
-		node.socket.SetReadDeadline(time.Now().Add(pongWait))
-		return nil
 	})
 
-	ticker := time.NewTicker(pingPeriod)
-	go func() {
-		for {
-			<-ticker.C
-			node.socket.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := node.socket.WriteMessage(websocket.PingMessage, nil); err != nil {
-				glog.Warning(err)
-				node.close()
-				return
-			}
+	mux.HandleFunc("/close", func(w http.ResponseWriter, r *http.Request) {
+		request := &proto.SeedClose{}
+		if err := decodeRequest(w, r, request); err != nil {
+			log.Println(err)
+			return
 		}
-	}()
 
-	defer func() {
-		ticker.Stop()
-		node.close()
-	}()
+		seed.close(request)
 
-	for {
-		messageType, message, err := node.socket.ReadMessage()
+		if err := outputResponse(w, nil, http.StatusOK); err != nil {
+			log.Println(err)
+		}
+	})
+
+	mux.HandleFunc("/relay", func(w http.ResponseWriter, r *http.Request) {
+		request := &proto.SeedRelay{}
+		if err := decodeRequest(w, r, request); err != nil {
+			log.Println(err)
+			return
+		}
+
+		response, code, err := seed.relay(request)
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				return err
-			}
-			return nil
-		}
-		if messageType != websocket.BinaryMessage {
-			return fmt.Errorf("wrong message type")
+			log.Println(err)
 		}
 
-		packet := &proto.SeedPacket{}
-		if err := proto3.Unmarshal(message, packet); err != nil {
-			return err
+		if err := outputResponse(w, response, code); err != nil {
+			log.Println(err)
+		}
+	})
+
+	mux.HandleFunc("/poll", func(w http.ResponseWriter, r *http.Request) {
+		request := &proto.SeedPoll{}
+		if err := decodeRequest(w, r, request); err != nil {
+			log.Println(err)
+			return
 		}
 
-		node.mutex.Lock()
-		node.timeLastRecv = time.Now()
-		node.mutex.Unlock()
-
-		err = node.routePacket(packet)
+		response, code, err := seed.poll(r.Context(), request)
 		if err != nil {
-			return err
-		}
-	}
-}
-
-func (node *Node) routePacket(packet *proto.SeedPacket) error {
-	switch payload := packet.Payload.(type) {
-	case *proto.SeedPacket_Auth:
-		glog.Info("receive packet auth")
-		return node.recvPacketAuth(payload.Auth)
-
-	case *proto.SeedPacket_Ping:
-		return nil
-
-	case *proto.SeedPacket_RelayPacket:
-		return node.relayPacket(payload.RelayPacket)
-
-	default:
-		node.close()
-		return fmt.Errorf("wrong packet by command %+v", packet)
-	}
-}
-
-func (node *Node) recvPacketAuth(payload *proto.SeedAuth) error {
-	node.seed.mutex.Lock()
-	defer node.seed.mutex.Unlock()
-
-	srcNidStr := nidToString(payload.Nid)
-	if l2, ok := node.seed.nidMap[srcNidStr]; ok && l2 != node {
-		// Duplicate nid.
-		glog.Warningf("Authenticate failed by duplicate nid (%s, %s)\n", node.socket.RemoteAddr().String(), srcNidStr)
-		return node.sendAuthResponse(false, "")
-
-	} else if payload.Version != ProtocolVersion {
-		// Unsupported version.
-		glog.Warningf("Authenticate failed by wrong protocol version (%s)\n", node.socket.RemoteAddr().String())
-		return node.sendAuthResponse(false, "")
-
-	} else if node.nid == nil || node.nid.Type == NidTypeNone {
-		node.nid = payload.Nid
-		node.seed.nidMap[srcNidStr] = node
-		node.seed.config.Node.Revision = node.seed.config.Revision
-		configByte, err := json.Marshal(node.seed.config.Node)
-		if err != nil {
-			return err
-		}
-		if err := node.sendAuthResponse(true, (string)(configByte)); err == nil {
-			glog.Infof("Authenticate success (%s, %s)", node.socket.RemoteAddr().String(), srcNidStr)
-		} else {
-			return err
-		}
-	} else {
-		glog.Warningf("Authenticate failed (%s)", node.socket.RemoteAddr().String())
-		return node.sendAuthResponse(false, "")
-	}
-
-	if (payload.Hint&HintAssigned) != 0 || len(node.seed.assigned) == 0 {
-		node.assigned = true
-		node.seed.assigned[nidToString(payload.Nid)] = struct{}{}
-	}
-
-	return node.sendHint(true)
-}
-
-func (node *Node) relayPacket(payload *proto.SeedRelayPacket) error {
-	// Get node id from `WEBRTC_CONNECT::OFFER` packet.
-	if offer := payload.Content.GetSignalingOffer(); offer != nil {
-		if offer.Type == OfferTypeFirst {
-			node.offerID = payload.Id
-		}
-	}
-
-	node.seed.mutex.Lock()
-	defer node.seed.mutex.Unlock()
-
-	packet := &proto.SeedPacket{
-		Payload: &proto.SeedPacket_RelayPacket{
-			RelayPacket: payload,
-		},
-	}
-
-	if (payload.Mode & ModeReply) != 0x0 {
-		if _, ok := node.seed.nidMap[nidToString(payload.DstNid)]; ok {
-			glog.Info("Relay a packet.")
-			node.seed.nidMap[nidToString(payload.DstNid)].sendPacket(packet)
-		} else {
-			glog.Warning("A packet dropped.")
+			log.Println(err)
 		}
 
-	} else {
-		// Relay packet without the source node.
-		srcNidStr := nidToString(node.nid)
-		siz := len(node.seed.assigned)
-		if _, ok := node.seed.assigned[srcNidStr]; ok {
-			siz--
+		if err := outputResponse(w, response, code); err != nil {
+			log.Println(err)
 		}
-		if siz != 0 {
-			i := rand.Intn(siz)
-			for dstNidStr := range node.seed.assigned {
-				if i == 0 {
-					return node.seed.nidMap[dstNidStr].sendPacket(packet)
-				} else if dstNidStr != srcNidStr {
-					i--
-				}
-			}
+	})
 
-		} else {
-			return node.sendHint(true)
-		}
-	}
-
-	return nil
+	return mux, nil
 }
 
-func (node *Node) sendAuthResponse(success bool, config string) error {
-	packet := &proto.SeedPacket{
-		Payload: &proto.SeedPacket_AuthResponse{
-			AuthResponse: &proto.SeedAuthResponse{
-				Success: success,
-				Config:  config,
-			},
-		},
+func decodeRequest(w http.ResponseWriter, r *http.Request, m protoreflect.ProtoMessage) error {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return fmt.Errorf("request method should be `post`")
 	}
 
-	glog.Infoln("Send auth response." + packet.String())
-	return node.sendPacket(packet)
-}
-
-func (node *Node) sendHint(locked bool) error {
-	var hint uint32
-	if node.assigned {
-		hint = hint | HintAssigned
-	}
-	if !locked {
-		node.seed.mutex.Lock()
-		defer node.seed.mutex.Unlock()
-	}
-	if len(node.seed.nodes) == 1 {
-		hint = hint | HintOnlyOne
+	if r.ProtoMajor != 2 && r.ProtoMajor != 3 {
+		w.WriteHeader(http.StatusPreconditionFailed)
+		return fmt.Errorf("request should be HTTP/2 or HTTP/3")
 	}
 
-	packet := &proto.SeedPacket{
-		Payload: &proto.SeedPacket_Hint{
-			Hint: &proto.SeedHint{
-				Hint: hint,
-			},
-		},
-	}
-
-	glog.Infoln("Send hint." + packet.String())
-	return node.sendPacket(packet)
-}
-
-func (node *Node) sendPing() error {
-	packet := &proto.SeedPacket{
-		Payload: &proto.SeedPacket_Ping{
-			Ping: true,
-		},
-	}
-
-	glog.Info("Send ping.")
-	return node.sendPacket(packet)
-}
-
-func (node *Node) sendRequireRandom() error {
-	packet := &proto.SeedPacket{
-		Payload: &proto.SeedPacket_RequireRandom{
-			RequireRandom: true,
-		},
-	}
-
-	glog.Info("Send require random.")
-	return node.sendPacket(packet)
-}
-
-func (node *Node) sendPacket(packet *proto.SeedPacket) error {
-	node.mutex.Lock()
-	defer node.mutex.Unlock()
-
-	node.timeLastSend = time.Now()
-	packetBin, err := proto3.Marshal(packet)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		glog.Fatal(err)
-	}
-	defer glog.Info("send packet.")
-	node.socket.SetWriteDeadline(time.Now().Add(writeWait))
-	return node.socket.WriteMessage(websocket.BinaryMessage, packetBin)
-}
-
-func (node *Node) close() error {
-	glog.Info("close link")
-
-	if node.seed != nil {
-		node.seed.deleteNode(node)
+		w.WriteHeader(http.StatusBadRequest)
+		return err
 	}
 
-	if err := node.socket.Close(); err != nil {
+	if err := proto3.Unmarshal(body, m); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
 		return err
 	}
 
 	return nil
+}
+
+func outputResponse(w http.ResponseWriter, m protoreflect.ProtoMessage, code int) error {
+	if code != http.StatusOK && m.ProtoReflect().IsValid() {
+		log.Fatal("logic error: status code should be OK when have response message ", code, m)
+	}
+
+	w.WriteHeader(code)
+	if code != http.StatusOK {
+		return nil
+	}
+
+	response, err := proto3.Marshal(m)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return err
+	}
+
+	w.Header().Add("Content-Type", "application/octet-stream")
+
+	if _, err := w.Write(response); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (seed *seed) start() {
+	go func() {
+		ticker4Cleanup := time.NewTicker(time.Second)
+		defer ticker4Cleanup.Stop()
+		ticker4Random := time.NewTicker(10 * time.Second)
+		defer ticker4Random.Stop()
+
+		for {
+			select {
+			case <-seed.ctx.Done():
+				return
+
+			case <-ticker4Cleanup.C:
+				if err := seed.cleanup(); err != nil {
+					log.Println("failed on cleanup:", err)
+				}
+
+			case <-ticker4Random.C:
+				if err := seed.randomConnect(); err != nil {
+					log.Println("failed on random connect:", err)
+				}
+			}
+		}
+	}()
+}
+
+func (seed *seed) authenticate(param *proto.SeedAuthenticate) (*proto.SeedAuthenticateResponse, int, error) {
+	if param.Version != ProtocolVersion {
+		return nil, http.StatusBadRequest, fmt.Errorf("wrong version was specified: %s", param.Version)
+	}
+
+	// verify the token
+	if seed.verifier != nil {
+		verified, err := seed.verifier.Verify(param.Token)
+		if err != nil {
+			return nil, http.StatusInternalServerError, err
+		}
+
+		if !verified {
+			return nil, http.StatusUnauthorized, fmt.Errorf("verify failed")
+		}
+	}
+
+	seed.mutex.Lock()
+	defer seed.mutex.Unlock()
+	nid := nidToString(param.Nid)
+
+	// when detect duplicate node-id, disconnect existing node and return error to new node
+	if _, ok := seed.nodes[nid]; ok {
+		seed.disconnect(nid, true)
+		return nil, http.StatusInternalServerError, fmt.Errorf("detect duplicate node-id: %s", nid)
+	}
+
+	sessionID := seed.createNode(nid)
+
+	return &proto.SeedAuthenticateResponse{
+		Hint:      seed.getHint(true),
+		Config:    seed.config,
+		SessionId: sessionID,
+	}, http.StatusOK, nil
+}
+
+func (seed *seed) close(param *proto.SeedClose) {
+	nid, ok := seed.checkSession(param.SessionId)
+	// return immediately when session is no exist
+	if !ok {
+		return
+	}
+
+	seed.disconnect(nid, false)
+}
+
+func (seed *seed) relay(param *proto.SeedRelay) (*proto.SeedRelayResponse, int, error) {
+	nid, ok := seed.checkSession(param.SessionId)
+	if !ok {
+		return nil, http.StatusUnauthorized, nil
+	}
+
+	seed.mutex.Lock()
+	defer seed.mutex.Unlock()
+
+	for _, p := range param.Packets {
+		// TODO: verify the packet
+
+		seed.packets = append(seed.packets, packet{
+			timestamp: time.Now(),
+			stepNid:   nid,
+			p:         p,
+		})
+
+		if (p.Mode & ModeResponse) != 0 {
+			dstNid := nidToString(p.DstNid)
+			seed.wakeUp(dstNid, 0, true)
+			continue
+		}
+
+		srcNid := nidToString(p.SrcNid)
+		for chNid, node := range seed.nodes {
+			if (node.online || seed.countOnline(true) == 0) && chNid != nid && chNid != srcNid {
+				if seed.wakeUp(chNid, 0, true) {
+					break
+				}
+			}
+		}
+	}
+
+	return &proto.SeedRelayResponse{
+		Hint: seed.getHint(true),
+	}, http.StatusOK, nil
+}
+
+func (seed *seed) poll(ctx context.Context, param *proto.SeedPoll) (*proto.SeedPollResponse, int, error) {
+	nid, ok := seed.checkSession(param.SessionId)
+	if !ok {
+		return nil, http.StatusUnauthorized, nil
+	}
+
+	packets := seed.getPackets(nid, param.Online, false)
+	if len(packets) != 0 {
+		return &proto.SeedPollResponse{
+			Hint:      seed.getHint(false),
+			SessionId: param.SessionId,
+			Packets:   packets,
+		}, http.StatusOK, nil
+	}
+
+	ch, err := seed.assignChannel(nid, param.Online)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	defer seed.closeChannel(nid, false)
+
+	select {
+	case <-ctx.Done():
+		return nil, http.StatusOK, nil
+
+	case <-seed.ctx.Done():
+		return &proto.SeedPollResponse{
+			Hint:      seed.getHint(false),
+			SessionId: param.SessionId,
+		}, http.StatusOK, nil
+
+	case hint, ok := <-ch:
+		if !ok {
+			return nil, http.StatusOK, nil
+		}
+
+		return &proto.SeedPollResponse{
+			Hint:      hint | seed.getHint(false),
+			SessionId: param.SessionId,
+			Packets:   seed.getPackets(nid, param.Online, false),
+		}, http.StatusOK, nil
+	}
+}
+
+func (seed *seed) getPackets(nid string, online bool, locked bool) []*proto.SeedPacket {
+	if !locked {
+		seed.mutex.Lock()
+		defer seed.mutex.Unlock()
+	}
+
+	packets := make([]*proto.SeedPacket, 0)
+	rest := make([]packet, 0)
+
+	for _, packet := range seed.packets {
+		dstNid := nidToString(packet.p.DstNid)
+		srcNid := nidToString(packet.p.SrcNid)
+
+		if nid == srcNid || nid == packet.stepNid {
+			// skip if receiver node is equal to source node
+			rest = append(rest, packet)
+
+		} else if nid == dstNid {
+			// ok if receiver node is equal to destination node
+			packets = append(packets, packet.p)
+
+		} else if (packet.p.Mode & ModeResponse) != 0 {
+			// skip if the packet is response mode and receiver is not equal to destination
+			rest = append(rest, packet)
+
+		} else if online || seed.countOnline(true) == 0 {
+			packets = append(packets, packet.p)
+
+		} else {
+			rest = append(rest, packet)
+		}
+	}
+
+	seed.packets = rest
+
+	return packets
+}
+
+func (seed *seed) wakeUp(nid string, hint uint32, locked bool) bool {
+	if !locked {
+		seed.mutex.Lock()
+		defer seed.mutex.Unlock()
+	}
+
+	node, ok := seed.nodes[nid]
+	if !ok || node.c == nil {
+		return false
+	}
+
+	node.c <- hint
+	seed.closeChannel(nid, true)
+
+	return true
+}
+
+func (seed *seed) cleanup() error {
+	seed.mutex.Lock()
+	defer seed.mutex.Unlock()
+
+	now := time.Now()
+	for nid, node := range seed.nodes {
+		// close timeout channels
+		if now.After(node.chTimestamp.Add(seed.pollingTimeout)) {
+			seed.closeChannel(nid, true)
+		}
+
+		// disconnect node if it had pass keep alive timeout
+		if now.After(node.timestamp.Add(seed.keepAliveTimeout)) {
+			seed.disconnect(nid, true)
+		}
+	}
+
+	// drop timeout packets
+	keep := make([]packet, 0)
+	for _, packet := range seed.packets {
+		if now.After(packet.timestamp.Add(seed.pollingTimeout)) {
+			continue
+		}
+		keep = append(keep, packet)
+	}
+	seed.packets = keep
+
+	return nil
+}
+
+func (seed *seed) countChannels(locked bool) int {
+	if !locked {
+		seed.mutex.Lock()
+		defer seed.mutex.Unlock()
+	}
+
+	count := 0
+	for _, node := range seed.nodes {
+		if node.c != nil {
+			count++
+		}
+	}
+
+	return count
+}
+
+func (seed *seed) countOnline(locked bool) int {
+	if !locked {
+		seed.mutex.Lock()
+		defer seed.mutex.Unlock()
+	}
+
+	count := 0
+	for _, node := range seed.nodes {
+		if node.c != nil && node.online {
+			count++
+		}
+	}
+
+	return count
+}
+
+func (seed *seed) randomConnect() error {
+	seed.mutex.Lock()
+	defer seed.mutex.Unlock()
+
+	// skip if there are few online channels
+	if seed.countOnline(true) < 2 {
+		return nil
+	}
+
+	for nid := range seed.nodes {
+		if seed.wakeUp(nid, HintRequireRandom, true) {
+			return nil
+		}
+	}
+
+	return nil
+}
+
+func (seed *seed) checkSession(sessionID string) (string, bool) {
+	seed.mutex.Lock()
+	defer seed.mutex.Unlock()
+
+	nid, ok := seed.sessions[sessionID]
+	if !ok {
+		return "", false
+	}
+
+	node, ok := seed.nodes[nid]
+	if !ok {
+		log.Fatal("logic error: node should be exist when session exits")
+	}
+
+	node.timestamp = time.Now()
+
+	return nid, true
+}
+
+func (seed *seed) createNode(nid string) string {
+	// should be locked
+	if _, ok := seed.nodes[nid]; ok {
+		log.Fatal("logic error: duplicate node-id in nodes")
+	}
+
+	sessionID := seed.assignSessionID(nid)
+	seed.nodes[nid] = &node{
+		timestamp: time.Now(),
+		sessionID: sessionID,
+	}
+
+	return sessionID
+}
+
+func (seed *seed) assignSessionID(nid string) string {
+	// should be locked
+	for {
+		// generate new session-id
+		sessionID := fmt.Sprintf("%016x%016x%016x%016x", rand.Uint64(), rand.Uint64(), rand.Uint64(), rand.Uint64())
+
+		// retry if duplicated
+		if _, ok := seed.sessions[sessionID]; ok {
+			continue
+		}
+
+		// assign new session id
+		seed.sessions[sessionID] = nid
+		return sessionID
+	}
+}
+
+func (seed *seed) closeChannel(nid string, locked bool) {
+	if !locked {
+		seed.mutex.Lock()
+		defer seed.mutex.Unlock()
+	}
+
+	node, ok := seed.nodes[nid]
+	if !ok || node.c == nil {
+		return
+	}
+
+	close(node.c)
+	node.c = nil
+	node.online = false
+}
+
+func (seed *seed) getHint(locked bool) uint32 {
+	if !locked {
+		seed.mutex.Lock()
+		defer seed.mutex.Unlock()
+	}
+
+	hint := uint32(0)
+
+	if len(seed.nodes) == 1 {
+		hint = HintOnlyOne
+	}
+
+	return hint
+}
+
+func (seed *seed) disconnect(nid string, locked bool) error {
+	if !locked {
+		seed.mutex.Lock()
+		defer seed.mutex.Unlock()
+	}
+
+	seed.closeChannel(nid, true)
+
+	node, ok := seed.nodes[nid]
+	if !ok {
+		return nil
+	}
+	delete(seed.nodes, nid)
+
+	if _, ok = seed.sessions[node.sessionID]; !ok {
+		log.Fatal("logic error: session should exist when the node exists")
+	}
+	delete(seed.sessions, node.sessionID)
+
+	return nil
+}
+
+func (seed *seed) assignChannel(nid string, online bool) (chan uint32, error) {
+	seed.mutex.Lock()
+	defer seed.mutex.Unlock()
+
+	node, ok := seed.nodes[nid]
+	if !ok {
+		return nil, fmt.Errorf("logic error: there is the node to assign a channel")
+	}
+
+	if node.c != nil {
+		return nil, fmt.Errorf("duplicate channel")
+	}
+
+	c := make(chan uint32)
+	node.chTimestamp = time.Now()
+	node.c = c
+	node.online = online
+
+	return c, nil
 }

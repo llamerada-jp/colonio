@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-func TestNative(t *testing.T) {
+func TestWasm(t *testing.T) {
 	suite.Run(t, new(SingleNodeSuite))
 	suite.Run(t, new(E2eSuite))
 }

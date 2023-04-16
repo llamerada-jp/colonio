@@ -377,10 +377,13 @@ class Value {
 }
 
 class ColonioConfig {
+  disableSeedVerification: boolean;
   loggerFuncRaw: (c: Colonio, json: string) => void;
   loggerFunc: (c: Colonio, log: LogEntry) => void;
 
   constructor() {
+    this.disableSeedVerification = false;
+
     this.loggerFuncRaw = (c: Colonio, json: string): void => {
       let log = JSON.parse(json) as LogEntry;
       this.loggerFunc(c, log);
@@ -666,7 +669,7 @@ class Colonio {
 
   constructor(config: ColonioConfig) {
     // init
-    this._colonio = ccall("js_init", "number", [], []);
+    this._colonio = ccall("js_init", "number", ["boolean"], [config.disableSeedVerification]);
     colonioMap.set(this._colonio, this);
 
     // logger
@@ -943,128 +946,50 @@ function schedulerRequestNextRoutine(schedulerPtr: number, msec: number): void {
 }
 
 /* SeedLinkWebsocket */
-let availableSeedLinks: Map<number, WebSocket> = new Map();
-
-function seedLinkWsConnect(seedLink: number, urlPtr: number, urlSiz: number) {
+function seedLinkPost(seedLinkTask: number, urlPtr: number, urlSiz: number, dataPtr: number, dataSiz: number) {
   let url = UTF8ToString(urlPtr, urlSiz);
-  console.log("socket connect", seedLink, url);
-  let socket: WebSocket;
-  try {
-    socket = new WebSocket(url);
-  } catch (error) {
-    let [msgPtr, msgSiz] = allocPtrString(JSON.stringify(error));
-
-    ccall("seed_link_ws_on_error", null,
-      ["number", "number", "number"],
-      [seedLink, msgPtr, msgSiz]);
-
-    freePtr(msgPtr);
-    return;
-  }
-
-  socket.binaryType = "arraybuffer";
-  availableSeedLinks.set(seedLink, socket);
-
-  socket.onopen = (_: Event): void => {
-    console.log("socket open", seedLink);
-    if (!availableSeedLinks.has(seedLink)) {
-      return;
-    }
-    ccall("seed_link_ws_on_connect", null, ["number"], [seedLink]);
-  };
-
-  socket.onerror = (ev: Event): void => {
-    console.log("socket error", seedLink, ev);
-    if (!availableSeedLinks.has(seedLink)) {
-      return
-    }
-
-    let [msgPtr, msgSiz] = allocPtrString("");
-
-    ccall("seed_link_ws_on_error", null,
-      ["number", "number", "number"],
-      [seedLink, msgPtr, msgSiz]);
-
-    freePtr(msgPtr);
-  };
-
-  socket.onmessage = (message: MessageEvent<ArrayBuffer>): void => {
-    console.log("socket message", seedLink /*, dumpPacket(e.data) */);
-    if (!availableSeedLinks.has(seedLink)) {
-      return
-    }
-
-    let [dataPtr, dataSiz] = allocPtrArrayBuffer(message.data);
-
-    ccall("seed_link_ws_on_recv", null,
-      ["number", "number", "number"],
-      [seedLink, dataPtr, dataSiz]);
-
-    freePtr(dataPtr);
-  };
-
-  socket.onclose = (ev: CloseEvent): void => {
-    console.log("socket close", seedLink, ev);
-    if (!availableSeedLinks.has(seedLink)) {
-      return;
-    }
-
-    if (!ev.wasClean) {
-      let [msgPtr, msgSiz] = allocPtrString(ev.reason);
-
-      ccall("seed_link_ws_on_error", null,
-        ["number", "number", "number"],
-        [seedLink, msgPtr, msgSiz]);
-
-      freePtr(msgPtr);
-    }
-
-    ccall("seed_link_ws_on_disconnect", null, ["number"], [seedLink]);
-  };
-}
-
-function seedLinkWsSend(seedLink: number, dataPtr: number, dataSiz: number) {
-  console.log("socket send", seedLink);
-  console.assert(availableSeedLinks.has(seedLink));
-
   // avoid error : The provided ArrayBufferView value must not be shared.
   let data = new Uint8Array(dataSiz);
   for (let idx = 0; idx < dataSiz; idx++) {
     data[idx] = HEAPU8[dataPtr + idx];
   }
-  let socket = availableSeedLinks.get(seedLink);
-  if (typeof (socket) === "undefined") {
-    console.log("socket to seed undefined");
+  let res: Response | undefined;
+
+  fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/octet-stream",
+    },
+    body: data,
+  }).then((response: Response) => {
+    let altSvc = response.headers.get("alt-svc");
+    if (altSvc == null || (!altSvc.includes("h2") && !altSvc.includes("h3"))) {
+      throw new Error("This is not an HTTP/2 response");
+    }
+
+    res = response;
+    return response.arrayBuffer();
+
+  }).then((buffer: ArrayBuffer | undefined) => {
+    if (buffer == null || res == null) {
+      console.error("unexpected condition");
+      return;
+    }
+
+    let [dataPtr, dataSiz] = allocPtrArrayBuffer(buffer);
+
+    ccall("seed_link_on_response", null,
+      ["number", "number", "number", "number"],
+      [seedLinkTask, res.status, dataPtr, dataSiz]);
+
+    freePtr(dataPtr);
+  }).catch((e) => {
+    let [msgPtr, msgSiz] = allocPtrString(e.toString());
+    ccall("seed_link_on_error", null, ["number", "number", "number"],
+      [seedLinkTask, msgPtr, msgSiz]);
+    freePtr(msgPtr);
     return;
-  }
-  socket.send(new Uint8Array(data));
-}
-
-function seedLinkWsDisconnect(seedLink: number): void {
-  console.log("socket, disconnect", seedLink);
-  let socket = availableSeedLinks.get(seedLink);
-  if (typeof (socket) === "undefined") {
-    console.log("double disconnect", seedLink);
-    return;
-  }
-  socket.close();
-}
-
-function seedLinkWsFinalize(seedLink: number): void {
-  console.log("socket finalize", seedLink);
-  let socket = availableSeedLinks.get(seedLink);
-  if (typeof (socket) === "undefined") {
-    console.log("double finalize", seedLink);
-    return;
-  }
-
-  // 2 : CLOSING
-  // 3 : CLOSED
-  if (socket.readyState !== 2 && socket.readyState !== 3) {
-    socket.close();
-  }
-
-  availableSeedLinks.delete(seedLink);
+  });
 }
 
 /* WebrtcLink */

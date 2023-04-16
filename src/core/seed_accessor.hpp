@@ -24,12 +24,9 @@
 #  pragma GCC diagnostic pop
 #endif
 
-#include <map>
+#include <deque>
 #include <memory>
-#include <queue>
 #include <string>
-#include <utility>
-#include <vector>
 
 #include "colonio.pb.h"
 #include "definition.hpp"
@@ -47,7 +44,7 @@ class SeedAccessorDelegate {
   virtual void seed_accessor_on_error(const std::string& message)                 = 0;
   virtual void seed_accessor_on_recv_config(const picojson::object& config)       = 0;
   virtual void seed_accessor_on_recv_packet(std::unique_ptr<const Packet> packet) = 0;
-  virtual void seed_accessor_on_recv_require_random()                             = 0;
+  virtual void seed_accessor_on_require_random()                                  = 0;
 };
 
 namespace AuthStatus {
@@ -60,19 +57,22 @@ static const Type FAILURE = 2;
 /**
  * Use server as seed of peer to peer connection.
  */
-class SeedAccessor : public SeedLinkDelegate {
+class SeedAccessor {
  public:
   SeedAccessor(
-      Logger& l, Scheduler& s, const NodeID& n, SeedAccessorDelegate& d, const std::string& u, const std::string& t);
+      Logger& l, Scheduler& s, const NodeID& n, SeedAccessorDelegate& d, const std::string& u, const std::string& t,
+      bool v);
   virtual ~SeedAccessor();
   SeedAccessor(const SeedAccessor&) = delete;
   SeedAccessor& operator=(const SeedAccessor&) = delete;
 
-  void connect(unsigned int interval = SEED_CONNECT_INTERVAL);
   void disconnect();
+  void enable_polling(bool on);
+  void tell_online_state(bool flag);
   AuthStatus::Type get_auth_status() const;
   LinkState::Type get_link_state() const;
   bool is_only_one();
+  bool last_request_had_error();
   void relay_packet(std::unique_ptr<const Packet> packet);
 
  private:
@@ -81,29 +81,37 @@ class SeedAccessor : public SeedLinkDelegate {
   const NodeID& local_nid;
   SeedAccessorDelegate& delegate;
 
-  /** Server URL. */
-  const std::string url;
   const std::string token;
   /** Connection to the server */
   std::unique_ptr<SeedLink> link;
-  /** Last time of tried to connect to the server. */
-  int64_t last_connect_time;
+  // session id. it is empty if session disabled
+  std::string session;
+  // true if polling is enabled
+  bool polling_flag;
+  // true if waiting response for authenticate request
+  bool running_auth;
+  // describing state of P2P connection. true if the node having online node link at least one
+  bool is_online;
+  // true if waiting response for polling request
+  bool running_poll;
+  // true if last request had error, ex: network error, request returns 4xx, 5xx code
+  bool has_error;
+  // timestamp of last send packet without close request
+  int64_t last_send_time;
+
+  // waiting queue of packets to relay to seed
+  std::deque<std::unique_ptr<const Packet>> waiting;
 
   AuthStatus::Type auth_status;
-  SeedHint::Type hint;
+  // true if the only this node is connecting to to the seed
+  bool only_one_flag;
 
-  void seed_link_on_connect(SeedLink& link) override;
-  void seed_link_on_disconnect(SeedLink& link) override;
-  void seed_link_on_error(SeedLink& link, const std::string& message) override;
-  void seed_link_on_recv(SeedLink& link, const std::string& data) override;
-
-  void recv_error(const proto::Error& packet);
-  void recv_auth_response(const proto::SeedAuthResponse& packet);
-  void recv_ping();
-  void recv_hint(const proto::SeedHint& packet);
-  void recv_require_random();
-  void recv_relay_packet(const proto::SeedRelayPacket& packet);
-  void send_auth(const std::string& token);
-  void send_ping();
+  void trigger();
+  void send_authenticate();
+  void send_relay();
+  void send_poll();
+  void send_close();
+  void decode_hint(SeedHint::Type hint);
+  void decode_http_code(int code);
 };
 }  // namespace colonio

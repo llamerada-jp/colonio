@@ -204,11 +204,12 @@ int js_error_get_file_length(PTR_T err) {
   return e->file_siz;
 }
 
-COLONIO_T js_init() {
+COLONIO_T js_init(bool disable_seed_verification) {
   colonio_config_t config;
   colonio_config_set_default(&config);
-  config.disable_callback_thread = true;
-  config.logger_func             = logger_func;
+  config.disable_callback_thread   = true;
+  config.disable_seed_verification = disable_seed_verification;
+  config.logger_func               = logger_func;
 
   colonio_t colonio;
   // TODO detect an error

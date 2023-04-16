@@ -48,28 +48,6 @@ message NodePacket {
   bytes content = 4;
 }
 
-message SeedPacket {
-  oneof Payload {
-    Error error                    = 1;
-    SeedAuth auth                  = 2;
-    SeedAuthResponse auth_response = 3;
-    bool ping                      = 4;
-    SeedHint hint                  = 5;
-    bool require_random            = 6;
-    SeedRelayPacket relay_packet   = 7;
-  }
-}
-
-// node-seed packet container
-message SeedRelayPacket {
-  NodeID dst_nid        = 1;
-  NodeID src_nid        = 2;
-  uint32 hop_count      = 3;
-  uint32 id             = 4;
-  uint32 mode           = 5;
-  PacketContent content = 6;
-}
-
 //
 message PacketContent {
   oneof Content {
@@ -110,20 +88,49 @@ message Error {
 }
 
 // for node-seed authenticate and hints
-message SeedAuth {
+message SeedAuthenticate {
   string version = 1;
   NodeID nid     = 2;
-  uint32 hint    = 3;
-  string token   = 4;
+  string token   = 3;
 }
 
-message SeedAuthResponse {
-  bool success  = 1;
-  string config = 2;
+message SeedAuthenticateResponse {
+  uint32 hint       = 1;
+  string config     = 2;
+  string session_id = 3;
 }
 
-message SeedHint {
+message SeedClose {
+  string session_id = 1;
+}
+
+message SeedPacket {
+  NodeID dst_nid        = 1;
+  NodeID src_nid        = 2;
+  uint32 hop_count      = 3;
+  uint32 id             = 4;
+  uint32 mode           = 5;
+  PacketContent content = 6;
+}
+
+message SeedRelay {
+  string session_id           = 1;
+  repeated SeedPacket packets = 2;
+}
+
+message SeedRelayResponse {
   uint32 hint = 1;
+}
+
+message SeedPoll {
+  string session_id = 1;
+  bool online       = 2;
+}
+
+message SeedPollResponse {
+  uint32 hint                 = 1;
+  string session_id           = 2;
+  repeated SeedPacket packets = 3;
 }
 
 // for webrtc signaling

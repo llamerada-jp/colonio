@@ -37,7 +37,7 @@ const (
 	MessagingAcceptNearby uint32 = 0x01
 	// If this option is specified, call will not wait for a response. Also, no error will occur if no node receives the
 	// call. You should return null value instead of this option if you just don't need return value.
-	MessagingIgnoreReply uint32 = 0x02
+	MessagingIgnoreResponse uint32 = 0x02
 
 	KvsMustExistKey      = 0x01
 	KvsProhibitOverwrite = 0x02
@@ -46,8 +46,9 @@ const (
 )
 
 type ColonioConfig struct {
-	MaxUserThreads int
-	LoggerFunc     func(string)
+	DisableSeedVerification bool
+	MaxUserThreads          uint
+	LoggerFunc              func(string)
 }
 
 type MessagingRequest struct {

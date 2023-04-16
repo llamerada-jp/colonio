@@ -15,6 +15,8 @@
 /go/test/test.wasm
 /go/test/wasm_exec.js
 /local/
+/localhost.crt
+/localhost.key
 /output/
 /src/js/colonio_go.d.ts
 /src/js/colonio_go.js.map

@@ -24,8 +24,9 @@
 using namespace colonio;
 using ::testing::MatchesRegex;
 
+const std::string SEED_URL("https://localhost:8080/test");
+
 TEST(MessagingTest, callExpect) {
-  const std::string URL   = "http://localhost:8080/test";
   const std::string TOKEN = "";
 
   AsyncHelper helper;
@@ -36,7 +37,7 @@ TEST(MessagingTest, callExpect) {
   std::unique_ptr<Colonio> node(Colonio::new_instance(config));
 
   printf("connect node\n");
-  node->connect(URL, TOKEN);
+  node->connect(SEED_URL, TOKEN);
 
   printf("node: %s\n", node->get_local_nid().c_str());
 
@@ -66,7 +67,6 @@ TEST(MessagingTest, callExpect) {
 }
 
 TEST(MessagingTest, callNearby) {
-  const std::string URL   = "http://localhost:8080/test";
   const std::string TOKEN = "";
 
   AsyncHelper helper;
@@ -77,7 +77,7 @@ TEST(MessagingTest, callNearby) {
   std::unique_ptr<Colonio> node(Colonio::new_instance(config));
 
   printf("connect node\n");
-  node->connect(URL, TOKEN);
+  node->connect(SEED_URL, TOKEN);
 
   printf("node: %s\n", node->get_local_nid().c_str());
 
@@ -108,7 +108,6 @@ TEST(MessagingTest, callNearby) {
 }
 
 TEST(MessagingTest, send) {
-  const std::string URL   = "http://localhost:8080/test";
   const std::string TOKEN = "";
 
   AsyncHelper helper;
@@ -121,10 +120,10 @@ TEST(MessagingTest, send) {
   std::unique_ptr<Colonio> node2(Colonio::new_instance(config2));
 
   printf("connect node1\n");
-  node1->connect(URL, TOKEN);
+  node1->connect(SEED_URL, TOKEN);
 
   printf("connect node2\n");
-  node2->connect(URL, TOKEN);
+  node2->connect(SEED_URL, TOKEN);
 
   printf("node1 : %s\n", node1->get_local_nid().c_str());
   printf("node2 : %s\n", node2->get_local_nid().c_str());
@@ -218,7 +217,6 @@ TEST(MessagingTest, send) {
 }
 
 TEST(MessagingTest, callMessageChain) {
-  const std::string URL   = "http://localhost:8080/test";
   const std::string TOKEN = "";
 
   AsyncHelper helper;
@@ -230,7 +228,7 @@ TEST(MessagingTest, callMessageChain) {
   std::unique_ptr<Colonio> node(Colonio::new_instance(config));
 
   printf("connect node\n");
-  node->connect(URL, TOKEN);
+  node->connect(SEED_URL, TOKEN);
 
   node->messaging_set_handler(
       "hop", [&](Colonio& c, const MessagingRequest& message, std::shared_ptr<MessagingResponseWriter> writer) {

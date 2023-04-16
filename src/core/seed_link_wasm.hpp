@@ -15,21 +15,30 @@
  */
 #pragma once
 
+#include <set>
+
 #include "seed_link.hpp"
 
 namespace colonio {
-class SeedLinkWebsocketWasm : public SeedLink {
+class SeedLinkWasm : public SeedLink {
  public:
-#ifndef NDEBUG
-  SeedLinkWebsocketWasm* debug_ptr;
-#endif
-
-  explicit SeedLinkWebsocketWasm(SeedLinkParam& param);
-  virtual ~SeedLinkWebsocketWasm();
+  explicit SeedLinkWasm(SeedLinkParam& param);
+  virtual ~SeedLinkWasm();
 
   // SeedlinkBase
-  void connect(const std::string& url) override;
-  void disconnect() override;
-  void send(const std::string& data) override;
+  void post(
+      const std::string& path, const std::string& data,
+      std::function<void(int, const std::string&)>&& cb_response) override;
+
+  // private
+  class Task {
+   public:
+    bool canceled;
+    std::function<void(int, const std::string&)> cb;
+
+    explicit Task(std::function<void(int, const std::string&)> c);
+  };
+
+  static std::set<Task*> tasks;
 };
 }  // namespace colonio

@@ -166,11 +166,7 @@ declare class Colonio {
 declare let schedulerTimers: Map<number, number>;
 declare function schedulerRelease(schedulerPtr: number): void;
 declare function schedulerRequestNextRoutine(schedulerPtr: number, msec: number): void;
-declare let availableSeedLinks: Map<number, WebSocket>;
-declare function seedLinkWsConnect(seedLink: number, urlPtr: number, urlSiz: number): void;
-declare function seedLinkWsSend(seedLink: number, dataPtr: number, dataSiz: number): void;
-declare function seedLinkWsDisconnect(seedLink: number): void;
-declare function seedLinkWsFinalize(seedLink: number): void;
+declare function seedLinkPost(seedLinkTask: number, urlPtr: number, urlSiz: number, dataPtr: number, dataSiz: number): void;
 declare class WebrtcLinkCb {
     onDcoError(webrtcLink: number, message: string): void;
     onDcoMessage(webrtcLink: number, message: ArrayBuffer): void;

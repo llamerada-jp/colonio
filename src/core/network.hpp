@@ -43,7 +43,7 @@ class NetworkDelegate {
 
 class Network : public NodeAccessorDelegate, public RoutingDelegate, public SeedAccessorDelegate {
  public:
-  Network(Logger& l, Random& r, Scheduler& s, CommandManager& c, const NodeID& n, NetworkDelegate&);
+  Network(Logger& l, Random& r, Scheduler& s, CommandManager& c, const NodeID& n, NetworkDelegate&, bool v);
   virtual ~Network();
 
   void connect(
@@ -59,6 +59,8 @@ class Network : public NodeAccessorDelegate, public RoutingDelegate, public Seed
   const NodeID& get_relay_nid_2d(const Coordinate& position);
 
  private:
+  const bool DISABLE_SEED_VERIFICATION;
+
   Logger& logger;
   Random& random;
   Scheduler& scheduler;
@@ -92,7 +94,7 @@ class Network : public NodeAccessorDelegate, public RoutingDelegate, public Seed
   void seed_accessor_on_error(const std::string& message) override;
   void seed_accessor_on_recv_config(const picojson::object& config) override;
   void seed_accessor_on_recv_packet(std::unique_ptr<const Packet> packet) override;
-  void seed_accessor_on_recv_require_random() override;
+  void seed_accessor_on_require_random() override;
 
   void update_accessor_state();
 };

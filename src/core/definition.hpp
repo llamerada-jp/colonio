@@ -47,9 +47,9 @@ static const char NEXT[] = "next";  ///< Next node is nodes of connecting direct
 
 namespace SeedHint {
 typedef uint32_t Type;
-static const Type NONE     = 0x0000;
-static const Type ONLY_ONE = 0x0001;
-static const Type ASSIGNED = 0x0002;
+static const Type NONE           = 0x0000;
+static const Type ONLY_ONE       = 0x0001;
+static const Type REQUIRE_RANDOM = 0x0002;
 }  // namespace SeedHint
 
 /**
@@ -97,6 +97,7 @@ static const unsigned int FIRST_LINK_RETRY_MAX   = 3;
 static const int64_t LINK_TRIAL_TIME_MIN         = 60000;
 static const unsigned int LINKS_MIN              = 4;
 static const int64_t SEED_CONNECT_INTERVAL       = 10000;
+static const int64_t SEED_SESSION_TIMEOUT        = 10 * 1000;  // [msec]
 static const uint32_t PACKET_ID_NONE             = 0x0;
 
 }  // namespace colonio
