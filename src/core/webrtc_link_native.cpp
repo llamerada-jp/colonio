@@ -25,6 +25,7 @@
 #endif
 
 #include <cassert>
+#include <memory>
 #include <string>
 
 #include "logger.hpp"
@@ -291,9 +292,9 @@ void WebrtcLinkNative::update_ice(const picojson::object& ice) {
   }
 
   webrtc::SdpParseError err_sdp;
-  webrtc::IceCandidateInterface* ice_ptr = CreateIceCandidate(
+  std::unique_ptr<webrtc::IceCandidateInterface> ice_ptr(webrtc::CreateIceCandidate(
       ice.at("sdpMid").get<std::string>(), static_cast<int>(ice.at("sdpMLineIndex").get<double>()),
-      ice.at("candidate").get<std::string>(), &err_sdp);
+      ice.at("candidate").get<std::string>(), &err_sdp));
   if (!err_sdp.line.empty() && !err_sdp.description.empty()) {
     /// @todo error
     std::cout << "Error on CreateIceCandidate" << std::endl
@@ -302,7 +303,7 @@ void WebrtcLinkNative::update_ice(const picojson::object& ice) {
     assert(false);
   }
 
-  peer_connection->AddIceCandidate(ice_ptr);
+  peer_connection->AddIceCandidate(ice_ptr.get());
 }
 
 /**
