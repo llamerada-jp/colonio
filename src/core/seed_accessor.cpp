@@ -65,6 +65,7 @@ SeedAccessor::SeedAccessor(
 /**
  */
 SeedAccessor::~SeedAccessor() {
+  link.reset();
   scheduler.remove(this);
 }
 
