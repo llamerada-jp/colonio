@@ -207,11 +207,6 @@ void Network::node_accessor_on_change_state() {
 }
 
 void Network::node_accessor_on_recv_packet(const NodeID& nid, std::unique_ptr<const Packet> packet) {
-  // drop packet if disconnected
-  if (!enforce_online) {
-    return;
-  }
-
   if (routing) {
     routing->on_recv_packet(nid, *packet);
   }
@@ -220,6 +215,11 @@ void Network::node_accessor_on_recv_packet(const NodeID& nid, std::unique_ptr<co
 }
 
 void Network::switch_packet(std::unique_ptr<const Packet> packet, bool is_from_seed) {
+  // drop packet if disconnected
+  if (!enforce_online) {
+    return;
+  }
+
   if ((packet->mode & PacketMode::RELAY_SEED) != 0x0) {
     LinkState::Type seed_status = seed_accessor->get_link_state();
 
@@ -366,11 +366,6 @@ void Network::seed_accessor_on_recv_config(const picojson::object& config) {
 }
 
 void Network::seed_accessor_on_recv_packet(std::unique_ptr<const Packet> packet) {
-  // drop packet if disconnected
-  if (!enforce_online) {
-    return;
-  }
-
   switch_packet(std::move(packet), true);
 }
 
