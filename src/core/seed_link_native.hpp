@@ -57,6 +57,7 @@ class SeedLinkNative : public SeedLink {
     std::function<void(int, const std::string&)> cb;
 
     Task(CURL* h, const std::string& u, const std::string& r, std::function<void(int, const std::string&)> c);
+    virtual ~Task();
   };
 
   bool terminate;
