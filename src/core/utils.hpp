@@ -133,7 +133,6 @@ std::string to_hex(T num) {
 
 std::string dump_binary(const std::string* bin);
 std::string dump_binary(const void* bin, std::size_t len);
-std::string dump_packet(const Packet& packet, unsigned int indent = 2);
 int64_t get_current_msec();
 
 template<typename T>

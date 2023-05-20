@@ -264,7 +264,7 @@ void NodeAccessor::CommandOffer::on_response(const Packet& packet) {
     on_failure(c.signaling_offer_failure());
 
   } else {
-    log_debug("unsupported response").map("packet", c.DebugString());
+    log_debug("unsupported response").map("packet", packet);
   }
 }
 

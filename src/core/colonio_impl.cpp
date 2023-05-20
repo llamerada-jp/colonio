@@ -17,6 +17,7 @@
 
 #include <cassert>
 
+#include "colonio.pb.h"
 #include "coord_system_plane.hpp"
 #include "coord_system_sphere.hpp"
 #include "logger.hpp"
@@ -27,6 +28,17 @@
 #include "utils.hpp"
 
 namespace colonio {
+ColonioImpl::Init ColonioImpl::initializer;
+
+ColonioImpl::Init::Init() {
+}
+
+ColonioImpl::Init::~Init() {
+  // delete all global objects allocated by libprotobuf.
+  // ref. https://protobuf.dev/getting-started/cpptutorial/
+  google::protobuf::ShutdownProtobufLibrary();
+}
+
 ColonioImpl::ColonioImpl(const ColonioConfig& config) :
     logger([this, logger_func = config.logger_func](const std::string& json) {
       logger_func(*this, json);

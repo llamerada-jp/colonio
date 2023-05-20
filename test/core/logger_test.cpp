@@ -132,6 +132,8 @@ class LoggerTest : public ::testing::Test {
     EXPECT_EQ(static_cast<unsigned int>(1), param.size());
     EXPECT_EQ(NodeID::THIS.to_str(), param.at("key").get<std::string>());
     EXPECT_THAT(log_time, MatchesRegex(TIME_REGEX));
+
+    google::protobuf::ShutdownProtobufLibrary();
   }
 };
 

@@ -94,23 +94,6 @@ std::string Utils::dump_binary(const void* bin, std::size_t len) {
   return out.str();
 }
 
-std::string Utils::dump_packet(const Packet& packet, unsigned int indent) {
-  std::string is;
-  std::stringstream out;
-
-  for (unsigned int i = 0; i < indent; i++) {
-    is += " ";
-  }
-
-  out << is << "dst_nid : " << packet.dst_nid.to_str() << std::endl;
-  out << is << "src_nid : " << packet.src_nid.to_str() << std::endl;
-  out << is << "id : " << Utils::to_hex(packet.id) << std::endl;
-  out << is << "mode : " << Utils::to_hex(packet.mode) << std::endl;
-  out << is << "content : " << packet.content->as_proto().DebugString();
-
-  return out.str();
-}
-
 /**
  * This method returns a formatted text like the printf method.
  * Format rule is the same as the printf, because this method uses snprintf inner it.
