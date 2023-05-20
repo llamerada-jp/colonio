@@ -35,6 +35,10 @@ SeedLinkNative::Task::Task(
     post(false), handle(h), url(u), request(r), cb(c) {
 }
 
+SeedLinkNative::Task::~Task() {
+  curl_easy_cleanup(handle);
+}
+
 SeedLinkNative::SeedLinkNative(SeedLinkParam& param) :
     SeedLink(param), terminate(false), multi_handle(nullptr), headers(nullptr) {
   th      = std::make_unique<std::thread>(std::bind(&SeedLinkNative::sub_routine, this));
@@ -173,7 +177,6 @@ void SeedLinkNative::sub_routine() {
       }
 
       curl_multi_remove_handle(multi_handle, handler);
-      curl_easy_cleanup(handler);
     }
   }
 
