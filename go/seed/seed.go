@@ -31,6 +31,14 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
+type ContextKeyType string
+
+/**
+ * CONTEXT_REQUEST_KEY is used to describe the request id for logs.
+ * caller module can set the request id for the value to `http.Request.ctx` using this key.
+ */
+const CONTEXT_REQUEST_KEY ContextKeyType = "requestID"
+
 /**
  * TokenVerifier is an interface to implement the function of verifying the token received from the node.
  */
@@ -101,67 +109,87 @@ func NewSeedHandler(ctx context.Context, config *Config, verifier TokenVerifier)
 	mux := http.NewServeMux()
 	// TODO: output client information for logs
 	mux.HandleFunc("/authenticate", func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Context().Value(CONTEXT_REQUEST_KEY)
+		if requestID == nil {
+			requestID = ""
+		}
+
 		request := &proto.SeedAuthenticate{}
 		if err := decodeRequest(w, r, request); err != nil {
-			log.Println(err)
+			log.Println(requestID, err)
 			return
 		}
 
 		response, code, err := seed.authenticate(request)
 		if err != nil {
-			log.Println(err)
+			log.Println(requestID, err)
 		}
 
 		if err := outputResponse(w, response, code); err != nil {
-			log.Println(err)
+			log.Println(requestID, err)
 		}
 	})
 
 	mux.HandleFunc("/close", func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Context().Value(CONTEXT_REQUEST_KEY)
+		if requestID == nil {
+			requestID = ""
+		}
+
 		request := &proto.SeedClose{}
 		if err := decodeRequest(w, r, request); err != nil {
-			log.Println(err)
+			log.Println(requestID, err)
 			return
 		}
 
 		seed.close(request)
 
 		if err := outputResponse(w, nil, http.StatusOK); err != nil {
-			log.Println(err)
+			log.Println(requestID, err)
 		}
 	})
 
 	mux.HandleFunc("/relay", func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Context().Value(CONTEXT_REQUEST_KEY)
+		if requestID == nil {
+			requestID = ""
+		}
+
 		request := &proto.SeedRelay{}
 		if err := decodeRequest(w, r, request); err != nil {
-			log.Println(err)
+			log.Println(requestID, err)
 			return
 		}
 
 		response, code, err := seed.relay(request)
 		if err != nil {
-			log.Println(err)
+			log.Println(requestID, err)
 		}
 
 		if err := outputResponse(w, response, code); err != nil {
-			log.Println(err)
+			log.Println(requestID, err)
 		}
 	})
 
 	mux.HandleFunc("/poll", func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Context().Value(CONTEXT_REQUEST_KEY)
+		if requestID == nil {
+			requestID = ""
+		}
+
 		request := &proto.SeedPoll{}
 		if err := decodeRequest(w, r, request); err != nil {
-			log.Println(err)
+			log.Println(requestID, err)
 			return
 		}
 
 		response, code, err := seed.poll(r.Context(), request)
 		if err != nil {
-			log.Println(err)
+			log.Println(requestID, err)
 		}
 
 		if err := outputResponse(w, response, code); err != nil {
-			log.Println(err)
+			log.Println(requestID, err)
 		}
 	})
 
