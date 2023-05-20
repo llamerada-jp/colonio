@@ -254,8 +254,8 @@ test: generate-cert
 .PHONY: test-go-native
 test-go-native: build-seed
 	COLONIO_SEED_BIN_PATH=$(OUTPUT_PATH)/seed CGO_LDFLAGS="-L$(OUTPUT_PATH) -L$(OUTPUT_PATH)/lib" \
-	  go test -v ./go/test/
-	go test -v ./go/seed/
+	  go test -v -count=1 ./go/test/
+	go test -v -count=1 ./go/seed/
 
 .PHONY: test-go-wasm
 test-go-wasm: build-seed
