@@ -161,20 +161,24 @@ type handlerWrapper struct {
 }
 
 func (h *handlerWrapper) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	id := rand.Int63()
-	log.Printf("(%016x) proto:%s, remote addr:%s, method:%s uri:%s size:%d\n", id, r.Proto, r.RemoteAddr, r.Method, r.RequestURI, r.ContentLength)
+	requestID := fmt.Sprintf("(%016x)", rand.Int63())
+	log.Printf("%s proto:%s, remote addr:%s, method:%s uri:%s size:%d\n", requestID, r.Proto, r.RemoteAddr, r.Method, r.RequestURI, r.ContentLength)
 
 	writerWithLog := &logWrapper{
 		ResponseWriter: w,
 	}
 	defer func() {
-		log.Printf("(%016x) status code:%d", id, writerWithLog.statusCode)
+		log.Printf("%s status code:%d", requestID, writerWithLog.statusCode)
 	}()
 
 	headerWriter := w.Header()
 	for k, v := range h.headers {
 		headerWriter.Add(k, v)
 	}
+
+	// set request id for the context
+	ctx := context.WithValue(r.Context(), seed.CONTEXT_REQUEST_KEY, requestID)
+	r = r.WithContext(ctx)
 
 	h.handler.ServeHTTP(writerWithLog, r)
 }
