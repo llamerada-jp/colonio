@@ -86,6 +86,13 @@ class ColonioImpl : public Colonio,
   void spread_unset_handler(const std::string& name) override;
 
  private:
+  // this class is to use to init and quit global resources.
+  static class Init {
+   public:
+    Init();
+    virtual ~Init();
+  } initializer;
+
   Logger logger;
   Random random;
   std::unique_ptr<Scheduler> scheduler;
