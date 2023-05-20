@@ -49,8 +49,6 @@ PICOJSON_VERSION := 1.3.0
 PROTOBUF_VERSION := 21.12
 # https://github.com/golang/protobuf
 GO_PROTOBUF_VERSION := 1.5.3
-# https://github.com/zaphoyd/websocketpp
-WEBSOCKETPP_VERSION := 0.8.2
 # https://github.com/gohugoio/hugo
 HUGO_VERSION := v0.111.3
 
@@ -146,14 +144,6 @@ setup-local:
 	&& git clone --depth=1 --branch v$(PICOJSON_VERSION) https://github.com/kazuho/picojson.git \
 	&& cd picojson \
 	&& cp picojson.h $(LOCAL_ENV_PATH)/include/
-	# websocketpp
-	cd $(WORK_PATH) \
-	&& $(RM) -r websocketpp \
-	&& git clone --depth=1 --branch $(WEBSOCKETPP_VERSION) https://github.com/zaphoyd/websocketpp.git \
-	&& cd websocketpp \
-	&& cmake -DCMAKE_INSTALL_PREFIX=$(LOCAL_ENV_PATH) . \
-	&& $(MAKE) \
-	&& $(MAKE) install
 
 .PHONY: setup-protoc
 setup-protoc:
