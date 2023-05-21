@@ -358,6 +358,11 @@ func (seed *seed) relay(param *proto.SeedRelay) (*proto.SeedRelayResponse, int, 
 }
 
 func (seed *seed) poll(ctx context.Context, param *proto.SeedPoll) (*proto.SeedPollResponse, int, error) {
+	requestID := ctx.Value(CONTEXT_REQUEST_KEY)
+	if requestID == nil {
+		requestID = ""
+	}
+
 	nid, ok := seed.checkSession(param.SessionId)
 	if !ok {
 		return nil, http.StatusUnauthorized, nil
@@ -394,7 +399,6 @@ func (seed *seed) poll(ctx context.Context, param *proto.SeedPoll) (*proto.SeedP
 		}
 
 		if hint == HintRequireRandom {
-			requestID := ctx.Value(CONTEXT_REQUEST_KEY)
 			log.Println(requestID, "require random")
 		}
 
