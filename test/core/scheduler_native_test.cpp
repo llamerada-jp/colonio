@@ -56,12 +56,12 @@ TEST(SchedulerNativeTest, add_and_remove) {
 
     scheduler.add_task(owner1, [&] {
       helper.mark("2");
+      helper.pass_signal("end");
     });
     scheduler.repeat_task(
         owner1, [] {}, 500);
 
     helper.mark("1");
-    helper.pass_signal("end");
   });
 
   helper.wait_signal("end");
