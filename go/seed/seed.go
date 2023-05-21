@@ -393,6 +393,11 @@ func (seed *seed) poll(ctx context.Context, param *proto.SeedPoll) (*proto.SeedP
 			return nil, http.StatusOK, nil
 		}
 
+		if hint == HintRequireRandom {
+			requestID := ctx.Value(CONTEXT_REQUEST_KEY)
+			log.Println(requestID, "require random")
+		}
+
 		return &proto.SeedPollResponse{
 			Hint:      hint | seed.getHint(false),
 			SessionId: param.SessionId,
