@@ -19,6 +19,7 @@ if [ "${OS}" = "Linux" ]; then
     fi
 
     make build BUILD_TYPE=Release
+    make clean
     make build BUILD_TYPE=Debug WITH_TEST=ON WITH_SAMPLE=ON WITH_COVERAGE=ON
 
     sudo sysctl -w net.core.rmem_max=2500000
@@ -32,6 +33,7 @@ if [ "${OS}" = "Linux" ]; then
     sudo apt install cmake
 
     make build BUILT_TYPE=Release
+    make clean
     make build BUILT_TYPE=Debug WITH_TEST=ON
     make setup-protoc
     make test CTEST_ARGS='--output-on-failure --timeout 300'
@@ -48,6 +50,7 @@ elif [ "${OS}" = "Darwin" ]; then
   fi
 
   make build BUILT_TYPE=Release
+  make clean
   make build BUILT_TYPE=Debug WITH_TEST=ON
   make test CTEST_ARGS='--output-on-failure --timeout 300'
   mkdir -p ci_cache
