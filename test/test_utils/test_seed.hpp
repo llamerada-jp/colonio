@@ -73,7 +73,22 @@ class TestSeed {
       exit(EXIT_FAILURE);
     }
     // Reduce retry on sign-in by waiting to start the seed.
-    sleep(1);
+    std::string url = "https://localhost:" + std::to_string(port);
+    std::string cmd = "curl --insecure -s " + url + " > /dev/null";
+    while (true) {
+      int ret = system(cmd.c_str());
+
+      if (!WIFEXITED(ret)) {
+        printf("curl command exit without normal termination");
+        exit(EXIT_FAILURE);
+      }
+
+      if (WEXITSTATUS(ret) == 0) {
+        break;
+      }
+
+      std::this_thread::sleep_for(std::chrono::seconds(3));
+    }
   }
 
   void set_path(const std::string& p) {
