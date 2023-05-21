@@ -370,7 +370,7 @@ void Network::seed_accessor_on_recv_packet(std::unique_ptr<const Packet> packet)
 }
 
 void Network::seed_accessor_on_require_random() {
-  if (node_accessor != nullptr) {
+  if (enforce_online && node_accessor != nullptr) {
     node_accessor->connect_random_link();
   }
 }
