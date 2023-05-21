@@ -36,11 +36,20 @@ type E2eSuite struct {
 func (suite *E2eSuite) SetupSuite() {
 	var err error
 	suite.T().Log("creating a new colonio instance")
-	config := colonio.NewConfig()
-	config.DisableSeedVerification = true
-	suite.node1, err = colonio.NewColonio(config)
+	config1 := colonio.NewConfig()
+	config1.DisableSeedVerification = true
+	config1.LoggerFunc = func(s string) {
+		log.Println("node1", s)
+	}
+	suite.node1, err = colonio.NewColonio(config1)
 	suite.NoError(err)
-	suite.node2, err = colonio.NewColonio(config)
+
+	config2 := colonio.NewConfig()
+	config2.DisableSeedVerification = true
+	config2.LoggerFunc = func(s string) {
+		log.Println("node2", s)
+	}
+	suite.node2, err = colonio.NewColonio(config2)
 	suite.NoError(err)
 
 	suite.T().Log("check seed status")
