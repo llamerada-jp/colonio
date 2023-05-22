@@ -23,7 +23,7 @@ if [ "${OS}" = "Linux" ]; then
     make build BUILD_TYPE=Debug WITH_TEST=ON WITH_SAMPLE=ON WITH_COVERAGE=ON
 
     sudo sysctl -w net.core.rmem_max=2500000
-    make test CTEST_ARGS='--overwrite MemoryCheckCommandOptions="--error-exitcode=1 --leak-check=full" -T memcheck --suppressions=$(pwd)/valgrind.supp --output-on-failure' CTEST_TEST_TIMEOUT=300
+    make test CTEST_ARGS='--overwrite MemoryCheckCommandOptions="--error-exitcode=1 --leak-check=full" -T memcheck --suppressions=$(pwd)/valgrind.supp --output-on-failure --timeout 300'
     export PATH=$PATH:$(python3 -m site --user-base)/bin
     coveralls -b ./build/linux_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/js -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'
     exit 0
@@ -36,7 +36,7 @@ if [ "${OS}" = "Linux" ]; then
     make clean
     make build BUILT_TYPE=Debug WITH_TEST=ON
     make setup-protoc
-    make test CTEST_ARGS='--output-on-failure' CTEST_TEST_TIMEOUT=300
+    make test CTEST_ARGS='--output-on-failure --timeout 300'
     exit 0
   fi
 
@@ -52,7 +52,7 @@ elif [ "${OS}" = "Darwin" ]; then
   make build BUILT_TYPE=Release
   make clean
   make build BUILT_TYPE=Debug WITH_TEST=ON
-  make test CTEST_ARGS='--output-on-failure' CTEST_TEST_TIMEOUT=300
+  make test CTEST_ARGS='--output-on-failure --timeout 300'
   mkdir -p ci_cache
   cp -a local ci_cache/local
   exit 0
