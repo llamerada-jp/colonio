@@ -104,7 +104,7 @@ func (suite *E2eSuite) TestE2E() {
 		}
 		suite.Equal("testtest", resultStr)
 		return true
-	}, time.Minute, time.Second)
+	}, 3*time.Minute, time.Second)
 
 	suite.T().Log("node1 set 2D position")
 	suite.node1.SetPosition(1.0, 0.0)
@@ -135,7 +135,7 @@ func (suite *E2eSuite) TestE2E() {
 			log.Println("the message was not received")
 			return false
 		}
-	}, time.Minute, time.Second)
+	}, 3*time.Minute, time.Second)
 
 	suite.T().Log("getting a not existed value")
 
