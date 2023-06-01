@@ -70,12 +70,13 @@ SeedAccessor::~SeedAccessor() {
 }
 
 void SeedAccessor::disconnect() {
+  polling_flag = false;
+  waiting.clear();
+
   if (get_link_state() == LinkState::OFFLINE) {
     return;
   }
 
-  polling_flag = false;
-  waiting.clear();
   send_close();
 }
 
