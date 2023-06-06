@@ -55,7 +55,7 @@ EMSCRIPTEN_KEEPALIVE bool js_error_get_line(PTR_T err);
 EMSCRIPTEN_KEEPALIVE PTR_T js_error_get_file(PTR_T err);
 EMSCRIPTEN_KEEPALIVE int js_error_get_file_length(PTR_T err);
 // colonio
-EMSCRIPTEN_KEEPALIVE COLONIO_T js_init();
+EMSCRIPTEN_KEEPALIVE COLONIO_T js_init(bool disable_seed_verification);
 EMSCRIPTEN_KEEPALIVE void js_connect(
     COLONIO_T c, PTR_T url, unsigned int url_siz, PTR_T token, unsigned int token_siz, PTR_T on_success,
     PTR_T on_failure);
