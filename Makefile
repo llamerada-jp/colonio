@@ -238,8 +238,15 @@ test: generate-cert
 	LD_LIBRARY_PATH=$(OUTPUT_PATH)/lib COLONIO_SEED_BIN_PATH=$(OUTPUT_PATH)/seed \
 	  COLONIO_TEST_CERT=$(ROOT_PATH)/localhost.crt COLONIO_TEST_PRIVATE_KEY=$(ROOT_PATH)/localhost.key \
 	  $(MAKE) -C $(NATIVE_BUILD_PATH) CTEST_OUTPUT_ON_FAILURE=1 test ARGS='$(CTEST_ARGS)'
+	# JS
+	if [ $(shell uname -s) = "Linux" ]; then $(MAKE) test-js-browser; fi
 	# golang
 	$(MAKE) test-go-native
+	if [ $(shell uname -s) = "Linux" ]; then $(MAKE) test-go-wasm; fi
+
+.PHONY: test-js-browser
+test-js-browser:
+	go run $(ROOT_PATH)/go/cmd/test-luncher/ -c $(ROOT_PATH)/test/js/seed.json -f FAILURE
 
 .PHONY: test-go-native
 test-go-native: build-seed
@@ -251,7 +258,7 @@ test-go-native: build-seed
 test-go-wasm: build-seed
 	cp $(shell go env GOROOT)/misc/wasm/wasm_exec.js ./go/test
 	GOOS=js GOARCH=wasm go test -c -o ./go/test/test.wasm ./go/test/
-	$(OUTPUT_PATH)/seed -c $(ROOT_PATH)/go/test/seed.json
+	go run $(ROOT_PATH)/go/cmd/test-luncher/ -c $(ROOT_PATH)/go/test/seed.json -s PASS
 
 .PHONY: format-code
 format-code:
