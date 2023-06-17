@@ -8,7 +8,11 @@ readonly OS=$(uname -s)
 if [ "${OS}" = "Linux" ]; then
   if [ "${ARCH}" = "x86_64" ]; then
     # linux x86_64
-    sudo apt install cmake clang-format valgrind libcurl3-nss libcurl4-nss-dev
+    # config apt to install google chrome
+    sudo sh -c 'echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+    sudo wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+    sudo apt update
+    sudo apt install cmake clang-format valgrind libcurl3-nss libcurl4-nss-dev google-chrome-stable
     pip3 install --user cpp-coveralls
 
     # check format
@@ -24,6 +28,8 @@ if [ "${OS}" = "Linux" ]; then
 
     sudo sysctl -w net.core.rmem_max=2500000
     make test CTEST_ARGS="--output-on-failure -T memcheck --overwrite MemoryCheckCommandOptions=\"--error-exitcode=1 --leak-check=full --suppressions=$(pwd)/valgrind.supp\""
+    make test-js-browser
+    make test-go-wasm
     export PATH=$PATH:$(python3 -m site --user-base)/bin
     coveralls -b ./build/linux_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/js -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'
     exit 0

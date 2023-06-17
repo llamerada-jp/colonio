@@ -277,11 +277,13 @@ function test() {
   }).then(() => {
     let result = document.getElementById("result");
     result.innerText = "SUCCESS";
+    console.log("SUCCESS");
 
   }).catch((e) => {
     let result = document.getElementById("result");
     result.innerText = "FAILURE";
     console.error(e);
+    console.log("FAILURE");
   });
 }
 
