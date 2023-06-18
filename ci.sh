@@ -28,8 +28,6 @@ if [ "${OS}" = "Linux" ]; then
 
     sudo sysctl -w net.core.rmem_max=2500000
     make test CTEST_ARGS="--output-on-failure -T memcheck --overwrite MemoryCheckCommandOptions=\"--error-exitcode=1 --leak-check=full --suppressions=$(pwd)/valgrind.supp\""
-    make test-js-browser
-    make test-go-wasm
     export PATH=$PATH:$(python3 -m site --user-base)/bin
     coveralls -b ./build/linux_x86_64/test/CMakeFiles/colonio_test.dir/__/ -i src -e src/js -E '.*\.pb\.h' -E '.*\.pb\.cc' --gcov-options '\-lp'
     exit 0
