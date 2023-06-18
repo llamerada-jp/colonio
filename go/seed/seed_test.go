@@ -28,9 +28,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func generateEmptySeed(ctx context.Context) *seed {
-	return &seed{
-		ctx:              ctx,
+func generateEmptySeed() *Seed {
+	return &Seed{
 		mutex:            sync.Mutex{},
 		nodes:            make(map[string]*node),
 		sessions:         make(map[string]string),
@@ -88,9 +87,9 @@ func TestAuthenticate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	seed := generateEmptySeed(ctx)
+	seed := generateEmptySeed()
 	seed.config = "dummy config"
-	seed.start()
+	seed.Start(ctx)
 
 	nids := uniqueNids(2)
 
@@ -197,8 +196,8 @@ func TestClose(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	seed := generateEmptySeed(ctx)
-	seed.start()
+	seed := generateEmptySeed()
+	seed.Start(ctx)
 
 	// normal
 	res, code, err := seed.authenticate(&proto.SeedAuthenticate{
@@ -232,8 +231,8 @@ func TestRelayPoll(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	seed := generateEmptySeed(ctx)
-	seed.start()
+	seed := generateEmptySeed()
+	seed.Start(ctx)
 
 	// connection
 	srcNid := randomNid()
@@ -326,9 +325,7 @@ func TestRelayPoll(t *testing.T) {
 func TestGetPacket(t *testing.T) {
 	assert := assert.New(t)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	seed := generateEmptySeed(ctx)
+	seed := generateEmptySeed()
 	nids := uniqueNids(7)
 
 	packets := []packet{
@@ -460,8 +457,8 @@ func TestRandomConnect(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	seed := generateEmptySeed(ctx)
-	seed.start()
+	seed := generateEmptySeed()
+	seed.Start(ctx)
 	nids := uniqueNids(2)
 
 	// not request random-connect when only one node

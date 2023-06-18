@@ -54,7 +54,11 @@ var cmd = &cobra.Command{
 
 		// start service of the seed
 		baseDir := filepath.Dir(configFile)
-		return service.Run(ctx, baseDir, config, nil)
+		sv, err := service.NewService(baseDir, config, nil)
+		if err != nil {
+			return err
+		}
+		return sv.Run(ctx)
 	},
 }
 
