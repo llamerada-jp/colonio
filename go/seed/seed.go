@@ -60,7 +60,9 @@ type packet struct {
 	p         *proto.SeedPacket
 }
 
-type seed struct {
+type Seed struct {
+	Handler http.Handler
+
 	ctx   context.Context
 	mutex sync.Mutex
 	// map of node-id and node instance
@@ -81,7 +83,7 @@ type seed struct {
  * NewSeedHandler creates an http handler to provide colonio's seed.
  * It also starts a go routine for the seed features.
  */
-func NewSeedHandler(ctx context.Context, config *Config, verifier TokenVerifier) (http.Handler, error) {
+func NewSeed(config *Config, verifier TokenVerifier) (*Seed, error) {
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
@@ -93,8 +95,7 @@ func NewSeedHandler(ctx context.Context, config *Config, verifier TokenVerifier)
 		return nil, err
 	}
 
-	seed := &seed{
-		ctx:              ctx,
+	seed := &Seed{
 		mutex:            sync.Mutex{},
 		nodes:            make(map[string]*node),
 		sessions:         make(map[string]string),
@@ -104,9 +105,8 @@ func NewSeedHandler(ctx context.Context, config *Config, verifier TokenVerifier)
 		verifier:         verifier,
 	}
 
-	seed.start()
-
 	mux := http.NewServeMux()
+	seed.Handler = mux
 	// TODO: output client information for logs
 	mux.HandleFunc("/authenticate", func(w http.ResponseWriter, r *http.Request) {
 		requestID := r.Context().Value(CONTEXT_REQUEST_KEY)
@@ -193,7 +193,7 @@ func NewSeedHandler(ctx context.Context, config *Config, verifier TokenVerifier)
 		}
 	})
 
-	return mux, nil
+	return seed, nil
 }
 
 func decodeRequest(w http.ResponseWriter, r *http.Request, m protoreflect.ProtoMessage) error {
@@ -246,7 +246,8 @@ func outputResponse(w http.ResponseWriter, m protoreflect.ProtoMessage, code int
 	return nil
 }
 
-func (seed *seed) start() {
+func (seed *Seed) Start(ctx context.Context) {
+	seed.ctx = ctx
 	go func() {
 		ticker4Cleanup := time.NewTicker(time.Second)
 		defer ticker4Cleanup.Stop()
@@ -255,7 +256,7 @@ func (seed *seed) start() {
 
 		for {
 			select {
-			case <-seed.ctx.Done():
+			case <-ctx.Done():
 				return
 
 			case <-ticker4Cleanup.C:
@@ -272,7 +273,7 @@ func (seed *seed) start() {
 	}()
 }
 
-func (seed *seed) authenticate(param *proto.SeedAuthenticate) (*proto.SeedAuthenticateResponse, int, error) {
+func (seed *Seed) authenticate(param *proto.SeedAuthenticate) (*proto.SeedAuthenticateResponse, int, error) {
 	if param.Version != ProtocolVersion {
 		return nil, http.StatusBadRequest, fmt.Errorf("wrong version was specified: %s", param.Version)
 	}
@@ -308,7 +309,7 @@ func (seed *seed) authenticate(param *proto.SeedAuthenticate) (*proto.SeedAuthen
 	}, http.StatusOK, nil
 }
 
-func (seed *seed) close(param *proto.SeedClose) {
+func (seed *Seed) close(param *proto.SeedClose) {
 	nid, ok := seed.checkSession(param.SessionId)
 	// return immediately when session is no exist
 	if !ok {
@@ -318,7 +319,7 @@ func (seed *seed) close(param *proto.SeedClose) {
 	seed.disconnect(nid, false)
 }
 
-func (seed *seed) relay(param *proto.SeedRelay) (*proto.SeedRelayResponse, int, error) {
+func (seed *Seed) relay(param *proto.SeedRelay) (*proto.SeedRelayResponse, int, error) {
 	nid, ok := seed.checkSession(param.SessionId)
 	if !ok {
 		return nil, http.StatusUnauthorized, nil
@@ -357,7 +358,7 @@ func (seed *seed) relay(param *proto.SeedRelay) (*proto.SeedRelayResponse, int, 
 	}, http.StatusOK, nil
 }
 
-func (seed *seed) poll(ctx context.Context, param *proto.SeedPoll) (*proto.SeedPollResponse, int, error) {
+func (seed *Seed) poll(ctx context.Context, param *proto.SeedPoll) (*proto.SeedPollResponse, int, error) {
 	requestID := ctx.Value(CONTEXT_REQUEST_KEY)
 	if requestID == nil {
 		requestID = ""
@@ -410,7 +411,7 @@ func (seed *seed) poll(ctx context.Context, param *proto.SeedPoll) (*proto.SeedP
 	}
 }
 
-func (seed *seed) getPackets(nid string, online bool, locked bool) []*proto.SeedPacket {
+func (seed *Seed) getPackets(nid string, online bool, locked bool) []*proto.SeedPacket {
 	if !locked {
 		seed.mutex.Lock()
 		defer seed.mutex.Unlock()
@@ -448,7 +449,7 @@ func (seed *seed) getPackets(nid string, online bool, locked bool) []*proto.Seed
 	return packets
 }
 
-func (seed *seed) wakeUp(nid string, hint uint32, locked bool) bool {
+func (seed *Seed) wakeUp(nid string, hint uint32, locked bool) bool {
 	if !locked {
 		seed.mutex.Lock()
 		defer seed.mutex.Unlock()
@@ -465,7 +466,7 @@ func (seed *seed) wakeUp(nid string, hint uint32, locked bool) bool {
 	return true
 }
 
-func (seed *seed) cleanup() error {
+func (seed *Seed) cleanup() error {
 	seed.mutex.Lock()
 	defer seed.mutex.Unlock()
 
@@ -495,7 +496,7 @@ func (seed *seed) cleanup() error {
 	return nil
 }
 
-func (seed *seed) countChannels(locked bool) int {
+func (seed *Seed) countChannels(locked bool) int {
 	if !locked {
 		seed.mutex.Lock()
 		defer seed.mutex.Unlock()
@@ -511,7 +512,7 @@ func (seed *seed) countChannels(locked bool) int {
 	return count
 }
 
-func (seed *seed) countOnline(locked bool) int {
+func (seed *Seed) countOnline(locked bool) int {
 	if !locked {
 		seed.mutex.Lock()
 		defer seed.mutex.Unlock()
@@ -527,7 +528,7 @@ func (seed *seed) countOnline(locked bool) int {
 	return count
 }
 
-func (seed *seed) randomConnect() error {
+func (seed *Seed) randomConnect() error {
 	seed.mutex.Lock()
 	defer seed.mutex.Unlock()
 
@@ -545,7 +546,7 @@ func (seed *seed) randomConnect() error {
 	return nil
 }
 
-func (seed *seed) checkSession(sessionID string) (string, bool) {
+func (seed *Seed) checkSession(sessionID string) (string, bool) {
 	seed.mutex.Lock()
 	defer seed.mutex.Unlock()
 
@@ -564,7 +565,7 @@ func (seed *seed) checkSession(sessionID string) (string, bool) {
 	return nid, true
 }
 
-func (seed *seed) createNode(nid string) string {
+func (seed *Seed) createNode(nid string) string {
 	// should be locked
 	if _, ok := seed.nodes[nid]; ok {
 		log.Fatal("logic error: duplicate node-id in nodes")
@@ -579,7 +580,7 @@ func (seed *seed) createNode(nid string) string {
 	return sessionID
 }
 
-func (seed *seed) assignSessionID(nid string) string {
+func (seed *Seed) assignSessionID(nid string) string {
 	// should be locked
 	for {
 		// generate new session-id
@@ -596,7 +597,7 @@ func (seed *seed) assignSessionID(nid string) string {
 	}
 }
 
-func (seed *seed) closeChannel(nid string, locked bool) {
+func (seed *Seed) closeChannel(nid string, locked bool) {
 	if !locked {
 		seed.mutex.Lock()
 		defer seed.mutex.Unlock()
@@ -612,7 +613,7 @@ func (seed *seed) closeChannel(nid string, locked bool) {
 	node.online = false
 }
 
-func (seed *seed) getHint(locked bool) uint32 {
+func (seed *Seed) getHint(locked bool) uint32 {
 	if !locked {
 		seed.mutex.Lock()
 		defer seed.mutex.Unlock()
@@ -627,7 +628,7 @@ func (seed *seed) getHint(locked bool) uint32 {
 	return hint
 }
 
-func (seed *seed) disconnect(nid string, locked bool) error {
+func (seed *Seed) disconnect(nid string, locked bool) error {
 	if !locked {
 		seed.mutex.Lock()
 		defer seed.mutex.Unlock()
@@ -649,7 +650,7 @@ func (seed *seed) disconnect(nid string, locked bool) error {
 	return nil
 }
 
-func (seed *seed) assignChannel(nid string, online bool) (chan uint32, error) {
+func (seed *Seed) assignChannel(nid string, online bool) (chan uint32, error) {
 	seed.mutex.Lock()
 	defer seed.mutex.Unlock()
 

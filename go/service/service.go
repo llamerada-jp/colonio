@@ -27,14 +27,22 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
-func Run(ctx context.Context, baseDir string, config *Config, verifier seed.TokenVerifier) error {
-	mux := http.NewServeMux()
+type Service struct {
+	Mux      *http.ServeMux
+	config   *Config
+	seed     *seed.Seed
+	certFile string
+	keyFile  string
+}
 
+func NewService(baseDir string, config *Config, verifier seed.TokenVerifier) (*Service, error) {
 	if err := config.validate(); err != nil {
-		return err
+		return nil, err
 	}
 
-	// Publish static documents
+	mux := http.NewServeMux()
+
+	// setup to publish static documents
 	if config.DocumentRoot != nil {
 		log.Printf("publish DocumentRoot: %s", *config.DocumentRoot)
 		mux.Handle("/", http.FileServer(http.Dir(calcPath(baseDir, *config.DocumentRoot))))
@@ -43,34 +51,47 @@ func Run(ctx context.Context, baseDir string, config *Config, verifier seed.Toke
 		}
 	}
 
-	// Publish colonio-seed
-	seed, err := seed.NewSeedHandler(ctx, &config.Config, verifier)
+	// setup colonio-seed
+	seed, err := seed.NewSeed(&config.Config, verifier)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	mux.Handle(config.Path+"/", http.StripPrefix(config.Path, seed))
+	mux.Handle(config.Path+"/", http.StripPrefix(config.Path, seed.Handler))
+
+	return &Service{
+		Mux:      mux,
+		config:   config,
+		seed:     seed,
+		certFile: calcPath(baseDir, config.CertFile),
+		keyFile:  calcPath(baseDir, config.KeyFile),
+	}, nil
+}
+
+func (s *Service) Run(ctx context.Context) error {
+	// start seed
+	s.seed.Start(ctx)
 
 	// Start HTTP/3 service.
-	if config.UseTCP {
+	if s.config.UseTCP {
 		log.Println("start seed with tcp mode")
 		return http3.ListenAndServe(
-			fmt.Sprintf(":%d", config.Port),
-			calcPath(baseDir, config.CertFile),
-			calcPath(baseDir, config.KeyFile),
+			fmt.Sprintf(":%d", s.config.Port),
+			s.certFile,
+			s.keyFile,
 			&handlerWrapper{
-				handler: mux,
-				headers: config.Headers,
+				handler: s.Mux,
+				headers: s.config.Headers,
 			})
 	}
 
 	log.Println("start seed")
 	server := http3.Server{
-		Handler: mux,
-		Addr:    fmt.Sprintf(":%d", config.Port),
+		Handler: s.Mux,
+		Addr:    fmt.Sprintf(":%d", s.config.Port),
 	}
 	return server.ListenAndServeTLS(
-		calcPath(baseDir, config.CertFile),
-		calcPath(baseDir, config.KeyFile))
+		s.certFile,
+		s.keyFile)
 }
 
 // warp http response writer to get http status code

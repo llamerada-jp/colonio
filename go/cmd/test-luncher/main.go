@@ -59,9 +59,13 @@ var cmd = &cobra.Command{
 		}
 
 		// start service of the seed
+		baseDir := filepath.Dir(configFile)
+		sv, err := service.NewService(baseDir, config, nil)
+		if err != nil {
+			return err
+		}
 		go func() {
-			baseDir := filepath.Dir(configFile)
-			if err := service.Run(ctx, baseDir, config, nil); err != nil {
+			if err := sv.Run(ctx); err != nil {
 				log.Fatal(err)
 			}
 		}()
