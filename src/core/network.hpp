@@ -43,7 +43,9 @@ class NetworkDelegate {
 
 class Network : public NodeAccessorDelegate, public RoutingDelegate, public SeedAccessorDelegate {
  public:
-  Network(Logger& l, Random& r, Scheduler& s, CommandManager& c, const NodeID& n, NetworkDelegate&, bool v);
+  Network(
+      Logger& l, Random& r, Scheduler& s, CommandManager& c, const NodeID& n, NetworkDelegate&, unsigned int timeout,
+      bool v);
   virtual ~Network();
 
   void connect(
@@ -59,6 +61,7 @@ class Network : public NodeAccessorDelegate, public RoutingDelegate, public Seed
   const NodeID& get_relay_nid_2d(const Coordinate& position);
 
  private:
+  const unsigned int SEED_SESSION_TIMEOUT;
   const bool DISABLE_SEED_VERIFICATION;
 
   Logger& logger;

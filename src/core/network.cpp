@@ -27,7 +27,10 @@ namespace colonio {
 NetworkDelegate::~NetworkDelegate() {
 }
 
-Network::Network(Logger& l, Random& r, Scheduler& s, CommandManager& c, const NodeID& n, NetworkDelegate& d, bool v) :
+Network::Network(
+    Logger& l, Random& r, Scheduler& s, CommandManager& c, const NodeID& n, NetworkDelegate& d, unsigned int timeout,
+    bool v) :
+    SEED_SESSION_TIMEOUT(timeout),
     DISABLE_SEED_VERIFICATION(v),
     logger(l),
     random(r),
@@ -60,8 +63,8 @@ void Network::connect(
 
     enforce_online = true;
 
-    seed_accessor =
-        std::make_unique<SeedAccessor>(logger, scheduler, local_nid, *this, url, token, DISABLE_SEED_VERIFICATION);
+    seed_accessor = std::make_unique<SeedAccessor>(
+        logger, scheduler, local_nid, *this, url, token, SEED_SESSION_TIMEOUT, DISABLE_SEED_VERIFICATION);
     node_accessor = std::make_unique<NodeAccessor>(logger, scheduler, command_manager, local_nid, *this);
 
     scheduler.add_task(this, std::bind(&Network::update_accessor_state, this));

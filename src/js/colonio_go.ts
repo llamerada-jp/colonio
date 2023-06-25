@@ -24,8 +24,9 @@ class ColonioGo {
     this.mod = mod;
   }
 
-  newColonio(v: boolean, logger: (log: string) => void): Colonio {
+  newColonio(timeout: number, v: boolean, logger: (log: string) => void): Colonio {
     let config = new this.mod.ColonioConfig();
+    config.seedSessionTimeoutMs = timeout;
     config.disableSeedVerification = v;
     config.loggerFuncRaw = (_: Colonio, log: string): void => {
       logger(log);

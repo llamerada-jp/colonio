@@ -114,6 +114,7 @@ typedef struct colonio_config_s {
   bool disable_callback_thread;
   bool disable_seed_verification;
   unsigned int max_user_threads;
+  unsigned int seed_session_timeout_ms;
   void (*logger_func)(colonio_t, const char*, unsigned int);
 } colonio_config_t;
 

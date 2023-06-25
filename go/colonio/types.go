@@ -46,6 +46,7 @@ const (
 )
 
 type ColonioConfig struct {
+	SeedSessionTimeoutMs    uint
 	DisableSeedVerification bool
 	MaxUserThreads          uint
 	LoggerFunc              func(string)

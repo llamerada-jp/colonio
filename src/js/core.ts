@@ -377,11 +377,13 @@ class Value {
 }
 
 class ColonioConfig {
+  seedSessionTimeoutMs: number;
   disableSeedVerification: boolean;
   loggerFuncRaw: (c: Colonio, json: string) => void;
   loggerFunc: (c: Colonio, log: LogEntry) => void;
 
   constructor() {
+    this.seedSessionTimeoutMs = 30 * 1000;
     this.disableSeedVerification = false;
 
     this.loggerFuncRaw = (c: Colonio, json: string): void => {
@@ -669,7 +671,7 @@ class Colonio {
 
   constructor(config: ColonioConfig) {
     // init
-    this._colonio = ccall("js_init", "number", ["boolean"], [config.disableSeedVerification]);
+    this._colonio = ccall("js_init", "number", ["number", "boolean"], [config.seedSessionTimeoutMs, config.disableSeedVerification]);
     colonioMap.set(this._colonio, this);
 
     // logger

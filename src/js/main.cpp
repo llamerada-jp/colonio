@@ -55,7 +55,7 @@ EMSCRIPTEN_KEEPALIVE bool js_error_get_line(PTR_T err);
 EMSCRIPTEN_KEEPALIVE PTR_T js_error_get_file(PTR_T err);
 EMSCRIPTEN_KEEPALIVE int js_error_get_file_length(PTR_T err);
 // colonio
-EMSCRIPTEN_KEEPALIVE COLONIO_T js_init(bool disable_seed_verification);
+EMSCRIPTEN_KEEPALIVE COLONIO_T js_init(unsigned int seed_session_timeout_ms, bool disable_seed_verification);
 EMSCRIPTEN_KEEPALIVE void js_connect(
     COLONIO_T c, PTR_T url, unsigned int url_siz, PTR_T token, unsigned int token_siz, PTR_T on_success,
     PTR_T on_failure);
@@ -204,10 +204,11 @@ int js_error_get_file_length(PTR_T err) {
   return e->file_siz;
 }
 
-COLONIO_T js_init(bool disable_seed_verification) {
+COLONIO_T js_init(unsigned int seed_session_timeout_ms, bool disable_seed_verification) {
   colonio_config_t config;
   colonio_config_set_default(&config);
   config.disable_callback_thread   = true;
+  config.seed_session_timeout_ms   = seed_session_timeout_ms;
   config.disable_seed_verification = disable_seed_verification;
   config.logger_func               = logger_func;
 

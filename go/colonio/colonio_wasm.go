@@ -173,6 +173,7 @@ func onResponse(_ js.Value, args []js.Value) interface{} {
 
 func NewConfig() *ColonioConfig {
 	return &ColonioConfig{
+		SeedSessionTimeoutMs:    30 * 1000,
 		DisableSeedVerification: false,
 		MaxUserThreads:          1,
 		LoggerFunc: func(s string) {
@@ -185,6 +186,7 @@ func NewConfig() *ColonioConfig {
 func NewColonio(config *ColonioConfig) (Colonio, error) {
 	impl := &colonioImpl{
 		colonioJ: helperJ.Call("newColonio",
+			js.ValueOf(config.SeedSessionTimeoutMs),
 			js.ValueOf(config.DisableSeedVerification),
 			js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 				config.LoggerFunc(args[0].String())

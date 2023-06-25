@@ -46,6 +46,7 @@ void colonio_config_set_default(colonio_config_t* config) {
   config->disable_callback_thread   = false;
   config->disable_seed_verification = false;
   config->max_user_threads          = 1;
+  config->seed_session_timeout_ms   = 30 * 1000;
   config->logger_func               = nullptr;
 }
 
@@ -59,6 +60,7 @@ colonio_error_t* colonio_init(colonio_t* c, const colonio_config_t* cf) {
     config.disable_callback_thread   = cf->disable_callback_thread;
     config.disable_seed_verification = cf->disable_seed_verification;
     config.max_user_threads          = cf->max_user_threads;
+    config.seed_session_timeout_ms   = cf->seed_session_timeout_ms;
     if (cf->logger_func != nullptr) {
       auto f             = cf->logger_func;
       config.logger_func = [c, f](Colonio& _, const std::string& json) {

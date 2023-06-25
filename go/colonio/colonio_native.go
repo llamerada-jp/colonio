@@ -34,7 +34,7 @@ typedef void* colonio_t;
 typedef void* colonio_value_t;
 
 // colonio
-colonio_error_t* cgo_colonio_init(colonio_t* colonio, int v, unsigned int u);
+colonio_error_t* cgo_colonio_init(colonio_t* colonio, unsigned int timeout, int v, unsigned int u);
 colonio_error_t* cgo_colonio_connect(colonio_t colonio, _GoString_ url, _GoString_ token);
 int cgo_colonio_is_connected(colonio_t colonio);
 
@@ -116,6 +116,7 @@ func convertError(errC *C.struct_colonio_error_s) error {
 
 func NewConfig() *ColonioConfig {
 	return &ColonioConfig{
+		SeedSessionTimeoutMs:    30 * 1000,
 		DisableSeedVerification: false,
 		MaxUserThreads:          1,
 		LoggerFunc: func(s string) {
@@ -140,7 +141,7 @@ func NewColonio(config *ColonioConfig) (Colonio, error) {
 	if config.DisableSeedVerification {
 		v = 1
 	}
-	errC := C.cgo_colonio_init(&impl.colonioC, C.int(v), C.uint(config.MaxUserThreads))
+	errC := C.cgo_colonio_init(&impl.colonioC, C.uint(config.SeedSessionTimeoutMs), C.int(v), C.uint(config.MaxUserThreads))
 	if errC != nil {
 		return nil, convertError(errC)
 	}

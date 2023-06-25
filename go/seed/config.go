@@ -72,15 +72,14 @@ type ConfigNode struct {
 }
 
 type Config struct {
-	Revision         float64     `json:"revision,omitempty"`
-	KeepAliveTimeout int64       `json:"keepAliveTimeout"`
-	PollingTimeout   int64       `json:"pollingTimeout"`
-	Node             *ConfigNode `json:"node,omitempty"`
+	SessionTimeout int64       `json:"sessionTimeout"`
+	PollingTimeout int64       `json:"pollingTimeout"`
+	Node           *ConfigNode `json:"node,omitempty"`
 }
 
 func (c *Config) validate() error {
-	if c.KeepAliveTimeout <= 0 {
-		return errors.New("Config value of `keepAliveTimeout` must be larger then 0")
+	if c.SessionTimeout <= 0 {
+		return errors.New("Config value of `sessionTimeout` must be larger then 0")
 	}
 
 	if c.PollingTimeout <= 0 {

@@ -50,6 +50,7 @@ ColonioConfig::ColonioConfig() :
     disable_callback_thread(false),
     disable_seed_verification(false),
     max_user_threads(1),
+    seed_session_timeout_ms(30 * 1000),
     logger_func(default_logger_func) {
 }
 
