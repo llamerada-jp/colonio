@@ -97,7 +97,6 @@ static const unsigned int FIRST_LINK_RETRY_MAX   = 3;
 static const int64_t LINK_TRIAL_TIME_MIN         = 60000;
 static const unsigned int LINKS_MIN              = 4;
 static const int64_t SEED_CONNECT_INTERVAL       = 10000;
-static const int64_t SEED_SESSION_TIMEOUT        = 10 * 1000;  // [msec]
 static const uint32_t PACKET_ID_NONE             = 0x0;
 
 }  // namespace colonio

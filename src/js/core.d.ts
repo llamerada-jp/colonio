@@ -79,6 +79,7 @@ declare class Value {
     write(valueC?: number): number;
 }
 declare class ColonioConfig {
+    seedSessionTimeoutMs: number;
     disableSeedVerification: boolean;
     loggerFuncRaw: (c: Colonio, json: string) => void;
     loggerFunc: (c: Colonio, log: LogEntry) => void;

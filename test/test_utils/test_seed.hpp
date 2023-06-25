@@ -41,11 +41,11 @@ class TestSeed {
       pid(0),
       path("/test"),
       port(8080),
-      revision(0.1),
-      keep_alive_timeout(30 * 1000),
+      session_timeout(30 * 1000),
       polling_timeout(10 * 1000),
       update_period(500),
-      force_update_times(20) {
+      force_update_times(20),
+      revision(0.1) {
   }
 
   virtual ~TestSeed() {
@@ -137,12 +137,13 @@ class TestSeed {
 
   std::string path;
   int port;
-  double revision;
-  int keep_alive_timeout;
+  int session_timeout;
   int polling_timeout;
 
   int update_period;
   int force_update_times;
+
+  double revision;
 
   picojson::object coord_system;
   picojson::object modules;
@@ -158,8 +159,8 @@ class TestSeed {
     picojson::object config;
     config.insert(std::make_pair("path", picojson::value(path)));
     config.insert(std::make_pair("port", picojson::value(static_cast<double>(port))));
-    config.insert(std::make_pair("revision", picojson::value(static_cast<double>(revision))));
-    config.insert(std::make_pair("keepAliveTimeout", picojson::value(static_cast<double>(keep_alive_timeout))));
+    config.insert(std::make_pair("sessionTimeout", picojson::value(static_cast<double>(session_timeout))));
+
     config.insert(std::make_pair("pollingTimeout", picojson::value(static_cast<double>(polling_timeout))));
     config.insert(std::make_pair("useTcp", picojson::value(true)));
 
@@ -186,6 +187,8 @@ class TestSeed {
     routing.insert(std::make_pair("forceUpdateTimes", picojson::value(static_cast<double>(force_update_times))));
 
     picojson::object node;
+    node.insert(std::make_pair("revision", picojson::value(static_cast<double>(revision))));
+
     node.insert(std::make_pair("iceServers", picojson::value(ice_servers)));
     node.insert(std::make_pair("routing", picojson::value(routing)));
     if (!coord_system.empty()) {

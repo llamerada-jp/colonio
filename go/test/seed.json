@@ -6,6 +6,7 @@
     "/colonio_go.js": "../../src/js/"
   },
   "node": {
+    "revision": 20201121.1,
     "coordSystem2D": {
       "type": "sphere",
       "radius": 6378137
@@ -27,10 +28,9 @@
   },
   "path": "/test",
   "port": 8080,
-  "keepAliveTimeout": 30000,
-  "PollingTimeout": 10000,
+  "sessionTimeout": 30000,
+  "pollingTimeout": 10000,
   "certFile": "../../localhost.crt",
   "keyFile": "../../localhost.key",
-  "useTcp": true,
-  "revision": 20201121.1
+  "useTcp": true
 }

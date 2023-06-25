@@ -72,9 +72,9 @@ type Seed struct {
 	// packets to relay
 	packets []packet
 
-	config           string
-	keepAliveTimeout time.Duration
-	pollingTimeout   time.Duration
+	config         string
+	sessionTimeout time.Duration
+	pollingTimeout time.Duration
 
 	verifier TokenVerifier
 }
@@ -89,20 +89,19 @@ func NewSeed(config *Config, verifier TokenVerifier) (*Seed, error) {
 	}
 
 	nodeConfig := config.Node
-	nodeConfig.Revision = config.Revision
 	nodeConfigJS, err := json.Marshal(nodeConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	seed := &Seed{
-		mutex:            sync.Mutex{},
-		nodes:            make(map[string]*node),
-		sessions:         make(map[string]string),
-		config:           string(nodeConfigJS),
-		keepAliveTimeout: time.Duration(config.KeepAliveTimeout) * time.Millisecond,
-		pollingTimeout:   time.Duration(config.PollingTimeout) * time.Millisecond,
-		verifier:         verifier,
+		mutex:          sync.Mutex{},
+		nodes:          make(map[string]*node),
+		sessions:       make(map[string]string),
+		config:         string(nodeConfigJS),
+		sessionTimeout: time.Duration(config.SessionTimeout) * time.Millisecond,
+		pollingTimeout: time.Duration(config.PollingTimeout) * time.Millisecond,
+		verifier:       verifier,
 	}
 
 	mux := http.NewServeMux()
@@ -478,7 +477,7 @@ func (seed *Seed) cleanup() error {
 		}
 
 		// disconnect node if it had pass keep alive timeout
-		if now.After(node.timestamp.Add(seed.keepAliveTimeout)) {
+		if now.After(node.timestamp.Add(seed.sessionTimeout)) {
 			seed.disconnect(nid, true)
 		}
 	}

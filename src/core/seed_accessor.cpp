@@ -37,12 +37,13 @@ SeedAccessorDelegate::~SeedAccessorDelegate() {
 
 SeedAccessor::SeedAccessor(
     Logger& l, Scheduler& s, const NodeID& n, SeedAccessorDelegate& d, const std::string& u, const std::string& t,
-    bool v) :
+    unsigned int timeout, bool v) :
     logger(l),
     scheduler(s),
     local_nid(n),
     delegate(d),
     token(t),
+    SESSION_TIMEOUT(timeout),
     polling_flag(false),
     running_auth(false),
     is_online(false),
@@ -130,7 +131,7 @@ void SeedAccessor::trigger() {
 
   // disconnect when polling is off and waiting queue is empty
   if (!polling_flag && waiting.empty() && last_send_time != 0) {
-    if (last_send_time + SEED_SESSION_TIMEOUT < Utils::get_current_msec() && !session.empty()) {
+    if (last_send_time + SESSION_TIMEOUT < Utils::get_current_msec() && !session.empty()) {
       disconnect();
     }
     return;

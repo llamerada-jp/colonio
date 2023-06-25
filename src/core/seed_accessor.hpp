@@ -61,7 +61,7 @@ class SeedAccessor {
  public:
   SeedAccessor(
       Logger& l, Scheduler& s, const NodeID& n, SeedAccessorDelegate& d, const std::string& u, const std::string& t,
-      bool v);
+      unsigned int timeout, bool v);
   virtual ~SeedAccessor();
   SeedAccessor(const SeedAccessor&) = delete;
   SeedAccessor& operator=(const SeedAccessor&) = delete;
@@ -82,6 +82,8 @@ class SeedAccessor {
   SeedAccessorDelegate& delegate;
 
   const std::string token;
+  const unsigned int SESSION_TIMEOUT;
+
   /** Connection to the server */
   std::unique_ptr<SeedLink> link;
   // session id. it is empty if session disabled

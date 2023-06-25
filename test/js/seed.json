@@ -1,6 +1,5 @@
 {
-    "revision": 20200401.1,
-    "keepAliveTimeout": 30000,
+    "sessionTimeout": 30000,
     "pollingTimeout": 10000,
     "documentRoot": ".",
     "overrides": {
@@ -16,6 +15,7 @@
     "keyFile": "../../localhost.key",
     "useTcp": true,
     "node": {
+        "revision": 20200401.1,
         "nodeAccessor": {
             "packetSize": 8192,
             "bufferInterval": 200

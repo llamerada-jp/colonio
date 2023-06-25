@@ -313,6 +313,16 @@ class ColonioConfig {
   unsigned int max_user_threads;
 
   /**
+   * @brief `session_timeout_ms` describes the timeout of session between node with the seed.
+   *
+   * After timeout from last translate between the seed, the session infomation will be cleared and will be send
+   * authenticate packet before other packet to the seed.
+   *
+   * default: 30000
+   */
+  unsigned int seed_session_timeout_ms;
+
+  /**
    * @brief `logger` is for customizing the the log receiver.
    *
    * `logger` method call when output log. You should implement this method to customize log. Colonio outputs 4 types

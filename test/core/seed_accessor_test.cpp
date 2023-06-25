@@ -111,7 +111,8 @@ TEST(SeedAccessorTest, single_node) {
   std::unique_ptr<Scheduler> scheduler(Scheduler::new_instance(logger));
 
   SeedAccessorDelegateStub delegate;
-  SeedAccessor accessor(logger, *scheduler, NodeID::make_random(random), delegate, SEED_URL, std::string(""), 500);
+  SeedAccessor accessor(
+      logger, *scheduler, NodeID::make_random(random), delegate, SEED_URL, std::string(""), 30 * 1000, true);
 
   scheduler->add_task(nullptr, [&]() {
     accessor.enable_polling(true);
@@ -160,11 +161,13 @@ TEST(SeedAccessorTest, relay_poll) {
   std::unique_ptr<Scheduler> scheduler(Scheduler::new_instance(logger));
 
   SeedAccessorDelegateStub delegate1;
-  SeedAccessor accessor1(logger, *scheduler, NodeID::make_random(random), delegate1, SEED_URL, std::string(""), 500);
+  SeedAccessor accessor1(
+      logger, *scheduler, NodeID::make_random(random), delegate1, SEED_URL, std::string(""), 30 * 1000, true);
   accessor1.tell_online_state(true);
 
   SeedAccessorDelegateStub delegate2;
-  SeedAccessor accessor2(logger, *scheduler, NodeID::make_random(random), delegate2, SEED_URL, std::string(""), 500);
+  SeedAccessor accessor2(
+      logger, *scheduler, NodeID::make_random(random), delegate2, SEED_URL, std::string(""), 30 * 1000, true);
   accessor2.tell_online_state(true);
 
   scheduler->add_task(nullptr, [&]() {
@@ -220,7 +223,8 @@ TEST(SeedAccessorTest, detect_error) {
   std::unique_ptr<Scheduler> scheduler(Scheduler::new_instance(logger));
 
   SeedAccessorDelegateStub delegate;
-  SeedAccessor accessor(logger, *scheduler, NodeID::make_random(random), delegate, SEED_URL, std::string(""), 500);
+  SeedAccessor accessor(
+      logger, *scheduler, NodeID::make_random(random), delegate, SEED_URL, std::string(""), 30 * 1000, true);
 
   scheduler->add_task(nullptr, [&]() {
     accessor.enable_polling(true);

@@ -32,9 +32,10 @@ void cgo_wrap_colonio_logger(colonio_t colonio, const char* message, unsigned in
   cgoWrapColonioLogger(colonio, (void*)message, (int)len);
 }
 
-colonio_error_t* cgo_colonio_init(colonio_t* colonio, int v, unsigned int u) {
+colonio_error_t* cgo_colonio_init(colonio_t* colonio, unsigned int timeout, int v, unsigned int u) {
   colonio_config_t config;
   colonio_config_set_default(&config);
+  config.seed_session_timeout_ms   = timeout;
   config.disable_seed_verification = v == 1 ? true : false;
   config.max_user_threads          = u;
   config.logger_func               = cgo_wrap_colonio_logger;

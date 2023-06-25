@@ -30,11 +30,11 @@ import (
 
 func generateEmptySeed() *Seed {
 	return &Seed{
-		mutex:            sync.Mutex{},
-		nodes:            make(map[string]*node),
-		sessions:         make(map[string]string),
-		keepAliveTimeout: 30 * time.Second,
-		pollingTimeout:   10 * time.Second,
+		mutex:          sync.Mutex{},
+		nodes:          make(map[string]*node),
+		sessions:       make(map[string]string),
+		sessionTimeout: 30 * time.Second,
+		pollingTimeout: 10 * time.Second,
 	}
 }
 
