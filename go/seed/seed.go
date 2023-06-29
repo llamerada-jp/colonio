@@ -385,7 +385,10 @@ func (seed *Seed) poll(ctx context.Context, param *proto.SeedPoll) (*proto.SeedP
 
 	select {
 	case <-ctx.Done():
-		return nil, http.StatusOK, nil
+		return &proto.SeedPollResponse{
+			Hint:      seed.getHint(false),
+			SessionId: param.SessionId,
+		}, http.StatusOK, nil
 
 	case <-seed.ctx.Done():
 		return &proto.SeedPollResponse{
@@ -395,7 +398,10 @@ func (seed *Seed) poll(ctx context.Context, param *proto.SeedPoll) (*proto.SeedP
 
 	case hint, ok := <-ch:
 		if !ok {
-			return nil, http.StatusOK, nil
+			return &proto.SeedPollResponse{
+				Hint:      seed.getHint(false),
+				SessionId: param.SessionId,
+			}, http.StatusOK, nil
 		}
 
 		if hint == HintRequireRandom {

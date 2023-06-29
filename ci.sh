@@ -46,6 +46,13 @@ if [ "${OS}" = "Linux" ]; then
 
 elif [ "${OS}" = "Darwin" ]; then
   # macos x86_64
+  
+  brew update
+  # workaround to install python for macos
+	# https://github.com/ledger/ledger/pull/2161
+  brew list -1 | grep python | while read formula; do brew unlink ${formula}; brew link --overwrite ${formula}; done
+  brew upgrade
+
   if [ -d ci_cache/local ]; then
     cp -a ci_cache/local local
     make setup SKIP_SETUP_LOCAL=ON
