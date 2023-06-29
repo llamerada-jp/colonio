@@ -277,6 +277,10 @@ void SeedAccessor::send_poll() {
         return;
       }
 
+      if (res_bin.empty()) {
+        return;
+      }
+
       proto::SeedPollResponse res;
       if (!res.ParseFromString(res_bin)) {
         log_warn("failed to parse a poll response packet from seed");
