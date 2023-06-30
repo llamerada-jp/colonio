@@ -125,15 +125,19 @@ void ColonioImpl::disconnect(
     if (user_thread_pool) {
       network->disconnect(
           [this, on_success]() {
-            user_thread_pool->push([this, on_success]() {
+            scheduler->add_task(this, [this, on_success]() {
               release_resources();
-              on_success(*this);
+              user_thread_pool->push([this, on_success]() {
+                on_success(*this);
+              });
             });
           },
           [this, on_failure](const Error& e) {
-            user_thread_pool->push([this, on_failure, e]() {
+            scheduler->add_task(this, [this, on_failure, e]() {
               release_resources();
-              on_failure(*this, e);
+              user_thread_pool->push([this, on_failure, e]() {
+                on_failure(*this, e);
+              });
             });
           });
 
