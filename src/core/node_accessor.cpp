@@ -148,6 +148,7 @@ LinkState::Type NodeAccessor::get_link_state() const {
 void NodeAccessor::disconnect_all(std::function<void()> on_after) {
   cleanup_closing();
   if (links.size() == 0) {
+    assert(nid_links.size() == 0);
     on_after();
     return;
   }
@@ -155,8 +156,8 @@ void NodeAccessor::disconnect_all(std::function<void()> on_after) {
   disconnect_link(first_link);
   disconnect_link(random_link);
 
-  while (nid_links.size() != 0) {
-    disconnect_link(nid_links.begin()->second);
+  for (auto& it : links) {
+    disconnect_link(it.first);
   }
 
   scheduler.add_task(this, std::bind(&NodeAccessor::disconnect_all, this, on_after), 500);
@@ -581,6 +582,7 @@ void NodeAccessor::cleanup_closing() {
       closing_link = closing_links.erase(closing_link);
 
     } else {
+      update_link_state(*link);
       // There is a link that is not closing rarely, so disconnect it.
       if (link->link_state != LinkState::CLOSING) {
         link->disconnect();
