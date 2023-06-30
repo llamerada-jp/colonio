@@ -124,6 +124,11 @@ void SeedAccessor::relay_packet(std::unique_ptr<const Packet> packet) {
 }
 
 void SeedAccessor::trigger() {
+  // destructor has called
+  if (!link) {
+    return;
+  }
+
   // wait to finish authentication
   if (running_auth) {
     return;
