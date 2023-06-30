@@ -229,6 +229,9 @@ LinkState::Type WebrtcLinkNative::get_new_link_state() {
 
   if (dco_state == LinkState::CLOSING || dco_state == LinkState::OFFLINE || pco_state == LinkState::CLOSING ||
       pco_state == LinkState::OFFLINE) {
+    if (peer_connection != nullptr && peer_connection->signaling_state() == webrtc::PeerConnectionInterface::kClosed) {
+      return LinkState::OFFLINE;
+    }
     disconnect();
     return LinkState::CLOSING;
   }

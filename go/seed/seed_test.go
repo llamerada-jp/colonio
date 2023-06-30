@@ -290,14 +290,14 @@ func TestRelayPoll(t *testing.T) {
 	assert.Len(resPoll.Packets, 1)
 	assert.Equal(packetID, resPoll.Packets[0].Id)
 
-	// get nil if the sub process finished
+	// get empty result if the sub process finished
 	ctxPoll, cancelPoll := context.WithCancel(ctx)
 	go func() {
 		resPoll, code, err := seed.poll(ctxPoll, &proto.SeedPoll{
 			SessionId: sessionID2,
 			Online:    true,
 		})
-		assert.Nil(resPoll)
+		assert.NotNil(resPoll)
 		assert.Equal(http.StatusOK, code)
 		assert.NoError(err)
 		chPoll <- resPoll
