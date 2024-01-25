@@ -27,7 +27,7 @@ class CoordSystem {
   const double PRECISION;
 
   virtual ~CoordSystem();
-  CoordSystem(const CoordSystem&) = delete;
+  CoordSystem(const CoordSystem&)            = delete;
   CoordSystem& operator=(const CoordSystem&) = delete;
 
   // for use delaunay triangle.

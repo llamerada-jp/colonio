@@ -1,15 +1,19 @@
 {
-   colonio ci suppressions
-   Memcheck:Leak
-   match-leak-kinds: definite
-   fun:calloc
-   obj:/usr/lib/x86_64-linux-gnu/libcurl-nss.so.4.6.0
-}
-{
    <insert_a_suppression_name_here>
    Memcheck:Leak
-   match-leak-kinds: possible
+   match-leak-kinds: definite
    fun:malloc
-   obj:/usr/lib/x86_64-linux-gnu/libcurl-nss.so.4.6.0
-   fun:curl_easy_init
+   fun:malloc
+   fun:_dl_find_object_update
+   fun:dl_open_worker_begin
+   fun:_dl_catch_exception
+   fun:dl_open_worker
+   fun:_dl_catch_exception
+   fun:_dl_open
+   fun:dlopen_doit
+   fun:_dl_catch_exception
+   fun:_dl_catch_error
+   fun:_dlerror_run
+   fun:dlopen_implementation
+   fun:dlopen@@GLIBC_2.34
 }

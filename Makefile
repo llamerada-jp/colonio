@@ -1,7 +1,7 @@
 SHELL := /bin/bash -o pipefail
 
 # version (yyyymmdd)
-DOCKER_IMAGE_VERSION := 20230318a
+DOCKER_IMAGE_VERSION := 20240126a
 DOCKER_IMAGE_NAME := ghcr.io/llamerada-jp/colonio-buildenv
 DOCKER_IMAGE := $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_VERSION)
 
@@ -25,18 +25,18 @@ export PROTOC := $(LOCAL_ENV_PATH)/bin/protoc
 # https://github.com/hs-nazuna/cpp_algorithms
 CPP_ALGORITHMS_HASH := 1ba3fde9c4b1d067986f5243a0f03daffa501ae2
 # https://github.com/emscripten-core/emscripten
-EMSCRIPTEN_VERSION := 3.1.34
+EMSCRIPTEN_VERSION := 3.1.52
 # https://github.com/google/googletest
-GTEST_VERSION := 1.13.0
+GTEST_VERSION := 1.14.0
 ifeq ($(shell uname -s),Darwin)
 LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m108/libwebrtc-108.0.5359.124-macos-amd64.zip"
 else ifeq ($(shell uname -s),Linux)
 	ifeq ($(shell uname -m),x86_64)
-	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m108/libwebrtc-108.0.5359.124-linux-amd64.tar.gz"
+	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m119/libwebrtc-119-linux-amd64.tar.gz"
 	else ifeq ($(shell uname -m),aarch64)
-	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m108/libwebrtc-108.0.5359.124-linux-arm64.tar.gz"
+	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m119/libwebrtc-119-linux-arm64.tar.gz"
 	else ifeq ($(shell uname -m),arm)
-	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m108/libwebrtc-108.0.5359.124-linux-armhf.tar.gz"
+	LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m119/libwebrtc-119-linux-armhf.tar.gz"
 	else
 	exit 1
 	endif
@@ -50,7 +50,7 @@ PROTOBUF_VERSION := 21.12
 # https://github.com/golang/protobuf
 GO_PROTOBUF_VERSION := 1.5.3
 # https://github.com/gohugoio/hugo
-HUGO_VERSION := v0.111.3
+HUGO_VERSION := v0.121.2
 
 # build options
 BUILD_TYPE ?= Release
@@ -84,7 +84,7 @@ setup:
 .PHONY: setup-linux
 setup-linux:
 	export DEBIAN_FRONTEND=noninteractive
-	if [ "$(SUDO)" = "" ]; then curl -fsSL "https://deb.nodesource.com/setup_18.x" | bash -; else curl -fsSL https://deb.nodesource.com/setup_18.x | $(SUDO) -E bash -; fi
+	if [ "$(SUDO)" = "" ]; then curl -fsSL "https://deb.nodesource.com/setup_20.x" | bash -; else curl -fsSL https://deb.nodesource.com/setup_20.x | $(SUDO) -E bash -; fi
 	$(SUDO) apt update
 	$(SUDO) apt -y install --no-install-recommends automake cmake build-essential ca-certificates curl git libcurl4-nss-dev libssl-dev libtool nodejs pkg-config python3
 	if [ $(SKIP_SETUP_LOCAL) = "OFF" ]; then $(MAKE) setup-local; fi

@@ -11,9 +11,12 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        os: [ubuntu-20.04, macos-latest]
+        os: [ubuntu-22.04, macos-latest]
     steps:
     - uses: actions/checkout@v2
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: "go.mod"
     - name: Cache setup files
       uses: actions/cache@v2
       with:

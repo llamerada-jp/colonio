@@ -63,7 +63,7 @@ class SeedAccessor {
       Logger& l, Scheduler& s, const NodeID& n, SeedAccessorDelegate& d, const std::string& u, const std::string& t,
       unsigned int timeout, bool v);
   virtual ~SeedAccessor();
-  SeedAccessor(const SeedAccessor&) = delete;
+  SeedAccessor(const SeedAccessor&)            = delete;
   SeedAccessor& operator=(const SeedAccessor&) = delete;
 
   void disconnect();
