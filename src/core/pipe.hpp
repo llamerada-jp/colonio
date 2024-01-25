@@ -34,7 +34,7 @@ class Pipe {
  public:
   Pipe() {
   }
-  Pipe(const Pipe&) = delete;
+  Pipe(const Pipe&)           = delete;
   void operator=(const Pipe&) = delete;
 
   /**

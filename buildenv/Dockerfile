@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM ubuntu:20.04 as prebuilder
+FROM --platform=$BUILDPLATFORM ubuntu:22.04 as prebuilder
 LABEL org.opencontainers.image.source https://github.com/llamerada-jp/colonio
 
 ENV DEBIAN_FRONTEND noninteractive
@@ -8,7 +8,7 @@ ENV PATH $PATH:$GOPATH/bin:/opt/go/bin
 
 RUN apt update \
   && apt -y install --no-install-recommends ca-certificates curl make tar valgrind unzip \
-  && curl -L https://go.dev/dl/go1.19.4.linux-amd64.tar.gz | tar zx -C /opt
+  && curl -L https://go.dev/dl/go1.21.6.linux-amd64.tar.gz | tar zx -C /opt
 
 WORKDIR /work
 COPY Makefile /work/
