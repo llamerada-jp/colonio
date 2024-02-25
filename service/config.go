@@ -18,7 +18,7 @@ package service
 import (
 	"errors"
 
-	"github.com/llamerada-jp/colonio/go/seed"
+	"github.com/llamerada-jp/colonio/seed"
 )
 
 type Config struct {

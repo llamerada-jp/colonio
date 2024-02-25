@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/llamerada-jp/colonio/go/proto"
+	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/stretchr/testify/assert"
 )
 

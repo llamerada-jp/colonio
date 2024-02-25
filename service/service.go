@@ -23,7 +23,7 @@ import (
 	"net/http"
 	"path/filepath"
 
-	"github.com/llamerada-jp/colonio/go/seed"
+	"github.com/llamerada-jp/colonio/seed"
 	"github.com/quic-go/quic-go/http3"
 )
 

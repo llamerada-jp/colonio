@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/llamerada-jp/colonio/go/proto"
+	"github.com/llamerada-jp/colonio/internal/proto"
 	proto3 "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
