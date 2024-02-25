@@ -20,13 +20,22 @@ if [ "${OS}" = "Linux" ]; then
   fi
 
   # check lisence
-  files=$(find . -type f -name "*.go" ! -name "*.pb.go")
-  for file in $files; do
-    if ! grep -q "Apache License" $file; then
-      echo "Lisence is not applied: $file"
-      exit 1
+  ng=0
+  for FILE in $(find . -type f); do
+    if [[ $FILE =~ /\.git|node_modules/ ]]; then
+      continue
+    fi
+    if ! [[ $FILE =~ .*\.(go|ts)$ ]] || [[ $FILE =~ .*\.pb\.go$ ]] ; then
+      continue
+    fi
+    if ! grep -q "Apache License" $FILE; then
+      echo "Lisence is not applied: $FILE"
+      ng=1
     fi
   done
+  if [ "$ng" -ne 0 ]; then
+    exit 1
+  fi
 
   make clean
   make
