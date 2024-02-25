@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+  <title>test colonio</title>
+  <meta charset="utf-8">
+</head>
+
+<body>
+  <div id="result"></div>
+  <script src="wasm_exec.js" type="text/javascript"></script>
+  <script src="colonio.js" type="text/javascript"></script>
+  <script type="text/javascript">
+    let testWASMs = new Array();
+
+    function runTest() {
+      let target = testWASMs.shift();
+      if (target === undefined) {
+        console.log("SUCCESS");
+        return;
+      }
+
+      let go = new Go();
+      go.argv = go.argv.concat(["-test.v"]);
+      go.exit = (code) => {
+        if (code === 0) {
+          // run next test when success
+          setTimeout(runTest, 100);
+        } else {
+          console.log("exit code: " + code)
+          console.log("FAIL");
+        }
+      }
+
+      WebAssembly.instantiateStreaming(fetch("tests/" + target), go.importObject).then((result) => {
+        console.log("run test: " + target);
+        go.run(result.instance);
+
+      }).catch((err) => {
+        console.error(err.toString());
+        console.log("FAIL")
+      });
+    }
+
+    fetch("tests.txt").then((response) => {
+      return response.text();
+    }).then((text) => {
+      let files = text.split(/\r\n|\n/);
+      for (let i = 0; i < files.length; i++) {
+        if (files[i].length === 0) {
+          continue;
+        }
+        testWASMs.push(files[i]);
+      }
+
+      runTest();
+
+    }).catch((err) => {
+      console.error(err.toString());
+      console.log("FAIL")
+    });
+  </script>
+</body>
+
+</html>
