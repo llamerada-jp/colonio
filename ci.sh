@@ -19,6 +19,15 @@ if [ "${OS}" = "Linux" ]; then
     exit 1
   fi
 
+  # check lisence
+  files=$(find . -type f -name "*.go" ! -name "*.pb.go")
+  for file in $files; do
+    if ! grep -q "Apache License" $file; then
+      echo "Lisence is not applied: $file"
+      exit 1
+    fi
+  done
+
   make clean
   make
   exit 0
