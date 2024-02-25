@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/llamerada-jp/colonio/go/proto";
+option go_package = "github.com/llamerada-jp/colonio/internal/proto";
 
 package colonio.proto;
 
@@ -12,30 +12,19 @@ message Coordinate {
 
 message NodeID {
   uint32 type = 1;
-  uint64 id0  = 2;
-  uint64 id1  = 3;
-}
-
-message Value {
-  oneof value {
-    bool bool_v     = 1;
-    int64 int_v     = 2;
-    double double_v = 3;
-    bytes string_v  = 4;
-    bytes binary_v  = 5;
-  }
+  uint64 id0 = 2;
+  uint64 id1 = 3;
 }
 
 // node-node packet container
-message NodePackets {
-  repeated NodePacket packet = 1;
-}
+// Or use an empty message as a ping to cancel the timeout.
+message NodePackets { repeated NodePacket packets = 1; }
 
 message NodePacketHead {
-  NodeID dst_nid   = 1;
-  NodeID src_nid   = 2;
+  NodeID dst_node_id = 1;
+  NodeID src_node_id = 2;
   uint32 hop_count = 3;
-  uint32 mode      = 4;
+  uint32 mode = 4;
 }
 
 message NodePacket {
@@ -44,7 +33,7 @@ message NodePacket {
   // ID is common to sequence of packets.
   uint32 id = 2;
   // index decreses by 1 in a sequance of packets.
-  uint32 index  = 3;
+  uint32 index = 3;
   bytes content = 4;
 }
 
@@ -53,211 +42,201 @@ message PacketContent {
   oneof Content {
     Error error = 1;
 
-    SignalingICE signaling_ice                    = 5;
-    SignalingOffer signaling_offer                = 6;
+    SignalingICE signaling_ice = 5;
+    SignalingOffer signaling_offer = 6;
     SignalingOfferSuccess signaling_offer_success = 7;
     SignalingOfferFailure signaling_offer_failure = 8;
 
     Routing routing = 10;
 
-    Messaging messaging                  = 20;
+    Messaging messaging = 20;
     MessagingResponse messaging_response = 21;
 
-    KvsAccept kvs_accept                    = 30;
-    KvsAcceptResponse kvs_accept_response   = 31;
+    KvsAccept kvs_accept = 30;
+    KvsAcceptResponse kvs_accept_response = 31;
     KvsBalanceAcceptor kvs_balance_acceptor = 32;
     KvsBalanceProposer kvs_balance_proposer = 33;
-    KvsGet kvs_get                          = 34;
-    KvsGetResponse kvs_get_response         = 35;
-    KvsHint kvs_hint                        = 36;
-    KvsPrepare kvs_prepare                  = 37;
+    KvsGet kvs_get = 34;
+    KvsGetResponse kvs_get_response = 35;
+    KvsHint kvs_hint = 36;
+    KvsPrepare kvs_prepare = 37;
     KvsPrepareResponse kvs_prepare_response = 38;
-    KvsSet kvs_set                          = 39;
-    KvsSetResponse kvs_set_response         = 40;
+    KvsSet kvs_set = 39;
+    KvsSetResponse kvs_set_response = 40;
 
-    Spread spread                  = 50;
-    SpreadKnock spread_knock       = 51;
-    SpreadRelay spread_relay       = 52;
-    SpreadResponse spread_response = 53;
+    Spread spread = 50;
+    SpreadKnock spread_knock = 51;
+    SpreadKnockResponse spread_knock_response = 52;
+    SpreadRelay spread_relay = 53;
+    SpreadRelayResponse spread_relay_response = 54;
   }
 }
 
 message Error {
-  uint32 code    = 1;
+  uint32 code = 1;
   string message = 2;
 }
 
 // for node-seed authenticate and hints
 message SeedAuthenticate {
   string version = 1;
-  NodeID nid     = 2;
-  string token   = 3;
+  NodeID node_id = 2;
+  bytes token = 3;
 }
 
 message SeedAuthenticateResponse {
-  uint32 hint       = 1;
-  string config     = 2;
+  uint32 hint = 1;
+  bytes config = 2;
   string session_id = 3;
 }
 
-message SeedClose {
-  string session_id = 1;
-}
+message SeedClose { string session_id = 1; }
 
 message SeedPacket {
-  NodeID dst_nid        = 1;
-  NodeID src_nid        = 2;
-  uint32 hop_count      = 3;
-  uint32 id             = 4;
-  uint32 mode           = 5;
+  NodeID dst_node_id = 1;
+  NodeID src_node_id = 2;
+  uint32 hop_count = 3;
+  uint32 id = 4;
+  uint32 mode = 5;
   PacketContent content = 6;
 }
 
 message SeedRelay {
-  string session_id           = 1;
+  string session_id = 1;
   repeated SeedPacket packets = 2;
 }
 
-message SeedRelayResponse {
-  uint32 hint = 1;
-}
+message SeedRelayResponse { uint32 hint = 1; }
 
 message SeedPoll {
   string session_id = 1;
-  bool online       = 2;
+  bool online = 2;
 }
 
 message SeedPollResponse {
-  uint32 hint                 = 1;
-  string session_id           = 2;
+  uint32 hint = 1;
+  string session_id = 2;
   repeated SeedPacket packets = 3;
 }
 
 // for webrtc signaling
 message SignalingICE {
-  NodeID local_nid  = 1;
-  NodeID remote_nid = 2;
-  string ice        = 3;
+  NodeID local_node_id = 1;
+  NodeID remote_node_id = 2;
+  repeated string ices = 3;
 }
 
 message SignalingOffer {
-  NodeID prime_nid  = 1;
-  NodeID second_nid = 2;
-  string sdp        = 3;
-  uint32 type       = 4;
+  NodeID prime_node_id = 1;
+  NodeID second_node_id = 2;
+  string sdp = 3;
+  uint32 type = 4;
 }
 
 message SignalingOfferSuccess {
-  uint32 status     = 1;
-  NodeID second_nid = 2;
-  string sdp        = 3;
+  uint32 status = 1;
+  NodeID second_node_id = 2;
+  string sdp = 3;
 }
 
 message SignalingOfferFailure {
-  uint32 status    = 1;
-  NodeID prime_nid = 2;
+  uint32 status = 1;
+  NodeID prime_node_id = 2;
 }
 
 // for routing
-message RoutingSeedRecord {
-  NodeID nid     = 1;
-  int64 duration = 2;
-}
-
 message RoutingNodeRecord {
-  int64 r1d_score         = 1;
+  int64 r1d_score = 1;
   Coordinate r2d_position = 2;
 }
 
 message Routing {
-  uint32 seed_distance                    = 1;
-  repeated RoutingSeedRecord seed_records = 2;
-  Coordinate r2d_position                 = 3;
+  uint32 seed_distance = 1;
+  Coordinate r2d_position = 2;
   // Key type of map is string from node-id.
-  map<string, RoutingNodeRecord> node_records = 4;
+  map<string, RoutingNodeRecord> node_records = 3;
 }
 
 // for messaging module
 message Messaging {
-  uint32 opt    = 1;
-  string name   = 2;
-  Value message = 3;
+  string name = 1;
+  bytes message = 2;
 }
 
-message MessagingResponse {
-  Value response = 1;
+message MessagingResponse { 
+  bytes response = 1;
 }
 
 // for kvs module
 message KvsAccept {
-  uint32 opt        = 1;
-  uint32 n          = 2;
-  uint32 i          = 3;
+  uint32 opt = 1;
+  uint32 n = 2;
+  uint32 i = 3;
   uint32 member_idx = 4;
-  string key        = 5;
-  Value value       = 6;
+  string key = 5;
+  bytes value = 6;
 }
 
 message KvsAcceptResponse {
   bool success = 1;
-  uint32 n     = 2;
-  uint32 i     = 3;
+  uint32 n = 2;
+  uint32 i = 3;
 }
 
 message KvsBalanceAcceptor {
-  uint32 na         = 1;
-  uint32 np         = 2;
-  uint32 ia         = 3;
+  uint32 na = 1;
+  uint32 np = 2;
+  uint32 ia = 3;
   uint32 member_idx = 4;
-  string key        = 5;
-  Value value       = 6;
+  string key = 5;
+  bytes value = 6;
 }
 
 message KvsBalanceProposer {
-  uint32 np   = 1;
-  uint32 ip   = 2;
-  string key  = 3;
-  Value value = 4;
+  uint32 np = 1;
+  uint32 ip = 2;
+  string key = 3;
+  bytes value = 4;
 }
 
 message KvsGet {
   uint32 member_idx = 1;
-  string key        = 2;
+  string key = 2;
 }
 
 message KvsGetResponse {
   bool success = 1;
   // The values below are used only success response.
-  uint32 n    = 2;
-  uint32 i    = 3;
-  Value value = 4;
+  uint32 n = 2;
+  uint32 i = 3;
+  bytes value = 4;
 }
 
 message KvsHint {
-  uint32 n    = 1;
-  uint32 i    = 2;
-  string key  = 3;
-  Value value = 4;
+  uint32 n = 1;
+  uint32 i = 2;
+  string key = 3;
+  bytes value = 4;
 }
 
 message KvsPrepare {
-  uint32 opt        = 1;
-  uint32 n          = 2;
+  uint32 opt = 1;
+  uint32 n = 2;
   uint32 member_idx = 3;
-  string key        = 4;
+  string key = 4;
 }
 
 message KvsPrepareResponse {
   bool success = 1;
-  uint32 n     = 2;
+  uint32 n = 2;
   // `i` is set only success response.
   uint32 i = 3;
 }
 
 message KvsSet {
-  uint32 opt  = 1;
-  string key  = 2;
-  Value value = 3;
+  uint32 opt = 1;
+  string key = 2;
+  bytes value = 3;
 }
 
 message KvsSetResponse {
@@ -268,34 +247,35 @@ message KvsSetResponse {
 
 // for spread module
 message Spread {
-  NodeID source     = 1;
+  NodeID source = 1;
   Coordinate center = 2;
-  double r          = 3;
-  uint64 uid        = 4;
-  string name       = 5;
-  Value message     = 6;
-  uint32 opt        = 7;
+  double r = 3;
+  uint64 uid = 4;
+  string name = 5;
+  bytes message = 6;
+  uint32 opt = 7;
 }
 
 message SpreadKnock {
   Coordinate center = 1;
-  double r          = 2;
-  uint64 uid        = 3;
+  double r = 2;
+  uint64 uid = 3;
+}
+
+message SpreadKnockResponse {
+  bool accept = 1;
 }
 
 message SpreadRelay {
-  NodeID source     = 1;
+  NodeID source = 1;
   Coordinate center = 2;
-  double r          = 3;
-  uint64 uid        = 4;
-  string name       = 5;
-  Value message     = 6;
-  uint32 opt        = 7;
+  double r = 3;
+  uint64 uid = 4;
+  string name = 5;
+  bytes message = 6;
+  uint32 opt = 7;
 }
 
-message SpreadResponse {
+message SpreadRelayResponse {
   bool success = 1;
-  //  `code` and `message` are set when failed response.
-  uint32 code    = 2;
-  string message = 3;
 }

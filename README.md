@@ -10,56 +10,32 @@ The purpose of the majority of engineers is to realize their own service, and th
 It is interesting but not essence of work to think and implement difficult algorithms.
 The purpose of Colonio is to make it more versatile and to make it easy for everyone to use distributed algorithms that are easy to use.
 
-## More information
+## Requirement to build
 
-- The status of this project is experimental.
-- Please see [website](https://www.colonio.dev/) to get more information.
-- [libwebrtc](https://github.com/llamerada-jp/libwebrtc) is a depending library to use WebRTC on native environment.
+- Go 1.23+
+- gcc 11+
+- npm
 
 ## How to build the node library
 
-### Build for C/C++ and JavaScript (WebAssembly)
+### Pre build library
+
+Colonio using WebRTC via cgo. So you need to build native library before run colonio.
+These are not required if you use colonio via WASM.
 
 ```console
-// for linux using docker
-$ make build
-
-// for mac or for linux without docker
-$ make setup
-$ make build-native build-wasm
+$ make build-lib
 ```
 
-There is an output file below.
+Following libraries are required to build the application using colonio.
 
-- `output/libcolonio.a`: static link library for C/C++
-- `output/lib/*`: depending shared library for C/C++
-- `output/colonio.*`: wasm library for JavaScript
+- output/libcolonio.a
+- dep/lib/libwebrtc.a
 
 ### Run test
 
 ```console
-$ make build WITH_TEST=ON
-$ make build-seed
-$ make test [CTEST_ARGS=--verbose]
-```
-
-Flags for build script are below.
-
-| option          | values             | default   | description                                |
-| --------------- | ------------------ | --------- | ------------------------------------------ |
-| `BUILD_TYPE`    | `Release`, `Debug` | `Release` | build type option used as CMAKE_BUILD_TYPE |
-| `WITH_COVERAGE` | `ON`, `OFF`        | `OFF`     | output coverage when run test programs     |
-| `WITH_GPROF`    | `ON`, `OFF`        | `OFF`     | enable build option for gprof              |
-| `WITH_SAMPLE`   | `ON`, `OFF`        | `OFF`     | build sample programs                      |
-| `WITH_TEST`     | `ON`, `OFF`        | `OFF`     | build test programs                        |
-
-## How to build a C/C++ program using colonio
-
-```console
-$ g++ -I<path to colonio>/src \
--L<path to libcolonio> -L<path to colonio>/output \
--lcolonio -lwebrtc -lprotobuf -lpthread -lssl \
-<your source code>
+$ make test
 ```
 
 ### Seed usage
