@@ -21,6 +21,10 @@ seed:
 internal/proto/colonio.pb.go: colonio.proto
 	$(PROTOC) --go_out=module=github.com/llamerada-jp/colonio:. $<
 
+.PHONY: format-code
+format-code:
+	go fmt ./...
+
 .PHONY: setup
 setup:
 	$(SUDO) apt-get -y install --no-install-recommends unzip
