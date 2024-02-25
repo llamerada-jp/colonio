@@ -1,5 +1,3 @@
-//go:build js
-
 /*
  * Copyright 2017- Yuji Ito <llamerada.jp@gmail.com>
  *
@@ -15,16 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-package test
+package colonio
 
 import (
-	"testing"
-
-	"github.com/stretchr/testify/suite"
+	"github.com/llamerada-jp/colonio/types"
 )
 
-func TestWasm(t *testing.T) {
-	suite.Run(t, new(SingleNodeSuite))
-	suite.Run(t, new(E2eSuite))
+func NewColonio() types.Colonio {
+	return nil
 }
