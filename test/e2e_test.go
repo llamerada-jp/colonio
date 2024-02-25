@@ -23,7 +23,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/llamerada-jp/colonio/go/colonio"
+	"github.com/llamerada-jp/colonio/"
 	"github.com/stretchr/testify/suite"
 )
 

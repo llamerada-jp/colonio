@@ -18,41 +18,8 @@ jobs:
     - uses: actions/setup-go@v5
       with:
         go-version-file: "go.mod"
-    - name: Cache setup files
-      uses: actions/cache@v2
-      with:
-        path: ci_cache
-        key: ${{ runner.os }}-amd64-${{ hashFiles('Makefile') }}
     - shell: bash
       env:
         COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
       run: |
         ./ci.sh
-  # qemu:
-  #   name: test on ubuntu-20.04 ${{ matrix.arch }}
-  #   runs-on: ubuntu-20.04
-  #   strategy:
-  #     matrix:
-  #       arch: [armv7, aarch64]
-  #   steps:
-  #   - uses: actions/checkout@v2
-  #   - name: Cache setup files
-  #     uses: actions/cache@v2
-  #     with:
-  #       path: ci_cache
-  #       key: ubuntu-20.04-${{ matrix.arch }}-${{ hashFiles('Makefile') }}
-  #   - uses: uraimo/run-on-arch-action@v2.0.5
-  #     name: run test
-  #     id: cmd
-  #     with:
-  #       arch: ${{ matrix.arch }}
-  #       distro: ubuntu20.04
-  #       githubToken: ${{ github.token }}
-  #       env: |
-  #         DEBIAN_FRONTEND: noninteractive
-  #       install: |
-  #         apt-get update -q -y
-  #         apt-get install -q -y cmake curl docker.io golang-1.14 make sudo systemctl unzip
-  #         systemctl enable --now docker
-  #       run: |
-  #         ./ci.sh
