@@ -77,7 +77,7 @@ type Config struct {
 	Node           *ConfigNode `json:"node,omitempty"`
 }
 
-func (c *Config) validate() error {
+func (c *Config) Validate() error {
 	if c.SessionTimeout <= 0 {
 		return errors.New("Config value of `sessionTimeout` must be larger then 0")
 	}

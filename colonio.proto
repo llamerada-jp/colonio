@@ -89,7 +89,7 @@ message Error {
 message SeedAuthenticate {
   string version = 1;
   NodeID nid = 2;
-  string token = 3;
+  bytes token = 3;
 }
 
 message SeedAuthenticateResponse {

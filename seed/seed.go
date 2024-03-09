@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"sync"
@@ -39,11 +39,8 @@ type ContextKeyType string
  */
 const CONTEXT_REQUEST_KEY ContextKeyType = "requestID"
 
-/**
- * TokenVerifier is an interface to implement the function of verifying the token received from the node.
- */
-type TokenVerifier interface {
-	Verify(token string) (bool, error)
+type Authenticator interface {
+	Authenticate(token []byte) (bool, error)
 }
 
 type node struct {
@@ -61,10 +58,10 @@ type packet struct {
 }
 
 type Seed struct {
-	Handler http.Handler
-
-	ctx   context.Context
-	mutex sync.Mutex
+	logger  *slog.Logger
+	ctx     context.Context
+	mutex   sync.Mutex
+	running bool
 	// map of node-id and node instance
 	nodes map[string]*node
 	// map of session-id and node-id
@@ -76,123 +73,120 @@ type Seed struct {
 	sessionTimeout time.Duration
 	pollingTimeout time.Duration
 
-	verifier TokenVerifier
+	authenticator Authenticator
 }
 
 /**
  * NewSeedHandler creates an http handler to provide colonio's seed.
  * It also starts a go routine for the seed features.
  */
-func NewSeed(config *Config, verifier TokenVerifier) (*Seed, error) {
-	if err := config.validate(); err != nil {
-		return nil, err
+func NewSeed(config *Config, logger *slog.Logger, authenticator Authenticator) (*Seed, http.Handler) {
+	if err := config.Validate(); err != nil {
+		panic(err)
 	}
 
 	nodeConfig := config.Node
 	nodeConfigJS, err := json.Marshal(nodeConfig)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
 	seed := &Seed{
+		logger:         logger,
 		mutex:          sync.Mutex{},
+		running:        false,
 		nodes:          make(map[string]*node),
 		sessions:       make(map[string]string),
 		config:         string(nodeConfigJS),
 		sessionTimeout: time.Duration(config.SessionTimeout) * time.Millisecond,
 		pollingTimeout: time.Duration(config.PollingTimeout) * time.Millisecond,
-		verifier:       verifier,
+		authenticator:  authenticator,
 	}
 
-	mux := http.NewServeMux()
-	seed.Handler = mux
-	// TODO: output client information for logs
-	mux.HandleFunc("/authenticate", func(w http.ResponseWriter, r *http.Request) {
-		requestID := r.Context().Value(CONTEXT_REQUEST_KEY)
-		if requestID == nil {
-			requestID = ""
-		}
+	return seed, seed.makeHandler()
+}
 
-		request := &proto.SeedAuthenticate{}
-		if err := decodeRequest(w, r, request); err != nil {
-			log.Println(requestID, err)
+func (seed *Seed) WaitForRun() {
+	for {
+		seed.mutex.Lock()
+		running := seed.running
+		seed.mutex.Unlock()
+
+		if running {
 			return
 		}
 
-		response, code, err := seed.authenticate(request)
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func (seed *Seed) Run(ctx context.Context) {
+	seed.mutex.Lock()
+	seed.ctx = ctx
+	seed.running = true
+	seed.mutex.Unlock()
+
+	ticker4Cleanup := time.NewTicker(time.Second)
+	ticker4Random := time.NewTicker(10 * time.Second)
+
+	defer func() {
+		ticker4Cleanup.Stop()
+		ticker4Random.Stop()
+		seed.mutex.Lock()
+		seed.running = false
+		seed.mutex.Unlock()
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case <-ticker4Cleanup.C:
+			if err := seed.cleanup(); err != nil {
+				seed.logger.Error("failed on cleanup", slog.String("err", err.Error()))
+			}
+
+		case <-ticker4Random.C:
+			if err := seed.randomConnect(); err != nil {
+				seed.logger.Error("failed on random connect", slog.String("err", err.Error()))
+			}
+		}
+	}
+}
+
+func addHandler[req protoreflect.ProtoMessage, res protoreflect.ProtoMessage](seed *Seed, mux *http.ServeMux, pattern string, f func(context.Context, req) (res, int, error)) {
+	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		var request req
+		if err := decodeRequest(w, r, request); err != nil {
+			seed.log(ctx).Warn("failed on decode request",
+				slog.String("err", err.Error()))
+			return
+		}
+
+		response, code, err := f(ctx, request)
 		if err != nil {
-			log.Println(requestID, err)
+			seed.log(ctx).Warn("failed on request",
+				slog.String("err", err.Error()))
 		}
 
 		if err := outputResponse(w, response, code); err != nil {
-			log.Println(requestID, err)
+			seed.log(ctx).Warn("failed on output request",
+				slog.String("err", err.Error()))
 		}
 	})
+}
 
-	mux.HandleFunc("/close", func(w http.ResponseWriter, r *http.Request) {
-		requestID := r.Context().Value(CONTEXT_REQUEST_KEY)
-		if requestID == nil {
-			requestID = ""
-		}
+func (seed *Seed) log(ctx context.Context) *slog.Logger {
 
-		request := &proto.SeedClose{}
-		if err := decodeRequest(w, r, request); err != nil {
-			log.Println(requestID, err)
-			return
-		}
+	requestID := ctx.Value(CONTEXT_REQUEST_KEY)
+	if requestID == nil {
+		return seed.logger
+	}
 
-		seed.close(request)
-
-		if err := outputResponse(w, nil, http.StatusOK); err != nil {
-			log.Println(requestID, err)
-		}
-	})
-
-	mux.HandleFunc("/relay", func(w http.ResponseWriter, r *http.Request) {
-		requestID := r.Context().Value(CONTEXT_REQUEST_KEY)
-		if requestID == nil {
-			requestID = ""
-		}
-
-		request := &proto.SeedRelay{}
-		if err := decodeRequest(w, r, request); err != nil {
-			log.Println(requestID, err)
-			return
-		}
-
-		response, code, err := seed.relay(request)
-		if err != nil {
-			log.Println(requestID, err)
-		}
-
-		if err := outputResponse(w, response, code); err != nil {
-			log.Println(requestID, err)
-		}
-	})
-
-	mux.HandleFunc("/poll", func(w http.ResponseWriter, r *http.Request) {
-		requestID := r.Context().Value(CONTEXT_REQUEST_KEY)
-		if requestID == nil {
-			requestID = ""
-		}
-
-		request := &proto.SeedPoll{}
-		if err := decodeRequest(w, r, request); err != nil {
-			log.Println(requestID, err)
-			return
-		}
-
-		response, code, err := seed.poll(r.Context(), request)
-		if err != nil {
-			log.Println(requestID, err)
-		}
-
-		if err := outputResponse(w, response, code); err != nil {
-			log.Println(requestID, err)
-		}
-	})
-
-	return seed, nil
+	return seed.logger.With(slog.String("id", requestID.(string)))
 }
 
 func decodeRequest(w http.ResponseWriter, r *http.Request, m protoreflect.ProtoMessage) error {
@@ -222,7 +216,7 @@ func decodeRequest(w http.ResponseWriter, r *http.Request, m protoreflect.ProtoM
 
 func outputResponse(w http.ResponseWriter, m protoreflect.ProtoMessage, code int) error {
 	if code != http.StatusOK && m.ProtoReflect().IsValid() {
-		log.Fatal("logic error: status code should be OK when have response message ", code, m)
+		panic(fmt.Sprint("logic error: status code should be OK when have response message ", code, m))
 	}
 
 	w.WriteHeader(code)
@@ -245,41 +239,25 @@ func outputResponse(w http.ResponseWriter, m protoreflect.ProtoMessage, code int
 	return nil
 }
 
-func (seed *Seed) Start(ctx context.Context) {
-	seed.ctx = ctx
-	go func() {
-		ticker4Cleanup := time.NewTicker(time.Second)
-		defer ticker4Cleanup.Stop()
-		ticker4Random := time.NewTicker(10 * time.Second)
-		defer ticker4Random.Stop()
+func (seed *Seed) makeHandler() http.Handler {
+	mux := http.NewServeMux()
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
+	addHandler(seed, mux, "/authenticate", seed.authenticate)
+	addHandler(seed, mux, "/close", seed.close)
+	addHandler(seed, mux, "/relay", seed.relay)
+	addHandler(seed, mux, "/poll", seed.poll)
 
-			case <-ticker4Cleanup.C:
-				if err := seed.cleanup(); err != nil {
-					log.Println("failed on cleanup:", err)
-				}
-
-			case <-ticker4Random.C:
-				if err := seed.randomConnect(); err != nil {
-					log.Println("failed on random connect:", err)
-				}
-			}
-		}
-	}()
+	return mux
 }
 
-func (seed *Seed) authenticate(param *proto.SeedAuthenticate) (*proto.SeedAuthenticateResponse, int, error) {
+func (seed *Seed) authenticate(ctx context.Context, param *proto.SeedAuthenticate) (*proto.SeedAuthenticateResponse, int, error) {
 	if param.Version != ProtocolVersion {
 		return nil, http.StatusBadRequest, fmt.Errorf("wrong version was specified: %s", param.Version)
 	}
 
 	// verify the token
-	if seed.verifier != nil {
-		verified, err := seed.verifier.Verify(param.Token)
+	if seed.authenticator != nil {
+		verified, err := seed.authenticator.Authenticate(param.Token)
 		if err != nil {
 			return nil, http.StatusInternalServerError, err
 		}
@@ -308,17 +286,17 @@ func (seed *Seed) authenticate(param *proto.SeedAuthenticate) (*proto.SeedAuthen
 	}, http.StatusOK, nil
 }
 
-func (seed *Seed) close(param *proto.SeedClose) {
+func (seed *Seed) close(ctx context.Context, param *proto.SeedClose) (protoreflect.ProtoMessage, int, error) {
 	nid, ok := seed.checkSession(param.SessionId)
 	// return immediately when session is no exist
 	if !ok {
-		return
+		return nil, http.StatusOK, nil
 	}
 
-	seed.disconnect(nid, false)
+	return nil, http.StatusOK, seed.disconnect(nid, false)
 }
 
-func (seed *Seed) relay(param *proto.SeedRelay) (*proto.SeedRelayResponse, int, error) {
+func (seed *Seed) relay(ctx context.Context, param *proto.SeedRelay) (*proto.SeedRelayResponse, int, error) {
 	nid, ok := seed.checkSession(param.SessionId)
 	if !ok {
 		return nil, http.StatusUnauthorized, nil
@@ -358,11 +336,6 @@ func (seed *Seed) relay(param *proto.SeedRelay) (*proto.SeedRelayResponse, int, 
 }
 
 func (seed *Seed) poll(ctx context.Context, param *proto.SeedPoll) (*proto.SeedPollResponse, int, error) {
-	requestID := ctx.Value(CONTEXT_REQUEST_KEY)
-	if requestID == nil {
-		requestID = ""
-	}
-
 	nid, ok := seed.checkSession(param.SessionId)
 	if !ok {
 		return nil, http.StatusUnauthorized, nil
@@ -405,7 +378,7 @@ func (seed *Seed) poll(ctx context.Context, param *proto.SeedPoll) (*proto.SeedP
 		}
 
 		if hint == HintRequireRandom {
-			log.Println(requestID, "require random")
+			seed.log(ctx).Info("require random")
 		}
 
 		return &proto.SeedPollResponse{
@@ -562,7 +535,7 @@ func (seed *Seed) checkSession(sessionID string) (string, bool) {
 
 	node, ok := seed.nodes[nid]
 	if !ok {
-		log.Fatal("logic error: node should be exist when session exits")
+		panic("logic error: node should be exist when session exits")
 	}
 
 	node.timestamp = time.Now()
@@ -573,7 +546,7 @@ func (seed *Seed) checkSession(sessionID string) (string, bool) {
 func (seed *Seed) createNode(nid string) string {
 	// should be locked
 	if _, ok := seed.nodes[nid]; ok {
-		log.Fatal("logic error: duplicate node-id in nodes")
+		panic("logic error: duplicate node-id in nodes")
 	}
 
 	sessionID := seed.assignSessionID(nid)
@@ -648,7 +621,7 @@ func (seed *Seed) disconnect(nid string, locked bool) error {
 	delete(seed.nodes, nid)
 
 	if _, ok = seed.sessions[node.sessionID]; !ok {
-		log.Fatal("logic error: session should exist when the node exists")
+		panic("logic error: session should exist when the node exists")
 	}
 	delete(seed.sessions, node.sessionID)
 
