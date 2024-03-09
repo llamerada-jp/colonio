@@ -15,7 +15,7 @@ PROTOC := PATH=$(BINDIR) $(BINDIR)/protoc
 all: seed
 
 .PHONY: seed
-seed:
+seed: internal/proto/colonio.pb.go
 	go build -o output/seed ./cmd/seed
 
 internal/proto/colonio.pb.go: colonio.proto

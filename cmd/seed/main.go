@@ -1,5 +1,3 @@
-package main
-
 /*
  * Copyright 2017- Yuji Ito <llamerada.jp@gmail.com>
  *
@@ -15,16 +13,16 @@ package main
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
-	"log"
+	"log/slog"
 	"os"
-	"path/filepath"
 
-	"github.com/llamerada-jp/colonio/service"
+	"github.com/llamerada-jp/colonio/seed"
+	"github.com/llamerada-jp/colonio/seed/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -37,28 +35,30 @@ var cmd = &cobra.Command{
 		flag.CommandLine.Parse([]string{})
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		logger := slog.Default()
 		cmd.SilenceUsage = true
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		// read config file
-		configData, err := os.ReadFile(configFile)
+		config, err := util.ReadConfig(configFile)
 		if err != nil {
-			return err
-		}
-		config := &service.Config{}
-		if err := json.Unmarshal(configData, config); err != nil {
 			return err
 		}
 
-		// start service of the seed
-		baseDir := filepath.Dir(configFile)
-		sv, err := service.NewService(baseDir, config, nil)
-		if err != nil {
-			return err
-		}
-		return sv.Run(ctx)
+		// create server
+		service := util.NewService(config, logger)
+
+		// create seed
+		seed, seedHandler := seed.NewSeed(config.Seed, logger, nil)
+		service.SetHandler(seedHandler)
+
+		// run seed & server
+		go func() {
+			seed.Run(ctx)
+		}()
+
+		return service.Run()
 	},
 }
 
@@ -72,7 +72,7 @@ func init() {
 
 func main() {
 	if err := cmd.Execute(); err != nil {
-		log.Println(err)
+		slog.Error("error on seed", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
 }
