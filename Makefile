@@ -25,6 +25,12 @@ internal/proto/colonio.pb.go: colonio.proto
 format-code:
 	go fmt ./...
 
+export COLONIO_TEST_CERT := $(shell pwd)/localhost.crt
+export COLONIO_TEST_KEY := $(shell pwd)/localhost.key
+.PHONY: test
+test:
+	go test -v -count=1 ./seed/...
+
 .PHONY: setup
 setup:
 	$(SUDO) apt-get -y install --no-install-recommends unzip

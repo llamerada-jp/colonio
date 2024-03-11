@@ -1,19 +1,3 @@
-package main
-
-import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"log"
-	"os"
-	"path/filepath"
-
-	"github.com/chromedp/cdproto/runtime"
-	"github.com/chromedp/chromedp"
-	"github.com/llamerada-jp/colonio/go/service"
-	"github.com/spf13/cobra"
-)
-
 /*
  * Copyright 2017- Yuji Ito <llamerada.jp@gmail.com>
  *
@@ -30,6 +14,23 @@ import (
  * limitations under the License.
  */
 
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"log/slog"
+	"os"
+
+	"github.com/chromedp/cdproto/runtime"
+	"github.com/chromedp/chromedp"
+	"github.com/llamerada-jp/colonio/seed"
+	"github.com/llamerada-jp/colonio/seed/util"
+	"github.com/spf13/cobra"
+)
+
 var configFile string
 var url string
 var keyword_success string
@@ -38,6 +39,7 @@ var keyword_failure string
 var cmd = &cobra.Command{
 	Use: "test_luncher",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		logger := slog.Default()
 		cmd.SilenceUsage = true
 
 		opts := append(chromedp.DefaultExecAllocatorOptions[:],
@@ -48,25 +50,26 @@ var cmd = &cobra.Command{
 		ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(log.Printf))
 		defer cancel()
 
-		// read config file
-		configData, err := os.ReadFile(configFile)
+		config, err := util.ReadConfig(configFile)
 		if err != nil {
-			return err
-		}
-		config := &service.Config{}
-		if err := json.Unmarshal(configData, config); err != nil {
 			return err
 		}
 
-		// start service of the seed
-		baseDir := filepath.Dir(configFile)
-		sv, err := service.NewService(baseDir, config, nil)
-		if err != nil {
-			return err
-		}
+		// create server
+		service := util.NewService(config, logger)
+
+		// create seed
+		seed, seedHandler := seed.NewSeed(config.Seed, logger, nil)
+		service.SetHandler(seedHandler)
+
+		// start service and seed routine
 		go func() {
-			if err := sv.Run(ctx); err != nil {
-				log.Fatal(err)
+			seed.Run(ctx)
+		}()
+		go func() {
+			if err := service.Run(); err != nil {
+				slog.Error("failed to run service", slog.String("error", err.Error()))
+				os.Exit(1)
 			}
 		}()
 
@@ -81,9 +84,9 @@ var cmd = &cobra.Command{
 					}
 					var line string
 					if err := json.Unmarshal(arg.Value, &line); err != nil {
-						log.Println("failed to decode: ", line)
+						slog.Error("failed to decode", slog.String("line", line))
 					}
-					log.Println("(browser)", line)
+					fmt.Println("(browser)", line)
 					switch line {
 					case keyword_success:
 						finCh <- true
@@ -124,7 +127,7 @@ func init() {
 
 func main() {
 	if err := cmd.Execute(); err != nil {
-		log.Println(err)
+		slog.Error(("error on test_luncher"), slog.String("err", err.Error()))
 		os.Exit(1)
 	}
 }

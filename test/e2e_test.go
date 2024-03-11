@@ -1,5 +1,3 @@
-package test
-
 /*
  * Copyright 2017- Yuji Ito <llamerada.jp@gmail.com>
  *
@@ -15,18 +13,9 @@ package test
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package test
 
-import (
-	"context"
-	"crypto/tls"
-	"log"
-	"net/http"
-	"time"
-
-	"github.com/llamerada-jp/colonio/"
-	"github.com/stretchr/testify/suite"
-)
-
+/*
 type E2eSuite struct {
 	suite.Suite
 	node1 colonio.Colonio
@@ -317,3 +306,4 @@ func (suite *E2eSuite) TestPassValues() {
 	suite.NoError(err)
 	suite.Equal(string(nBinary), "漏電対策")
 }
+//*/

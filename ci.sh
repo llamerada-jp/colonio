@@ -12,6 +12,9 @@ if [ "${OS}" = "Linux" ]; then
   sudo apt update
   sudo apt install google-chrome-stable
 
+  # cleanup and setup
+  make clean setup
+
   # check format
   make format-code
   diffs=$(git diff | wc -l)
@@ -37,15 +40,15 @@ if [ "${OS}" = "Linux" ]; then
     exit 1
   fi
 
-  make clean
   make
+  make test
   exit 0
 
 elif [ "${OS}" = "Darwin" ]; then
   # macos x86_64
-  
-  make clean
+  make clean setup
   make
+  make test
   exit 0
 fi
 

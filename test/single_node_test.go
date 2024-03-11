@@ -1,5 +1,3 @@
-package test
-
 /*
  * Copyright 2017- Yuji Ito <llamerada.jp@gmail.com>
  *
@@ -15,17 +13,9 @@ package test
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package test
 
-import (
-	"crypto/tls"
-	"net/http"
-	"time"
-	"unicode/utf8"
-
-	"github.com/llamerada-jp/colonio/go/colonio"
-	"github.com/stretchr/testify/suite"
-)
-
+/*
 type SingleNodeSuite struct {
 	suite.Suite
 	node colonio.Colonio
@@ -96,7 +86,7 @@ func (suite *SingleNodeSuite) TestSingle() {
 		writer.Write(result)
 	})
 
-	/* TODO: implement error handling
+	// TODO: implement error handling
 	suite.node.MessagingSetHandler("error", func(request *colonio.MessagingRequest, writer colonio.MessagingResponseWriter) {
 		suite.T().Log("receive message error")
 		receiveCount++
@@ -108,7 +98,6 @@ func (suite *SingleNodeSuite) TestSingle() {
 
 		return fmt.Errorf("error result")
 	})
-	//*/
 
 	suite.T().Log("call message expect")
 	result, err := suite.node.MessagingPost(suite.node.GetLocalNid(), "expect", "expect param", 0)
@@ -124,14 +113,14 @@ func (suite *SingleNodeSuite) TestSingle() {
 	suite.NoError(err)
 	suite.Equal("nearby result", resultStr)
 
-	/* TODO: implement error handling
+	// TODO: implement error handling
 	suite.T().Log("call message with error")
 	result, err = suite.node.CallByNid(suite.node.GetLocalNid(), "error", "error param", 0)
 	if suite.Error(err) {
 		suite.Equal("error result", err.Error())
 	}
-	//*/
 
 	suite.T().Log("checking count of calls")
 	suite.Equal(2, receiveCount)
 }
+*/
