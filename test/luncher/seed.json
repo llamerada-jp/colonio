@@ -5,9 +5,7 @@
   "useTcp": true,
   "documentRoot": "../dist",
   "docOverrides": {
-    "/colonio.js": "../../output/",
-    "/colonio.wasm": "../../output/",
-    "/colonio_go.js": "../../src/js/"
+    "/seed_transport.js": "../../src/"
   },
   "seed": {
     "node": {
@@ -34,5 +32,5 @@
     "sessionTimeout": 30000,
     "pollingTimeout": 10000
   },
-  "sedPath": "/test"
+  "seedPath": "/seed"
 }

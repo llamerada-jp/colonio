@@ -98,6 +98,8 @@ func NewTestingSeed(opts ...ServiceOption) *TestingSeed {
 		}
 	}()
 
+	service.WaitForRun()
+
 	return ts
 }
 

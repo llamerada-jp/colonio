@@ -9,19 +9,22 @@
 <body>
   <div id="result"></div>
   <script src="wasm_exec.js" type="text/javascript"></script>
-  <script src="colonio.js" type="text/javascript"></script>
-  <script src="colonio_go.js" type="text/javascript"></script>
+  <script src="seed_transport.js" type="text/javascript"></script>
   <script type="text/javascript">
     const go = new Go();
-    ColonioModule().then(colonio => {
-      globalThis.colonioGo = new ColonioGo(colonio);
-      return WebAssembly.instantiateStreaming(fetch("test.wasm"), go.importObject);
-
-    }).then((result) => {
+    go.exit = (code) => {
+      if (code === 0) {
+        console.log("SUCCESS");
+      } else {
+        console.log("exit code: " + code)
+        console.log("FAIL");
+      }
+    }
+    WebAssembly.instantiateStreaming(fetch("tests/network.wasm"), go.importObject).then((result) => {
       go.run(result.instance);
-
     }).catch((err) => {
       console.error(err);
+      console.log("FAIL")
     });
   </script>
 </body>

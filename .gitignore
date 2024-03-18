@@ -5,5 +5,10 @@
 /localhost.key
 /node_modules
 /output
+/src/*.d.ts
+/src/*.js
+/src/*.map
+/test/dist/tests/*.wasm
+/test/dist/wasm_exec.js
 /test/test.wasm
 /test/wasm_exec.js

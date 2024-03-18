@@ -21,6 +21,9 @@ seed: internal/proto/colonio.pb.go
 internal/proto/colonio.pb.go: colonio.proto
 	$(PROTOC) --go_out=module=github.com/llamerada-jp/colonio:. $<
 
+test/dist/wasm_exec.js: $(shell go env GOROOT)/misc/wasm/wasm_exec.js
+	cp $< $@
+
 .PHONY: format-code
 format-code:
 	go fmt ./...
@@ -28,8 +31,16 @@ format-code:
 export COLONIO_TEST_CERT := $(shell pwd)/localhost.crt
 export COLONIO_TEST_KEY := $(shell pwd)/localhost.key
 .PHONY: test
-test:
+test: build-test test/dist/wasm_exec.js
 	go test -v -count=1 ./seed/...
+	go test -v -count=1 ./internal/...
+	go run ./test/luncher/ -c test/luncher/seed.json
+
+build-test: build-js
+	GOOS=js GOARCH=wasm go test -c -o ./test/dist/tests/network.wasm ./internal/network/
+
+build-js:
+	npm run build
 
 .PHONY: setup
 setup:

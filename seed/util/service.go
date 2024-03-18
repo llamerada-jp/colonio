@@ -59,6 +59,9 @@ func (s *Service) SetHandler(seedHandler http.Handler) {
 	s.RootMux.Handle(s.Config.SeedPath+"/", http.StripPrefix(s.Config.SeedPath, seedHandler))
 
 	headers := maps.Clone(s.Config.Headers)
+	if headers == nil {
+		headers = make(map[string]string)
+	}
 	headers["Cross-Origin-Opener-Policy"] = "same-origin"
 	headers["Cross-Origin-Embedder-Policy"] = "require-corp"
 
