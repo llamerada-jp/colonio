@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package main
 
 import (
@@ -61,6 +60,9 @@ var cmd = &cobra.Command{
 		// create seed
 		seed, seedHandler := seed.NewSeed(config.Seed, logger, nil)
 		service.SetHandler(seedHandler)
+
+		// set handlers for test
+		setSeedTransportHandlers(service.RootMux)
 
 		// start service and seed routine
 		go func() {
