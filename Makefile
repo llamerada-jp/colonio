@@ -12,10 +12,9 @@ SUDO := sudo
 BINDIR := $(shell pwd)/bin
 PROTOC := PATH=$(BINDIR) $(BINDIR)/protoc
 
-all: seed
+all: seed build-js
 
-.PHONY: seed
-seed: internal/proto/colonio.pb.go
+seed: internal/proto/colonio.pb.go $(wildcard ***.go)
 	go build -o output/seed ./cmd/seed
 
 internal/proto/colonio.pb.go: colonio.proto
@@ -25,26 +24,34 @@ test/dist/wasm_exec.js: $(shell go env GOROOT)/misc/wasm/wasm_exec.js
 	cp $< $@
 
 .PHONY: format-code
-format-code:
+format-code: internal/proto/colonio.pb.go
 	go fmt ./...
 
 export COLONIO_TEST_CERT := $(shell pwd)/localhost.crt
 export COLONIO_TEST_KEY := $(shell pwd)/localhost.key
 .PHONY: test
-test: build-test test/dist/wasm_exec.js
+test: build-test generate-cert test/dist/wasm_exec.js
 	go test -v -count=1 ./seed/...
 	go test -v -count=1 ./internal/...
 	go run ./test/luncher/ -c test/luncher/seed.json
 
-build-test: build-js
+.PHONY: generate-cert
+generate-cert:
+	openssl req -x509 -out localhost.crt -keyout localhost.key \
+  -newkey rsa:2048 -nodes -sha256 \
+  -subj '/CN=localhost' -extensions EXT -config <( \
+   printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
+
+build-test: build-js $(wildcard ***.go)
 	GOOS=js GOARCH=wasm go test -c -o ./test/dist/tests/network.wasm ./internal/network/
 
-build-js:
+build-js: $(wildcard src/*.ts)
 	npm run build
 
 .PHONY: setup
 setup:
-	$(SUDO) apt-get -y install --no-install-recommends unzip
+	# tools for typescript
+	npm install
 	# protoc
 	$(CURL) -o protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-linux-x86_64.zip
 	unzip -o protoc.zip bin/protoc 'include/*'
@@ -54,4 +61,5 @@ setup:
 .PHONY: clean
 clean:
 	rm -rf $(BINDIR)
+	git checkout $(BINDIR)
 	rm -rf include

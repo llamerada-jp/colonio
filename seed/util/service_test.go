@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestServiceHTTP2(t *testing.T) {
@@ -52,7 +53,7 @@ func TestServiceHTTP2(t *testing.T) {
 	// run service
 	go func() {
 		err := service.Run()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}()
 	defer service.Stop()
 	service.WaitForRun()
