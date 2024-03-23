@@ -27,6 +27,8 @@ import (
 	"time"
 
 	"github.com/llamerada-jp/colonio/internal/proto"
+	"github.com/llamerada-jp/colonio/internal/shared"
+	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -34,51 +36,25 @@ func generateEmptySeed() *Seed {
 	return &Seed{
 		logger:         slog.Default(),
 		mutex:          sync.Mutex{},
-		nodes:          make(map[string]*node),
-		sessions:       make(map[string]string),
+		nodes:          make(map[shared.NodeID]*node),
+		sessions:       make(map[string]*shared.NodeID),
 		sessionTimeout: 30 * time.Second,
 		pollingTimeout: 10 * time.Second,
 	}
 }
 
-// make unique nids
-func uniqueNids(count int) []*proto.NodeID {
-	nids := make([]*proto.NodeID, count)
-	exists := make(map[string]bool)
-
-	for i := range nids {
-		for {
-			nid := randomNid()
-			_, ok := exists[nidToString(nid)]
-			if !ok {
-				nids[i] = nid
-				exists[nidToString(nid)] = true
-				break
-			}
-		}
-	}
-
-	return nids
-}
-
-func randomNid() *proto.NodeID {
-	return &proto.NodeID{
-		Type: NidTypeNormal,
-		Id0:  rand.Uint64(),
-		Id1:  rand.Uint64(),
-	}
-}
-
 type dummyAuthenticator struct {
 	validToken []byte
+	lastNodeID string
 }
 
-func (dv *dummyAuthenticator) Authenticate(token []byte) (bool, error) {
-	if slices.Equal(dv.validToken, []byte("error")) {
+func (auth *dummyAuthenticator) Authenticate(token []byte, nodeID string) (bool, error) {
+	auth.lastNodeID = nodeID
+	if slices.Equal(auth.validToken, []byte("error")) {
 		return false, fmt.Errorf("invalid")
 	}
 
-	if slices.Equal(dv.validToken, token) {
+	if slices.Equal(auth.validToken, token) {
 		return true, nil
 	}
 	return false, nil
@@ -91,34 +67,34 @@ func TestAuthenticate(t *testing.T) {
 	defer cancel()
 
 	seed := generateEmptySeed()
-	seed.config = "dummy config"
+	seed.configJS = []byte("dummy config")
 	go func() {
 		seed.Run(ctx)
 	}()
 	seed.WaitForRun()
 
-	nids := uniqueNids(2)
+	nodeIDs := testUtil.UniqueNodeIDs(2)
 
 	// normal
 	res, code, err := seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: ProtocolVersion,
-		Nid:     nids[0],
+		Version: shared.ProtocolVersion,
+		NodeId:  nodeIDs[0].Proto(),
 		Token:   nil,
 	})
 	sessionID1 := res.SessionId
-	assert.Equal("dummy config", res.Config)
-	assert.Equal(HintOnlyOne, res.Hint)
+	assert.Equal([]byte("dummy config"), res.Config)
+	assert.Equal(shared.HintOnlyOne, res.Hint)
 	assert.NotNil(res.SessionId)
 	assert.Equal(http.StatusOK, code)
 	assert.NoError(err)
 	assert.Len(seed.nodes, 1)
 	assert.Len(seed.sessions, 1)
-	assert.Equal(nidToString(nids[0]), seed.sessions[sessionID1])
+	assert.Equal(*nodeIDs[0], *seed.sessions[sessionID1])
 
 	// normal2
 	res, code, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: ProtocolVersion,
-		Nid:     nids[1],
+		Version: shared.ProtocolVersion,
+		NodeId:  nodeIDs[1].Proto(),
 		Token:   nil,
 	})
 	sessionID2 := res.SessionId
@@ -128,15 +104,15 @@ func TestAuthenticate(t *testing.T) {
 	assert.NoError(err)
 	assert.Len(seed.nodes, 2)
 	assert.Len(seed.sessions, 2)
-	assert.Equal(nidToString(nids[1]), seed.sessions[sessionID2])
+	assert.Equal(*nodeIDs[1], *seed.sessions[sessionID2])
 
-	assert.NotEqual(nidToString(nids[0]), nidToString(nids[1]))
+	assert.NotEqual(nodeIDs[0], nodeIDs[1])
 	assert.NotEqual(sessionID1, sessionID2)
 
 	// duplicate connection
 	res, code, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: ProtocolVersion,
-		Nid:     nids[0],
+		Version: shared.ProtocolVersion,
+		NodeId:  nodeIDs[0].Proto(),
 		Token:   nil,
 	})
 	assert.Nil(res)
@@ -144,7 +120,7 @@ func TestAuthenticate(t *testing.T) {
 	assert.Error(err)
 	assert.Len(seed.nodes, 1)
 	assert.Len(seed.sessions, 1)
-	assert.Equal(nidToString(nids[1]), seed.sessions[sessionID2])
+	assert.Equal(*nodeIDs[1], *seed.sessions[sessionID2])
 
 	// invalid version
 	res, code, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
@@ -155,44 +131,50 @@ func TestAuthenticate(t *testing.T) {
 	assert.Error(err)
 
 	// verification success
-	seed.authenticator = &dummyAuthenticator{
+	authenticator := &dummyAuthenticator{
 		validToken: []byte("token!"),
 	}
+	seed.authenticator = authenticator
+	nodeID := shared.NewRandomNodeID()
 	res, code, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: ProtocolVersion,
-		Nid:     randomNid(),
+		Version: shared.ProtocolVersion,
+		NodeId:  nodeID.Proto(),
 		Token:   []byte("token!"),
 	})
 	assert.NotNil(res)
 	assert.Equal(http.StatusOK, code)
 	assert.NoError(err)
+	assert.Equal(nodeID.String(), authenticator.lastNodeID)
 	assert.Len(seed.nodes, 2)
 	assert.Len(seed.sessions, 2)
 
 	// verification failed
 	res, code, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: ProtocolVersion,
-		Nid:     randomNid(),
+		Version: shared.ProtocolVersion,
+		NodeId:  shared.NewRandomNodeID().Proto(),
 		Token:   []byte("token?"),
 	})
 	assert.Nil(res)
-	assert.Equal(http.StatusUnauthorized, code)
+	assert.Equal(http.StatusForbidden, code)
 	assert.Error(err)
 	assert.Len(seed.nodes, 2)
 	assert.Len(seed.sessions, 2)
 
 	// verification error
-	seed.authenticator = &dummyAuthenticator{
+	authenticator = &dummyAuthenticator{
 		validToken: []byte("error"),
 	}
+	seed.authenticator = authenticator
+	nodeID = shared.NewRandomNodeID()
 	res, code, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: ProtocolVersion,
-		Nid:     randomNid(),
+		Version: shared.ProtocolVersion,
+		NodeId:  nodeID.Proto(),
 		Token:   nil,
 	})
 	assert.Nil(res)
 	assert.Equal(http.StatusInternalServerError, code)
 	assert.Error(err)
+	assert.Equal(nodeID.String(), authenticator.lastNodeID)
 	assert.Len(seed.nodes, 2)
 	assert.Len(seed.sessions, 2)
 }
@@ -210,8 +192,8 @@ func TestClose(t *testing.T) {
 
 	// normal
 	resAuth, code, err := seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: ProtocolVersion,
-		Nid:     randomNid(),
+		Version: shared.ProtocolVersion,
+		NodeId:  shared.NewRandomNodeID().Proto(),
 		Token:   nil,
 	})
 	sessionID1 := resAuth.SessionId
@@ -253,10 +235,10 @@ func TestRelayPoll(t *testing.T) {
 	seed.WaitForRun()
 
 	// connection
-	srcNid := randomNid()
+	srcNodeID := shared.NewRandomNodeID()
 	resAuth, code, err := seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: ProtocolVersion,
-		Nid:     srcNid,
+		Version: shared.ProtocolVersion,
+		NodeId:  srcNodeID.Proto(),
 		Token:   nil,
 	})
 	sessionID1 := resAuth.SessionId
@@ -264,8 +246,8 @@ func TestRelayPoll(t *testing.T) {
 	assert.NoError(err)
 
 	resAuth, code, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: ProtocolVersion,
-		Nid:     randomNid(),
+		Version: shared.ProtocolVersion,
+		NodeId:  shared.NewRandomNodeID().Proto(),
 		Token:   nil,
 	})
 	sessionID2 := resAuth.SessionId
@@ -285,16 +267,16 @@ func TestRelayPoll(t *testing.T) {
 	}()
 
 	// normal relay
-	dstNid := randomNid()
+	dstNodeID := shared.NewRandomNodeID()
 	packetID := rand.Uint32()
 	resRelay, code, err := seed.relay(ctx, &proto.SeedRelay{
 		SessionId: sessionID1,
 		Packets: []*proto.SeedPacket{
 			{
-				DstNid: dstNid,
-				SrcNid: srcNid,
-				Id:     packetID,
-				Mode:   ModeOneWay,
+				DstNodeId: dstNodeID.Proto(),
+				SrcNodeId: srcNodeID.Proto(),
+				Id:        packetID,
+				Mode:      uint32(shared.PacketModeOneWay),
 			},
 		},
 	})
@@ -344,106 +326,108 @@ func TestGetPacket(t *testing.T) {
 	assert := assert.New(t)
 
 	seed := generateEmptySeed()
-	nids := uniqueNids(7)
+	nodeIDs := testUtil.UniqueNodeIDs(7)
 
 	packets := []packet{
 		// general packet
 		{
-			stepNid: nidToString(nids[1]),
+			stepNodeID: nodeIDs[1],
 			p: &proto.SeedPacket{
-				Id:     0,
-				DstNid: nids[2],
-				SrcNid: nids[3],
-				Mode:   0,
+				Id:        0,
+				DstNodeId: nodeIDs[2].Proto(),
+				SrcNodeId: nodeIDs[3].Proto(),
+				Mode:      0,
 			},
 		},
 		// response packet
 		{
-			stepNid: nidToString(nids[4]),
+			stepNodeID: nodeIDs[4],
 			p: &proto.SeedPacket{
-				Id:     1,
-				DstNid: nids[5],
-				SrcNid: nids[6],
-				Mode:   ModeResponse,
+				Id:        1,
+				DstNodeId: nodeIDs[5].Proto(),
+				SrcNodeId: nodeIDs[6].Proto(),
+				Mode:      uint32(shared.PacketModeResponse),
 			},
 		},
 		// random request packet
 		{
-			stepNid: nidToString(nids[1]),
+			stepNodeID: nodeIDs[1],
 			p: &proto.SeedPacket{
-				Id:     2,
-				DstNid: nids[1],
-				SrcNid: nids[1],
-				Mode:   0,
+				Id:        2,
+				DstNodeId: nodeIDs[1].Proto(),
+				SrcNodeId: nodeIDs[1].Proto(),
+				Mode:      0,
 			},
 		},
 	}
 
 	testCases := []struct {
 		title       string
-		nid         string
+		nodeID      *shared.NodeID
 		online      bool
 		anotherNode bool
 		expect      []uint32
 	}{
 		{
 			title:       "can get general packet by online normal node",
-			nid:         nidToString(nids[0]),
+			nodeID:      nodeIDs[0],
 			online:      true,
 			anotherNode: true,
 			expect:      []uint32{0, 2},
 		},
 		{
 			title:       "can't get any packet if the packet posted by it self",
-			nid:         nidToString(nids[1]),
+			nodeID:      nodeIDs[1],
 			online:      true,
 			anotherNode: true,
 			expect:      []uint32{},
 		},
 		{
 			title:       "can't get any packet if offline",
-			nid:         nidToString(nids[0]),
+			nodeID:      nodeIDs[0],
 			online:      false,
 			anotherNode: true,
 			expect:      []uint32{},
 		},
 		{
 			title:       "can get general packet when all node are offline",
-			nid:         nidToString(nids[0]),
+			nodeID:      nodeIDs[0],
 			online:      false,
 			anotherNode: false,
 			expect:      []uint32{0, 2},
 		},
 		{
 			title:       "can get general packet when destination is me with offline",
-			nid:         nidToString(nids[2]),
+			nodeID:      nodeIDs[2],
 			online:      false,
 			anotherNode: true,
 			expect:      []uint32{0},
 		},
 		{
 			title:       "can get response packet if destination is me",
-			nid:         nidToString(nids[5]),
+			nodeID:      nodeIDs[5],
 			online:      false,
 			anotherNode: true,
 			expect:      []uint32{1},
 		},
 		{
 			title:       "can get more than two packets",
-			nid:         nidToString(nids[5]),
+			nodeID:      nodeIDs[5],
 			online:      true,
 			anotherNode: true,
 			expect:      []uint32{0, 1, 2},
 		},
 	}
 
+	dummyNodeID := shared.NewRandomNodeID()
+
 	for _, testCase := range testCases {
 		seed.packets = make([]packet, len(packets))
 		copy(seed.packets, packets)
 
 		if testCase.anotherNode {
-			seed.nodes = map[string]*node{
-				"dummy": {
+			seed.nodes = map[shared.NodeID]*node{
+				*dummyNodeID: {
 					timestamp:   time.Now(),
 					sessionID:   "dummy",
 					online:      true,
@@ -453,7 +437,7 @@ func TestGetPacket(t *testing.T) {
 			}
 		}
 
-		res := seed.getPackets(testCase.nid, testCase.online, false)
+		res := seed.getPackets(testCase.nodeID, testCase.online, false)
 		assert.Len(res, len(testCase.expect), testCase.title)
 		for _, r := range res {
 			assert.Contains(testCase.expect, r.Id, testCase.title)
@@ -464,8 +448,8 @@ func TestGetPacket(t *testing.T) {
 		}
 
 		if testCase.anotherNode {
-			close(seed.nodes["dummy"].c)
-			delete(seed.nodes, "dummy")
+			close(seed.nodes[*dummyNodeID].c)
+			delete(seed.nodes, *dummyNodeID)
 		}
 	}
 }
@@ -481,12 +465,12 @@ func TestRandomConnect(t *testing.T) {
 	}()
 	seed.WaitForRun()
 
-	nids := uniqueNids(2)
+	nodeIDs := testUtil.UniqueNodeIDs(2)
 
 	// not request random-connect when only one node
 	resAuth, _, err := seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: ProtocolVersion,
-		Nid:     nids[0],
+		Version: shared.ProtocolVersion,
+		NodeId:  nodeIDs[0].Proto(),
 	})
 	assert.NoError(err)
 	ch1 := make(chan *proto.SeedPollResponse)
@@ -519,8 +503,8 @@ func TestRandomConnect(t *testing.T) {
 
 	// generate random-connect request when more then two nodes
 	resAuth, _, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: ProtocolVersion,
-		Nid:     nids[1],
+		Version: shared.ProtocolVersion,
+		NodeId:  nodeIDs[1].Proto(),
 	})
 	assert.NoError(err)
 	ch2 := make(chan *proto.SeedPollResponse)
@@ -535,7 +519,6 @@ func TestRandomConnect(t *testing.T) {
 
 	// waiting for starting to poll
 	assert.Eventually(func() bool {
-		fmt.Println("wait", seed.countChannels(false), seed.countOnline(false))
 		return seed.countOnline(false) == 2 &&
 			seed.countChannels(false) == 2
 	}, time.Second, 100*time.Millisecond)
@@ -552,6 +535,6 @@ func TestRandomConnect(t *testing.T) {
 	case resPoll = <-ch1:
 	case resPoll = <-ch2:
 	}
-	assert.Equal(HintRequireRandom, resPoll.Hint)
+	assert.Equal(shared.HintRequireRandom, resPoll.Hint)
 	assert.Len(resPoll.Packets, 0)
 }

@@ -58,7 +58,7 @@ var cmd = &cobra.Command{
 		service := util.NewService(config, logger)
 
 		// create seed
-		seed, seedHandler := seed.NewSeed(config.Seed, logger, nil)
+		seed, seedHandler := seed.NewSeed(config.Cluster, logger, nil)
 		service.SetHandler(seedHandler)
 
 		// set handlers for test

@@ -7,30 +7,28 @@
   "docOverrides": {
     "/seed_transport.js": "../../src/"
   },
-  "seed": {
-    "node": {
-      "revision": 20240317.1,
-      "coordSystem2D": {
-        "type": "sphere",
-        "radius": 6378137
-      },
-      "iceServers": [
-        {
-          "urls": [
-            "stun:stun.l.google.com:19302"
-          ]
-        }
-      ],
-      "spread": {
-        "cacheTime": 100
-      },
-      "routing": {
-        "forceUpdateTimes": 20,
-        "updatePeriod": 500
-      }
+  "cluster": {
+    "revision": 20240317.1,
+    "sessionTimeout": "30s",
+    "pollingTimeout": "10s",
+    "coordSystem2D": {
+      "type": "sphere",
+      "radius": 6378137
     },
-    "sessionTimeout": 30000,
-    "pollingTimeout": 10000
+    "iceServers": [
+      {
+        "urls": [
+          "stun:stun.l.google.com:19302"
+        ]
+      }
+    ],
+    "spread": {
+      "cacheTime": 100
+    },
+    "routing": {
+      "forceUpdateTimes": 20,
+      "updatePeriod": 500
+    }
   },
   "seedPath": "/seed"
 }

@@ -29,8 +29,9 @@ import (
 )
 
 type response struct {
-	data []byte
-	err  error
+	data   []byte
+	status int
+	err    error
 }
 
 type seedTransportWASM struct {
@@ -55,7 +56,7 @@ func NewSeedTransportWASM(opt *colonio.SeedTransporterOption) colonio.SeedTransp
 // Send implements SeedTransporter.Send.
 // This function sends data to the specified URL and returns the response. It processes synchronously.
 // TODO: Cannot use context. Hint: js's AbortController, AbortSignal.
-func (t *seedTransportWASM) Send(ctx context.Context, url string, data []byte) ([]byte, error) {
+func (t *seedTransportWASM) Send(ctx context.Context, url string, data []byte) ([]byte, int, error) {
 	id, receiver := t.assignReceiver()
 
 	buffer := js.Global().Get("Uint8Array").New(len(data))
@@ -66,33 +67,34 @@ func (t *seedTransportWASM) Send(ctx context.Context, url string, data []byte) (
 
 	response, ok := <-receiver
 	if !ok {
-		return nil, fmt.Errorf("receiver closed")
+		return nil, 0, fmt.Errorf("receiver closed")
 	}
 
-	return response.data, response.err
+	return response.data, response.status, response.err
 }
 
 func (t *seedTransportWASM) jsReceive(args []js.Value) any {
 	id := args[0].Int()
 	buffer := args[1]
-	err := args[2].String()
+	status := args[2].Int()
+	err := args[3].String()
 
 	go func() {
 		if err != "" {
-			t.receive(uint32(id), nil, fmt.Errorf(err))
+			t.receive(uint32(id), nil, 0, fmt.Errorf(err))
 			return
 		}
 
 		data := make([]byte, buffer.Get("byteLength").Int())
 		js.CopyBytesToGo(data, buffer)
 
-		t.receive(uint32(id), data, nil)
+		t.receive(uint32(id), data, status, nil)
 	}()
 
 	return nil
 }
 
-func (t *seedTransportWASM) receive(id uint32, data []byte, err error) {
+func (t *seedTransportWASM) receive(id uint32, data []byte, status int, err error) {
 	t.mtx.Lock()
 	ch, ok := t.receivers[id]
 	if !ok {
@@ -101,7 +103,7 @@ func (t *seedTransportWASM) receive(id uint32, data []byte, err error) {
 	delete(t.receivers, id)
 	t.mtx.Unlock()
 
-	ch <- response{data, err}
+	ch <- response{data, status, err}
 	close(ch)
 }
 
@@ -123,4 +125,11 @@ func (t *seedTransportWASM) assignReceiver() (uint32, chan response) {
 	t.receivers[id] = receiver
 
 	return id, receiver
+}
+
+func init() {
+	colonio.DefaultSeedTransporterFactory =
+		func(opt *colonio.SeedTransporterOption) colonio.SeedTransporter {
+			return NewSeedTransportWASM(opt)
+		}
 }
