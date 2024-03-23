@@ -21,6 +21,7 @@ package network
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/llamerada-jp/colonio"
@@ -42,28 +43,33 @@ func TestTransportWASM(t *testing.T) {
 	ctx := context.Background()
 
 	cases := []struct {
-		title string
-		url   string
-		res   []byte
-		err   bool
+		title  string
+		url    string
+		res    []byte
+		status int
+		err    bool
 	}{
 		{
-			title: "normal case",
-			url:   fmt.Sprintf("https://localhost:%d/%s", SeedPort, NormalPath),
-			res:   []byte(responseNormal),
-			err:   false,
+			title:  "normal case",
+			url:    fmt.Sprintf("https://localhost:%d/%s", SeedPort, NormalPath),
+			res:    []byte(responseNormal),
+			status: http.StatusOK,
+			err:    false,
 		},
 		{
 			title: "error response",
 			url:   fmt.Sprintf("https://localhost:%d/%s", SeedPort, ErrorPath),
-			res:   nil,
-			err:   true,
+			// http.Error using Println, so responseError has "\n"
+			res:    []byte(responseError + "\n"),
+			status: http.StatusInternalServerError,
+			err:    false,
 		},
 		{
-			title: "offline",
-			url:   fmt.Sprintf("https://localhost:%d/%s", SeedPort+1, NormalPath),
-			res:   nil,
-			err:   true,
+			title:  "offline",
+			url:    fmt.Sprintf("https://localhost:%d/%s", SeedPort+1, NormalPath),
+			res:    nil,
+			status: 0,
+			err:    true,
 		},
 	}
 	tr := NewSeedTransportWASM(&colonio.SeedTransporterOption{
@@ -72,16 +78,13 @@ func TestTransportWASM(t *testing.T) {
 
 	for _, c := range cases {
 		t.Log(c.title)
-		res, err := tr.Send(ctx, c.url, []byte(Request))
+		res, status, err := tr.Send(ctx, c.url, []byte(Request))
+		assert.Equal(t, c.res, res)
+		assert.Equal(t, c.status, status)
 		if c.err {
 			assert.Error(t, err)
 		} else {
 			assert.NoError(t, err)
-		}
-		if c.res != nil {
-			assert.Equal(t, c.res, res)
-		} else {
-			assert.Nil(t, res)
 		}
 	}
 }

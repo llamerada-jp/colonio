@@ -19,17 +19,6 @@ const (
 	// version
 	ProtocolVersion = "A2"
 
-	// Node ID.
-	NidStrNone    = ""
-	NidStrThis    = "."
-	NidStrSeed    = "seed"
-	NidStrNext    = "next"
-	NidTypeNone   = 0
-	NidTypeNormal = 1
-	NidTypeThis   = 2
-	NidTypeSeed   = 3
-	NidTypeNext   = 4
-
 	// Packet mode.
 	ModeNone      = 0x0000
 	ModeResponse  = 0x0001

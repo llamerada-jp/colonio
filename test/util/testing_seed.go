@@ -27,11 +27,12 @@ import (
 )
 
 type TestingSeed struct {
-	cancel  context.CancelFunc
-	service *util.Service
+	cancel        context.CancelFunc
+	authenticator seed.Authenticator
+	service       *util.Service
 }
 
-type ServiceOption func(*util.Service)
+type ServiceOption func(*TestingSeed)
 
 // NewTestingSeed creates and run a new testing seed.
 func NewTestingSeed(opts ...ServiceOption) *TestingSeed {
@@ -80,11 +81,11 @@ func NewTestingSeed(opts ...ServiceOption) *TestingSeed {
 
 	// apply options
 	for _, opt := range opts {
-		opt(service)
+		opt(ts)
 	}
 
 	// create and run seed
-	seedRunner, seedHandler := seed.NewSeed(serviceConfig.Seed, slog.Default(), nil)
+	seedRunner, seedHandler := seed.NewSeed(serviceConfig.Seed, slog.Default(), ts.authenticator)
 	service.SetHandler(seedHandler)
 	go func() {
 		seedRunner.Run(ctx)
@@ -104,10 +105,16 @@ func NewTestingSeed(opts ...ServiceOption) *TestingSeed {
 }
 
 func WithHandleTestingFunc(t *testing.T, path string, handler func(*testing.T, http.ResponseWriter, *http.Request)) ServiceOption {
-	return func(service *util.Service) {
-		service.RootMux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+	return func(ts *TestingSeed) {
+		ts.service.RootMux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			handler(t, w, r)
 		})
+	}
+}
+
+func WithAuthenticator(auth seed.Authenticator) ServiceOption {
+	return func(ts *TestingSeed) {
+		ts.authenticator = auth
 	}
 }
 

@@ -13,17 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package colonio
+package node_id
 
-import (
-	"context"
+type Type uint
+
+const (
+	// Node ID.
+	StrNone = ""
+	StrThis = "."
+	StrSeed = "seed"
+	StrNext = "next"
+
+	TypeNone   = Type(0)
+	TypeNormal = Type(1)
+	TypeThis   = Type(2)
+	TypeSeed   = Type(3)
+	TypeNext   = Type(4)
 )
-
-type SeedTransporterOption struct {
-	Verification bool
-}
-type SeedTransporter interface {
-	Send(ctx context.Context, url string, data []byte) ([]byte, int, error)
-}
-
-var DefaultSeedTransporterFactory func(opt *SeedTransporterOption) SeedTransporter

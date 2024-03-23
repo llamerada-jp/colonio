@@ -16,7 +16,7 @@
 const MAX_ID = 0x100000000;
 
 (globalThis as any).SeedTransport = class {
-  onReceive(id: number, content: Uint8Array | undefined, err: string): void {
+  onReceive(id: number, content: Uint8Array | undefined, status: number, err: string): void {
     console.error("SeedTransport::onReceive method must by override by go module");
   }
 
@@ -29,22 +29,20 @@ const MAX_ID = 0x100000000;
       body: content.buffer,
     });
 
+    let statusCode = 0;
     fetch(request).then((response: Response) => {
-      if (!response.ok) {
-        this.onReceive(id, undefined, "unexpected status code: " + response.status);
-        return;
-      }
+      statusCode = response.status;
       return response.arrayBuffer();
 
     }).then((buffer: ArrayBuffer | undefined) => {
       if (buffer === undefined) {
-        this.onReceive(id, undefined, "unexpected response");
+        this.onReceive(id, undefined, 0, "unexpected response");
         return;
       }
-      this.onReceive(id, new Uint8Array(buffer), "");
+      this.onReceive(id, new Uint8Array(buffer), statusCode, "");
 
     }).catch((error) => {
-      this.onReceive(id, undefined, error.message);
+      this.onReceive(id, undefined, 0, error.message);
     });
 
     return id;

@@ -54,31 +54,27 @@ func NewSeedTransportNative(opt *colonio.SeedTransporterOption) colonio.SeedTran
 
 // Send sends data to the specified URL and returns the response.
 // The response is nil if the status code is not 200 or if other errors occurs.
-func (t *seedTransportNative) Send(ctx context.Context, url string, data []byte) ([]byte, error) {
+func (t *seedTransportNative) Send(ctx context.Context, url string, data []byte) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/octet-stream")
 
 	resp, err := t.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return nil, 0, fmt.Errorf("failed to send request: %w", err)
 	}
 
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, 0, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %s", body)
-	}
-
-	return body, nil
+	return body, resp.StatusCode, nil
 }
 
 func init() {

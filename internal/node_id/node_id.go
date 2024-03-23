@@ -13,31 +13,62 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package seed
+package node_id
 
 import (
 	"fmt"
+	"math/rand"
 
 	"github.com/llamerada-jp/colonio/internal/proto"
 )
 
-func nidToString(nid *proto.NodeID) string {
-	switch nid.Type {
+type NodeID struct {
+	t   Type
+	id0 uint64
+	id1 uint64
+}
+
+func NewFromProto(p *proto.NodeID) *NodeID {
+	return &NodeID{
+		t:   Type(p.Type),
+		id0: p.Id0,
+		id1: p.Id1,
+	}
+}
+
+func NewRandom() *NodeID {
+	return &NodeID{
+		t:   TypeNormal,
+		id0: rand.Uint64(),
+		id1: rand.Uint64(),
+	}
+}
+
+func (n *NodeID) Proto() *proto.NodeID {
+	return &proto.NodeID{
+		Type: uint32(n.t),
+		Id0:  n.id0,
+		Id1:  n.id1,
+	}
+}
+
+func (n *NodeID) String() string {
+	switch n.t {
 	//case NidTypeNone:
 	//	return NidNone
 
-	case NidTypeNormal:
-		return fmt.Sprintf("%016x%016x", nid.Id0, nid.Id1)
+	case TypeNormal:
+		return fmt.Sprintf("%016x%016x", n.id0, n.id1)
 
-	case NidTypeThis:
-		return NidStrThis
+	case TypeThis:
+		return StrThis
 
-	case NidTypeSeed:
-		return NidStrSeed
+	case TypeSeed:
+		return StrSeed
 
-	case NidTypeNext:
-		return NidStrNext
+	case TypeNext:
+		return StrNext
 	}
 
-	return NidStrNone
+	return StrNone
 }
