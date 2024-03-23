@@ -22,7 +22,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/llamerada-jp/colonio/seed"
+	"github.com/llamerada-jp/colonio/config"
 )
 
 type ServiceConfig struct {
@@ -39,8 +39,8 @@ type ServiceConfig struct {
 	DocOverrides map[string]string `json:"docOverrides"`
 
 	// Seed config
-	Seed     *seed.Config `json:"seed"`
-	SeedPath string       `json:"seedPath"`
+	Cluster  *config.Cluster `json:"cluster"`
+	SeedPath string          `json:"seedPath"`
 }
 
 func ReadConfig(path string) (*ServiceConfig, error) {
@@ -70,7 +70,7 @@ func (c *ServiceConfig) ToAbsPath(path string) string {
 }
 
 func (c *ServiceConfig) validate() error {
-	if err := c.Seed.Validate(); err != nil {
+	if err := c.Cluster.Validate(); err != nil {
 		return err
 	}
 

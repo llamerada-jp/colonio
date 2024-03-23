@@ -13,31 +13,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package seed
+package shared
 
 import (
-	"fmt"
+	"testing"
 
-	"github.com/llamerada-jp/colonio/internal/proto"
+	"github.com/stretchr/testify/assert"
 )
 
-func nidToString(nid *proto.NodeID) string {
-	switch nid.Type {
-	//case NidTypeNone:
-	//	return NidNone
+func TestNodeIDEqual(t *testing.T) {
+	origin := NewRandomNodeID()
+	clone := NewNodeIDFromProto(origin.Proto())
 
-	case NidTypeNormal:
-		return fmt.Sprintf("%016x%016x", nid.Id0, nid.Id1)
-
-	case NidTypeThis:
-		return NidStrThis
-
-	case NidTypeSeed:
-		return NidStrSeed
-
-	case NidTypeNext:
-		return NidStrNext
+	if !origin.Equal(clone) {
+		assert.Fail(t, "NodeID should be equal")
 	}
+}
 
-	return NidStrNone
+func TestNodeIDMapKey(t *testing.T) {
+	origin := NewRandomNodeID()
+	clone := NewNodeIDFromProto(origin.Proto())
+
+	m := make(map[NodeID]int)
+	m[*origin] = 1
+	m[*clone] = 2
+
+	if len(m) != 1 {
+		assert.Fail(t, "NodeID should be equal")
+	}
 }

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package util
+package testing_seed
 
 import (
 	"context"
@@ -21,17 +21,20 @@ import (
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
+	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/seed"
 	"github.com/llamerada-jp/colonio/seed/util"
 )
 
 type TestingSeed struct {
-	cancel  context.CancelFunc
-	service *util.Service
+	cancel        context.CancelFunc
+	authenticator seed.Authenticator
+	service       *util.Service
 }
 
-type ServiceOption func(*util.Service)
+type ServiceOption func(*TestingSeed)
 
 // NewTestingSeed creates and run a new testing seed.
 func NewTestingSeed(opts ...ServiceOption) *TestingSeed {
@@ -55,20 +58,18 @@ func NewTestingSeed(opts ...ServiceOption) *TestingSeed {
 		CertFile: cert,
 		KeyFile:  key,
 
-		Seed: &seed.Config{
-			SessionTimeout: 30000, // 30s
-			PollingTimeout: 10000, // 10s
-			Node: &seed.ConfigNode{
-				Revision: 1,
-				IceServers: []seed.ConfigIceServer{
-					{
-						Urls: []string{"stun:stun.l.google.com:19302"},
-					},
+		Cluster: &config.Cluster{
+			SessionTimeout: 30 * time.Second,
+			PollingTimeout: 10 * time.Second,
+			Revision:       1,
+			IceServers: []config.IceServer{
+				{
+					Urls: []string{"stun:stun.l.google.com:19302"},
 				},
-				Routing: &seed.ConfigRouting{
-					ForceUpdateCount: toPtr[uint32](10),
-					UpdatePeriod:     toPtr[uint32](500), // 500ms
-				},
+			},
+			Routing: config.Routing{
+				ForceUpdateCount: toPtr[uint32](10),
+				UpdatePeriod:     toPtr[uint32](500), // 500ms
 			},
 		},
 		SeedPath: "/test",
@@ -80,11 +81,11 @@ func NewTestingSeed(opts ...ServiceOption) *TestingSeed {
 
 	// apply options
 	for _, opt := range opts {
-		opt(service)
+		opt(ts)
 	}
 
 	// create and run seed
-	seedRunner, seedHandler := seed.NewSeed(serviceConfig.Seed, slog.Default(), nil)
+	seedRunner, seedHandler := seed.NewSeed(serviceConfig.Cluster, slog.Default(), ts.authenticator)
 	service.SetHandler(seedHandler)
 	go func() {
 		seedRunner.Run(ctx)
@@ -99,15 +100,40 @@ func NewTestingSeed(opts ...ServiceOption) *TestingSeed {
 	}()
 
 	service.WaitForRun()
+	slog.Info("testing seed is running", slog.Int("port", int(serviceConfig.Port)))
 
 	return ts
 }
 
 func WithHandleTestingFunc(t *testing.T, path string, handler func(*testing.T, http.ResponseWriter, *http.Request)) ServiceOption {
-	return func(service *util.Service) {
-		service.RootMux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+	return func(ts *TestingSeed) {
+		ts.service.RootMux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			handler(t, w, r)
 		})
+	}
+}
+
+func WithRevision(rev float64) ServiceOption {
+	return func(ts *TestingSeed) {
+		ts.service.Config.Cluster.Revision = rev
+	}
+}
+
+func WithAuthenticator(auth seed.Authenticator) ServiceOption {
+	return func(ts *TestingSeed) {
+		ts.authenticator = auth
+	}
+}
+
+func WithSessionTimeout(d time.Duration) ServiceOption {
+	return func(ts *TestingSeed) {
+		ts.service.Config.Cluster.SessionTimeout = d
+	}
+}
+
+func WithPollingTimeout(d time.Duration) ServiceOption {
+	return func(ts *TestingSeed) {
+		ts.service.Config.Cluster.PollingTimeout = d
 	}
 }
 

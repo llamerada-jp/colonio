@@ -25,8 +25,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/llamerada-jp/colonio"
-	"github.com/llamerada-jp/colonio/test/util"
+	"github.com/llamerada-jp/colonio/test/testing_seed"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -50,55 +49,57 @@ func errorHandler(_ *testing.T, w http.ResponseWriter, r *http.Request) {
 }
 
 func TestTransportNative(t *testing.T) {
-	seed := util.NewTestingSeed(
-		util.WithHandleTestingFunc(t, "/hello", normalHandler),
-		util.WithHandleTestingFunc(t, "/error", errorHandler),
+	seed := testing_seed.NewTestingSeed(
+		testing_seed.WithHandleTestingFunc(t, "/hello", normalHandler),
+		testing_seed.WithHandleTestingFunc(t, "/error", errorHandler),
 	)
 	defer seed.Stop()
 
 	ctx := context.Background()
 
 	cases := []struct {
-		title string
-		url   string
-		res   []byte
-		err   bool
+		title  string
+		url    string
+		res    []byte
+		status int
+		err    bool
 	}{
 		{
-			title: "normal case",
-			url:   fmt.Sprintf("https://localhost:%d/hello", seed.Port()),
-			res:   []byte(responseNormal),
-			err:   false,
+			title:  "normal case",
+			url:    fmt.Sprintf("https://localhost:%d/hello", seed.Port()),
+			res:    []byte(responseNormal),
+			status: http.StatusOK,
+			err:    false,
 		},
 		{
 			title: "error response",
 			url:   fmt.Sprintf("https://localhost:%d/error", seed.Port()),
-			res:   nil,
-			err:   true,
+			// http.Error using Println, so responseError has "\n"
+			res:    []byte(responseError + "\n"),
+			status: http.StatusInternalServerError,
+			err:    false,
 		},
 		{
-			title: "offline",
-			url:   fmt.Sprintf("https://localhost:%d/hello", seed.Port()+1),
-			res:   nil,
-			err:   true,
+			title:  "offline",
+			url:    fmt.Sprintf("https://localhost:%d/hello", seed.Port()+1),
+			res:    nil,
+			status: 0,
+			err:    true,
 		},
 	}
-	tr := NewSeedTransportNative(&colonio.SeedTransporterOption{
+	tr := NewSeedTransportNative(&SeedTransporterOption{
 		Verification: false,
 	})
 
 	for _, c := range cases {
 		t.Log(c.title)
-		res, err := tr.Send(ctx, c.url, []byte(request))
+		res, status, err := tr.Send(ctx, c.url, []byte(request))
+		assert.Equal(t, c.res, res)
+		assert.Equal(t, c.status, status)
 		if c.err {
 			assert.Error(t, err)
 		} else {
 			assert.NoError(t, err)
-		}
-		if c.res != nil {
-			assert.Equal(t, c.res, res)
-		} else {
-			assert.Nil(t, res)
 		}
 	}
 }
