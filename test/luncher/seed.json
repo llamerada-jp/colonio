@@ -1,0 +1,36 @@
+{
+  "port": 8080,
+  "certFile": "../../localhost.crt",
+  "keyFile": "../../localhost.key",
+  "useTcp": true,
+  "documentRoot": "../dist",
+  "docOverrides": {
+    "/seed_transport.js": "../../src/"
+  },
+  "seed": {
+    "node": {
+      "revision": 20240317.1,
+      "coordSystem2D": {
+        "type": "sphere",
+        "radius": 6378137
+      },
+      "iceServers": [
+        {
+          "urls": [
+            "stun:stun.l.google.com:19302"
+          ]
+        }
+      ],
+      "spread": {
+        "cacheTime": 100
+      },
+      "routing": {
+        "forceUpdateTimes": 20,
+        "updatePeriod": 500
+      }
+    },
+    "sessionTimeout": 30000,
+    "pollingTimeout": 10000
+  },
+  "seedPath": "/seed"
+}
