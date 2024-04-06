@@ -59,12 +59,12 @@ func NewTestingSeed(opts ...ServiceOption) *TestingSeed {
 		KeyFile:  key,
 
 		Cluster: &config.Cluster{
+			Revision:       1,
 			SessionTimeout: 30 * time.Second,
 			PollingTimeout: 10 * time.Second,
-			Revision:       1,
-			IceServers: []config.IceServer{
+			IceServers: []config.ICEServer{
 				{
-					Urls: []string{"stun:stun.l.google.com:19302"},
+					URLs: []string{"stun:stun.l.google.com:19302"},
 				},
 			},
 			Routing: config.Routing{

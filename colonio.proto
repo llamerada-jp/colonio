@@ -27,7 +27,8 @@ message Value {
 }
 
 // node-node packet container
-message NodePackets { repeated NodePacket packet = 1; }
+// Or use an empty message as a ping to cancel the timeout.
+message NodePackets { repeated NodePacket packets = 1; }
 
 message NodePacketHead {
   NodeID dst_node_id = 1;
