@@ -28,7 +28,10 @@ func TestClusterMarshaller(t *testing.T) {
 	str := `{
 		"revision":1.04,
 		"sessionTimeout":"24h0m0s100ms",
-		"pollingTimeout":"1ms"
+		"pollingTimeout":"1ms",
+		"keepaliveInterval":"10s",
+		"bufferInterval":"2ms",
+		"webRTCPacketBaseBytes":1024
 	}`
 	var decoded1 Cluster
 	err := json.Unmarshal([]byte(str), &decoded1)
@@ -36,11 +39,16 @@ func TestClusterMarshaller(t *testing.T) {
 	assert.Equal(t, 1.04, decoded1.Revision)
 	assert.Equal(t, 24*time.Hour+100*time.Millisecond, decoded1.SessionTimeout)
 	assert.Equal(t, 1*time.Millisecond, decoded1.PollingTimeout)
+	assert.Equal(t, 10*time.Second, decoded1.KeepaliveInterval)
+	assert.Equal(t, 2*time.Millisecond, decoded1.BufferInterval)
+	assert.Equal(t, 1024, decoded1.WebRTCPacketBaseBytes)
 
 	source := &Cluster{
-		Revision:       1,
-		SessionTimeout: 1 * time.Millisecond,
-		PollingTimeout: 48*time.Hour + 1*time.Millisecond,
+		Revision:          1,
+		SessionTimeout:    1 * time.Millisecond,
+		PollingTimeout:    48*time.Hour + 1*time.Millisecond,
+		KeepaliveInterval: 1 * time.Second,
+		BufferInterval:    55 * time.Millisecond,
 	}
 
 	raw, err := json.Marshal(source)
@@ -53,4 +61,6 @@ func TestClusterMarshaller(t *testing.T) {
 	assert.Equal(t, source.Revision, decoded2.Revision)
 	assert.Equal(t, source.SessionTimeout, decoded2.SessionTimeout)
 	assert.Equal(t, source.PollingTimeout, decoded2.PollingTimeout)
+	assert.Equal(t, source.BufferInterval, decoded2.BufferInterval)
+	assert.Equal(t, 512*1024, decoded2.WebRTCPacketBaseBytes) // used default value
 }
