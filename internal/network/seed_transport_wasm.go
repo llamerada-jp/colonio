@@ -24,8 +24,6 @@ import (
 	"math/rand"
 	"sync"
 	"syscall/js"
-
-	"github.com/llamerada-jp/colonio"
 )
 
 type response struct {
@@ -40,7 +38,7 @@ type seedTransportWASM struct {
 	receivers  map[uint32]chan response
 }
 
-func NewSeedTransportWASM(opt *colonio.SeedTransporterOption) colonio.SeedTransporter {
+func NewSeedTransportWASM(opt *SeedTransporterOption) SeedTransporter {
 	t := &seedTransportWASM{
 		jsInstance: js.Global().Get("SeedTransport").New(),
 		receivers:  make(map[uint32]chan response),
@@ -128,8 +126,8 @@ func (t *seedTransportWASM) assignReceiver() (uint32, chan response) {
 }
 
 func init() {
-	colonio.DefaultSeedTransporterFactory =
-		func(opt *colonio.SeedTransporterOption) colonio.SeedTransporter {
+	DefaultSeedTransporterFactory =
+		func(opt *SeedTransporterOption) SeedTransporter {
 			return NewSeedTransportWASM(opt)
 		}
 }

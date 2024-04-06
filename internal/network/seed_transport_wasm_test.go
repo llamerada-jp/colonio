@@ -24,7 +24,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/llamerada-jp/colonio"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -72,7 +71,7 @@ func TestTransportWASM(t *testing.T) {
 			err:    true,
 		},
 	}
-	tr := NewSeedTransportWASM(&colonio.SeedTransporterOption{
+	tr := NewSeedTransportWASM(&SeedTransporterOption{
 		Verification: false,
 	})
 

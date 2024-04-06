@@ -5,16 +5,12 @@
   "useTcp": true,
   "documentRoot": "../dist",
   "docOverrides": {
-    "/seed_transport.js": "../../src/"
+    "/colonio.js": "../../output/"
   },
   "cluster": {
     "revision": 20240317.1,
     "sessionTimeout": "30s",
     "pollingTimeout": "10s",
-    "coordSystem2D": {
-      "type": "sphere",
-      "radius": 6378137
-    },
     "iceServers": [
       {
         "urls": [
@@ -22,6 +18,13 @@
         ]
       }
     ],
+    "keepaliveInterval": "10s",
+    "bufferInterval": "10ms",
+    "webrtcPacketBaseBytes": 16384,
+    "coordSystem2D": {
+      "type": "sphere",
+      "radius": 6378137
+    },
     "spread": {
       "cacheTime": 100
     },

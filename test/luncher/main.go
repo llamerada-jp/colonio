@@ -22,6 +22,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
@@ -80,22 +81,57 @@ var cmd = &cobra.Command{
 		chromedp.ListenTarget(ctx, func(ev interface{}) {
 			switch ev := ev.(type) {
 			case *runtime.EventConsoleAPICalled:
-				for _, arg := range ev.Args {
-					if arg.Type != runtime.TypeString {
-						continue
-					}
-					var line string
-					if err := json.Unmarshal(arg.Value, &line); err != nil {
-						slog.Error("failed to decode", slog.String("line", line))
-					}
-					fmt.Println("(browser)", line)
-					switch line {
-					case keyword_success:
-						finCh <- true
+				var line string
 
-					case keyword_failure:
-						finCh <- false
+				for _, arg := range ev.Args {
+					line += " "
+					switch arg.Type {
+					case runtime.TypeString:
+						var s string
+						if err := json.Unmarshal(arg.Value, &s); err != nil {
+							slog.Error("failed to decode", slog.String("value", string(arg.Value)))
+						}
+						line += s
+
+					case runtime.TypeNumber:
+						var n float64
+						if err := json.Unmarshal(arg.Value, &n); err != nil {
+							slog.Error("failed to decode", slog.String("value", string(arg.Value)))
+						}
+						if n == float64(int64(n)) {
+							line += fmt.Sprintf("%d", int64(n))
+						} else {
+							line += fmt.Sprintf("%g", n)
+						}
+
+					case runtime.TypeBoolean:
+						var b bool
+						if err := json.Unmarshal(arg.Value, &b); err != nil {
+							slog.Error("failed to decode", slog.String("value", string(arg.Value)))
+						}
+						line += fmt.Sprintf("%t", b)
+
+					case runtime.TypeUndefined:
+						line += "undefined"
+
+					case runtime.TypeObject:
+						line += "object"
+
+					case runtime.TypeFunction:
+						line += "function"
+
+					default:
+						line += "unknown"
 					}
+				}
+
+				fmt.Println("(browser)" + line)
+				switch strings.TrimSpace(line) {
+				case keyword_success:
+					finCh <- true
+
+				case keyword_failure:
+					finCh <- false
 				}
 
 			case *runtime.EventExceptionThrown:
