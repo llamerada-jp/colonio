@@ -1,21 +1,19 @@
 {
   "compilerOptions": {
     "sourceMap": true,
-    "target": "ES2019",
+    "target": "ES2020",
     "module": "ESNext",
     "declaration": true,
     "strict": true,
     "lib": [
       "ES2020",
       "dom",
-      "ES2021.WeakRef"
     ]
   },
   "include": [
-    "src/js/**/*"
+    "src/**/*"
   ],
   "files": [
-    "./src/js/core.ts",
-    "./src/js/colonio_go.ts"
+    "./src/main.ts"
   ]
 }

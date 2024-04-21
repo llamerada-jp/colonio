@@ -3,13 +3,15 @@
   "author": "Yuji Ito <llamerada.jp@gmail.com>",
   "license": "Apache-2.0",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "watch": "tsc -p tsconfig.json -w"
+    "build": "webpack"
   },
   "devDependencies": {
     "@types/emscripten": "^1.39.6",
     "@types/webrtc": "^0.0.33",
-    "typescript": "^5.0.2"
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.0.2",
+    "webpack": "^5.91.0",
+    "webpack-cli": "^5.1.4"
   },
   "private": true
 }
