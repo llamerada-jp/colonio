@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package network
+package seed_accessor
 
 import (
 	"context"

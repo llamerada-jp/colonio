@@ -1,4 +1,4 @@
-//go:build !js
+//go:build js
 
 /*
  * Copyright 2017- Yuji Ito <llamerada.jp@gmail.com>
@@ -15,67 +15,55 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package network
-
-/*
-#ifndef SET_LDFLAGS
-#cgo LDFLAGS: -L../../local/lib -L../../output -lcolonio -lwebrtc -lstdc++ -lm -lpthread
-#endif
-
-#include "../c/webrtc.h"
-
-void cgo_webrtc_config_init() {
-	webrtc_config_init();
-}
-
-unsigned int cgo_webrtc_config_new(_GoString_ ice) {
-	return webrtc_config_new(_GoStringPtr(ice), _GoStringLen(ice));
-}
-
-void cgo_webrtc_config_destruct(unsigned int id) {
-	webrtc_config_destruct(id);
-}
-*/
-import "C"
+package node_accessor
 
 import (
 	"encoding/json"
 	"fmt"
+	"syscall/js"
 
 	"github.com/llamerada-jp/colonio/config"
 )
 
-type webRTCConfigNative struct {
-	id uint
+type webrtcConfigWASM struct {
+	wrapper js.Value
+	id      uint
 }
 
-var _ webRTCConfig = &webRTCConfigNative{}
+var _ webRTCConfig = &webrtcConfigWASM{}
 
-func newWebRTCConfigNative(ice []config.ICEServer) (*webRTCConfigNative, error) {
+func newWebRTCConfigWASM(ice []config.ICEServer) (*webrtcConfigWASM, error) {
+	wrapper := js.Global().Get("webrtcWrapper")
+	if wrapper.Type() == js.TypeUndefined {
+		return nil, fmt.Errorf("webrtcWrapper is not defined, please import colonio.js")
+	}
+	wrapper.Call("setup")
+
 	iceBin, err := json.Marshal(ice)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal ice: %w", err)
 	}
 
-	return &webRTCConfigNative{
-		id: uint(C.cgo_webrtc_config_new(string(iceBin))),
+	id := wrapper.Call("newConfig", js.ValueOf(string(iceBin))).Int()
+
+	return &webrtcConfigWASM{
+		wrapper: wrapper,
+		id:      uint(id),
 	}, nil
 }
 
-func (w *webRTCConfigNative) getConfigID() uint {
+func (w *webrtcConfigWASM) getConfigID() uint {
 	return w.id
 }
 
-func (w *webRTCConfigNative) destruct() error {
-	C.cgo_webrtc_config_destruct(C.uint(w.id))
+func (w *webrtcConfigWASM) destruct() error {
+	w.wrapper.Call("deleteConfig", js.ValueOf(w.id))
 	return nil
 }
 
 func init() {
-	C.cgo_webrtc_config_init()
-
 	defaultWebRTCConfigFactory =
 		func(ice []config.ICEServer) (webRTCConfig, error) {
-			return newWebRTCConfigNative(ice)
+			return newWebRTCConfigWASM(ice)
 		}
 }

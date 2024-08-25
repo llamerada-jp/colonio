@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package network
+package node_accessor
 
 /*
 #ifndef SET_LDFLAGS
@@ -24,7 +24,7 @@ package network
 
 #include <stdlib.h>
 
-#include "../c/webrtc.h"
+#include "../../c/webrtc.h"
 
 // functions exported from webrtc_link_native_cb.go
 extern void UpdateWebRTCLinkState(unsigned int id, int online);

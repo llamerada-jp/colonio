@@ -13,13 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package network
+package seed_accessor
 
-import "github.com/llamerada-jp/colonio/config"
+import (
+	"context"
+)
 
-type webRTCConfig interface {
-	getConfigID() uint
-	destruct() error
+type SeedTransporterOption struct {
+	Verification bool
+}
+type SeedTransporter interface {
+	Send(ctx context.Context, url string, data []byte) ([]byte, int, error)
 }
 
-var defaultWebRTCConfigFactory func(ice []config.ICEServer) (webRTCConfig, error)
+var DefaultSeedTransporterFactory func(opt *SeedTransporterOption) SeedTransporter

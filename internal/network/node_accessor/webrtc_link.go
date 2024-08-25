@@ -13,17 +13,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package network
+package node_accessor
 
-import (
-	"context"
-)
-
-type SeedTransporterOption struct {
-	Verification bool
-}
-type SeedTransporter interface {
-	Send(ctx context.Context, url string, data []byte) ([]byte, int, error)
+type webRTCLinkConfig struct {
+	webrtcConfig      webRTCConfig
+	createDataChannel bool
 }
 
-var DefaultSeedTransporterFactory func(opt *SeedTransporterOption) SeedTransporter
+type webRTCLinkEventHandler struct {
+	raiseError func(string)
+	// tell active, online value
+	changeLinkState func(bool, bool)
+	updateICE       func(string)
+	recvData        func([]byte)
+}
+
+type webRTCLink interface {
+	isActive() bool
+	isOnline() bool
+	getLocalSDP() (string, error)
+	setRemoteSDP(sdp string) error
+	updateICE(ice string) error
+	send(data []byte) error
+	disconnect() error
+}
+
+var defaultWebRTCLinkFactory func(config *webRTCLinkConfig, eventHandler *webRTCLinkEventHandler) (webRTCLink, error)
