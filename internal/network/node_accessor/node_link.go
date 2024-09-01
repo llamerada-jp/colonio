@@ -37,7 +37,7 @@ const (
 	nodeLinkStateDisabled
 )
 
-type NodeLinkConfig struct {
+type nodeLinkConfig struct {
 	ctx          context.Context
 	logger       *slog.Logger
 	webrtcConfig webRTCConfig
@@ -47,14 +47,14 @@ type NodeLinkConfig struct {
 	keepaliveInterval time.Duration
 	// should be copied from config.BufferInterval
 	bufferInterval time.Duration
-	// should be copied from config.BufferSize
+	// should be copied from config.WebRTCPacketBaseBytes
 	packetBaseBytes int
 }
 
-type NodeLinkEventHandler struct {
-	changeLinkState func(*NodeLink, nodeLinkState)
-	updateICE       func(string)
-	recvPacket      func(*shared.Packet)
+type nodeLinkHandler interface {
+	nodeLinkChangeState(*nodeLink, nodeLinkState)
+	nodeLinkUpdateICE(string)
+	nodeLinkRectPacket(*shared.Packet)
 }
 
 type waiting struct {
@@ -62,9 +62,9 @@ type waiting struct {
 	content []byte
 }
 
-type NodeLink struct {
-	config             *NodeLinkConfig
-	eventHandler       *NodeLinkEventHandler
+type nodeLink struct {
+	config             *nodeLinkConfig
+	handler            nodeLinkHandler
 	ctx                context.Context
 	cancel             context.CancelFunc
 	webrtc             webRTCLink
@@ -80,7 +80,7 @@ type NodeLink struct {
 	stack              []*proto.NodePacket
 }
 
-func newNodeLink(config *NodeLinkConfig, eventHandler *NodeLinkEventHandler, createDataChannel bool) (*NodeLink, error) {
+func newNodeLink(config *nodeLinkConfig, handler nodeLinkHandler, createDataChannel bool) (*nodeLink, error) {
 	ctx, cancel := context.WithCancel(config.ctx)
 
 	// The bufferTicker fires for configured intervals when some packets are in the buffer,
@@ -95,11 +95,11 @@ func newNodeLink(config *NodeLinkConfig, eventHandler *NodeLinkEventHandler, cre
 		keepaliveTicker = time.NewTicker(config.keepaliveInterval)
 	}
 
-	link := &NodeLink{
+	link := &nodeLink{
 		config:             config,
 		ctx:                ctx,
 		cancel:             cancel,
-		eventHandler:       eventHandler,
+		handler:            handler,
 		stateMtx:           sync.RWMutex{},
 		state:              nodeLinkStateConnecting,
 		keepaliveTimestamp: time.Now(),
@@ -119,7 +119,7 @@ func newNodeLink(config *NodeLinkConfig, eventHandler *NodeLinkEventHandler, cre
 	}, &webRTCLinkEventHandler{
 		raiseError:      link.webrtcRaiseError,
 		changeLinkState: link.webrtcChangeLinkState,
-		updateICE:       eventHandler.updateICE,
+		updateICE:       handler.nodeLinkUpdateICE,
 		recvData:        link.webrtcRecvData,
 	})
 	if err != nil {
@@ -131,7 +131,7 @@ func newNodeLink(config *NodeLinkConfig, eventHandler *NodeLinkEventHandler, cre
 	return link, nil
 }
 
-func (n *NodeLink) getLocalSDP() (string, error) {
+func (n *nodeLink) getLocalSDP() (string, error) {
 	sdp, err := n.webrtc.getLocalSDP()
 	if err != nil {
 		n.webrtc.disconnect()
@@ -140,7 +140,7 @@ func (n *NodeLink) getLocalSDP() (string, error) {
 	return sdp, nil
 }
 
-func (n *NodeLink) setRemoteSDP(sdp string) error {
+func (n *nodeLink) setRemoteSDP(sdp string) error {
 	err := n.webrtc.setRemoteSDP(sdp)
 	if err != nil {
 		n.webrtc.disconnect()
@@ -149,7 +149,7 @@ func (n *NodeLink) setRemoteSDP(sdp string) error {
 	return nil
 }
 
-func (n *NodeLink) updateICE(ice string) error {
+func (n *nodeLink) updateICE(ice string) error {
 	err := n.webrtc.updateICE(ice)
 	if err != nil {
 		n.webrtc.disconnect()
@@ -158,11 +158,11 @@ func (n *NodeLink) updateICE(ice string) error {
 	return nil
 }
 
-func (n *NodeLink) disconnect() error {
+func (n *nodeLink) disconnect() error {
 	n.stateMtx.Lock()
 	if n.state != nodeLinkStateDisabled {
 		n.state = nodeLinkStateDisabled
-		defer n.eventHandler.changeLinkState(n, nodeLinkStateDisabled)
+		defer n.handler.nodeLinkChangeState(n, nodeLinkStateDisabled)
 	}
 	n.stateMtx.Unlock()
 
@@ -177,13 +177,13 @@ func (n *NodeLink) disconnect() error {
 	return n.webrtc.disconnect()
 }
 
-func (n *NodeLink) getLinkState() nodeLinkState {
+func (n *nodeLink) getLinkState() nodeLinkState {
 	n.stateMtx.RLock()
 	defer n.stateMtx.RUnlock()
 	return n.state
 }
 
-func (n *NodeLink) sendPacket(packet *shared.Packet) error {
+func (n *nodeLink) sendPacket(packet *shared.Packet) error {
 	content, err := proto3.Marshal(packet.Content)
 	if err != nil {
 		return fmt.Errorf("failed to marshal packet content %w", err)
@@ -224,7 +224,7 @@ func (n *NodeLink) sendPacket(packet *shared.Packet) error {
 	return nil
 }
 
-func (n *NodeLink) flush() error {
+func (n *nodeLink) flush() error {
 	switch n.getLinkState() {
 	case nodeLinkStateConnecting:
 		return nil
@@ -315,7 +315,7 @@ func (n *NodeLink) flush() error {
 	return nil
 }
 
-func (n *NodeLink) routine() {
+func (n *nodeLink) routine() {
 	// ticker to check keepalive timeout
 	interval := n.config.keepaliveInterval / 2
 	if interval > 1*time.Second {
@@ -363,7 +363,7 @@ func (n *NodeLink) routine() {
 	}
 }
 
-func (n *NodeLink) sendKeepalive() {
+func (n *nodeLink) sendKeepalive() {
 	if n.getLinkState() != nodeLinkStateOnline {
 		return
 	}
@@ -373,7 +373,7 @@ func (n *NodeLink) sendKeepalive() {
 	}
 }
 
-func (n *NodeLink) send(packet *proto.NodePackets) bool {
+func (n *nodeLink) send(packet *proto.NodePackets) bool {
 	data, err := proto3.Marshal(packet)
 	if err != nil {
 		panic(err)
@@ -391,12 +391,12 @@ func (n *NodeLink) send(packet *proto.NodePackets) bool {
 	return true
 }
 
-func (n *NodeLink) webrtcRaiseError(err string) {
+func (n *nodeLink) webrtcRaiseError(err string) {
 	n.config.logger.Warn("webrtc error", slog.String("err", err))
 	n.disconnect()
 }
 
-func (n *NodeLink) webrtcChangeLinkState(active, online bool) {
+func (n *nodeLink) webrtcChangeLinkState(active, online bool) {
 	n.stateMtx.Lock()
 	prevState := n.state
 	if active {
@@ -411,7 +411,7 @@ func (n *NodeLink) webrtcChangeLinkState(active, online bool) {
 
 	if prevState != n.state {
 		defer func(s nodeLinkState) {
-			n.eventHandler.changeLinkState(n, s)
+			n.handler.nodeLinkChangeState(n, s)
 			switch s {
 			case nodeLinkStateOnline:
 				err := n.flush()
@@ -428,7 +428,7 @@ func (n *NodeLink) webrtcChangeLinkState(active, online bool) {
 	n.stateMtx.Unlock()
 }
 
-func (n *NodeLink) webrtcRecvData(data []byte) {
+func (n *nodeLink) webrtcRecvData(data []byte) {
 	p := &proto.NodePackets{}
 	err := proto3.Unmarshal(data, p)
 	if err != nil {
@@ -505,7 +505,7 @@ func (n *NodeLink) webrtcRecvData(data []byte) {
 			Mode:      shared.PacketMode(head.Mode),
 			Content:   content,
 		}
-		n.eventHandler.recvPacket(packet)
+		n.handler.nodeLinkRectPacket(packet)
 	}
 
 	n.stateMtx.Lock()

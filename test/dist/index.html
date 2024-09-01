@@ -23,7 +23,7 @@
     WebAssembly.instantiateStreaming(fetch("tests/network.wasm"), go.importObject).then((result) => {
       go.run(result.instance);
     }).catch((err) => {
-      console.error(err);
+      console.error(err.toString());
       console.log("FAIL")
     });
   </script>

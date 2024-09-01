@@ -19,7 +19,7 @@ package node_accessor
 
 /*
 #ifndef SET_LDFLAGS
-#cgo LDFLAGS: -L../../local/lib -L../../output -lcolonio -lwebrtc -lstdc++ -lm -lpthread
+#cgo LDFLAGS: -L../../../local/lib -L../../../output -lcolonio -lwebrtc -lstdc++ -lm -lpthread
 #endif
 
 #include <stdlib.h>

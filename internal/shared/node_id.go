@@ -35,6 +35,13 @@ const (
 	typeNext   = uint32(4)
 )
 
+var (
+	NodeIDNone = NodeID{t: typeNone}
+	NodeIDThis = NodeID{t: typeThis}
+	NodeIDSeed = NodeID{t: typeSeed}
+	NodeIDNext = NodeID{t: typeNext}
+)
+
 // DO NOT USE NodeID pointer for map key.
 type NodeID struct {
 	t   uint32

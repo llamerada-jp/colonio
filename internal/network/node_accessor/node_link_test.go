@@ -31,6 +31,30 @@ import (
 	proto3 "google.golang.org/protobuf/proto"
 )
 
+type nodeLinkHandlerHelper struct {
+	changeState func(nl *nodeLink, nls nodeLinkState)
+	updateICE   func(s string)
+	recvPacket  func(p *shared.Packet)
+}
+
+func (h *nodeLinkHandlerHelper) nodeLinkChangeState(nl *nodeLink, nls nodeLinkState) {
+	if h.changeState != nil {
+		h.changeState(nl, nls)
+	}
+}
+
+func (h *nodeLinkHandlerHelper) nodeLinkUpdateICE(s string) {
+	if h.updateICE != nil {
+		h.updateICE(s)
+	}
+}
+
+func (h *nodeLinkHandlerHelper) nodeLinkRectPacket(p *shared.Packet) {
+	if h.recvPacket != nil {
+		h.recvPacket(p)
+	}
+}
+
 func TestNodeLinkNormal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -42,7 +66,7 @@ func TestNodeLinkNormal(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	config := &NodeLinkConfig{
+	config := &nodeLinkConfig{
 		ctx:               ctx,
 		logger:            slog.Default(),
 		webrtcConfig:      webRTCConfig,
@@ -57,12 +81,12 @@ func TestNodeLinkNormal(t *testing.T) {
 	state1 := ""
 	state2 := ""
 
-	var link1 *NodeLink
-	var link2 *NodeLink
+	var link1 *nodeLink
+	var link2 *nodeLink
 
 	// new
-	link1, err = newNodeLink(config, &NodeLinkEventHandler{
-		changeLinkState: func(nl *NodeLink, nls nodeLinkState) {
+	link1, err = newNodeLink(config, &nodeLinkHandlerHelper{
+		changeState: func(nl *nodeLink, nls nodeLinkState) {
 			assert.Equal(t, nl, link1)
 			mtx.Lock()
 			defer mtx.Unlock()
@@ -89,8 +113,8 @@ func TestNodeLinkNormal(t *testing.T) {
 	require.NoError(t, err)
 	defer link1.disconnect()
 
-	link2, err = newNodeLink(config, &NodeLinkEventHandler{
-		changeLinkState: func(nl *NodeLink, nls nodeLinkState) {
+	link2, err = newNodeLink(config, &nodeLinkHandlerHelper{
+		changeState: func(nl *nodeLink, nls nodeLinkState) {
 			assert.Equal(t, nl, link2)
 			mtx.Lock()
 			defer mtx.Unlock()
@@ -190,7 +214,7 @@ func TestNodeLinkTimeout(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	config := &NodeLinkConfig{
+	config := &nodeLinkConfig{
 		ctx:               ctx,
 		logger:            slog.Default(),
 		webrtcConfig:      webRTCConfig,
@@ -200,35 +224,29 @@ func TestNodeLinkTimeout(t *testing.T) {
 		packetBaseBytes:   1024,
 	}
 
-	var nodeLink *NodeLink
+	var link *nodeLink
 	var webrtcLink webRTCLink
 
 	// turn offline after session timeout passed with do nothing
 	mtx := sync.Mutex{}
 	keepalivePackets := 0
 
-	nodeLink, err = newNodeLink(config, &NodeLinkEventHandler{
-		changeLinkState: func(nl *NodeLink, nls nodeLinkState) {},
-		updateICE:       func(s string) {},
-		recvPacket:      func(p *shared.Packet) {},
-	}, true)
+	link, err = newNodeLink(config, &nodeLinkHandlerHelper{}, true)
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
-		return nodeLink.getLinkState() == nodeLinkStateDisabled
+		return link.getLinkState() == nodeLinkStateDisabled
 	}, 6*time.Second, 10*time.Millisecond)
 
 	// connect
-	nodeLink, err = newNodeLink(config, &NodeLinkEventHandler{
-		changeLinkState: func(nl *NodeLink, nls nodeLinkState) {},
+	link, err = newNodeLink(config, &nodeLinkHandlerHelper{
 		updateICE: func(s string) {
 			err := webrtcLink.updateICE(s)
 			require.NoError(t, err)
 		},
-		recvPacket: func(p *shared.Packet) {},
 	}, false)
 	require.NoError(t, err)
-	defer nodeLink.disconnect()
+	defer link.disconnect()
 
 	webrtcLink, err = defaultWebRTCLinkFactory(&webRTCLinkConfig{
 		webrtcConfig:      webRTCConfig,
@@ -236,7 +254,7 @@ func TestNodeLinkTimeout(t *testing.T) {
 	}, &webRTCLinkEventHandler{
 		changeLinkState: func(active bool, online bool) {},
 		updateICE: func(ice string) {
-			err := nodeLink.updateICE(ice)
+			err := link.updateICE(ice)
 			require.NoError(t, err)
 		},
 		recvData: func(data []byte) {
@@ -259,17 +277,17 @@ func TestNodeLinkTimeout(t *testing.T) {
 	go func() {
 		sdp1, err := webrtcLink.getLocalSDP()
 		require.NoError(t, err)
-		err = nodeLink.setRemoteSDP(sdp1)
+		err = link.setRemoteSDP(sdp1)
 		require.NoError(t, err)
 
-		sdp2, err := nodeLink.getLocalSDP()
+		sdp2, err := link.getLocalSDP()
 		require.NoError(t, err)
 		err = webrtcLink.setRemoteSDP(sdp2)
 		require.NoError(t, err)
 	}()
 
 	require.Eventually(t, func() bool {
-		return nodeLink.getLinkState() == nodeLinkStateOnline && webrtcLink.isActive() && webrtcLink.isOnline()
+		return link.getLinkState() == nodeLinkStateOnline && webrtcLink.isActive() && webrtcLink.isOnline()
 	}, 3*time.Second, 10*time.Millisecond)
 
 	time.Sleep(3 * time.Second)
@@ -284,12 +302,12 @@ func TestNodeLinkTimeout(t *testing.T) {
 
 	time.Sleep(3 * time.Second)
 
-	require.Equal(t, nodeLinkStateOnline, nodeLink.getLinkState())
+	require.Equal(t, nodeLinkStateOnline, link.getLinkState())
 	require.True(t, webrtcLink.isActive())
 	require.True(t, webrtcLink.isOnline())
 
 	require.Eventually(t, func() bool {
-		return nodeLink.getLinkState() == nodeLinkStateDisabled && !webrtcLink.isActive() && !webrtcLink.isOnline()
+		return link.getLinkState() == nodeLinkStateDisabled && !webrtcLink.isActive() && !webrtcLink.isOnline()
 	}, 3*time.Second, 10*time.Millisecond)
 }
 
@@ -304,7 +322,7 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	config1 := &NodeLinkConfig{
+	config1 := &nodeLinkConfig{
 		ctx:               ctx,
 		logger:            slog.Default(),
 		webrtcConfig:      webRTCConfig,
@@ -321,12 +339,11 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 	received1 := 0
 	received2 := 0
 
-	var link1 *NodeLink
-	var link2 *NodeLink
+	var link1 *nodeLink
+	var link2 *nodeLink
 
 	// new
-	link1, err = newNodeLink(config1, &NodeLinkEventHandler{
-		changeLinkState: func(nl *NodeLink, nls nodeLinkState) {},
+	link1, err = newNodeLink(config1, &nodeLinkHandlerHelper{
 		updateICE: func(s string) {
 			err := link2.updateICE(s)
 			require.NoError(t, err)
@@ -340,8 +357,7 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 	require.NoError(t, err)
 	defer link1.disconnect()
 
-	link2, err = newNodeLink(&config2, &NodeLinkEventHandler{
-		changeLinkState: func(nl *NodeLink, nls nodeLinkState) {},
+	link2, err = newNodeLink(&config2, &nodeLinkHandlerHelper{
 		updateICE: func(s string) {
 			err := link1.updateICE(s)
 			require.NoError(t, err)
@@ -424,7 +440,7 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	config := &NodeLinkConfig{
+	config := &nodeLinkConfig{
 		ctx:               ctx,
 		logger:            slog.Default(),
 		webrtcConfig:      webRTCConfig,
@@ -436,12 +452,11 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 
 	mtx := sync.Mutex{}
 	received := []*shared.Packet{}
-	var link1 *NodeLink
-	var link2 *NodeLink
+	var link1 *nodeLink
+	var link2 *nodeLink
 
 	// new
-	link1, err = newNodeLink(config, &NodeLinkEventHandler{
-		changeLinkState: func(nl *NodeLink, nls nodeLinkState) {},
+	link1, err = newNodeLink(config, &nodeLinkHandlerHelper{
 		updateICE: func(s string) {
 			err := link2.updateICE(s)
 			require.NoError(t, err)
@@ -455,8 +470,7 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 	require.NoError(t, err)
 	defer link1.disconnect()
 
-	link2, err = newNodeLink(config, &NodeLinkEventHandler{
-		changeLinkState: func(nl *NodeLink, nls nodeLinkState) {},
+	link2, err = newNodeLink(config, &nodeLinkHandlerHelper{
 		updateICE: func(s string) {
 			err := link1.updateICE(s)
 			require.NoError(t, err)
