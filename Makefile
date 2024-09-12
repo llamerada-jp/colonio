@@ -66,7 +66,18 @@ generate-cert:
    printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
 
 build-test: build-js $(wildcard ***.go)
-	GOOS=js GOARCH=wasm go test -c -o ./test/dist/tests/network.wasm ./internal/network/
+	rm -f test/dist/tests/*.wasm
+	for target in ./config ./internal; do \
+		for dir in `find $$target -name '*.go' -printf '%h\n' | sort -u`; do \
+		  if [ "$$(dirname $$dir)" = "." ]; then \
+				outname="$$(basename $$dir).wasm"; \
+			else \
+				outname="$$(basename $$(dirname $$dir))_$$(basename $$dir).wasm"; \
+			fi; \
+			GOOS=js GOARCH=wasm go test -c -o ./test/dist/tests/$$outname $$dir; \
+		done \
+	done 
+	ls test/dist/tests/ | grep \.wasm > test/dist/tests.txt
 
 build-js: $(wildcard src/*.ts)
 	npm run build

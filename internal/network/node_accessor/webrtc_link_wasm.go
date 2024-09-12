@@ -112,7 +112,7 @@ func jsOnReceiveData(_ js.Value, args []js.Value) interface{} {
 	return nil
 }
 
-func jsOnReceiveError(_ js.Value, args []js.Value) interface{} {
+func jsOnRaiseError(_ js.Value, args []js.Value) interface{} {
 	id := args[0].Int()
 	message := args[1].String()
 
@@ -309,7 +309,7 @@ func init() {
 	jsWrapper.Set("onUpdateICE", js.FuncOf(jsOnUpdateICE))
 	jsWrapper.Set("onGetLocalSDP", js.FuncOf(jsOnGetLocalSDP))
 	jsWrapper.Set("onReceiveData", js.FuncOf(jsOnReceiveData))
-	jsWrapper.Set("onReceiveError", js.FuncOf(jsOnReceiveError))
+	jsWrapper.Set("onRaiseError", js.FuncOf(jsOnRaiseError))
 
 	go func() {
 		jsWrapper.Call("setup")
