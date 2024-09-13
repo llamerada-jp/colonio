@@ -103,7 +103,7 @@ func NewSeedAccessor(config *Config) *SeedAccessor {
 				return
 			case <-ticker.C:
 				if time.Now().After(sa.tripTimestamp.Add(sa.config.TripInterval)) {
-					sa.round()
+					sa.subRoutine()
 				}
 			}
 		}
@@ -173,7 +173,7 @@ func (sa *SeedAccessor) destruct() {
 	}
 }
 
-func (sa *SeedAccessor) round() {
+func (sa *SeedAccessor) subRoutine() {
 	// check if authentication or disconnect is processing
 	runningAuth := !sa.connectiveMtx.TryLock()
 	if runningAuth {

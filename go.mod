@@ -1,6 +1,6 @@
 module github.com/llamerada-jp/colonio
 
-go 1.21
+go 1.22
 
 require (
 	github.com/chromedp/cdproto v0.0.0-20240810084448-b931b754e476

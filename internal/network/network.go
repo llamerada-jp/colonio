@@ -59,7 +59,7 @@ func (n *Network) Connect(url string, token []byte) error {
 	}
 
 	n.localNID = shared.NewRandomNodeID()
-	n.transferer = transferer.NewTransferer(&transferer.TransfererConfig{
+	n.transferer = transferer.NewTransferer(&transferer.Config{
 		Ctx:      n.config.Ctx,
 		Logger:   n.config.Logger,
 		LocalNID: n.localNID,

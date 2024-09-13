@@ -94,7 +94,19 @@ func (na *NodeAccessor) SetConfig(clusterConfig *config.Cluster) error {
 		packetBaseBytes:   clusterConfig.WebRTCPacketBaseBytes,
 	}
 
-	go na.subRoutine()
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-na.config.Ctx.Done():
+				return
+			case <-ticker.C:
+				na.subRoutine()
+			}
+		}
+
+	}()
 
 	return nil
 }
@@ -107,27 +119,17 @@ func (na *NodeAccessor) SetEnabled(enabled bool) {
 }
 
 func (na *NodeAccessor) subRoutine() {
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
+	na.mtx.Lock()
+	defer na.mtx.Unlock()
 
-	for {
-		select {
-		case <-na.config.Ctx.Done():
-			return
-
-		case <-ticker.C:
-			na.mtx.Lock()
-			if na.enabled && len(na.links) == 0 && na.firstLink == nil {
-				if err := na.connectFirstLink(); err != nil {
-					na.config.Logger.Warn("failed to connect first link", slog.String("error", err.Error()))
-				}
-			}
-
-			if err := na.houseKeeping(); err != nil {
-				na.config.Logger.Warn("failed to house keeping", slog.String("error", err.Error()))
-			}
-			na.mtx.Unlock()
+	if na.enabled && len(na.links) == 0 && na.firstLink == nil {
+		if err := na.connectFirstLink(); err != nil {
+			na.config.Logger.Warn("failed to connect first link", slog.String("error", err.Error()))
 		}
+	}
+
+	if err := na.houseKeeping(); err != nil {
+		na.config.Logger.Warn("failed to house keeping", slog.String("error", err.Error()))
 	}
 }
 

@@ -12,7 +12,7 @@ The purpose of Colonio is to make it more versatile and to make it easy for ever
 
 ## Requirement to build
 
-- Go 1.21+
+- Go 1.22+
 - gcc 11+
 - npm
 
