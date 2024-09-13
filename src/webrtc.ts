@@ -158,7 +158,11 @@ class DefaultWebRTCImplement implements WebRTCImplement {
       if (!this.links.has(id)) { return; }
       let event = e as RTCErrorEvent;
 
-      eventHandler.onRaiseError(id, event.error.message);
+      if (event.error.errorDetail === "sctp-failure" && event.error.sctpCauseCode == 12) {
+        eventHandler.onUpdateLinkState(id, false);
+      } else {
+        eventHandler.onRaiseError(id, event.error.message);
+      }
     };
 
     dataChannel.onmessage = (message: MessageEvent): void => {
