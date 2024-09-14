@@ -132,7 +132,7 @@ message SeedPollResponse {
 message SignalingICE {
   NodeID local_node_id = 1;
   NodeID remote_node_id = 2;
-  string ice = 3;
+  repeated string ices = 3;
 }
 
 message SignalingOffer {

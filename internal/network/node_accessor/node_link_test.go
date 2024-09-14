@@ -33,7 +33,7 @@ import (
 
 type nodeLinkHandlerHelper struct {
 	changeState func(nl *nodeLink, nls nodeLinkState)
-	updateICE   func(s string)
+	updateICE   func(nl *nodeLink, s string)
 	recvPacket  func(p *shared.Packet)
 }
 
@@ -43,13 +43,13 @@ func (h *nodeLinkHandlerHelper) nodeLinkChangeState(nl *nodeLink, nls nodeLinkSt
 	}
 }
 
-func (h *nodeLinkHandlerHelper) nodeLinkUpdateICE(s string) {
+func (h *nodeLinkHandlerHelper) nodeLinkUpdateICE(nl *nodeLink, s string) {
 	if h.updateICE != nil {
-		h.updateICE(s)
+		h.updateICE(nl, s)
 	}
 }
 
-func (h *nodeLinkHandlerHelper) nodeLinkRectPacket(p *shared.Packet) {
+func (h *nodeLinkHandlerHelper) nodeLinkRecvPacket(p *shared.Packet) {
 	if h.recvPacket != nil {
 		h.recvPacket(p)
 	}
@@ -99,7 +99,8 @@ func TestNodeLinkNormal(t *testing.T) {
 				state1 = state1 + "D"
 			}
 		},
-		updateICE: func(s string) {
+		updateICE: func(nl *nodeLink, s string) {
+			assert.Equal(t, nl, link1)
 			err := link2.updateICE(s)
 			require.NoError(t, err)
 		},
@@ -127,7 +128,8 @@ func TestNodeLinkNormal(t *testing.T) {
 				state2 = state2 + "D"
 			}
 		},
-		updateICE: func(s string) {
+		updateICE: func(nl *nodeLink, s string) {
+			assert.Equal(t, nl, link2)
 			err := link1.updateICE(s)
 			require.NoError(t, err)
 		},
@@ -240,7 +242,7 @@ func TestNodeLinkTimeout(t *testing.T) {
 
 	// connect
 	link, err = newNodeLink(config, &nodeLinkHandlerHelper{
-		updateICE: func(s string) {
+		updateICE: func(_ *nodeLink, s string) {
 			err := webrtcLink.updateICE(s)
 			require.NoError(t, err)
 		},
@@ -344,7 +346,7 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 
 	// new
 	link1, err = newNodeLink(config1, &nodeLinkHandlerHelper{
-		updateICE: func(s string) {
+		updateICE: func(_ *nodeLink, s string) {
 			err := link2.updateICE(s)
 			require.NoError(t, err)
 		},
@@ -358,7 +360,7 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 	defer link1.disconnect()
 
 	link2, err = newNodeLink(&config2, &nodeLinkHandlerHelper{
-		updateICE: func(s string) {
+		updateICE: func(_ *nodeLink, s string) {
 			err := link1.updateICE(s)
 			require.NoError(t, err)
 		},
@@ -457,7 +459,7 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 
 	// new
 	link1, err = newNodeLink(config, &nodeLinkHandlerHelper{
-		updateICE: func(s string) {
+		updateICE: func(_ *nodeLink, s string) {
 			err := link2.updateICE(s)
 			require.NoError(t, err)
 		},
@@ -471,7 +473,7 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 	defer link1.disconnect()
 
 	link2, err = newNodeLink(config, &nodeLinkHandlerHelper{
-		updateICE: func(s string) {
+		updateICE: func(_ *nodeLink, s string) {
 			err := link1.updateICE(s)
 			require.NoError(t, err)
 		},

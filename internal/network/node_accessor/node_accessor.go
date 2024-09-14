@@ -24,17 +24,34 @@ import (
 	"time"
 
 	"github.com/llamerada-jp/colonio/config"
+	"github.com/llamerada-jp/colonio/internal/constants"
+	"github.com/llamerada-jp/colonio/internal/network/transferer"
+	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
+const (
+	defaultConnectionTimeout = 30 * time.Second
+
+	offerStatusSuccessAccept = iota
+	offerStatusSuccessAlready
+
+	offerStatusFailureConflict = iota
+)
+
 type Handler interface {
+	NodeAccessorRecvPacket(*shared.Packet)
 }
 
 type Config struct {
-	Ctx      context.Context
-	Logger   *slog.Logger
-	LocalNID *shared.NodeID
-	Handler  Handler
+	Ctx        context.Context
+	Logger     *slog.Logger
+	LocalNID   *shared.NodeID
+	Handler    Handler
+	Transferer *transferer.Transferer
+
+	// config parameters for testing
+	connectionTimeout time.Duration
 }
 
 type NodeAccessor struct {
@@ -46,7 +63,8 @@ type NodeAccessor struct {
 	enabled          bool
 	firstLink        *nodeLink
 	randomLink       *nodeLink
-	links            map[shared.NodeID]*nodeLink
+	nodeID2link      map[shared.NodeID]*nodeLink
+	link2nodeID      map[*nodeLink]shared.NodeID
 	connectingStates map[*nodeLink]*connectingState
 }
 
@@ -59,16 +77,28 @@ const (
 )
 
 type connectingState struct {
-	isBySeed bool
-	isPrime  bool
+	isBySeed          bool
+	isPrime           bool
+	ices              []string
+	creationTimestamp time.Time
 }
 
 func NewNodeAccessor(config *Config) *NodeAccessor {
-	return &NodeAccessor{
+	if config.connectionTimeout == 0 {
+		config.connectionTimeout = defaultConnectionTimeout
+	}
+
+	na := &NodeAccessor{
 		config:           config,
-		links:            make(map[shared.NodeID]*nodeLink),
+		nodeID2link:      make(map[shared.NodeID]*nodeLink),
+		link2nodeID:      make(map[*nodeLink]shared.NodeID),
 		connectingStates: make(map[*nodeLink]*connectingState),
 	}
+
+	transferer.SetRequestHandler[proto.PacketContent_SignalingOffer](config.Transferer, na.recvOffer)
+	transferer.SetRequestHandler[proto.PacketContent_SignalingIce](config.Transferer, na.recvICE)
+
+	return na
 }
 
 func (na *NodeAccessor) SetConfig(clusterConfig *config.Cluster) error {
@@ -122,7 +152,7 @@ func (na *NodeAccessor) subRoutine() {
 	na.mtx.Lock()
 	defer na.mtx.Unlock()
 
-	if na.enabled && len(na.links) == 0 && na.firstLink == nil {
+	if na.enabled && len(na.link2nodeID) == 0 {
 		if err := na.connectFirstLink(); err != nil {
 			na.config.Logger.Warn("failed to connect first link", slog.String("error", err.Error()))
 		}
@@ -146,9 +176,9 @@ func (na *NodeAccessor) ConnectLinks(nodeIDs []*shared.NodeID) error {
 	}
 
 	for _, nodeID := range nodeIDs {
-		if link, ok := na.links[*nodeID]; ok {
+		if link, ok := na.nodeID2link[*nodeID]; ok {
 			if link.getLinkState() == nodeLinkStateDisabled {
-				na.disconnectLinkByID(nodeID)
+				na.disconnectLink(link)
 			} else {
 				continue
 			}
@@ -159,12 +189,18 @@ func (na *NodeAccessor) ConnectLinks(nodeIDs []*shared.NodeID) error {
 			return err
 		}
 
-		if err = na.sendOffer(link, na.config.LocalNID, nodeID, offerTypeNormal); err != nil {
-			return err
-		}
+		go func(nodeID *shared.NodeID) {
+			if err = na.sendOffer(link, na.config.LocalNID, nodeID, offerTypeNormal); err != nil {
+				na.config.Logger.Error("failed to send WebRTC offer request", slog.String("error", err.Error()))
+
+				na.mtx.Lock()
+				defer na.mtx.Unlock()
+				na.disconnectLink(link)
+			}
+		}(nodeID)
 	}
 
-	for nodeID := range na.links {
+	for nodeID, link := range na.nodeID2link {
 		idToKeep := false
 		for _, targetNodeID := range nodeIDs {
 			if nodeID == *targetNodeID {
@@ -173,9 +209,7 @@ func (na *NodeAccessor) ConnectLinks(nodeIDs []*shared.NodeID) error {
 			}
 		}
 		if !idToKeep {
-			if err := na.disconnectLinkByID(&nodeID); err != nil {
-				return err
-			}
+			na.disconnectLink(link)
 		}
 	}
 
@@ -204,7 +238,35 @@ func (na *NodeAccessor) ConnectRandomLink() error {
 		return err
 	}
 
-	return na.sendOffer(na.randomLink, na.config.LocalNID, na.config.LocalNID, offerTypeRandom)
+	go func(link *nodeLink) {
+		err := na.sendOffer(link, na.config.LocalNID, na.config.LocalNID, offerTypeRandom)
+		if err != nil {
+			na.config.Logger.Error("failed to send WebRTC offer request to connect random link", slog.String("error", err.Error()))
+
+			na.mtx.Lock()
+			defer na.mtx.Unlock()
+			na.disconnectLink(link)
+		}
+	}(na.randomLink)
+
+	return nil
+}
+
+func (na *NodeAccessor) bindNodeID(link *nodeLink, nodeID *shared.NodeID) {
+	if n, ok := na.link2nodeID[link]; ok && !n.Equal(&shared.NodeIDNone) {
+		panic("link is already bound to different nodeID")
+	}
+
+	if nodeID == nil {
+		na.link2nodeID[link] = shared.NodeIDNone
+		return
+	}
+	na.link2nodeID[link] = *nodeID
+
+	if _, ok := na.nodeID2link[*nodeID]; ok {
+		panic("nodeID is already bound to different link")
+	}
+	na.nodeID2link[*nodeID] = link
 }
 
 func (na *NodeAccessor) connectFirstLink() error {
@@ -214,96 +276,94 @@ func (na *NodeAccessor) connectFirstLink() error {
 		return err
 	}
 
-	return na.sendOffer(na.firstLink, na.config.LocalNID, na.config.LocalNID, offerTypeFirst)
+	go func(link *nodeLink) {
+		err := na.sendOffer(link, na.config.LocalNID, na.config.LocalNID, offerTypeFirst)
+		na.config.Logger.Error("failed to send WebRTC offer request to connect first link", slog.String("error", err.Error()))
+
+		na.mtx.Lock()
+		defer na.mtx.Unlock()
+		na.disconnectLink(link)
+	}(na.firstLink)
+
+	return nil
 }
 
 func (na *NodeAccessor) createLink(nodeID *shared.NodeID, createDC, bySeed, prime bool) (*nodeLink, error) {
-	if _, ok := na.links[*nodeID]; ok {
+	if _, ok := na.nodeID2link[*nodeID]; ok {
 		return nil, errors.New("link already exists when creating link")
 	}
 
-	// TODO: Implement nodeLinkEventHandler
 	link, err := newNodeLink(na.nlConfig, na, createDC)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create link: %w", err)
 	}
-	if nodeID != nil {
-		na.links[*nodeID] = link
-	}
+	na.bindNodeID(link, nodeID)
 
 	state := &connectingState{
-		isBySeed: bySeed,
-		isPrime:  prime,
+		isBySeed:          bySeed,
+		isPrime:           prime,
+		ices:              make([]string, 0),
+		creationTimestamp: time.Now(),
 	}
 	na.connectingStates[link] = state
 
 	return link, nil
 }
 
-func (na *NodeAccessor) DisconnectAll() error {
+func (na *NodeAccessor) DisconnectAll() {
 	na.mtx.Lock()
 	defer na.mtx.Unlock()
 
-	if na.firstLink != nil {
-		if err := na.disconnectLink(na.firstLink); err != nil {
-			return err
-		}
+	for link := range na.link2nodeID {
+		na.disconnectLink(link)
+	}
+}
+
+func (na *NodeAccessor) disconnectLink(link *nodeLink) {
+	if err := link.disconnect(); err != nil {
+		na.config.Logger.Error("failed to disconnect link", slog.String("error", err.Error()))
+	}
+
+	if link == na.firstLink {
 		na.firstLink = nil
 	}
 
-	if na.randomLink != nil {
-		if err := na.disconnectLink(na.randomLink); err != nil {
-			return err
-		}
+	if link == na.randomLink {
 		na.randomLink = nil
 	}
 
-	for nodeID := range na.links {
-		if err := na.disconnectLinkByID(&nodeID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (na *NodeAccessor) disconnectLinkByID(nodeID *shared.NodeID) error {
-	link, ok := na.links[*nodeID]
-	if !ok {
-		return nil
-	}
-
-	if err := na.disconnectLink(link); err != nil {
-		return err
-	}
-
-	delete(na.links, *nodeID)
-
-	return nil
-}
-
-func (na *NodeAccessor) disconnectLink(link *nodeLink) error {
-	if err := link.disconnect(); err != nil {
-		return fmt.Errorf("failed to disconnect link: %w", err)
+	if nodeID := na.link2nodeID[link]; !nodeID.Equal(&shared.NodeIDNone) {
+		delete(na.nodeID2link, nodeID)
 	}
 
 	delete(na.connectingStates, link)
-
-	return nil
+	delete(na.link2nodeID, link)
 }
 
 func (na *NodeAccessor) houseKeeping() error {
-	panic("not implemented")
+	for link := range na.link2nodeID {
+		if link.getLinkState() == nodeLinkStateDisabled {
+			na.disconnectLink(link)
+		}
+	}
+
+	for link, state := range na.connectingStates {
+		if time.Now().After(state.creationTimestamp.Add(na.nlConfig.sessionTimeout)) {
+			na.disconnectLink(link)
+		}
+	}
+
+	return nil
 }
 
 func (na *NodeAccessor) IsOnline() bool {
 	na.mtx.RLock()
 	defer na.mtx.RUnlock()
-	for _, link := range na.links {
+	for _, link := range na.nodeID2link {
 		if link.getLinkState() == nodeLinkStateOnline {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -316,7 +376,7 @@ func (na *NodeAccessor) RelayPacket(dstNodeID *shared.NodeID, packet *shared.Pac
 		if (packet.Mode & shared.PacketModeOneWay) == shared.PacketModeNone {
 			return errors.New("packet mode should be one way when multicast")
 		}
-		for _, link := range na.links {
+		for _, link := range na.nodeID2link {
 			if link.getLinkState() == nodeLinkStateOnline {
 				if err := link.sendPacket(packet); err != nil {
 					return errors.New("failed to send packet")
@@ -325,7 +385,7 @@ func (na *NodeAccessor) RelayPacket(dstNodeID *shared.NodeID, packet *shared.Pac
 		}
 
 	} else {
-		link, ok := na.links[*dstNodeID]
+		link, ok := na.nodeID2link[*dstNodeID]
 		if !ok || link.getLinkState() != nodeLinkStateOnline {
 			return errors.New("link is not online")
 		}
@@ -337,18 +397,339 @@ func (na *NodeAccessor) RelayPacket(dstNodeID *shared.NodeID, packet *shared.Pac
 	return nil
 }
 
+func (na *NodeAccessor) recvOffer(packet *shared.Packet) {
+	content := packet.Content.GetSignalingOffer()
+	primeNodeID := shared.NewNodeIDFromProto(content.GetPrimeNodeId())
+	sdp := content.GetSdp()
+	offerType := offerType(content.GetType())
+	isBySeed := false
+	if offerType == offerTypeFirst || offerType == offerTypeRandom {
+		isBySeed = true
+	}
+
+	if primeNodeID.Equal(na.config.LocalNID) {
+		// cancel random connection since there is on the same cluster
+		if offerType == offerTypeRandom {
+			na.config.Transferer.Cancel(packet)
+
+			na.mtx.Lock()
+			defer na.mtx.Unlock()
+			if na.randomLink != nil {
+				na.disconnectLink(na.randomLink)
+			}
+
+		} else {
+			// send response to tell conflicting node id
+			na.config.Transferer.Response(packet, &proto.PacketContent{
+				Content: &proto.PacketContent_SignalingOfferFailure{
+					SignalingOfferFailure: &proto.SignalingOfferFailure{
+						Status:      offerStatusFailureConflict,
+						PrimeNodeId: content.PrimeNodeId,
+					},
+				},
+			})
+		}
+		return
+	}
+
+	if link, ok := na.nodeID2link[*primeNodeID]; ok {
+		if link.getLinkState() == nodeLinkStateOnline {
+			// Already having a online connection with prime node yet.
+			na.config.Transferer.Response(packet, &proto.PacketContent{
+				Content: &proto.PacketContent_SignalingOfferSuccess{
+					SignalingOfferSuccess: &proto.SignalingOfferSuccess{
+						Status:       uint32(offerStatusSuccessAlready),
+						SecondNodeId: na.config.LocalNID.Proto(),
+					},
+				},
+			})
+
+		} else {
+			// Disconnect existing connection as it is unrelated.
+			na.mtx.Lock()
+			defer na.mtx.Unlock()
+			na.disconnectLink(link)
+
+			// Recreate connection and response for the offer when prime node id is earlier then local.
+			if primeNodeID.Smaller(na.config.LocalNID) {
+				if err := na.acceptOffer(packet, primeNodeID, sdp, isBySeed); err != nil {
+					na.config.Logger.Error("failed to accept offer", slog.String("error", err.Error()))
+				}
+			}
+		}
+	} else {
+		na.mtx.Lock()
+		defer na.mtx.Unlock()
+		if err := na.acceptOffer(packet, primeNodeID, sdp, isBySeed); err != nil {
+			na.config.Logger.Error("failed to accept offer", slog.String("error", err.Error()))
+		}
+	}
+}
+
+func (na *NodeAccessor) acceptOffer(packet *shared.Packet, primeNodeID *shared.NodeID, remoteSDP string, isBySeed bool) error {
+	link, err := na.createLink(primeNodeID, false, isBySeed, false)
+	if err != nil {
+		na.disconnectLink(link)
+		return fmt.Errorf("failed to create link for the offer: %w", err)
+	}
+
+	if err := link.setRemoteSDP(remoteSDP); err != nil {
+		na.disconnectLink(link)
+		return fmt.Errorf("failed to set remove spd for the offer: %w", err)
+	}
+
+	localSDP, err := link.getLocalSDP()
+	if err != nil {
+		na.disconnectLink(link)
+		return fmt.Errorf("failed to get local sdp for the offer: %w", err)
+	}
+
+	na.config.Transferer.Response(packet, &proto.PacketContent{
+		Content: &proto.PacketContent_SignalingOfferSuccess{
+			SignalingOfferSuccess: &proto.SignalingOfferSuccess{
+				Status:       offerStatusSuccessAccept,
+				SecondNodeId: na.config.LocalNID.Proto(),
+				Sdp:          localSDP,
+			},
+		},
+	})
+
+	return nil
+}
+
+func (na *NodeAccessor) recvICE(packet *shared.Packet) {
+	content := packet.Content.GetSignalingIce()
+	localNodeID := shared.NewNodeIDFromProto(content.LocalNodeId)
+	remoteNodeID := shared.NewNodeIDFromProto(content.RemoteNodeId)
+	ices := content.Ices
+
+	na.mtx.Lock()
+	defer na.mtx.Unlock()
+
+	link, ok := na.nodeID2link[*localNodeID]
+	if !ok || !remoteNodeID.Equal(na.config.LocalNID) {
+		return
+	}
+
+	for _, ice := range ices {
+		if err := link.updateICE(ice); err != nil {
+			na.config.Logger.Error("failed to update ICE", slog.String("error", err.Error()))
+		}
+	}
+
+	state, ok := na.connectingStates[link]
+	if !ok || len(state.ices) == 0 {
+		return
+	}
+
+	if len(state.ices) != 0 {
+		na.sendICE(link, state.ices)
+	}
+	state.ices = nil
+}
+
+type offerHandler struct {
+	logger    *slog.Logger
+	na        *NodeAccessor
+	link      *nodeLink
+	nodeID    *shared.NodeID
+	offerType offerType
+}
+
+func (oh *offerHandler) OnResponse(packet *shared.Packet) {
+	oh.na.mtx.Lock()
+	defer oh.na.mtx.Unlock()
+
+	if content := packet.Content.GetSignalingOfferSuccess(); content != nil {
+		oh.onSuccess(content)
+		return
+	}
+
+	if content := packet.Content.GetSignalingOfferFailure(); content != nil {
+		oh.onFailure(content)
+		return
+	}
+
+	// unexpected response
+	oh.logger.Debug("unexpected response", slog.String("from", oh.nodeID.String()))
+	oh.na.disconnectLink(oh.link)
+}
+
+func (oh *offerHandler) onSuccess(content *proto.SignalingOfferSuccess) {
+	// if the link is already connected, do nothing.
+	if content.Status == offerStatusSuccessAlready {
+		return
+	}
+
+	// unexpected code detected.
+	if content.Status != offerStatusSuccessAccept {
+		oh.na.disconnectLink(oh.link)
+	}
+
+	secondNodeID := shared.NewNodeIDFromProto(content.SecondNodeId)
+	remoteSDP := content.Sdp
+
+	switch oh.offerType {
+	case offerTypeFirst:
+		if oh.na.firstLink != oh.link {
+			oh.na.disconnectLink(oh.link)
+			return
+		}
+
+		// avoid duplicate link when creating the first link
+		if _, ok := oh.na.nodeID2link[*secondNodeID]; ok {
+			oh.na.disconnectLink(oh.link)
+			return
+		}
+
+		oh.na.bindNodeID(oh.link, secondNodeID)
+		oh.na.firstLink = nil
+
+	case offerTypeRandom:
+		if oh.na.randomLink != oh.link {
+			oh.na.disconnectLink(oh.link)
+			return
+		}
+
+		// check duplicate
+		if _, ok := oh.na.nodeID2link[*secondNodeID]; ok {
+			oh.na.disconnectLink(oh.link)
+			return
+		}
+
+		oh.na.bindNodeID(oh.link, secondNodeID)
+		oh.na.randomLink = nil
+
+	case offerTypeNormal:
+		if _, ok := oh.na.nodeID2link[*secondNodeID]; !ok {
+			oh.na.disconnectLink(oh.link)
+			return
+		}
+	}
+
+	oh.link.setRemoteSDP(remoteSDP)
+
+	if state, ok := oh.na.connectingStates[oh.link]; ok {
+		if len(state.ices) != 0 {
+			oh.na.sendICE(oh.link, state.ices)
+		}
+		state.ices = nil
+	}
+}
+
+func (oh *offerHandler) onFailure(content *proto.SignalingOfferFailure) {
+	oh.na.disconnectLink(oh.link)
+
+	switch content.Status {
+	case offerStatusFailureConflict:
+		oh.logger.Debug("conflict on offer", slog.String("from", oh.nodeID.String()))
+		panic("implement method for dealing with conflict")
+	}
+}
+
+func (oh *offerHandler) OnError(_ constants.PacketErrorCode, message string) {
+	oh.na.mtx.Lock()
+	defer oh.na.mtx.Unlock()
+
+	oh.logger.Debug("error on offer", slog.String("message", message))
+	oh.na.disconnectLink(oh.link)
+}
+
 func (na *NodeAccessor) sendOffer(link *nodeLink, primaryNID, secondaryNID *shared.NodeID, t offerType) error {
-	panic("not implemented")
+	sdp, err := link.getLocalSDP()
+	if err != nil {
+		return fmt.Errorf("failed to get SDP: %w", err)
+	}
+
+	oh := &offerHandler{
+		na:        na,
+		nodeID:    secondaryNID,
+		offerType: t,
+	}
+
+	mode := shared.PacketModeExplicit
+	if t == offerTypeFirst || t == offerTypeRandom {
+		mode = shared.PacketModeRelaySeed | shared.PacketModeNoRetry
+	}
+
+	na.config.Transferer.Request(secondaryNID, mode, &proto.PacketContent{
+		Content: &proto.PacketContent_SignalingOffer{
+			SignalingOffer: &proto.SignalingOffer{
+				PrimeNodeId:  primaryNID.Proto(),
+				SecondNodeId: secondaryNID.Proto(),
+				Sdp:          sdp,
+				Type:         uint32(t),
+			},
+		},
+	}, oh)
+
+	return nil
 }
 
-func (na *NodeAccessor) nodeLinkChangeState(*nodeLink, nodeLinkState) {
-	panic("not implemented")
+func (na *NodeAccessor) sendICE(link *nodeLink, ices []string) {
+	nodeID, ok := na.link2nodeID[link]
+	if !ok {
+		panic("link is not bound to nodeID")
+	}
+
+	state, ok := na.connectingStates[link]
+	if !ok {
+		return
+	}
+
+	mode := shared.PacketModeExplicit
+	if state.isBySeed {
+		mode |= shared.PacketModeRelaySeed
+		if !state.isPrime {
+			mode |= shared.PacketModeResponse
+		}
+	}
+
+	na.config.Transferer.RequestOneWay(&nodeID, mode, &proto.PacketContent{
+		Content: &proto.PacketContent_SignalingIce{
+			SignalingIce: &proto.SignalingICE{
+				LocalNodeId:  na.config.LocalNID.Proto(),
+				RemoteNodeId: nodeID.Proto(),
+				Ices:         ices,
+			},
+		},
+	})
 }
 
-func (na *NodeAccessor) nodeLinkUpdateICE(string) {
-	panic("not implemented")
+func (na *NodeAccessor) nodeLinkChangeState(link *nodeLink, state nodeLinkState) {
+	na.mtx.Lock()
+	defer na.mtx.Unlock()
+
+	if state != nodeLinkStateConnecting {
+		delete(na.connectingStates, link)
+	}
+
+	if state == nodeLinkStateDisabled {
+		na.disconnectLink(link)
+	}
 }
 
-func (na *NodeAccessor) nodeLinkRectPacket(*shared.Packet) {
-	panic("not implemented")
+func (na *NodeAccessor) nodeLinkUpdateICE(link *nodeLink, ice string) {
+	if link.getLinkState() != nodeLinkStateConnecting {
+		return
+	}
+
+	na.mtx.Lock()
+	defer na.mtx.Unlock()
+
+	state, ok := na.connectingStates[link]
+	if !ok {
+		return
+	}
+
+	if state.ices != nil {
+		state.ices = append(state.ices, ice)
+		return
+	}
+
+	na.sendICE(link, []string{ice})
+}
+
+func (na *NodeAccessor) nodeLinkRecvPacket(packet *shared.Packet) {
+	na.config.Handler.NodeAccessorRecvPacket(packet)
 }

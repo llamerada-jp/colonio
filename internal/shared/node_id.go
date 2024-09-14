@@ -99,3 +99,19 @@ func (n *NodeID) String() string {
 func (n *NodeID) Equal(o *NodeID) bool {
 	return n.t == o.t && n.id0 == o.id0 && n.id1 == o.id1
 }
+
+func (n *NodeID) Smaller(o *NodeID) bool {
+	if n.t != o.t {
+		return n.t < o.t
+	}
+
+	if n.t != typeNormal {
+		return false
+	}
+
+	if n.id0 != o.id0 {
+		return n.id0 < o.id0
+	} else {
+		return n.id1 < o.id1
+	}
+}

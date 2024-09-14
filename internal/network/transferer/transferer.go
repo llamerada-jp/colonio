@@ -45,7 +45,7 @@ type Config struct {
 	LocalNID *shared.NodeID
 	Handler  Handler
 
-	// config parameter for testing
+	// config parameters for testing
 	retryCountMax uint
 	retryInterval time.Duration
 }
@@ -224,6 +224,12 @@ func (t *Transferer) Error(packetFor *shared.Packet, code constants.PacketErrorC
 		},
 	}
 	t.Response(packetFor, content)
+}
+
+func (t *Transferer) Cancel(packet *shared.Packet) {
+	t.mtx.Lock()
+	defer t.mtx.Unlock()
+	delete(t.requestRecord, packet.ID)
 }
 
 func (t *Transferer) Receive(packet *shared.Packet) {

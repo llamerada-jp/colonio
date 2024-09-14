@@ -53,8 +53,8 @@ type nodeLinkConfig struct {
 
 type nodeLinkHandler interface {
 	nodeLinkChangeState(*nodeLink, nodeLinkState)
-	nodeLinkUpdateICE(string)
-	nodeLinkRectPacket(*shared.Packet)
+	nodeLinkUpdateICE(*nodeLink, string)
+	nodeLinkRecvPacket(*shared.Packet)
 }
 
 type waiting struct {
@@ -119,7 +119,7 @@ func newNodeLink(config *nodeLinkConfig, handler nodeLinkHandler, createDataChan
 	}, &webRTCLinkEventHandler{
 		raiseError:      link.webrtcRaiseError,
 		changeLinkState: link.webrtcChangeLinkState,
-		updateICE:       handler.nodeLinkUpdateICE,
+		updateICE:       link.webrtcUpdateICE,
 		recvData:        link.webrtcRecvData,
 	})
 	if err != nil {
@@ -428,6 +428,10 @@ func (n *nodeLink) webrtcChangeLinkState(active, online bool) {
 	n.stateMtx.Unlock()
 }
 
+func (n *nodeLink) webrtcUpdateICE(ice string) {
+	n.handler.nodeLinkUpdateICE(n, ice)
+}
+
 func (n *nodeLink) webrtcRecvData(data []byte) {
 	p := &proto.NodePackets{}
 	err := proto3.Unmarshal(data, p)
@@ -505,7 +509,7 @@ func (n *nodeLink) webrtcRecvData(data []byte) {
 			Mode:      shared.PacketMode(head.Mode),
 			Content:   content,
 		}
-		n.handler.nodeLinkRectPacket(packet)
+		n.handler.nodeLinkRecvPacket(packet)
 	}
 
 	n.stateMtx.Lock()
