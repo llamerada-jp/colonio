@@ -65,6 +65,7 @@ func TestNodeLinkNormal(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	defer webRTCConfig.destruct()
 
 	config := &nodeLinkConfig{
 		ctx:               ctx,
@@ -215,6 +216,7 @@ func TestNodeLinkTimeout(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	defer webRTCConfig.destruct()
 
 	config := &nodeLinkConfig{
 		ctx:               ctx,
@@ -323,6 +325,7 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	defer webRTCConfig.destruct()
 
 	config1 := &nodeLinkConfig{
 		ctx:               ctx,
@@ -365,6 +368,8 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 			require.NoError(t, err)
 		},
 		recvPacket: func(p *shared.Packet) {
+			mtx.Lock()
+			defer mtx.Unlock()
 			received2++
 		},
 	}, false)
@@ -441,6 +446,7 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	defer webRTCConfig.destruct()
 
 	config := &nodeLinkConfig{
 		ctx:               ctx,

@@ -32,6 +32,7 @@ func TestWebRTCLink(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	defer config.destruct()
 
 	mtx := sync.Mutex{}
 	received := ""
@@ -155,6 +156,9 @@ func TestWebRTCLink(t *testing.T) {
 	link2.disconnect()
 	assert.False(t, link2.isActive())
 	assert.False(t, link2.isOnline())
+
+	mtx.Lock()
+	defer mtx.Unlock()
 	assert.Regexp(t, "A+a+", active1)
 	assert.Regexp(t, "O+o+", online1)
 	assert.Regexp(t, "A+a+", active2)

@@ -102,7 +102,10 @@ func NewSeedAccessor(config *Config) *SeedAccessor {
 			case <-sa.ctx.Done():
 				return
 			case <-ticker.C:
-				if time.Now().After(sa.tripTimestamp.Add(sa.config.TripInterval)) {
+				sa.timestampMtx.Lock()
+				willRun := time.Now().After(sa.tripTimestamp.Add(sa.config.TripInterval))
+				sa.timestampMtx.Unlock()
+				if willRun {
 					sa.subRoutine()
 				}
 			}
@@ -208,7 +211,11 @@ func (sa *SeedAccessor) subRoutine() {
 	}
 
 	sa.statMtx.Lock()
-	defer sa.statMtx.Unlock()
+	sa.timestampMtx.Lock()
+	defer func() {
+		sa.statMtx.Unlock()
+		sa.timestampMtx.Unlock()
+	}()
 	if sa.sessionTimeout != 0 &&
 		sa.sessionID != "" &&
 		time.Now().After(sa.livenessTimestamp.Add(sa.sessionTimeout*2)) {

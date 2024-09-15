@@ -322,7 +322,9 @@ func TestSeedAccessorActivate(t *testing.T) {
 	mtx.Unlock()
 
 	accessor.destruct()
+	mtx.Lock()
 	assert.Equal(t, "csscss", events)
+	mtx.Unlock()
 }
 
 func TestSeedAccessorSessions(t *testing.T) {
@@ -468,6 +470,7 @@ func TestSeedAccessorRelayPacket(t *testing.T) {
 
 	// create accessor for receiver 1
 	var received *shared.Packet
+	receiveCount1 := 0
 	configReceiver1 := *config
 	configReceiver1.LocalNID = nodeIDs[0]
 	configReceiver1.Logger = slog.With("node", "receiver1")
@@ -479,6 +482,7 @@ func TestSeedAccessorRelayPacket(t *testing.T) {
 			mtx.Lock()
 			defer mtx.Unlock()
 			received = packet
+			receiveCount1 += 1
 		},
 	}
 	receiver1 := NewSeedAccessor(&configReceiver1)
@@ -508,17 +512,9 @@ func TestSeedAccessorRelayPacket(t *testing.T) {
 	receiver1.destruct()
 
 	// recreate receiver1 and receiver2
-	receiveCount1 := 0
-	configReceiver1.EventHandler = &seedEventHandlerHelper{
-		authorizeFailed: func() {
-			assert.FailNow(t, "authentication should be success")
-		},
-		recvPacket: func(packet *shared.Packet) {
-			mtx.Lock()
-			defer mtx.Unlock()
-			receiveCount1 += 1
-		},
-	}
+	mtx.Lock()
+	receiveCount1 = 0
+	mtx.Unlock()
 	receiver1 = NewSeedAccessor(&configReceiver1)
 	defer receiver1.destruct()
 

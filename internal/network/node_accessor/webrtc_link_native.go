@@ -187,7 +187,7 @@ func (w *webRTCLinkNative) disconnect() error {
 	}
 
 	linksMtx.Lock()
-	delete(links, w.id)
+	delete(links, id)
 	linksMtx.Unlock()
 
 	err := C.cgo_webrtc_link_disconnect(id)
