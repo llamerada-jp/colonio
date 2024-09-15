@@ -37,18 +37,19 @@ const (
 	nodeLinkStateDisabled
 )
 
-type nodeLinkConfig struct {
+type NodeLinkConfig struct {
 	ctx          context.Context
 	logger       *slog.Logger
 	webrtcConfig webRTCConfig
+
 	// should be copied from config.SessionTimeout
-	sessionTimeout time.Duration
+	SessionTimeout time.Duration
 	// should be copied from config.KeepaliveInterval
-	keepaliveInterval time.Duration
+	KeepaliveInterval time.Duration
 	// should be copied from config.BufferInterval
-	bufferInterval time.Duration
+	BufferInterval time.Duration
 	// should be copied from config.WebRTCPacketBaseBytes
-	packetBaseBytes int
+	PacketBaseBytes int
 }
 
 type nodeLinkHandler interface {
@@ -63,7 +64,7 @@ type waiting struct {
 }
 
 type nodeLink struct {
-	config             *nodeLinkConfig
+	config             *NodeLinkConfig
 	handler            nodeLinkHandler
 	ctx                context.Context
 	cancel             context.CancelFunc
@@ -80,19 +81,19 @@ type nodeLink struct {
 	stack              []*proto.NodePacket
 }
 
-func newNodeLink(config *nodeLinkConfig, handler nodeLinkHandler, createDataChannel bool) (*nodeLink, error) {
+func newNodeLink(config *NodeLinkConfig, handler nodeLinkHandler, createDataChannel bool) (*nodeLink, error) {
 	ctx, cancel := context.WithCancel(config.ctx)
 
 	// The bufferTicker fires for configured intervals when some packets are in the buffer,
 	// otherwise it disabled immediately.
 	bufferTicker := time.NewTicker(1 * time.Second)
-	if config.bufferInterval == 0 {
+	if config.BufferInterval == 0 {
 		bufferTicker.Stop()
 	}
 
 	var keepaliveTicker *time.Ticker
-	if config.keepaliveInterval > 0 {
-		keepaliveTicker = time.NewTicker(config.keepaliveInterval)
+	if config.KeepaliveInterval > 0 {
+		keepaliveTicker = time.NewTicker(config.KeepaliveInterval)
 	}
 
 	link := &nodeLink{
@@ -195,7 +196,7 @@ func (n *nodeLink) sendPacket(packet *shared.Packet) error {
 	}
 
 	// send packet immediately if bufferInterval is 0
-	if n.config.bufferInterval == 0 {
+	if n.config.BufferInterval == 0 {
 		n.queueMtx.Lock()
 		n.queue = append(n.queue, waiting)
 		n.queueMtx.Unlock()
@@ -213,12 +214,12 @@ func (n *nodeLink) sendPacket(packet *shared.Packet) error {
 	n.queueMtx.Unlock()
 
 	// send packet if passed bufferInterval or buffer size is over packetBaseBytes
-	if sum > n.config.packetBaseBytes {
+	if sum > n.config.PacketBaseBytes {
 		return n.flush()
 	}
 
 	if count == 1 {
-		n.bufferTicker.Reset(n.config.bufferInterval)
+		n.bufferTicker.Reset(n.config.BufferInterval)
 	}
 
 	return nil
@@ -245,16 +246,16 @@ func (n *nodeLink) flush() error {
 	p := &proto.NodePackets{}
 	contentSize := 0
 	for _, w := range queue {
-		if contentSize+len(w.content) > n.config.packetBaseBytes {
-			count, r := bits.Div(0, uint(len(w.content)+contentSize), uint(n.config.packetBaseBytes))
+		if contentSize+len(w.content) > n.config.PacketBaseBytes {
+			count, r := bits.Div(0, uint(len(w.content)+contentSize), uint(n.config.PacketBaseBytes))
 			if r != 0 {
 				count++
 			}
 			send := 0
 			for i := int(count - 1); i >= 0; i-- {
 				size := len(w.content) - send
-				if size+contentSize > n.config.packetBaseBytes {
-					size = n.config.packetBaseBytes - contentSize
+				if size+contentSize > n.config.PacketBaseBytes {
+					size = n.config.PacketBaseBytes - contentSize
 				}
 				if i == 0 {
 					p.Packets = append(p.Packets, &proto.NodePacket{
@@ -304,11 +305,11 @@ func (n *nodeLink) flush() error {
 		}
 	}
 
-	if n.config.keepaliveInterval != 0 {
-		n.keepaliveTicker.Reset(n.config.keepaliveInterval)
+	if n.config.KeepaliveInterval != 0 {
+		n.keepaliveTicker.Reset(n.config.KeepaliveInterval)
 	}
 	// wait next packet idly
-	if n.config.bufferInterval > 0 {
+	if n.config.BufferInterval > 0 {
 		n.bufferTicker.Reset(1 * time.Second)
 	}
 
@@ -317,7 +318,7 @@ func (n *nodeLink) flush() error {
 
 func (n *nodeLink) routine() {
 	// ticker to check keepalive timeout
-	interval := n.config.keepaliveInterval / 2
+	interval := n.config.KeepaliveInterval / 2
 	if interval > 1*time.Second {
 		interval = 1 * time.Second
 	}
@@ -355,7 +356,7 @@ func (n *nodeLink) routine() {
 		}
 
 		n.stateMtx.RLock()
-		timedOut := time.Now().After(n.keepaliveTimestamp.Add(n.config.sessionTimeout))
+		timedOut := time.Now().After(n.keepaliveTimestamp.Add(n.config.SessionTimeout))
 		n.stateMtx.RUnlock()
 		if timedOut {
 			n.disconnect()
@@ -369,7 +370,7 @@ func (n *nodeLink) sendKeepalive() {
 	}
 
 	if n.send(&proto.NodePackets{}) {
-		n.keepaliveTicker.Reset(n.config.keepaliveInterval)
+		n.keepaliveTicker.Reset(n.config.KeepaliveInterval)
 	}
 }
 

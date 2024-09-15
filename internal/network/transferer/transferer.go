@@ -233,7 +233,7 @@ func (t *Transferer) Cancel(packet *shared.Packet) {
 }
 
 func (t *Transferer) Receive(packet *shared.Packet) {
-	if packet.Mode&shared.PacketModeResponse != 0 {
+	if packet.ID != 0 && packet.Mode&shared.PacketModeResponse != 0 {
 		t.mtx.Lock()
 		defer t.mtx.Unlock()
 

@@ -15,12 +15,14 @@
  */
 
 #include <map>
+#include <shared_mutex>
 
 #include "webrtc.h"
 #include "webrtc.hpp"
 
 static std::string error_message;
 
+static std::shared_mutex links_mtx;
 static std::map<unsigned int, std::unique_ptr<WebRTCLink>> links;
 
 static void (*webrtc_link_update_state_cb)(unsigned int, int)              = nullptr;
@@ -323,6 +325,8 @@ unsigned int webrtc_link_new(unsigned int config_id, int create_data_channel) {
     return 0;
   }
 
+  std::lock_guard<std::shared_mutex> guard(links_mtx);
+
   unsigned int id = 1;
   while (links.find(id) != links.end()) {
     ++id;
@@ -336,27 +340,39 @@ unsigned int webrtc_link_new(unsigned int config_id, int create_data_channel) {
 }
 
 int webrtc_link_disconnect(unsigned int id) {
-  auto it = links.find(id);
-  if (it == links.end()) {
-    error_message = "invalid id on webrtc_link_disconnect.";
+  std::unique_ptr<WebRTCLink> link;
+  {
+    std::lock_guard<std::shared_mutex> guard(links_mtx);
+    auto it = links.find(id);
+    if (it == links.end()) {
+      error_message = "invalid id on webrtc_link_disconnect.";
+      return -1;
+    }
+    link = std::move(it->second);
+    links.erase(it);
+  }
+
+  link->disconnect();
+  if (link->have_error) {
     return -1;
   }
-  it->second->disconnect();
-  if (it->second->have_error) {
-    return -1;
-  }
-  links.erase(it);
   return 0;
 }
 
 int webrtc_link_get_local_sdp(unsigned int id, const char** sdp, int* sdp_len) {
-  auto it = links.find(id);
-  if (it == links.end()) {
-    error_message = "invalid id on webrtc_link_get_local_sdp.";
-    return -1;
+  WebRTCLink* link;
+  {
+    std::shared_lock<std::shared_mutex> guard(links_mtx);
+    auto it = links.find(id);
+    if (it == links.end()) {
+      error_message = "invalid id on webrtc_link_get_local_sdp.";
+      return -1;
+    }
+    link = it->second.get();
   }
-  std::string& sdp_str = it->second->get_local_sdp();
-  if (it->second->have_error) {
+
+  std::string& sdp_str = link->get_local_sdp();
+  if (link->have_error) {
     return -1;
   }
   *sdp     = sdp_str.c_str();
@@ -365,45 +381,63 @@ int webrtc_link_get_local_sdp(unsigned int id, const char** sdp, int* sdp_len) {
 }
 
 int webrtc_link_set_remote_sdp(unsigned int id, const char* sdp, int sdp_len) {
-  auto it = links.find(id);
-  if (it == links.end()) {
-    error_message = "invalid id on webrtc_link_set_remote_sdp.";
-    return -1;
+  WebRTCLink* link;
+  {
+    std::shared_lock<std::shared_mutex> guard(links_mtx);
+    auto it = links.find(id);
+    if (it == links.end()) {
+      error_message = "invalid id on webrtc_link_set_remote_sdp.";
+      return -1;
+    }
+    link = it->second.get();
   }
-  it->second->set_remote_sdp(std::string(sdp, sdp_len));
-  if (it->second->have_error) {
+
+  link->set_remote_sdp(std::string(sdp, sdp_len));
+  if (link->have_error) {
     return -1;
   }
   return 0;
 }
 
 int webrtc_link_update_ice(unsigned int id, const char* ice, int ice_len) {
-  auto it = links.find(id);
-  if (it == links.end()) {
-    error_message = "invalid id on webrtc_link_update_ice.";
-    return -1;
+  WebRTCLink* link;
+  {
+    std::shared_lock<std::shared_mutex> guard(links_mtx);
+    auto it = links.find(id);
+    if (it == links.end()) {
+      error_message = "invalid id on webrtc_link_update_ice.";
+      return -1;
+    }
+    link = it->second.get();
   }
+
   picojson::value i;
   std::string err = picojson::parse(i, ice);
   if (!err.empty()) {
     error_message = err;
     return -1;
   }
-  it->second->update_ice(i.get<picojson::object>());
-  if (it->second->have_error) {
+  link->update_ice(i.get<picojson::object>());
+  if (link->have_error) {
     return -1;
   }
   return 0;
 }
 
 int webrtc_link_send(unsigned int id, const void* data, int data_len) {
-  auto it = links.find(id);
-  if (it == links.end()) {
-    error_message = "invalid id on webrtc_link_send.";
-    return -1;
+  WebRTCLink* link;
+  {
+    std::shared_lock<std::shared_mutex> guard(links_mtx);
+    auto it = links.find(id);
+    if (it == links.end()) {
+      error_message = "invalid id on webrtc_link_send.";
+      return -1;
+    }
+    link = it->second.get();
   }
-  it->second->send(data, data_len);
-  if (it->second->have_error) {
+
+  link->send(data, data_len);
+  if (link->have_error) {
     return -1;
   }
   return 0;

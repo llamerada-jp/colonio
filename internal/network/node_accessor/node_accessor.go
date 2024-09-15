@@ -57,7 +57,7 @@ type Config struct {
 type NodeAccessor struct {
 	config   *Config
 	mtx      sync.RWMutex
-	nlConfig *nodeLinkConfig
+	nlConfig *NodeLinkConfig
 
 	// if enabled is false, node accessor does not connect any links.
 	enabled          bool
@@ -101,7 +101,7 @@ func NewNodeAccessor(config *Config) *NodeAccessor {
 	return na
 }
 
-func (na *NodeAccessor) SetConfig(clusterConfig *config.Cluster) error {
+func (na *NodeAccessor) SetConfig(iceServers []config.ICEServer, nlConfig *NodeLinkConfig) error {
 	na.mtx.Lock()
 	defer na.mtx.Unlock()
 
@@ -109,20 +109,17 @@ func (na *NodeAccessor) SetConfig(clusterConfig *config.Cluster) error {
 		return errors.New("node accessor already configured")
 	}
 
-	webrtcConfig, err := defaultWebRTCConfigFactory(clusterConfig.IceServers)
+	webrtcConfig, err := defaultWebRTCConfigFactory(iceServers)
 	if err != nil {
 		return fmt.Errorf("failed to create webRTCConfig: %w", err)
 	}
 
-	na.nlConfig = &nodeLinkConfig{
-		ctx:               na.config.Ctx,
-		logger:            na.config.Logger,
-		webrtcConfig:      webrtcConfig,
-		sessionTimeout:    clusterConfig.SessionTimeout,
-		keepaliveInterval: clusterConfig.KeepaliveInterval,
-		bufferInterval:    clusterConfig.BufferInterval,
-		packetBaseBytes:   clusterConfig.WebRTCPacketBaseBytes,
-	}
+	copyNlConfig := *nlConfig
+	copyNlConfig.ctx = na.config.Ctx
+	copyNlConfig.logger = na.config.Logger
+	copyNlConfig.webrtcConfig = webrtcConfig
+
+	na.nlConfig = &copyNlConfig
 
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
@@ -130,7 +127,15 @@ func (na *NodeAccessor) SetConfig(clusterConfig *config.Cluster) error {
 		for {
 			select {
 			case <-na.config.Ctx.Done():
+				na.mtx.Lock()
+				defer na.mtx.Unlock()
+				for link := range na.link2nodeID {
+					na.disconnectLink(link)
+				}
+
+				webrtcConfig.destruct()
 				return
+
 			case <-ticker.C:
 				na.subRoutine()
 			}
@@ -146,6 +151,11 @@ func (na *NodeAccessor) SetEnabled(enabled bool) {
 	defer na.mtx.Unlock()
 
 	na.enabled = enabled
+	if !enabled {
+		for link := range na.link2nodeID {
+			na.disconnectLink(link)
+		}
+	}
 }
 
 func (na *NodeAccessor) subRoutine() {
@@ -278,19 +288,23 @@ func (na *NodeAccessor) connectFirstLink() error {
 
 	go func(link *nodeLink) {
 		err := na.sendOffer(link, na.config.LocalNID, na.config.LocalNID, offerTypeFirst)
-		na.config.Logger.Error("failed to send WebRTC offer request to connect first link", slog.String("error", err.Error()))
+		if err != nil {
+			na.config.Logger.Error("failed to send WebRTC offer request to connect first link", slog.String("error", err.Error()))
 
-		na.mtx.Lock()
-		defer na.mtx.Unlock()
-		na.disconnectLink(link)
+			na.mtx.Lock()
+			defer na.mtx.Unlock()
+			na.disconnectLink(link)
+		}
 	}(na.firstLink)
 
 	return nil
 }
 
 func (na *NodeAccessor) createLink(nodeID *shared.NodeID, createDC, bySeed, prime bool) (*nodeLink, error) {
-	if _, ok := na.nodeID2link[*nodeID]; ok {
-		return nil, errors.New("link already exists when creating link")
+	if nodeID != nil {
+		if _, ok := na.nodeID2link[*nodeID]; ok {
+			return nil, errors.New("link already exists when creating link")
+		}
 	}
 
 	link, err := newNodeLink(na.nlConfig, na, createDC)
@@ -308,15 +322,6 @@ func (na *NodeAccessor) createLink(nodeID *shared.NodeID, createDC, bySeed, prim
 	na.connectingStates[link] = state
 
 	return link, nil
-}
-
-func (na *NodeAccessor) DisconnectAll() {
-	na.mtx.Lock()
-	defer na.mtx.Unlock()
-
-	for link := range na.link2nodeID {
-		na.disconnectLink(link)
-	}
 }
 
 func (na *NodeAccessor) disconnectLink(link *nodeLink) {
@@ -348,7 +353,7 @@ func (na *NodeAccessor) houseKeeping() error {
 	}
 
 	for link, state := range na.connectingStates {
-		if time.Now().After(state.creationTimestamp.Add(na.nlConfig.sessionTimeout)) {
+		if time.Now().After(state.creationTimestamp.Add(na.nlConfig.SessionTimeout)) {
 			na.disconnectLink(link)
 		}
 	}
@@ -432,6 +437,8 @@ func (na *NodeAccessor) recvOffer(packet *shared.Packet) {
 		return
 	}
 
+	na.mtx.Lock()
+	defer na.mtx.Unlock()
 	if link, ok := na.nodeID2link[*primeNodeID]; ok {
 		if link.getLinkState() == nodeLinkStateOnline {
 			// Already having a online connection with prime node yet.
@@ -446,8 +453,6 @@ func (na *NodeAccessor) recvOffer(packet *shared.Packet) {
 
 		} else {
 			// Disconnect existing connection as it is unrelated.
-			na.mtx.Lock()
-			defer na.mtx.Unlock()
 			na.disconnectLink(link)
 
 			// Recreate connection and response for the offer when prime node id is earlier then local.
@@ -458,8 +463,6 @@ func (na *NodeAccessor) recvOffer(packet *shared.Packet) {
 			}
 		}
 	} else {
-		na.mtx.Lock()
-		defer na.mtx.Unlock()
 		if err := na.acceptOffer(packet, primeNodeID, sdp, isBySeed); err != nil {
 			na.config.Logger.Error("failed to accept offer", slog.String("error", err.Error()))
 		}
@@ -642,7 +645,9 @@ func (na *NodeAccessor) sendOffer(link *nodeLink, primaryNID, secondaryNID *shar
 	}
 
 	oh := &offerHandler{
+		logger:    na.config.Logger,
 		na:        na,
+		link:      link,
 		nodeID:    secondaryNID,
 		offerType: t,
 	}
@@ -697,16 +702,18 @@ func (na *NodeAccessor) sendICE(link *nodeLink, ices []string) {
 }
 
 func (na *NodeAccessor) nodeLinkChangeState(link *nodeLink, state nodeLinkState) {
-	na.mtx.Lock()
-	defer na.mtx.Unlock()
+	go func() {
+		na.mtx.Lock()
+		defer na.mtx.Unlock()
 
-	if state != nodeLinkStateConnecting {
-		delete(na.connectingStates, link)
-	}
+		if state != nodeLinkStateConnecting {
+			delete(na.connectingStates, link)
+		}
 
-	if state == nodeLinkStateDisabled {
-		na.disconnectLink(link)
-	}
+		if state == nodeLinkStateDisabled {
+			na.disconnectLink(link)
+		}
+	}()
 }
 
 func (na *NodeAccessor) nodeLinkUpdateICE(link *nodeLink, ice string) {
@@ -714,20 +721,22 @@ func (na *NodeAccessor) nodeLinkUpdateICE(link *nodeLink, ice string) {
 		return
 	}
 
-	na.mtx.Lock()
-	defer na.mtx.Unlock()
+	go func() {
+		na.mtx.Lock()
+		defer na.mtx.Unlock()
 
-	state, ok := na.connectingStates[link]
-	if !ok {
-		return
-	}
+		state, ok := na.connectingStates[link]
+		if !ok {
+			return
+		}
 
-	if state.ices != nil {
-		state.ices = append(state.ices, ice)
-		return
-	}
+		if state.ices != nil {
+			state.ices = append(state.ices, ice)
+			return
+		}
 
-	na.sendICE(link, []string{ice})
+		na.sendICE(link, []string{ice})
+	}()
 }
 
 func (na *NodeAccessor) nodeLinkRecvPacket(packet *shared.Packet) {

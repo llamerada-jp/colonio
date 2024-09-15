@@ -139,9 +139,17 @@ func (w *webRTCLinkNative) isOnline() bool {
 }
 
 func (w *webRTCLinkNative) getLocalSDP() (string, error) {
+	w.mtx.Lock()
+	id := w.id
+	w.mtx.Unlock()
+
+	if id == 0 {
+		return "", fmt.Errorf("link is not active")
+	}
+
 	var sdpPtr *C.char
 	var sdpLen C.int
-	err := C.cgo_webrtc_link_get_local_sdp(w.id, &sdpPtr, &sdpLen)
+	err := C.cgo_webrtc_link_get_local_sdp(id, &sdpPtr, &sdpLen)
 	if err != 0 {
 		return "", fmt.Errorf("failed to get local SDP: %s", getErrorMessage())
 	}
@@ -149,7 +157,15 @@ func (w *webRTCLinkNative) getLocalSDP() (string, error) {
 }
 
 func (w *webRTCLinkNative) setRemoteSDP(sdp string) error {
-	err := C.cgo_webrtc_link_set_remote_sdp(w.id, sdp)
+	w.mtx.Lock()
+	id := w.id
+	w.mtx.Unlock()
+
+	if id == 0 {
+		return fmt.Errorf("link is not active")
+	}
+
+	err := C.cgo_webrtc_link_set_remote_sdp(id, sdp)
 	if err != 0 {
 		return fmt.Errorf("failed to set remote SDP: %s", getErrorMessage())
 	}
@@ -157,7 +173,15 @@ func (w *webRTCLinkNative) setRemoteSDP(sdp string) error {
 }
 
 func (w *webRTCLinkNative) updateICE(ice string) error {
-	err := C.cgo_webrtc_link_update_ice(w.id, ice)
+	w.mtx.Lock()
+	id := w.id
+	w.mtx.Unlock()
+
+	if id == 0 {
+		return fmt.Errorf("link is not active")
+	}
+
+	err := C.cgo_webrtc_link_update_ice(id, ice)
 	if err != 0 {
 		return fmt.Errorf("failed to update ICE: %s", getErrorMessage())
 	}
@@ -165,9 +189,17 @@ func (w *webRTCLinkNative) updateICE(ice string) error {
 }
 
 func (w *webRTCLinkNative) send(data []byte) error {
+	w.mtx.Lock()
+	id := w.id
+	w.mtx.Unlock()
+
+	if id == 0 {
+		return fmt.Errorf("link is not active")
+	}
+
 	ptr := C.CBytes(data)
 	defer C.free(ptr)
-	err := C.cgo_webrtc_link_send(w.id, ptr, C.int(len(data)))
+	err := C.cgo_webrtc_link_send(id, ptr, C.int(len(data)))
 	if err != 0 {
 		return fmt.Errorf("failed to send data: %s", getErrorMessage())
 	}

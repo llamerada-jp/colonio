@@ -105,7 +105,12 @@ func (n *Network) SeedChangeState() {
 
 func (n *Network) SeedRecvConfig(clusterConfig *config.Cluster) {
 	// TODO: receive config twice and those are different, suggest to rerun the network.
-	n.nodeAccessor.SetConfig(clusterConfig)
+	n.nodeAccessor.SetConfig(clusterConfig.IceServers, &node_accessor.NodeLinkConfig{
+		SessionTimeout:    clusterConfig.SessionTimeout,
+		KeepaliveInterval: clusterConfig.KeepaliveInterval,
+		BufferInterval:    clusterConfig.BufferInterval,
+		PacketBaseBytes:   clusterConfig.WebRTCPacketBaseBytes,
+	})
 }
 
 func (n *Network) SeedRecvPacket(*shared.Packet) {

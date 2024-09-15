@@ -67,14 +67,14 @@ func TestNodeLinkNormal(t *testing.T) {
 	require.NoError(t, err)
 	defer webRTCConfig.destruct()
 
-	config := &nodeLinkConfig{
+	config := &NodeLinkConfig{
 		ctx:               ctx,
 		logger:            slog.Default(),
 		webrtcConfig:      webRTCConfig,
-		sessionTimeout:    30 * time.Second,
-		keepaliveInterval: 10 * time.Second,
-		bufferInterval:    10 * time.Millisecond,
-		packetBaseBytes:   512 * 1024,
+		SessionTimeout:    30 * time.Second,
+		KeepaliveInterval: 10 * time.Second,
+		BufferInterval:    10 * time.Millisecond,
+		PacketBaseBytes:   512 * 1024,
 	}
 
 	mtx := sync.Mutex{}
@@ -218,14 +218,14 @@ func TestNodeLinkTimeout(t *testing.T) {
 	require.NoError(t, err)
 	defer webRTCConfig.destruct()
 
-	config := &nodeLinkConfig{
+	config := &NodeLinkConfig{
 		ctx:               ctx,
 		logger:            slog.Default(),
 		webrtcConfig:      webRTCConfig,
-		sessionTimeout:    5 * time.Second,
-		keepaliveInterval: 1 * time.Second,
-		bufferInterval:    10 * time.Millisecond,
-		packetBaseBytes:   1024,
+		SessionTimeout:    5 * time.Second,
+		KeepaliveInterval: 1 * time.Second,
+		BufferInterval:    10 * time.Millisecond,
+		PacketBaseBytes:   1024,
 	}
 
 	var link *nodeLink
@@ -327,18 +327,18 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 	require.NoError(t, err)
 	defer webRTCConfig.destruct()
 
-	config1 := &nodeLinkConfig{
+	config1 := &NodeLinkConfig{
 		ctx:               ctx,
 		logger:            slog.Default(),
 		webrtcConfig:      webRTCConfig,
-		sessionTimeout:    30 * time.Second,
-		keepaliveInterval: 10 * time.Second,
-		bufferInterval:    0, // disable buffer
-		packetBaseBytes:   1024 * 1024,
+		SessionTimeout:    30 * time.Second,
+		KeepaliveInterval: 10 * time.Second,
+		BufferInterval:    0, // disable buffer
+		PacketBaseBytes:   1024 * 1024,
 	}
 
 	config2 := *config1
-	config2.bufferInterval = 3 * time.Second
+	config2.BufferInterval = 3 * time.Second
 
 	mtx := sync.Mutex{}
 	received1 := 0
@@ -448,14 +448,14 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 	require.NoError(t, err)
 	defer webRTCConfig.destruct()
 
-	config := &nodeLinkConfig{
+	config := &NodeLinkConfig{
 		ctx:               ctx,
 		logger:            slog.Default(),
 		webrtcConfig:      webRTCConfig,
-		sessionTimeout:    30 * time.Second,
-		keepaliveInterval: 10 * time.Second,
-		bufferInterval:    3 * time.Second,
-		packetBaseBytes:   1024,
+		SessionTimeout:    30 * time.Second,
+		KeepaliveInterval: 10 * time.Second,
+		BufferInterval:    3 * time.Second,
+		PacketBaseBytes:   1024,
 	}
 
 	mtx := sync.Mutex{}
