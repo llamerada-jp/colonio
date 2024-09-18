@@ -1,10 +1,11 @@
 module github.com/llamerada-jp/colonio
 
-go 1.22
+go 1.23
 
 require (
 	github.com/chromedp/cdproto v0.0.0-20240810084448-b931b754e476
 	github.com/chromedp/chromedp v0.10.0
+	github.com/fogleman/delaunay v0.0.0-20180910191513-63f09b4c883d
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0

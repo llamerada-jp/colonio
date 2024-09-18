@@ -67,10 +67,10 @@ func NewTestingSeed(opts ...ServiceOption) *TestingSeed {
 					URLs: []string{"stun:stun.l.google.com:19302"},
 				},
 			},
-			Routing: config.Routing{
-				ForceUpdateCount: toPtr[uint32](10),
-				UpdatePeriod:     toPtr[uint32](500), // 500ms
-			},
+			KeepaliveInterval:       10 * time.Second,
+			RoutingExchangeInterval: 1 * time.Minute,
+			SeedConnectRate:         3,
+			SeedReconnectDuration:   3 * time.Minute,
 		},
 		SeedPath: "/test",
 	}
@@ -134,6 +134,12 @@ func WithSessionTimeout(d time.Duration) ServiceOption {
 func WithPollingTimeout(d time.Duration) ServiceOption {
 	return func(ts *TestingSeed) {
 		ts.service.Config.Cluster.PollingTimeout = d
+	}
+}
+
+func WithKeepaliveInterval(d time.Duration) ServiceOption {
+	return func(ts *TestingSeed) {
+		ts.service.Config.Cluster.KeepaliveInterval = d
 	}
 }
 

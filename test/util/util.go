@@ -15,12 +15,16 @@
  */
 package util
 
-import "github.com/llamerada-jp/colonio/internal/shared"
+import (
+	"slices"
+
+	"github.com/llamerada-jp/colonio/internal/shared"
+)
 
 // make unique nodeIDs
 func UniqueNodeIDs(count int) []*shared.NodeID {
 	nodeIDs := make([]*shared.NodeID, count)
-	exists := make(map[shared.NodeID]bool)
+	exists := make(map[shared.NodeID]struct{})
 
 	for i := range nodeIDs {
 		for {
@@ -28,11 +32,43 @@ func UniqueNodeIDs(count int) []*shared.NodeID {
 			_, ok := exists[*nodeID]
 			if !ok {
 				nodeIDs[i] = nodeID
-				exists[*nodeID] = true
+				exists[*nodeID] = struct{}{}
 				break
 			}
 		}
 	}
 
 	return nodeIDs
+}
+
+// make unique nodeIDs with min max range (min <= nodeID < max)
+func UniqueNodeIDsWithRange(min, max *shared.NodeID, count int) []*shared.NodeID {
+	if !min.Smaller(max) {
+		panic("min must be smaller than max")
+	}
+	nodeIDs := make([]*shared.NodeID, count)
+	exists := make(map[shared.NodeID]struct{})
+
+	for i := range nodeIDs {
+		for {
+			nodeID := shared.NewRandomNodeID()
+			if nodeID.Smaller(min) || !nodeID.Smaller(max) {
+				continue
+			}
+			_, ok := exists[*nodeID]
+			if !ok {
+				nodeIDs[i] = nodeID
+				exists[*nodeID] = struct{}{}
+				break
+			}
+		}
+	}
+
+	return nodeIDs
+}
+
+func SortNodeIDs(nodeIDs []*shared.NodeID) {
+	slices.SortFunc(nodeIDs, func(a, b *shared.NodeID) int {
+		return a.Compare(b)
+	})
 }

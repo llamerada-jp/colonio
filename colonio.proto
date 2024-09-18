@@ -154,11 +154,6 @@ message SignalingOfferFailure {
 }
 
 // for routing
-message RoutingSeedRecord {
-  NodeID node_id = 1;
-  int64 duration = 2;
-}
-
 message RoutingNodeRecord {
   int64 r1d_score = 1;
   Coordinate r2d_position = 2;
@@ -166,10 +161,9 @@ message RoutingNodeRecord {
 
 message Routing {
   uint32 seed_distance = 1;
-  repeated RoutingSeedRecord seed_records = 2;
-  Coordinate r2d_position = 3;
+  Coordinate r2d_position = 2;
   // Key type of map is string from node-id.
-  map<string, RoutingNodeRecord> node_records = 4;
+  map<string, RoutingNodeRecord> node_records = 3;
 }
 
 // for messaging module

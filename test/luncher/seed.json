@@ -21,16 +21,16 @@
     "keepaliveInterval": "10s",
     "bufferInterval": "10ms",
     "webrtcPacketBaseBytes": 16384,
-    "coordSystem2D": {
-      "type": "sphere",
-      "radius": 6378137
+    "routingExchangeInterval": "1m",
+    "seedConnectRate": 3,
+    "seedReconnectDuration": "3m",
+    "geometry": {
+      "sphere": {
+        "radius": 6378137
+      }
     },
     "spread": {
       "cacheTime": 100
-    },
-    "routing": {
-      "forceUpdateTimes": 20,
-      "updatePeriod": 500
     }
   },
   "seedPath": "/seed"

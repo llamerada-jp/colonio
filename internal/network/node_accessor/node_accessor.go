@@ -173,7 +173,7 @@ func (na *NodeAccessor) subRoutine() {
 	}
 }
 
-func (na *NodeAccessor) ConnectLinks(nodeIDs []*shared.NodeID) error {
+func (na *NodeAccessor) ConnectLinks(requiredNodeIDs, keepNodeIDs []*shared.NodeID) error {
 	if !na.IsOnline() {
 		return errors.New("node accessor should be online before connecting link")
 	}
@@ -185,7 +185,7 @@ func (na *NodeAccessor) ConnectLinks(nodeIDs []*shared.NodeID) error {
 		return errors.New("node accessor should be enabled before connecting link")
 	}
 
-	for _, nodeID := range nodeIDs {
+	for _, nodeID := range requiredNodeIDs {
 		if link, ok := na.nodeID2link[*nodeID]; ok {
 			if link.getLinkState() == nodeLinkStateDisabled {
 				na.disconnectLink(link)
@@ -212,12 +212,20 @@ func (na *NodeAccessor) ConnectLinks(nodeIDs []*shared.NodeID) error {
 
 	for nodeID, link := range na.nodeID2link {
 		idToKeep := false
-		for _, targetNodeID := range nodeIDs {
-			if nodeID == *targetNodeID {
+		for _, targetNodeID := range requiredNodeIDs {
+			if nodeID.Equal(targetNodeID) {
 				idToKeep = true
 				break
 			}
 		}
+
+		for _, targetNodeID := range keepNodeIDs {
+			if nodeID.Equal(targetNodeID) {
+				idToKeep = true
+				break
+			}
+		}
+
 		if !idToKeep {
 			na.disconnectLink(link)
 		}

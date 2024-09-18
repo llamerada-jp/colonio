@@ -336,6 +336,7 @@ func TestSeedAccessorSessions(t *testing.T) {
 	testSeed := testing_seed.NewTestingSeed(
 		testing_seed.WithPollingTimeout(500*time.Millisecond),
 		testing_seed.WithSessionTimeout(1500*time.Millisecond),
+		testing_seed.WithKeepaliveInterval(200*time.Millisecond),
 	)
 
 	config := &Config{

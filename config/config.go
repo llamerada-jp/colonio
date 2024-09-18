@@ -22,48 +22,6 @@ import (
 	"time"
 )
 
-type CoordSystem2D struct {
-	Type *string `json:"type,omitempty"`
-	// for sphere
-	Radius *float64 `json:"radius,omitempty"`
-	// for plane
-	XMin *float64 `json:"xMin,omitempty"`
-	XMax *float64 `json:"xMax,omitempty"`
-	YMin *float64 `json:"yMin,omitempty"`
-	YMax *float64 `json:"yMax,omitempty"`
-}
-
-// ICEServer is a configuration for ICE server. It is used to establish a WebRTC connection.
-type ICEServer struct {
-	// URLs is a list of URLs of the ICE server.
-	URLs []string `json:"urls,omitempty"`
-	// Username is a username for the ICE server.
-	Username string `json:"username,omitempty"`
-	// Credential is a credential for the ICE server.
-	Credential string `json:"credential,omitempty"`
-}
-
-type Routing struct {
-	ForceUpdateCount        *uint32  `json:"forceUpdateCount,omitempty"`
-	SeedConnectInterval     *uint32  `json:"seedConnectInterval,omitempty"`
-	SeedConnectRate         *uint32  `json:"seedConnectRate,omitempty"`
-	SeedDisconnectThreshold *uint32  `json:"seedDisconnectThreshold,omitempty"`
-	SeedInfoKeepThreshold   *uint32  `json:"seedInfoKeepThreshold,omitempty"`
-	SeedInfoNidsCount       *uint32  `json:"seedInfoNidsCount,omitempty"`
-	SeedNextPosition        *float64 `json:"seedNextPosition,omitempty"`
-	UpdatePeriod            *uint32  `json:"updatePeriod,omitempty"`
-}
-
-type Kvs struct {
-	RetryMax         *uint32 `json:"retryMax,omitempty"`
-	RetryIntervalMin *uint32 `json:"retryIntervalMin,omitempty"`
-	RetryIntervalMax *uint32 `json:"retryIntervalMax,omitempty"`
-}
-
-type Spread struct {
-	CacheTime *uint32 `json:"cacheTime,omitempty"`
-}
-
 type Cluster struct {
 	// Revision is to describe the version of the configuration.
 	// Node should be restarted when the revision between the seed and the node is different.
@@ -105,12 +63,63 @@ type Cluster struct {
 	// the pseudo setting by setting a very large value.
 	WebRTCPacketBaseBytes int `json:"webrtcPacketBaseBytes,omitempty"`
 
-	HopCountMax *uint32 `json:"hopCountMax,omitempty"`
+	// The interval at which packets exchanging routing information are sent.
+	// However, if necessary, packets may be sent at intervals shorter than the setting.
+	RoutingExchangeInterval time.Duration `json:"-"`
 
-	CoordSystem2d *CoordSystem2D `json:"coordSystem2D,omitempty"`
-	Routing       Routing        `json:"routing"`
-	Kvs           *Kvs           `json:"kvs,omitempty"`
-	Spread        *Spread        `json:"spread,omitempty"`
+	// The ratio of nodes that connect to the seed. For example, if 3 is set, the node will
+	// try to connect to the seed if no node is found in the neighborhood of 3 that connects to the seed.
+	// If set 0, all nodes will try to keep a connection to the seed.
+	SeedConnectRate uint `json:"seedConnectRate,omitempty"`
+
+	// Interval to review connections to SEED. If a node has been connected to seed for more than
+	// a set amount of time and there is a node in the neighborhood that is already connected to seed,
+	// the connection to seed may be disconnected. This value will be unused when `seedConnectRate` is 0.
+	// If you set 0, 1min will be set as the default value.
+	SeedReconnectDuration time.Duration `json:"-"`
+
+	// HopCountMax *uint32 `json:"hopCountMax,omitempty"`
+
+	Geometry *Geometry `json:"geometry,omitempty"`
+
+	Kvs    *Kvs    `json:"kvs,omitempty"`
+	Spread *Spread `json:"spread,omitempty"`
+}
+
+// ICEServer is a configuration for ICE server. It is used to establish a WebRTC connection.
+type ICEServer struct {
+	// URLs is a list of URLs of the ICE server.
+	URLs []string `json:"urls,omitempty"`
+	// Username is a username for the ICE server.
+	Username string `json:"username,omitempty"`
+	// Credential is a credential for the ICE server.
+	Credential string `json:"credential,omitempty"`
+}
+
+type Geometry struct {
+	Plane  *GeometryPlane  `json:"plane,omitempty"`
+	Sphere *GeometrySphere `json:"sphere,omitempty"`
+}
+
+type GeometryPlane struct {
+	XMin float64 `json:"xMin"`
+	XMax float64 `json:"xMax"`
+	YMin float64 `json:"yMin"`
+	YMax float64 `json:"yMax"`
+}
+
+type GeometrySphere struct {
+	Radius float64 `json:"radius"`
+}
+
+type Kvs struct {
+	RetryMax         *uint32 `json:"retryMax,omitempty"`
+	RetryIntervalMin *uint32 `json:"retryIntervalMin,omitempty"`
+	RetryIntervalMax *uint32 `json:"retryIntervalMax,omitempty"`
+}
+
+type Spread struct {
+	CacheTime *uint32 `json:"cacheTime,omitempty"`
 }
 
 func (c *Cluster) MarshalJSON() ([]byte, error) {
@@ -118,16 +127,20 @@ func (c *Cluster) MarshalJSON() ([]byte, error) {
 
 	return json.Marshal(&struct {
 		*Alias
-		SessionTimeout    string `json:"sessionTimeout"`
-		PollingTimeout    string `json:"pollingTimeout"`
-		KeepaliveInterval string `json:"keepaliveInterval"`
-		BufferInterval    string `json:"bufferInterval"`
+		SessionTimeout          string `json:"sessionTimeout"`
+		PollingTimeout          string `json:"pollingTimeout"`
+		KeepaliveInterval       string `json:"keepaliveInterval"`
+		BufferInterval          string `json:"bufferInterval"`
+		RoutingExchangeInterval string `json:"routingExchangeInterval"`
+		SeedReconnectDuration   string `json:"seedReconnectDuration"`
 	}{
-		Alias:             (*Alias)(c),
-		SessionTimeout:    c.SessionTimeout.String(),
-		PollingTimeout:    c.PollingTimeout.String(),
-		KeepaliveInterval: c.KeepaliveInterval.String(),
-		BufferInterval:    c.BufferInterval.String(),
+		Alias:                   (*Alias)(c),
+		SessionTimeout:          c.SessionTimeout.String(),
+		PollingTimeout:          c.PollingTimeout.String(),
+		KeepaliveInterval:       c.KeepaliveInterval.String(),
+		BufferInterval:          c.BufferInterval.String(),
+		RoutingExchangeInterval: c.RoutingExchangeInterval.String(),
+		SeedReconnectDuration:   c.SeedReconnectDuration.String(),
 	})
 }
 
@@ -136,10 +149,12 @@ func (c *Cluster) UnmarshalJSON(b []byte) error {
 
 	aux := &struct {
 		*Alias
-		SessionTimeout    string `json:"sessionTimeout"`
-		PollingTimeout    string `json:"pollingTimeout"`
-		KeepaliveInterval string `json:"keepaliveInterval"`
-		BufferInterval    string `json:"bufferInterval"`
+		SessionTimeout          string `json:"sessionTimeout"`
+		PollingTimeout          string `json:"pollingTimeout"`
+		KeepaliveInterval       string `json:"keepaliveInterval"`
+		BufferInterval          string `json:"bufferInterval"`
+		RoutingExchangeInterval string `json:"routingExchangeInterval"`
+		SeedReconnectDuration   string `json:"seedReconnectDuration"`
 	}{
 		Alias: (*Alias)(c),
 	}
@@ -172,21 +187,127 @@ func (c *Cluster) UnmarshalJSON(b []byte) error {
 	if c.WebRTCPacketBaseBytes == 0 {
 		c.WebRTCPacketBaseBytes = 512 * 1024
 	}
+	// RoutingExchangeInterval
+	c.RoutingExchangeInterval, err = time.ParseDuration(aux.RoutingExchangeInterval)
+	if err != nil {
+		return fmt.Errorf("failed to parse `routingExchangeInterval`: %w", err)
+	}
+	// SeedReconnectDuration
+	if len(aux.SeedReconnectDuration) == 0 {
+		c.SeedReconnectDuration = 1 * time.Minute
+	} else {
+		c.SeedReconnectDuration, err = time.ParseDuration(aux.SeedReconnectDuration)
+		if err != nil {
+			return fmt.Errorf("failed to parse `seedReconnectDuration`: %w", err)
+		}
+		if c.SeedReconnectDuration == 0 {
+			c.SeedReconnectDuration = 1 * time.Minute
+		}
+	}
 
 	return nil
 }
 
 func (c *Cluster) Validate() error {
-	if c.IceServers == nil || len(c.IceServers) == 0 {
+	if c.SessionTimeout <= 0 {
+		return errors.New("config value of `sessionTimeout` must be greater than 0")
+	}
+
+	if c.PollingTimeout <= 0 || c.SessionTimeout <= c.PollingTimeout {
+		return errors.New("config value of `pollingTimeout` must be within range of 0 to `sessionTimeout`")
+	}
+
+	if len(c.IceServers) == 0 {
 		return errors.New("config value of `iceServers` required")
+	}
+
+	for _, iceServer := range c.IceServers {
+		if err := iceServer.validate(); err != nil {
+			return err
+		}
+	}
+
+	if c.KeepaliveInterval <= 0 || c.SessionTimeout <= c.KeepaliveInterval {
+		return errors.New("config value of `keepaliveInterval` must be within range of 0 to `sessionTimeout`")
+	}
+
+	if c.BufferInterval < 0 {
+		return errors.New("config value of `bufferInterval` must be greater than or equal to 0")
 	}
 
 	if c.WebRTCPacketBaseBytes < 0 {
 		return errors.New("config value of `webrtcPacketBaseBytes` must be greater than or equal to 0")
 	}
 
-	if c.CoordSystem2d == nil && c.Spread != nil {
-		return errors.New("`spread` module require `coordSystem2D` configurations")
+	if c.RoutingExchangeInterval <= 0 {
+		return errors.New("config value of `routingExchangeInterval` must be greater than 0")
+	}
+
+	if !c.Geometry.isSet() && c.Spread != nil {
+		return errors.New("`spread` module require `geometry` configurations")
+	}
+
+	if c.Geometry.isSet() {
+		if err := c.Geometry.validate(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *ICEServer) validate() error {
+	if len(s.URLs) == 0 {
+		return errors.New("config value of `urls` required in `iceServers`")
+	}
+
+	for _, url := range s.URLs {
+		if url == "" {
+			return errors.New("config value of `urls` must not be empty in `iceServers`")
+		}
+	}
+
+	return nil
+}
+
+func (g *Geometry) isSet() bool {
+	if g == nil {
+		return false
+	}
+
+	if g.Plane == nil && g.Sphere == nil {
+		return false
+	}
+
+	return true
+}
+
+func (g *Geometry) validate() error {
+	if g.Plane != nil && g.Sphere != nil {
+		return errors.New("config value of `geometry` must be either `plane` or `sphere`")
+	}
+
+	if g.Plane != nil {
+		return g.Plane.validate()
+	}
+
+	return g.Sphere.validate()
+}
+
+func (gp *GeometryPlane) validate() error {
+	if gp.XMin >= gp.XMax {
+		return errors.New("config value of `xMin` must be less than `xMax` in `geometry.plane`")
+	}
+	if gp.YMin >= gp.YMax {
+		return errors.New("config value of `yMin` must be less than `yMax` in `geometry.plane`")
+	}
+
+	return nil
+}
+
+func (gs *GeometrySphere) validate() error {
+	if gs.Radius <= 0 {
+		return errors.New("config value of `radius` must be greater than 0 in `geometry.sphere`")
 	}
 
 	return nil

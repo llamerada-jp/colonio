@@ -64,7 +64,7 @@ func (n *Network) Connect(url string, token []byte) error {
 		Logger:   n.config.Logger,
 		LocalNID: n.localNID,
 	})
-	n.routing = routing.NewRouting(&routing.RoutingConfig{})
+	n.routing = routing.NewRouting(&routing.Config{})
 	n.seedAccessor = seed_accessor.NewSeedAccessor(&seed_accessor.Config{
 		Ctx:    n.config.Ctx,
 		Logger: n.config.Logger,
