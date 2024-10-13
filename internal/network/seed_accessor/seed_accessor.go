@@ -33,20 +33,20 @@ import (
 
 type Handler interface {
 	SeedAuthorizeFailed()
-	SeedChangeState()
+	SeedChangeState(bool)
 	SeedRecvConfig(*config.Cluster)
 	SeedRecvPacket(*shared.Packet)
 	SeedRequireRandomConnect()
 }
 
 type Config struct {
-	Ctx          context.Context
-	Logger       *slog.Logger
-	Transporter  SeedTransporter
-	EventHandler Handler
-	URL          string
-	LocalNID     *shared.NodeID
-	Token        []byte
+	Ctx         context.Context
+	Logger      *slog.Logger
+	Transporter SeedTransporter
+	Handler     Handler
+	URL         string
+	LocalNID    *shared.NodeID
+	Token       []byte
 	// Interval between retries when a network error is detected
 	TripInterval time.Duration
 }
@@ -56,9 +56,9 @@ type SeedAccessor struct {
 	ctx    context.Context
 	cancel func()
 
-	// statMtx is for activated, sessionID, waiting and isNodeOnline
+	// statMtx is for enabled, sessionID, waiting and isNodeOnline
 	statMtx   sync.RWMutex
-	activated bool
+	enabled   bool
 	sessionID string
 	// shared session timeout of the cluster
 	sessionTimeout time.Duration
@@ -85,7 +85,7 @@ func NewSeedAccessor(config *Config) *SeedAccessor {
 		config:            config,
 		ctx:               ctx,
 		cancel:            cancel,
-		activated:         true,
+		enabled:           true,
 		waiting:           make([]*proto.SeedPacket, 0),
 		isNodeOnline:      false,
 		onlyOne:           false,
@@ -115,25 +115,25 @@ func NewSeedAccessor(config *Config) *SeedAccessor {
 	return sa
 }
 
-// isAuthenticated indicates whether the seedAccessor is authenticated or not.
+// IsAuthenticated indicates whether the seedAccessor is authenticated or not.
 // return true if authenticated, otherwise false, contain the state need to re-authenticate.
-func (sa *SeedAccessor) isAuthenticated() bool {
+func (sa *SeedAccessor) IsAuthenticated() bool {
 	sa.statMtx.RLock()
 	defer sa.statMtx.RUnlock()
 	return sa.sessionID != ""
 }
 
-// isOnlyOne indicates whether the node is the only one online of the seed.
-func (sa *SeedAccessor) isOnlyOne() bool {
+// IsOnlyOne indicates whether the node is the only one online of the seed.
+func (sa *SeedAccessor) IsOnlyOne() bool {
 	sa.statMtx.RLock()
 	defer sa.statMtx.RUnlock()
 	return sa.onlyOne
 }
 
-func (sa *SeedAccessor) activate(sw bool) {
+func (sa *SeedAccessor) SetEnabled(sw bool) {
 	sa.statMtx.Lock()
 	defer sa.statMtx.Unlock()
-	sa.activated = sw
+	sa.enabled = sw
 }
 
 func (sa *SeedAccessor) SetNodeOnlineState(sw bool) {
@@ -142,7 +142,7 @@ func (sa *SeedAccessor) SetNodeOnlineState(sw bool) {
 	sa.isNodeOnline = sw
 }
 
-func (sa *SeedAccessor) relayPacket(packet *shared.Packet) {
+func (sa *SeedAccessor) RelayPacket(packet *shared.Packet) {
 	sa.statMtx.Lock()
 	defer sa.statMtx.Unlock()
 	sa.waiting = append(sa.waiting, &proto.SeedPacket{
@@ -155,9 +155,9 @@ func (sa *SeedAccessor) relayPacket(packet *shared.Packet) {
 	})
 }
 
-func (sa *SeedAccessor) destruct() {
+func (sa *SeedAccessor) Destruct() {
 	sa.statMtx.Lock()
-	sa.activated = false
+	sa.enabled = false
 	sa.waiting = nil
 	sa.isNodeOnline = false
 	sa.onlyOne = false
@@ -185,13 +185,13 @@ func (sa *SeedAccessor) subRoutine() {
 	sa.connectiveMtx.Unlock()
 
 	sa.statMtx.RLock()
-	activated := sa.activated
+	enabled := sa.enabled
 	haveSession := sa.sessionID != ""
 	haveWaiting := len(sa.waiting) > 0
 	sa.statMtx.RUnlock()
 
 	// disconnect if !online and have session
-	if !activated {
+	if !enabled {
 		if haveSession {
 			sa.close()
 		}
@@ -221,7 +221,7 @@ func (sa *SeedAccessor) subRoutine() {
 		time.Now().After(sa.livenessTimestamp.Add(sa.sessionTimeout*2)) {
 
 		sa.sessionID = ""
-		go sa.config.EventHandler.SeedChangeState()
+		go sa.config.Handler.SeedChangeState(false)
 	}
 }
 
@@ -240,7 +240,7 @@ func (sa *SeedAccessor) authenticate() {
 
 	sa.statMtx.RLock()
 	defer sa.statMtx.RUnlock()
-	if !sa.activated || sa.sessionID != "" {
+	if !sa.enabled || sa.sessionID != "" {
 		return
 	}
 
@@ -271,9 +271,9 @@ func (sa *SeedAccessor) authenticate() {
 		case http.StatusForbidden:
 			// failed to authenticate
 			sa.statMtx.Lock()
-			sa.activated = false
+			sa.enabled = false
 			sa.statMtx.Unlock()
-			go sa.config.EventHandler.SeedAuthorizeFailed()
+			go sa.config.Handler.SeedAuthorizeFailed()
 			return
 
 		default:
@@ -301,8 +301,8 @@ func (sa *SeedAccessor) authenticate() {
 		sa.decodeHint(res.Hint)
 
 		go func() {
-			sa.config.EventHandler.SeedRecvConfig(&config)
-			sa.config.EventHandler.SeedChangeState()
+			sa.config.Handler.SeedRecvConfig(&config)
+			sa.config.Handler.SeedChangeState(true)
 		}()
 	}()
 }
@@ -337,7 +337,7 @@ func (sa *SeedAccessor) close() {
 		sa.statMtx.Lock()
 		defer sa.statMtx.Unlock()
 		sa.sessionID = ""
-		go sa.config.EventHandler.SeedChangeState()
+		go sa.config.Handler.SeedChangeState(false)
 	}()
 }
 
@@ -376,7 +376,7 @@ func (sa *SeedAccessor) polling() {
 
 		go func() {
 			for _, packet := range res.Packets {
-				sa.config.EventHandler.SeedRecvPacket(&shared.Packet{
+				sa.config.Handler.SeedRecvPacket(&shared.Packet{
 					DstNodeID: shared.NewNodeIDFromProto(packet.DstNodeId),
 					SrcNodeID: shared.NewNodeIDFromProto(packet.SrcNodeId),
 					ID:        packet.Id,
@@ -429,7 +429,7 @@ func (sa *SeedAccessor) decodeHint(hint uint32) {
 	sa.onlyOne = (hint & shared.HintOnlyOne) != 0
 
 	if (hint & shared.HintRequireRandom) != 0 {
-		go sa.config.EventHandler.SeedRequireRandomConnect()
+		go sa.config.Handler.SeedRequireRandomConnect()
 	}
 }
 
@@ -463,7 +463,7 @@ func (sa *SeedAccessor) send(path string, packet protoreflect.ProtoMessage) ([]b
 		sa.sessionID = ""
 		sa.statMtx.Unlock()
 		if authenticated {
-			go sa.config.EventHandler.SeedChangeState()
+			go sa.config.Handler.SeedChangeState(false)
 		}
 	}
 

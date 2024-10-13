@@ -18,6 +18,7 @@ package routing
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/llamerada-jp/colonio/internal/geometry"
@@ -26,8 +27,13 @@ import (
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
+const (
+	connectionUpdateInterval = 10 * time.Second
+)
+
 type Handler interface {
-	routingSetSeedActivated(activated bool)
+	RoutingSetSeedEnabled(bool)
+	RoutingUpdateConnection(required, keep map[shared.NodeID]struct{})
 }
 
 type Config struct {
@@ -47,15 +53,25 @@ type Config struct {
 }
 
 type Routing struct {
-	config *Config
-	r1d    *routing1D
-	r2d    *routing2D
-	rs     *routingSeed
+	config                  *Config
+	r1d                     *routing1D
+	r2d                     *routing2D
+	rs                      *routingSeed
+	mtx                     sync.Mutex
+	requireUpdateRoute      bool
+	lastRouteUpdate         time.Time
+	requireUpdateConnection bool
+	lastConnectionUpdate    time.Time
 }
 
 func NewRouting(config *Config) *Routing {
 	r := &Routing{
-		config: config,
+		config:                  config,
+		mtx:                     sync.Mutex{},
+		requireUpdateRoute:      false,
+		lastRouteUpdate:         time.Now(),
+		requireUpdateConnection: false,
+		lastConnectionUpdate:    time.Now(),
 	}
 
 	r.r1d = newRouting1D(&routing1DConfig{
@@ -64,7 +80,9 @@ func NewRouting(config *Config) *Routing {
 
 	if config.Geometry != nil {
 		r.r2d = newRouting2D(&routing2DConfig{
-			geometry: config.Geometry,
+			logger:      config.Logger,
+			localNodeID: config.LocalNodeID,
+			geometry:    config.Geometry,
 		})
 	}
 
@@ -119,21 +137,15 @@ func (r *Routing) UpdateLocalPosition(pos *geometry.Coordinate) {
 }
 
 func (r *Routing) UpdateSeedState(online bool) {
-	updated := r.rs.updateSeedState(online)
-
-	if updated {
-		r.sendRouting()
-	}
+	r.requireUpdateRoute = r.rs.updateSeedState(online) || r.requireUpdateRoute
 }
 
-func (r *Routing) UpdateNodeConnections(connections []*shared.NodeID) {
-	updated := r.rs.updateNodeConnections(connections)
-
-	if updated {
-		r.sendRouting()
+func (r *Routing) UpdateNodeConnections(connections map[shared.NodeID]struct{}) {
+	r.requireUpdateRoute = r.rs.updateNodeConnections(connections) || r.requireUpdateRoute
+	r.requireUpdateConnection = r.r1d.updateNodeConnections(connections) || r.requireUpdateConnection
+	if r.r2d != nil {
+		r.requireUpdateConnection = r.r2d.updateNodeConnections(connections) || r.requireUpdateConnection
 	}
-
-	panic("not implemented")
 }
 
 func (r *Routing) CountRecvPacket(from *shared.NodeID, packet *shared.Packet) {
@@ -141,25 +153,63 @@ func (r *Routing) CountRecvPacket(from *shared.NodeID, packet *shared.Packet) {
 }
 
 func (r *Routing) subRoutine() {
-	panic("not implemented")
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	r.requireUpdateRoute = r.rs.subRoutine() || r.requireUpdateRoute || r.requireUpdateConnection
+
+	if r.requireUpdateConnection || time.Now().After(r.lastConnectionUpdate.Add(connectionUpdateInterval)) {
+		required, keep := r.r1d.getConnections()
+		if r.r2d != nil {
+			required2 := r.r2d.getConnections()
+			for nodeID := range required2 {
+				required[nodeID] = struct{}{}
+			}
+		}
+		r.config.Handler.RoutingUpdateConnection(required, keep)
+		r.requireUpdateConnection = false
+		r.lastConnectionUpdate = time.Now()
+	}
+
+	if r.requireUpdateRoute || time.Now().After(r.lastRouteUpdate.Add(r.config.RoutingExchangeInterval)) {
+		r.sendRouting()
+		r.requireUpdateRoute = false
+		r.lastRouteUpdate = time.Now()
+	}
 }
 
 func (r *Routing) sendRouting() {
-	panic("not implemented")
+	content := &proto.Routing{
+		NodeRecords: make(map[string]*proto.RoutingNodeRecord),
+	}
+	r.rs.setupRoutingPacket(content)
+	r.r1d.setupRoutingPacket(content)
+	if r.r2d != nil {
+		r.r2d.setupRoutingPacket(content)
+	}
+
+	r.config.Transferer.RequestOneWay(&shared.NodeIDNext, shared.PacketModeNoRetry, &proto.PacketContent{
+		Content: &proto.PacketContent_Routing{
+			Routing: content,
+		},
+	})
 }
 
 func (r *Routing) recvRouting(p *shared.Packet) {
-	panic("not implemented")
+	src := p.SrcNodeID
+	content := p.Content.GetRouting()
+
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	r.requireUpdateRoute = r.rs.recvRoutingPacket(src, content) || r.requireUpdateRoute
+	r.requireUpdateConnection = r.r1d.recvRoutingPacket(src, content) || r.requireUpdateConnection
+	if r.r2d != nil {
+		r.requireUpdateConnection = r.r2d.recvRoutingPacket(src, content) || r.requireUpdateConnection
+	}
 }
 
-func (r *Routing) seedGetActivated() bool {
-	panic("not implemented")
-}
-
-func (r *Routing) seedSetActivated(activated bool) {
-	r.config.Handler.routingSetSeedActivated(activated)
-}
-
-func (r *Routing) seedRequestRoutingExchange() {
-	panic("not implemented")
+// implement handlers
+func (r *Routing) seedSetEnabled(enabled bool) {
+	r.config.Handler.RoutingSetSeedEnabled(enabled)
 }

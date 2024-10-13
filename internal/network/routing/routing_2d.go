@@ -18,13 +18,13 @@ package routing
 import (
 	"log/slog"
 	"math"
-	"slices"
 	"sync"
 
 	"github.com/fogleman/delaunay"
 	"github.com/llamerada-jp/colonio/internal/geometry"
 	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"golang.org/x/exp/maps"
 )
 
 type routing2DConfig struct {
@@ -42,7 +42,7 @@ type routing2D struct {
 	config          *routing2DConfig
 	mtx             sync.RWMutex
 	localPosition   geometry.Coordinate
-	neighborNodeIDs []*shared.NodeID
+	neighborNodeIDs map[shared.NodeID]struct{}
 	routeInfos      map[shared.NodeID]*routeInfo2D
 }
 
@@ -221,7 +221,7 @@ func (r *routing2D) setupRoutingPacket(content *proto.Routing) {
 	}
 }
 
-func (r *routing2D) getConnections() []*shared.NodeID {
+func (r *routing2D) getConnections() map[shared.NodeID]struct{} {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
@@ -230,11 +230,11 @@ func (r *routing2D) getConnections() []*shared.NodeID {
 
 // private
 func (r *routing2D) neighborNodeIDChanged() bool {
-	neighborNodeIDs := make([]*shared.NodeID, 0)
+	neighborNodeIDs := make(map[shared.NodeID]struct{})
 
 	if len(r.routeInfos) < 3 {
 		for nodeID := range r.routeInfos {
-			neighborNodeIDs = append(neighborNodeIDs, &nodeID)
+			neighborNodeIDs[nodeID] = struct{}{}
 		}
 
 	} else {
@@ -296,24 +296,19 @@ func (r *routing2D) neighborNodeIDChanged() bool {
 				continue
 			}
 			if *n1 == *r.config.localNodeID {
-				neighborNodeIDs = append(neighborNodeIDs, n2)
+				neighborNodeIDs[*n2] = struct{}{}
 			}
 			if *n2 == *r.config.localNodeID {
-				neighborNodeIDs = append(neighborNodeIDs, n1)
+				neighborNodeIDs[*n1] = struct{}{}
 			}
 		}
 	}
 
-	slices.SortFunc(neighborNodeIDs, func(a, b *shared.NodeID) int {
-		return a.Compare(b)
-	})
-
-	if !slices.EqualFunc(r.neighborNodeIDs, neighborNodeIDs, func(a, b *shared.NodeID) bool {
-		return *a == *b
-	}) {
+	if !maps.Equal(neighborNodeIDs, r.neighborNodeIDs) {
 		r.neighborNodeIDs = neighborNodeIDs
 		return true
 	}
+
 	return false
 }
 

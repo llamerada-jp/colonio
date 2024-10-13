@@ -484,10 +484,7 @@ func TestRouting2D_neighborNodeIDChanged(t *testing.T) {
 		}
 	}
 
-	require.Len(t, expect, len(r.neighborNodeIDs))
-	for _, nodeID := range r.neighborNodeIDs {
-		assert.Contains(t, expect, *nodeID)
-	}
+	assert.Equal(t, expect, r.neighborNodeIDs)
 }
 
 func getUniquePositions(n int) []*geometry.Coordinate {

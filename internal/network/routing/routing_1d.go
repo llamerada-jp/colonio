@@ -231,14 +231,14 @@ func (r *routing1D) setupRoutingPacket(content *proto.Routing) {
 	}
 }
 
-func (r *routing1D) getConnections() ([]*shared.NodeID, []*shared.NodeID) {
+func (r *routing1D) getConnections() (map[shared.NodeID]struct{}, map[shared.NodeID]struct{}) {
 	r.mtx.Lock()
 	r.normalizeScore()
 	r.mtx.Unlock()
 
 	now := time.Now()
 	required := make(map[shared.NodeID]struct{})
-	keep := make([]*shared.NodeID, 0)
+	keep := make(map[shared.NodeID]struct{})
 	requiredLevelCount := make(map[int]int)
 	candidatesByLevel := make(map[int]map[shared.NodeID]int)
 	for lv := 0; lv < levelRangesCount; lv++ {
@@ -256,7 +256,7 @@ func (r *routing1D) getConnections() ([]*shared.NodeID, []*shared.NodeID) {
 		connectedNodeID := connectedNodeID
 		// keep connections when the connection level is over the levelRangesCount
 		if connectedInfo.level == -1 {
-			keep = append(keep, &connectedNodeID)
+			keep[connectedNodeID] = struct{}{}
 			continue
 		}
 
@@ -319,12 +319,7 @@ func (r *routing1D) getConnections() ([]*shared.NodeID, []*shared.NodeID) {
 		}
 	}
 
-	result := make([]*shared.NodeID, 0, len(required))
-	for nodeID := range required {
-		nodeID := nodeID
-		result = append(result, &nodeID)
-	}
-	return result, keep
+	return required, keep
 }
 
 // private

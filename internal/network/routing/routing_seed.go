@@ -16,7 +16,6 @@
 package routing
 
 import (
-	"context"
 	"math/rand"
 	"sync"
 	"time"
@@ -28,11 +27,10 @@ import (
 const MAX_SEED_DISTANCE = 99999
 
 type routingSeedHandler interface {
-	seedSetActivated(activated bool)
+	seedSetEnabled(bool)
 }
 
 type routingSeedConfig struct {
-	ctx     context.Context
 	handler routingSeedHandler
 
 	// should be copied from config.RoutingExchangeInterval
@@ -55,7 +53,6 @@ type routingSeed struct {
 	nextForSeed      *shared.NodeID
 	distanceFromSeed uint
 	seedRouteInfos   map[shared.NodeID]*seedRouteInfo
-	subRoutineTicker *time.Ticker
 }
 
 func newRoutingSeed(config *routingSeedConfig) *routingSeed {
@@ -64,21 +61,7 @@ func newRoutingSeed(config *routingSeedConfig) *routingSeed {
 		nextForSeed:      &shared.NodeIDNone,
 		distanceFromSeed: MAX_SEED_DISTANCE,
 		seedRouteInfos:   make(map[shared.NodeID]*seedRouteInfo),
-		subRoutineTicker: time.NewTicker(config.routingExchangeInterval / 2),
 	}
-
-	go func() {
-		defer r.subRoutineTicker.Stop()
-		for {
-			select {
-			case <-r.config.ctx.Done():
-				return
-
-			case <-r.subRoutineTicker.C:
-				r.subRoutine()
-			}
-		}
-	}()
 
 	return r
 }
@@ -105,7 +88,7 @@ func (rs *routingSeed) updateSeedState(online bool) bool {
 	return rs.updateNextForSeed()
 }
 
-func (rs *routingSeed) updateNodeConnections(connections []*shared.NodeID) bool {
+func (rs *routingSeed) updateNodeConnections(connections map[shared.NodeID]struct{}) bool {
 	rs.mtx.Lock()
 	defer rs.mtx.Unlock()
 
@@ -117,13 +100,7 @@ func (rs *routingSeed) updateNodeConnections(connections []*shared.NodeID) bool 
 			continue
 		}
 
-		enabled := false
-		for _, c := range connections {
-			if nodeID.Equal(c) {
-				enabled = true
-				break
-			}
-		}
+		_, enabled := connections[nodeID]
 
 		// remove record of distance if the node is disconnected
 		if !enabled {
@@ -177,38 +154,39 @@ func (rs *routingSeed) setupRoutingPacket(content *proto.Routing) {
 	}
 }
 
-func (rs *routingSeed) cleanup() bool {
-	rs.mtx.Lock()
-	defer rs.mtx.Unlock()
-
-	rs.cleanupSeedRouteInfos()
-	return rs.updateNextForSeed()
-}
-
-func (rs *routingSeed) subRoutine() {
+func (rs *routingSeed) subRoutine() bool {
 	rs.mtx.Lock()
 	defer rs.mtx.Unlock()
 
 	if rs.config.seedConnectRate == 0 {
-		rs.config.handler.seedSetActivated(true)
-		return
+		rs.config.handler.seedSetEnabled(true)
+	} else {
+
+		seedRouteInfo := rs.seedRouteInfos[shared.NodeIDThis]
+		if seedRouteInfo == nil {
+			rs.reviewConnectionToSeed()
+		} else if time.Now().After(seedRouteInfo.timestamp.Add(rs.config.seedReconnectDuration)) {
+			rs.reviewDisconnectFromSeed()
+		}
 	}
 
-	seedRouteInfo := rs.seedRouteInfos[shared.NodeIDThis]
-	if seedRouteInfo == nil {
-		rs.reviewConnectionToSeed()
-	} else if time.Now().After(seedRouteInfo.timestamp.Add(rs.config.seedReconnectDuration)) {
-		rs.reviewDisconnectFromSeed()
+	if rs.cleanupSeedRouteInfos() {
+		return rs.updateNextForSeed()
+	} else {
+		return false
 	}
 }
 
-func (rs *routingSeed) cleanupSeedRouteInfos() {
+func (rs *routingSeed) cleanupSeedRouteInfos() bool {
 	now := time.Now()
+	updated := false
 	for nodeID, info := range rs.seedRouteInfos {
 		if now.After(info.timestamp.Add(rs.config.routingExchangeInterval * 2)) {
 			delete(rs.seedRouteInfos, nodeID)
+			updated = true
 		}
 	}
+	return updated
 }
 
 func (rs *routingSeed) updateNextForSeed() bool {
@@ -242,7 +220,7 @@ func (rs *routingSeed) reviewConnectionToSeed() {
 
 	// should connect if there is no connection to next node
 	if len(rs.seedRouteInfos) == 0 {
-		rs.config.handler.seedSetActivated(true)
+		rs.config.handler.seedSetEnabled(true)
 		return
 	}
 
@@ -254,7 +232,7 @@ func (rs *routingSeed) reviewConnectionToSeed() {
 
 	// 1/3 chance of connection to seed
 	if rand.Uint32()%3 == 0 {
-		rs.config.handler.seedSetActivated(true)
+		rs.config.handler.seedSetEnabled(true)
 	}
 }
 
@@ -272,6 +250,6 @@ func (rs *routingSeed) reviewDisconnectFromSeed() {
 
 	// 1/3 change of disconnect from seed
 	if rand.Uint32()%3 == 0 {
-		rs.config.handler.seedSetActivated(false)
+		rs.config.handler.seedSetEnabled(false)
 	}
 }

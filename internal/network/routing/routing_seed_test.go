@@ -16,7 +16,6 @@
 package routing
 
 import (
-	"context"
 	"sync"
 	"testing"
 	"time"
@@ -29,12 +28,12 @@ import (
 )
 
 type routingSeedHandlerHelper struct {
-	setActivated func(bool)
+	setEnabled func(bool)
 }
 
-func (h *routingSeedHandlerHelper) seedSetActivated(activated bool) {
-	if h.setActivated != nil {
-		h.setActivated(activated)
+func (h *routingSeedHandlerHelper) seedSetEnabled(enabled bool) {
+	if h.setEnabled != nil {
+		h.setEnabled(enabled)
 	}
 }
 
@@ -42,22 +41,22 @@ func TestRoutingSeed_handler(t *testing.T) {
 	tests := []struct {
 		connectRate      uint
 		neighborDistance uint32
-		expectActivated  bool
+		expectEnabled    bool
 	}{
 		{
 			connectRate:      0,
 			neighborDistance: 1,
-			expectActivated:  true,
+			expectEnabled:    true,
 		},
 		{
 			connectRate:      5,
 			neighborDistance: 1,
-			expectActivated:  false,
+			expectEnabled:    false,
 		},
 		{
 			connectRate:      5,
 			neighborDistance: 10,
-			expectActivated:  true,
+			expectEnabled:    true,
 		},
 	}
 
@@ -66,17 +65,14 @@ func TestRoutingSeed_handler(t *testing.T) {
 			t.Logf("test %d", i)
 
 			mtx := sync.Mutex{}
-			activated := !test.expectActivated
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			enabled := !test.expectEnabled
 
 			rs := newRoutingSeed(&routingSeedConfig{
-				ctx: ctx,
 				handler: &routingSeedHandlerHelper{
-					setActivated: func(a bool) {
+					setEnabled: func(a bool) {
 						mtx.Lock()
 						defer mtx.Unlock()
-						activated = a
+						enabled = a
 					},
 				},
 				routingExchangeInterval: 100 * time.Millisecond,
@@ -84,24 +80,25 @@ func TestRoutingSeed_handler(t *testing.T) {
 				seedReconnectDuration:   100 * time.Millisecond,
 			})
 
-			rs.updateSeedState(!test.expectActivated)
+			rs.updateSeedState(!test.expectEnabled)
 
-			// wait for change activated to expected value
+			// wait for change enabled to expected value
 			require.Eventually(t, func() bool {
 				rs.recvRoutingPacket(shared.NewRandomNodeID(), &proto.Routing{
 					SeedDistance: test.neighborDistance,
 				})
+				rs.subRoutine()
 
 				mtx.Lock()
 				defer mtx.Unlock()
-				return activated == test.expectActivated
+				return enabled == test.expectEnabled
 			}, 10*time.Second, 30*time.Millisecond)
 
-			// check activated value is kept
+			// check enabled value is kept
 			for range 10 {
 				time.Sleep(100 * time.Millisecond)
 				mtx.Lock()
-				assert.Equal(t, test.expectActivated, activated)
+				assert.Equal(t, test.expectEnabled, enabled)
 				mtx.Unlock()
 			}
 		}()
@@ -109,13 +106,9 @@ func TestRoutingSeed_handler(t *testing.T) {
 }
 
 func TestRoutingSeed_updateSeedState(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	rs := newRoutingSeed(&routingSeedConfig{
-		ctx: ctx,
 		handler: &routingSeedHandlerHelper{
-			setActivated: func(bool) {
+			setEnabled: func(bool) {
 				assert.Fail(t, "unexpected call")
 			},
 		},
@@ -141,13 +134,9 @@ func TestRoutingSeed_updateSeedState(t *testing.T) {
 }
 
 func TestRoutingSeed_updateNodeConnections(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	rs := newRoutingSeed(&routingSeedConfig{
-		ctx: ctx,
 		handler: &routingSeedHandlerHelper{
-			setActivated: func(bool) {},
+			setEnabled: func(bool) {},
 		},
 		routingExchangeInterval: 1 * time.Second,
 		seedConnectRate:         10,
@@ -158,7 +147,7 @@ func TestRoutingSeed_updateNodeConnections(t *testing.T) {
 
 	tests := []struct {
 		neighbors      map[shared.NodeID]uint32
-		connections    []*shared.NodeID
+		connections    map[shared.NodeID]struct{}
 		expectNextStep *shared.NodeID
 		expectDistance uint32
 	}{
@@ -168,10 +157,10 @@ func TestRoutingSeed_updateNodeConnections(t *testing.T) {
 				*nodeIDs[1]: 6,
 				*nodeIDs[2]: 5,
 			},
-			connections: []*shared.NodeID{
-				nodeIDs[0],
-				nodeIDs[1],
-				nodeIDs[2],
+			connections: map[shared.NodeID]struct{}{
+				*nodeIDs[0]: {},
+				*nodeIDs[1]: {},
+				*nodeIDs[2]: {},
 			},
 			expectNextStep: nodeIDs[2],
 			expectDistance: 6,
@@ -180,26 +169,26 @@ func TestRoutingSeed_updateNodeConnections(t *testing.T) {
 			neighbors: map[shared.NodeID]uint32{
 				*nodeIDs[1]: 4,
 			},
-			connections: []*shared.NodeID{
-				nodeIDs[0],
-				nodeIDs[1],
-				nodeIDs[2],
+			connections: map[shared.NodeID]struct{}{
+				*nodeIDs[0]: {},
+				*nodeIDs[1]: {},
+				*nodeIDs[2]: {},
 			},
 			expectNextStep: nodeIDs[1],
 			expectDistance: 5,
 		},
 		{
 			neighbors: map[shared.NodeID]uint32{},
-			connections: []*shared.NodeID{
-				nodeIDs[0],
-				nodeIDs[2],
+			connections: map[shared.NodeID]struct{}{
+				*nodeIDs[0]: {},
+				*nodeIDs[2]: {},
 			},
 			expectNextStep: nodeIDs[2],
 			expectDistance: 6,
 		},
 		{
 			neighbors:      map[shared.NodeID]uint32{},
-			connections:    []*shared.NodeID{},
+			connections:    map[shared.NodeID]struct{}{},
 			expectNextStep: &shared.NodeIDNone,
 			expectDistance: MAX_SEED_DISTANCE,
 		},
@@ -224,12 +213,8 @@ func TestRoutingSeed_updateNodeConnections(t *testing.T) {
 	}
 }
 
-func TestRoutingSeed_cleanup(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+func TestRoutingSeed_subRoutine(t *testing.T) {
 	rs := newRoutingSeed(&routingSeedConfig{
-		ctx:                     ctx,
 		handler:                 &routingSeedHandlerHelper{},
 		routingExchangeInterval: 200 * time.Millisecond,
 		seedConnectRate:         10,
@@ -247,16 +232,16 @@ func TestRoutingSeed_cleanup(t *testing.T) {
 	rs.recvRoutingPacket(nodeIDs[2], &proto.Routing{
 		SeedDistance: 6,
 	})
-	assert.False(t, rs.cleanup())
+	assert.False(t, rs.subRoutine())
 	assert.True(t, rs.getNextStep().Equal(nodeIDs[2]))
 	assert.Eventually(t, func() bool {
 		rs.recvRoutingPacket(nodeIDs[1], &proto.Routing{
 			SeedDistance: 7,
 		})
-		return rs.cleanup() && rs.getNextStep().Equal(nodeIDs[1])
+		return rs.subRoutine() && rs.getNextStep().Equal(nodeIDs[1])
 	}, 5*time.Second, 100*time.Millisecond)
-	assert.False(t, rs.cleanup())
+	assert.False(t, rs.subRoutine())
 	assert.Eventually(t, func() bool {
-		return rs.cleanup() && rs.getNextStep().Equal(&shared.NodeIDNone)
+		return rs.subRoutine() && rs.getNextStep().Equal(&shared.NodeIDNone)
 	}, 5*time.Second, 100*time.Millisecond)
 }
