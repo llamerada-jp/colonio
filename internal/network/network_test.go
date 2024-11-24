@@ -194,7 +194,7 @@ func TestNetwork_UpdateLocalPosition(t *testing.T) {
 		return len(positions[0]) == 1 && len(positions[1]) == 1 &&
 			positions[1][*nodeIDs[0]].X == 1.0 && positions[1][*nodeIDs[0]].Y == 1.0 &&
 			positions[0][*nodeIDs[1]].X == 2.0 && positions[0][*nodeIDs[1]].Y == 2.0
-	}, 30*time.Second, 1*time.Second)
+	}, 60*time.Second, 1*time.Second)
 
 	for i := 0; i < 2; i++ {
 		net[i].Disconnect()

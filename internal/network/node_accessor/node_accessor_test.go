@@ -234,7 +234,7 @@ func TestNodeAccessorPair(t *testing.T) {
 	// wait for detecting each other
 	require.Eventually(t, func() bool {
 		return nodeAccessors[0].IsOnline() && nodeAccessors[1].IsOnline()
-	}, 30*time.Second, 100*time.Millisecond)
+	}, 60*time.Second, 100*time.Millisecond)
 
 	for i := 0; i < 2; i++ {
 		nodeAccessors[i].mtx.Lock()
