@@ -2,8 +2,12 @@ SHELL := /bin/bash -o pipefail
 
 # Tool and lib versions
 # https://github.com/protocolbuffers/protobuf/releases
-PROTOC_VERSION :=  25.2
+PROTOC_VERSION := 28.3
 PROTOC_GEN_GO_VERSION := $(shell awk '/google.golang.org\/protobuf/ {print substr($$2, 2)}' go.mod)
+# https://github.com/llamerada-jp/libwebrtc
+LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m119/libwebrtc-119-linux-amd64.tar.gz"
+# https://github.com/kazuho/picojson
+PICOJSON_VERSION := 1.3.0
 
 # Paths
 ROOT_PATH := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
@@ -11,12 +15,6 @@ OUTPUT_PATH := $(ROOT_PATH)/output
 DEPENDING_PKG_PATH := $(ROOT_PATH)/dep
 BINDIR := $(DEPENDING_PKG_PATH)/bin
 WORK_PATH := /tmp/work
-
-# Vserions
-# https://github.com/llamerada-jp/libwebrtc
-LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m119/libwebrtc-119-linux-amd64.tar.gz"
-# https://github.com/kazuho/picojson
-PICOJSON_VERSION := 1.3.0
 
 # Commands
 CURL := curl -sSLf
