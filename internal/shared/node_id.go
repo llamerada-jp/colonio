@@ -259,3 +259,11 @@ func addMod(a0, a1, b0, b1 uint64) (uint64, uint64) {
 
 	return c0, c1
 }
+
+func ConvertNodeIDSetToStringMap(set map[NodeID]struct{}) map[string]struct{} {
+	r := map[string]struct{}{}
+	for k := range set {
+		r[k.String()] = struct{}{}
+	}
+	return r
+}
