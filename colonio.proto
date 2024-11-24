@@ -32,7 +32,7 @@ message NodePacket {
   NodePacketHead head = 1;
   // ID is common to sequence of packets.
   uint32 id = 2;
-  // index decreses by 1 in a sequance of packets.
+  // index decreases by 1 in a sequence of packets.
   uint32 index = 3;
   bytes content = 4;
 }

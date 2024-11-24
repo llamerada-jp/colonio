@@ -1,0 +1,122 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-data
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # local-path is a CSI of rancher
+  storageClassName: local-path
+  volumeMode: Filesystem
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongodb-initdb
+data:
+  mongodb.js: |
+    db.createUser({
+        user: 'simulator',
+        pwd: 'simulator',
+        roles: [
+            {
+                role: 'readWrite',
+                db: 'simulator',
+            },
+        ],
+    });
+
+    db = new Mongo().getDB("simulator");
+
+    db.createCollection(
+      'logs',
+      {
+        timeseries: {
+          timeField: "timestamp",
+          metaField: "nodeID",
+          granularity: "seconds"
+        },
+      }
+    );
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+spec:
+  type: NodePort
+  ports:
+  - name: mongodb-port
+    port: 27017
+    protocol: TCP
+    targetPort: 27017
+    nodePort: 30017
+  selector:
+    app: mongodb
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo:8.0
+        # args: ["--auth"]
+        env:
+        #- name: MONGO_INITDB_ROOT_USERNAME
+        #  value: simulator
+        #- name: MONGO_INITDB_ROOT_PASSWORD
+        #  value: Passw0rd
+        #- name: MONGO_INITDB_DATABASE
+        #  value: simulator
+        - name: MONGO_DATA_DIR
+          value: /data/db
+        - name: MONGO_LOG_DIR
+          value: /data/log
+        livenessProbe:
+          exec:
+            command:
+            - mongosh
+            - --eval
+            - "db.adminCommand('ping')"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 6
+        volumeMounts:
+        - mountPath: /home/mongodb
+          name: home
+        - mountPath: /docker-entrypoint-initdb.d
+          name: initdb
+        - mountPath: /data
+          name: data
+      volumes:
+      - name: home
+        ephemeral:
+          volumeClaimTemplate:
+            spec:
+              accessModes: [ "ReadWriteOnce" ]
+              storageClassName: local-path
+              resources:
+                requests:
+                  storage: 5Gi
+      - name: initdb
+        configMap:
+          name: mongodb-initdb
+      - name: data
+        persistentVolumeClaim:
+          claimName: mongodb-data

@@ -1,0 +1,7 @@
+namespace: colonio-simulator
+commonLabels:
+  app.kubernetes.io/part-of: colonio-simulator
+resources:
+- ../../base
+- node-config.yaml
+- seed-config.yaml

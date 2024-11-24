@@ -24,6 +24,7 @@ import (
 
 	"github.com/llamerada-jp/colonio/internal/geometry"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
+	"github.com/llamerada-jp/colonio/internal/observation"
 	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
@@ -43,6 +44,7 @@ type Config struct {
 	Logger           *slog.Logger
 	LocalNodeID      *shared.NodeID
 	Handler          Handler
+	Observation      observation.Caller
 	Transferer       *transferer.Transferer
 	CoordinateSystem geometry.CoordinateSystem
 
@@ -173,11 +175,13 @@ func (r *Routing) subRoutine() {
 
 	if r.requireUpdateConnection || time.Now().After(r.lastConnectionUpdate.Add(connectionUpdateInterval)) {
 		required, keep := r.r1d.getConnections()
+		r.config.Observation.UpdateRequiredNodeIDs1D(shared.ConvertNodeIDSetToStringMap(required))
 		if r.r2d != nil {
-			required2 := r.r2d.getConnections()
-			for nodeID := range required2 {
+			required2d := r.r2d.getConnections()
+			for nodeID := range required2d {
 				required[nodeID] = struct{}{}
 			}
+			r.config.Observation.UpdateRequiredNodeIDs2D(shared.ConvertNodeIDSetToStringMap(required2d))
 		}
 		r.config.Handler.RoutingUpdateConnection(required, keep)
 		r.requireUpdateConnection = false

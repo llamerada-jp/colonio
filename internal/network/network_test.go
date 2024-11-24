@@ -26,6 +26,7 @@ import (
 
 	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/geometry"
+	"github.com/llamerada-jp/colonio/internal/observation"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/test/testing_seed"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
@@ -73,6 +74,7 @@ func TestNetwork_Connect_alone(t *testing.T) {
 				configReceived = true
 			},
 		},
+		Observation:      &observation.Handlers{},
 		Insecure:         true,
 		SeedTripInterval: 1 * time.Minute,
 	})
@@ -116,6 +118,7 @@ func TestNetwork_Connect(t *testing.T) {
 					configReceived += 1
 				},
 			},
+			Observation:      &observation.Handlers{},
 			Insecure:         true,
 			SeedTripInterval: 1 * time.Minute,
 		})
@@ -170,6 +173,7 @@ func TestNetwork_UpdateLocalPosition(t *testing.T) {
 					positions[i] = p
 				},
 			},
+			Observation:      &observation.Handlers{},
 			Insecure:         true,
 			SeedTripInterval: 1 * time.Minute,
 		})

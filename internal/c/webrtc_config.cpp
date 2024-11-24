@@ -31,22 +31,24 @@ void WebRTCConfig::setup(const std::string& ice_str) {
     return;
   }
 
-  picojson::array ice_servers = ice_v.get<picojson::array>();
-  for (auto& it : ice_servers) {
-    const picojson::object& ice_server = it.get<picojson::object>();
-    webrtc::PeerConnectionInterface::IceServer entry;
-    assert(ice_server.at("urls").is<picojson::array>());
-    for (auto& url : ice_server.at("urls").get<picojson::array>()) {
-      entry.urls.push_back(url.get<std::string>());
-    }
-    if (ice_server.find("username") != ice_server.end()) {
-      entry.username = ice_server.at("username").get<std::string>();
-    }
-    if (ice_server.find("credential") != ice_server.end()) {
-      entry.password = ice_server.at("credential").get<std::string>();
-    }
+  if (ice_v.is<picojson::array>()) {
+    picojson::array ice_servers = ice_v.get<picojson::array>();
+    for (auto& it : ice_servers) {
+      const picojson::object& ice_server = it.get<picojson::object>();
+      webrtc::PeerConnectionInterface::IceServer entry;
+      assert(ice_server.at("urls").is<picojson::array>());
+      for (auto& url : ice_server.at("urls").get<picojson::array>()) {
+        entry.urls.push_back(url.get<std::string>());
+      }
+      if (ice_server.find("username") != ice_server.end()) {
+        entry.username = ice_server.at("username").get<std::string>();
+      }
+      if (ice_server.find("credential") != ice_server.end()) {
+        entry.password = ice_server.at("credential").get<std::string>();
+      }
 
-    pc_config.servers.push_back(entry);
+      pc_config.servers.push_back(entry);
+    }
   }
 
   network_thread = rtc::Thread::CreateWithSocketServer();
