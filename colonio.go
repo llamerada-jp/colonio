@@ -25,6 +25,7 @@ import (
 	"github.com/llamerada-jp/colonio/internal/geometry"
 	"github.com/llamerada-jp/colonio/internal/messaging"
 	"github.com/llamerada-jp/colonio/internal/network"
+	"github.com/llamerada-jp/colonio/internal/observation"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/internal/spread"
 )
@@ -62,6 +63,11 @@ type Colonio interface {
 	SpreadUnsetHandler(name string)
 }
 
+// ObservationHandler is an interface for observing the internal status of colonio.
+// These interfaces are for debugging and simulation and are not intended for normal use.
+// They are not guaranteed to work or be compatible.
+type ObservationHandlers observation.Handlers
+
 type Config struct {
 	Ctx    context.Context
 	Logger *slog.Logger
@@ -70,6 +76,8 @@ type Config struct {
 	Insecure bool
 	// Interval between retries when a network error occurs.
 	SeedTripInterval time.Duration
+
+	ObservationHandlers *ObservationHandlers
 }
 type ConfigSetter func(*Config)
 
@@ -97,6 +105,12 @@ func WithSeedTripInterval(interval time.Duration) ConfigSetter {
 	}
 }
 
+func WithObservation(handlers *ObservationHandlers) ConfigSetter {
+	return func(c *Config) {
+		c.ObservationHandlers = handlers
+	}
+}
+
 type colonioImpl struct {
 	config      *Config
 	ctx         context.Context
@@ -109,9 +123,10 @@ type colonioImpl struct {
 
 func NewColonio(setters ...ConfigSetter) Colonio {
 	config := &Config{
-		Ctx:              context.Background(),
-		Logger:           slog.Default(),
-		SeedTripInterval: 5 * time.Minute,
+		Ctx:                 context.Background(),
+		Logger:              slog.Default(),
+		SeedTripInterval:    5 * time.Minute,
+		ObservationHandlers: &ObservationHandlers{},
 	}
 	for _, setter := range setters {
 		setter(config)
@@ -132,6 +147,7 @@ func NewColonio(setters ...ConfigSetter) Colonio {
 		Logger:           config.Logger,
 		LocalNodeID:      impl.localNodeID,
 		Handler:          impl,
+		Observation:      (*observation.Handlers)(config.ObservationHandlers),
 		Insecure:         config.Insecure,
 		SeedTripInterval: config.SeedTripInterval,
 	}
@@ -143,7 +159,19 @@ func NewColonio(setters ...ConfigSetter) Colonio {
 }
 
 func (c *colonioImpl) Connect(url string, token []byte) error {
-	return c.network.Connect(url, token)
+	if err := c.network.Connect(url, token); err != nil {
+		return err
+	}
+	for {
+		if c.network.IsOnline() {
+			return nil
+		}
+		select {
+		case <-c.ctx.Done():
+			return fmt.Errorf("context is done")
+		case <-time.After(1 * time.Second):
+		}
+	}
 }
 
 func (c *colonioImpl) Disconnect() {

@@ -26,7 +26,7 @@ build: seed build-lib build-js
 
 .PHONY: seed
 seed: $(OUTPUT_PATH)/seed
-$(OUTPUT_PATH)/seed: internal/proto/colonio.pb.go $(find . -type f -name '*.go')
+$(OUTPUT_PATH)/seed: internal/proto/colonio.pb.go $(shell find . -type f -name '*.go')
 	go build -o $(OUTPUT_PATH)/seed ./seed/cmd
 
 internal/proto/colonio.pb.go: colonio.proto
@@ -37,7 +37,7 @@ INCLUDE_FLAGS := -I$(DEPENDING_PKG_PATH)/include -I$(DEPENDING_PKG_PATH)/include
 WEBRTC_DEFS := -DWEBRTC_LINUX=1 -DWEBRTC_POSIX=1
 CXX_FLAGS := -std=c++17 -fvisibility=hidden -fvisibility-inlines-hidden -Wall $(INCLUDE_FLAGS) $(WEBRTC_DEFS)
 build-lib: $(OUTPUT_PATH)/libcolonio.a
-$(OUTPUT_PATH)/libcolonio.a: $(find internal/c -name '*.cpp' -or -name '*.hpp' -or -name '*.h')
+$(OUTPUT_PATH)/libcolonio.a: $(shell find internal/c -name '*.cpp' -or -name '*.hpp' -or -name '*.h')
 	mkdir -p $(WORK_PATH)
 	$(CXX) -c -o $(WORK_PATH)/webrtc_config.o $(CXX_FLAGS) internal/c/webrtc_config.cpp
 	$(CXX) -c -o $(WORK_PATH)/webrtc_link.o $(CXX_FLAGS) internal/c/webrtc_link.cpp
@@ -45,7 +45,7 @@ $(OUTPUT_PATH)/libcolonio.a: $(find internal/c -name '*.cpp' -or -name '*.hpp' -
 	ar rcs $(OUTPUT_PATH)/libcolonio.a $(WORK_PATH)/webrtc_config.o $(WORK_PATH)/webrtc_link.o
 
 .PHONY: format-code
-format-code: $(find . -type f -name '*.go')
+format-code: $(shell find . -type f -name '*.go')
 	go fmt ./...
 
 .PHONY: test
@@ -71,7 +71,7 @@ build-test: build-js test/dist/tests.txt generate-cert test/dist/wasm_exec.js
 test/dist/wasm_exec.js: $(shell go env GOROOT)/misc/wasm/wasm_exec.js
 	cp $< $@
 
-test/dist/tests.txt: $(find . -type f -name '*.go')
+test/dist/tests.txt: $(shell find . -type f -name '*.go')
 	rm -f test/dist/tests/*.wasm
 	for target in ./config ./internal ./test/e2e; do \
 		for dir in `find $$target -name '*.go' -printf '%h\n' | sort -u`; do \
@@ -89,7 +89,7 @@ test/dist/tests.txt: $(find . -type f -name '*.go')
 build-js: $(OUTPUT_PATH)/colonio.js
 
 # TODO: Somehow the build runs every time🙁
-$(OUTPUT_PATH)/colonio.js: $(find ./src -type f -name '*.ts')
+$(OUTPUT_PATH)/colonio.js: $(shell find ./src -type f -name '*.ts')
 	npm run build
 
 .PHONY: setup
@@ -123,4 +123,5 @@ clean:
 	  $(shell pwd)/localhost.crt $(shell pwd)/localhost.key \
 		$(shell pwd)/src/*.d.ts $(shell pwd)/test/dist/tests/*.wasm \
 		$(shell pwd)/test/dist/tests.txt $(shell pwd)/test/dist/wasm_exec.js
+	$(MAKE) -C simulator clean
 	git checkout $(OUTPUT_PATH)

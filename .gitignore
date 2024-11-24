@@ -5,6 +5,11 @@
 /localhost.key
 /node_modules
 /output
+/simulator/colonio-simulator.tar
+/simulator/dump.json
+/simulator/out.mp4
+/simulator/render
+/simulator/work
 /src/*.d.ts
 /src/*.js
 /src/*.map

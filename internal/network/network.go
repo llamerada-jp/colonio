@@ -29,6 +29,7 @@ import (
 	"github.com/llamerada-jp/colonio/internal/network/routing"
 	"github.com/llamerada-jp/colonio/internal/network/seed_accessor"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
+	"github.com/llamerada-jp/colonio/internal/observation"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
@@ -42,6 +43,7 @@ type Config struct {
 	Logger      *slog.Logger
 	LocalNodeID *shared.NodeID
 	Handler     Handler
+	Observation observation.Caller
 	// Allow insecure server connections. You must not use this option in production. Only for testing.
 	Insecure bool
 	// Interval between retries when a network error occurs.
@@ -210,6 +212,8 @@ func (n *Network) NodeAccessorChangeConnections(connections map[shared.NodeID]st
 			n.routing.UpdateNodeConnections(connections)
 		}
 	}()
+
+	n.config.Observation.ChangeConnectedNodes(shared.ConvertNodeIDSetToStringMap(connections))
 }
 
 func (n *Network) RoutingSetSeedEnabled(enabled bool) {
@@ -270,6 +274,7 @@ func (n *Network) SeedRecvConfig(clusterConfig *config.Cluster) {
 		Logger:                  n.config.Logger,
 		LocalNodeID:             n.config.LocalNodeID,
 		Handler:                 n,
+		Observation:             n.config.Observation,
 		Transferer:              n.transferer,
 		CoordinateSystem:        n.coordinateSystem,
 		RoutingExchangeInterval: clusterConfig.RoutingExchangeInterval,
