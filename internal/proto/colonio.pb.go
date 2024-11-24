@@ -268,7 +268,7 @@ type NodePacket struct {
 	Head *NodePacketHead `protobuf:"bytes,1,opt,name=head,proto3" json:"head,omitempty"`
 	// ID is common to sequence of packets.
 	Id uint32 `protobuf:"varint,2,opt,name=id,proto3" json:"id,omitempty"`
-	// index decreses by 1 in a sequance of packets.
+	// index decreases by 1 in a sequence of packets.
 	Index   uint32 `protobuf:"varint,3,opt,name=index,proto3" json:"index,omitempty"`
 	Content []byte `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`
 }

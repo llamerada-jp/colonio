@@ -179,8 +179,11 @@ func (r *routing2D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing
 		if nodeID.Equal(r.config.localNodeID) {
 			continue
 		}
-		nodePosition := geometry.NewCoordinateFromProto(record.GetR2DPosition())
 		if info, ok := r.routeInfos[*nodeID]; !ok {
+			if record.GetR2DPosition() == nil {
+				continue
+			}
+			nodePosition := geometry.NewCoordinateFromProto(record.GetR2DPosition())
 			updated = true
 			r.routeInfos[*nodeID] = &routeInfo2D{
 				position: nodePosition,
@@ -193,6 +196,10 @@ func (r *routing2D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing
 				updated = true
 				info.rootNodeIDs[*src] = struct{}{}
 			}
+			if record.GetR2DPosition() == nil {
+				continue
+			}
+			nodePosition := geometry.NewCoordinateFromProto(record.GetR2DPosition())
 			// update position if the node is not connected directly
 			if _, ok := info.rootNodeIDs[*nodeID]; !ok && !info.position.Equal(nodePosition) {
 				updated = true

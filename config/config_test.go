@@ -142,15 +142,6 @@ func TestClusterValidate(t *testing.T) {
 			isValid: false,
 		},
 		{
-			name: "iceServers are not set",
-			c: func() *Cluster {
-				c := validConfig
-				c.IceServers = nil
-				return &c
-			},
-			isValid: false,
-		},
-		{
 			name: "invalid iceServer(empty URL)",
 			c: func() *Cluster {
 				c := validConfig

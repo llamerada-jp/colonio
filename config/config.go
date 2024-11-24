@@ -243,10 +243,6 @@ func (c *Cluster) Validate() error {
 		return errors.New("config value of `pollingTimeout` must be within range of 0 to `sessionTimeout`")
 	}
 
-	if len(c.IceServers) == 0 {
-		return errors.New("config value of `iceServers` required")
-	}
-
 	for _, iceServer := range c.IceServers {
 		if err := iceServer.validate(); err != nil {
 			return err
