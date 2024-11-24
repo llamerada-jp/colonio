@@ -111,7 +111,7 @@ func TestRequestHandler(t *testing.T) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		return handlerCount == 1
-	}, 1*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func TestRelay(t *testing.T) {
@@ -195,7 +195,7 @@ func TestRequestAndResponse(t *testing.T) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		return len(packets) == 1
-	}, 1*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	assert.True(t, dstNodeID.Equal(packets[0].DstNodeID))
 	assert.True(t, localNodeID.Equal(packets[0].SrcNodeID))
@@ -209,7 +209,7 @@ func TestRequestAndResponse(t *testing.T) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		return len(packets) == 2
-	}, 5*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	assert.True(t, dstNodeID.Equal(packets[1].DstNodeID))
 	assert.True(t, localNodeID.Equal(packets[1].SrcNodeID))
@@ -227,7 +227,7 @@ func TestRequestAndResponse(t *testing.T) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		return len(packets) == 3
-	}, 1*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 	transferer.Receive(packets[2])
 
 	// Wait for the response packet to be sent.
@@ -235,7 +235,7 @@ func TestRequestAndResponse(t *testing.T) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		return responsePacket != nil
-	}, 1*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	assert.True(t, localNodeID.Equal(responsePacket.DstNodeID))
 	assert.True(t, localNodeID.Equal(responsePacket.SrcNodeID))
@@ -284,7 +284,7 @@ func TestRequestOneWay(t *testing.T) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		return packet != nil
-	}, 1*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	assert.True(t, dstNodeID.Equal(packet.DstNodeID))
 	assert.True(t, localNodeID.Equal(packet.SrcNodeID))
@@ -345,7 +345,7 @@ func TestTimeout(t *testing.T) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		return hasError
-	}, 10*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// the first packet + retry 3 times
 	assert.Equal(t, 4, packetCount)

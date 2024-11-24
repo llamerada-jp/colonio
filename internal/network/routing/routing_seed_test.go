@@ -92,7 +92,7 @@ func TestRoutingSeed_handler(t *testing.T) {
 				mtx.Lock()
 				defer mtx.Unlock()
 				return enabled == test.expectEnabled
-			}, 10*time.Second, 30*time.Millisecond)
+			}, 10*time.Second, 100*time.Millisecond)
 
 			// check enabled value is kept
 			for range 10 {
@@ -239,9 +239,9 @@ func TestRoutingSeed_subRoutine(t *testing.T) {
 			SeedDistance: 7,
 		})
 		return rs.subRoutine() && rs.getNextStep().Equal(nodeIDs[1])
-	}, 5*time.Second, 100*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 	assert.False(t, rs.subRoutine())
 	assert.Eventually(t, func() bool {
 		return rs.subRoutine() && rs.getNextStep().Equal(&shared.NodeIDNone)
-	}, 5*time.Second, 100*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 }

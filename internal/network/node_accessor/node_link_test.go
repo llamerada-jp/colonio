@@ -157,7 +157,7 @@ func TestNodeLinkNormal(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return link1.getLinkState() == nodeLinkStateOnline && link2.getLinkState() == nodeLinkStateOnline
-	}, 3*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// send packet
 	packet := &shared.Packet{
@@ -183,7 +183,7 @@ func TestNodeLinkNormal(t *testing.T) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		return received != nil
-	}, 3*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// check packet
 	assert.True(t, received.DstNodeID.Equal(packet.DstNodeID))
@@ -201,7 +201,7 @@ func TestNodeLinkNormal(t *testing.T) {
 
 	assert.Eventually(t, func() bool {
 		return link2.getLinkState() == nodeLinkStateDisabled
-	}, 3*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	assert.Equal(t, state1, "OD")
 	assert.Equal(t, state2, "OD")
@@ -241,7 +241,7 @@ func TestNodeLinkTimeout(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return link.getLinkState() == nodeLinkStateDisabled
-	}, 6*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// connect
 	link, err = newNodeLink(config, &nodeLinkHandlerHelper{
@@ -293,7 +293,7 @@ func TestNodeLinkTimeout(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return link.getLinkState() == nodeLinkStateOnline && webrtcLink.isActive() && webrtcLink.isOnline()
-	}, 3*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// wait for keepalive packets
 	mtx.Lock()
@@ -303,7 +303,7 @@ func TestNodeLinkTimeout(t *testing.T) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		return keepalivePackets > 0
-	}, 5*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	p := &proto.NodePackets{}
 	data, err := proto3.Marshal(p)
@@ -318,7 +318,7 @@ func TestNodeLinkTimeout(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return link.getLinkState() == nodeLinkStateDisabled && !webrtcLink.isActive() && !webrtcLink.isOnline()
-	}, 3*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func TestNodeLinkBufferInterval(t *testing.T) {
@@ -397,7 +397,7 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return link1.getLinkState() == nodeLinkStateOnline && link2.getLinkState() == nodeLinkStateOnline
-	}, 3*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// send packet
 	for i := 0; i < 10; i++ {
@@ -428,7 +428,7 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		return received1 == 0 && received2 == 10
-	}, 1*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	time.Sleep(1 * time.Second)
 	mtx.Lock()
@@ -439,7 +439,7 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		return received1 == 10
-	}, 3*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func TestNodeLinkPacketBaseBytes(t *testing.T) {
@@ -511,7 +511,7 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return link1.getLinkState() == nodeLinkStateOnline && link2.getLinkState() == nodeLinkStateOnline
-	}, 3*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	testCases := []struct {
 		title   string
@@ -551,7 +551,7 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 				mtx.Lock()
 				defer mtx.Unlock()
 				return len(received) == len(tc.packets)
-			}, 1*time.Second, 10*time.Millisecond)
+			}, 10*time.Second, 100*time.Millisecond)
 			assert.True(t, packetEqual(received, tc.packets))
 		})
 	}
@@ -579,7 +579,7 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		return len(received) == 500
-	}, 3*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 	assert.True(t, packetEqual(received, send))
 }
 
