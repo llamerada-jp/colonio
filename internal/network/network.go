@@ -46,6 +46,11 @@ type Config struct {
 	Insecure bool
 	// Interval between retries when a network error occurs.
 	SeedTripInterval time.Duration
+
+	// Observation handlers.
+	OnChangeConnectedNodes    func(map[string]struct{})
+	OnUpdateRequiredNodeIDs1D func(map[string]struct{})
+	OnUpdateRequiredNodeIDs2D func(map[string]struct{})
 }
 
 type Network struct {
@@ -210,6 +215,10 @@ func (n *Network) NodeAccessorChangeConnections(connections map[shared.NodeID]st
 			n.routing.UpdateNodeConnections(connections)
 		}
 	}()
+
+	if n.config.OnChangeConnectedNodes != nil {
+		n.config.OnChangeConnectedNodes(shared.ConvertNodeIDSetToStringMap(connections))
+	}
 }
 
 func (n *Network) RoutingSetSeedEnabled(enabled bool) {
@@ -266,15 +275,17 @@ func (n *Network) SeedRecvConfig(clusterConfig *config.Cluster) {
 	}
 
 	n.routing = routing.NewRouting(&routing.Config{
-		Ctx:                     n.ctx,
-		Logger:                  n.config.Logger,
-		LocalNodeID:             n.config.LocalNodeID,
-		Handler:                 n,
-		Transferer:              n.transferer,
-		CoordinateSystem:        n.coordinateSystem,
-		RoutingExchangeInterval: clusterConfig.RoutingExchangeInterval,
-		SeedConnectRate:         clusterConfig.SeedConnectRate,
-		SeedReconnectDuration:   clusterConfig.SeedReconnectDuration,
+		Ctx:                       n.ctx,
+		Logger:                    n.config.Logger,
+		LocalNodeID:               n.config.LocalNodeID,
+		Handler:                   n,
+		Transferer:                n.transferer,
+		CoordinateSystem:          n.coordinateSystem,
+		RoutingExchangeInterval:   clusterConfig.RoutingExchangeInterval,
+		SeedConnectRate:           clusterConfig.SeedConnectRate,
+		SeedReconnectDuration:     clusterConfig.SeedReconnectDuration,
+		OnUpdateRequiredNodeIDs1D: n.config.OnUpdateRequiredNodeIDs1D,
+		OnUpdateRequiredNodeIDs2D: n.config.OnUpdateRequiredNodeIDs2D,
 	})
 
 	n.nodeAccessor.SetConfig(clusterConfig.IceServers, &node_accessor.NodeLinkConfig{

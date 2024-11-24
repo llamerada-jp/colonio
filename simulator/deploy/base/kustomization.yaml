@@ -1,0 +1,9 @@
+namespace: colonio-simulator
+commonLabels:
+  app.kubernetes.io/part-of: colonio-simulator
+resources:
+- namespace.yaml
+- coturn.yaml
+- mongodb.yaml
+- node.yaml
+- seed.yaml
