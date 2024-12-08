@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"sync"
 	"time"
 
@@ -51,16 +52,17 @@ type Config struct {
 }
 
 type Network struct {
-	config           *Config
-	ctx              context.Context
-	cancel           context.CancelFunc
-	mtx              sync.RWMutex
-	enabled          bool
-	routing          *routing.Routing
-	seedAccessor     *seed_accessor.SeedAccessor
-	nodeAccessor     *node_accessor.NodeAccessor
-	transferer       *transferer.Transferer
-	coordinateSystem geometry.CoordinateSystem
+	config                *Config
+	ctx                   context.Context
+	cancel                context.CancelFunc
+	mtx                   sync.RWMutex
+	enabled               bool
+	clusterConfigRevision float64
+	routing               *routing.Routing
+	seedAccessor          *seed_accessor.SeedAccessor
+	nodeAccessor          *node_accessor.NodeAccessor
+	transferer            *transferer.Transferer
+	coordinateSystem      geometry.CoordinateSystem
 
 	// maximum number of hops that a packet can be relayed.
 	hopLimit uint
@@ -70,11 +72,12 @@ func NewNetwork(config *Config) *Network {
 	ctx, cancel := context.WithCancel(config.Ctx)
 
 	return &Network{
-		config:  config,
-		ctx:     ctx,
-		cancel:  cancel,
-		mtx:     sync.RWMutex{},
-		enabled: false,
+		config:                config,
+		ctx:                   ctx,
+		cancel:                cancel,
+		mtx:                   sync.RWMutex{},
+		enabled:               false,
+		clusterConfigRevision: math.NaN(),
 	}
 }
 
@@ -249,15 +252,17 @@ func (n *Network) SeedChangeState(online bool) {
 }
 
 func (n *Network) SeedRecvConfig(clusterConfig *config.Cluster) {
-	// TODO: receive config twice and those are different, suggest to rerun the network.
-
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
 
-	if n.routing != nil {
-		panic("config already received")
+	if !math.IsNaN(n.clusterConfigRevision) {
+		if n.clusterConfigRevision == clusterConfig.Revision {
+			return
+		} else {
+			panic("TODO: receive config twice and those are different, suggest to rerun the network.")
+		}
 	}
-
+	n.clusterConfigRevision = clusterConfig.Revision
 	n.hopLimit = clusterConfig.HopLimit
 
 	if clusterConfig.Geometry != nil {
