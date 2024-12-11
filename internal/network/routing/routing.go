@@ -52,6 +52,10 @@ type Config struct {
 	SeedConnectRate uint
 	// should be copied from config.SeedReconnectDuration
 	SeedReconnectDuration time.Duration
+
+	// Observation handlers.
+	OnUpdateRequiredNodeIDs1D func(map[string]struct{})
+	OnUpdateRequiredNodeIDs2D func(map[string]struct{})
 }
 
 type Routing struct {
@@ -173,10 +177,16 @@ func (r *Routing) subRoutine() {
 
 	if r.requireUpdateConnection || time.Now().After(r.lastConnectionUpdate.Add(connectionUpdateInterval)) {
 		required, keep := r.r1d.getConnections()
+		if r.config.OnUpdateRequiredNodeIDs1D != nil {
+			r.config.OnUpdateRequiredNodeIDs1D(shared.ConvertNodeIDSetToStringMap(required))
+		}
 		if r.r2d != nil {
-			required2 := r.r2d.getConnections()
-			for nodeID := range required2 {
+			required2d := r.r2d.getConnections()
+			for nodeID := range required2d {
 				required[nodeID] = struct{}{}
+			}
+			if r.config.OnUpdateRequiredNodeIDs2D != nil {
+				r.config.OnUpdateRequiredNodeIDs2D(shared.ConvertNodeIDSetToStringMap(required2d))
 			}
 		}
 		r.config.Handler.RoutingUpdateConnection(required, keep)

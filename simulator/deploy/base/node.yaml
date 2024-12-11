@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node
+  labels:
+    app: node
+spec:
+  replicas: 1 # will be update by scale command in Makefile
+  selector:
+    matchLabels:
+      app: node
+  template:
+    metadata:
+      labels:
+        app: node
+    spec:
+      containers:
+      - name: node
+        image: ghcr.io/llamerada-jp/colonio-simulator:latest
+        imagePullPolicy: Never # for k3s local repository
+        command: ["./simulator"]
+        args:
+        - "node"
+        - "--seed-url"
+        - "https://seed.colonio-simulator.svc.cluster.local:8443/seed"
+        - "--concurrency"
+        - "10"
+        - "--mongodb-uri"
+        - "mongodb://mongodb.colonio-simulator.svc.cluster.local:27017"
+        env:
+        - name: COLONIO_SIMULATOR_STORY
+          valueFrom:
+            configMapKeyRef:
+              name: node
+              key: story
+        ports:
+        - containerPort: 8443
+          name: https

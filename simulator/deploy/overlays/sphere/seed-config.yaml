@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: seed
+  namespace: colonio-simulator
+data:
+  seed.json: |
+    {
+      "port": 8443,
+      "certFile": "../seed.crt",
+      "keyFile": "../seed.key",
+      "useTcp": true,
+      "cluster": {
+        "revision": 1,
+        "sessionTimeout": "30s",
+        "pollingTimeout": "10s",
+        "iceServers": [
+          {
+            "urls": [
+              "stun:stun.l.google.com:19302",
+              "stun:stun.l.google.com:5349",
+              "stun:stun1.l.google.com:3478",
+              "stun:stun1.l.google.com:5349",
+              "stun:stun2.l.google.com:19302",
+              "stun:stun2.l.google.com:5349",
+              "stun:stun3.l.google.com:3478",
+              "stun:stun3.l.google.com:5349",
+              "stun:stun4.l.google.com:19302",
+              "stun:stun4.l.google.com:5349"
+            ]
+          }
+        ],
+        "keepaliveInterval": "10s",
+        "bufferInterval": "10ms",
+        "webrtcPacketBaseBytes": 16384,
+        "routingExchangeInterval": "1m",
+        "seedConnectRate": 3,
+        "seedReconnectDuration": "3m",
+        "geometry": {
+          "sphere": {
+            "radius": 6378137
+          }
+        },
+        "spread": {
+          "cacheLifetime": "1m"
+        }
+      },
+      "seedPath": "/seed"
+    }
