@@ -17,6 +17,7 @@
 package sphere
 
 type Record struct {
+	Online            bool
 	X                 float64
 	Y                 float64
 	ConnectedNodeIDs  []string

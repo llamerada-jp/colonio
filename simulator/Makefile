@@ -44,5 +44,7 @@ work/seed: ../output/seed
 	mkdir -p work
 	cp -a $< $@
 
+.PHONY: clean
 clean:
-	rm -rf work
+	$(KUBECTL) delete namespace colonio-simulator || true
+	rm -rf colonio-simulator.tar dump.json work

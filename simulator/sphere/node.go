@@ -61,9 +61,17 @@ func RunNode(ctx context.Context, seedURL string, writer *datastore.Mongodb) err
 			return nil
 
 		case <-timer.C:
-			position.moveRandom()
-			if err := col.UpdateLocalPosition(position.x, position.y); err != nil {
-				return err
+			record.Online = false
+			if col.IsOnline() {
+				record.Online = true
+				position.moveRandom()
+				if err := col.UpdateLocalPosition(position.x, position.y); err != nil {
+					return err
+				}
+			} else {
+				record.ConnectedNodeIDs = make([]string, 0)
+				record.RequiredNodeIDs1D = make([]string, 0)
+				record.RequiredNodeIDs2D = make([]string, 0)
 			}
 
 			record.X = position.x
