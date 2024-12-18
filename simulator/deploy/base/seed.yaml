@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: seed
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8443
+    name: https
+  selector:
+    app: seed
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seed
+  labels:
+    app: seed
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seed
+  template:
+    metadata:
+      labels:
+        app: seed
+    spec:
+      containers:
+      - name: seed
+        image: ghcr.io/llamerada-jp/colonio-simulator:latest
+        imagePullPolicy: Never # for k3s local repository
+        command: ["./seed"]
+        args: ["--config", "/colonio/config/seed.json"]
+        ports:
+        - containerPort: 8443
+          name: https
+        volumeMounts:
+        - name: config
+          mountPath: /colonio/config/
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: seed
+          items:
+          - key: seed.json
+            path: seed.json

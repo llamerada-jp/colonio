@@ -62,6 +62,15 @@ type Colonio interface {
 	SpreadUnsetHandler(name string)
 }
 
+// ObservationHandler is an interface for observing the internal status of colonio.
+// These interfaces are for debugging and simulation and are not intended for normal use.
+// They are not guaranteed to work or be compatible.
+type ObservationHandlers struct {
+	OnChangeConnectedNodes    func(map[string]struct{})
+	OnUpdateRequiredNodeIDs1D func(map[string]struct{})
+	OnUpdateRequiredNodeIDs2D func(map[string]struct{})
+}
+
 type Config struct {
 	Ctx    context.Context
 	Logger *slog.Logger
@@ -70,6 +79,8 @@ type Config struct {
 	Insecure bool
 	// Interval between retries when a network error occurs.
 	SeedTripInterval time.Duration
+
+	*ObservationHandlers
 }
 type ConfigSetter func(*Config)
 
@@ -94,6 +105,12 @@ func WithInsecure() ConfigSetter {
 func WithSeedTripInterval(interval time.Duration) ConfigSetter {
 	return func(c *Config) {
 		c.SeedTripInterval = interval
+	}
+}
+
+func WithObservationHandlers(handlers *ObservationHandlers) ConfigSetter {
+	return func(c *Config) {
+		c.ObservationHandlers = handlers
 	}
 }
 
@@ -134,6 +151,10 @@ func NewColonio(setters ...ConfigSetter) Colonio {
 		Handler:          impl,
 		Insecure:         config.Insecure,
 		SeedTripInterval: config.SeedTripInterval,
+
+		OnChangeConnectedNodes:    config.OnChangeConnectedNodes,
+		OnUpdateRequiredNodeIDs1D: config.OnUpdateRequiredNodeIDs1D,
+		OnUpdateRequiredNodeIDs2D: config.OnUpdateRequiredNodeIDs2D,
 	}
 
 	impl.network = network.NewNetwork(networkConfig)
@@ -143,7 +164,19 @@ func NewColonio(setters ...ConfigSetter) Colonio {
 }
 
 func (c *colonioImpl) Connect(url string, token []byte) error {
-	return c.network.Connect(url, token)
+	if err := c.network.Connect(url, token); err != nil {
+		return err
+	}
+	for {
+		if c.network.IsOnline() {
+			return nil
+		}
+		select {
+		case <-c.ctx.Done():
+			return fmt.Errorf("context is done")
+		case <-time.After(1 * time.Second):
+		}
+	}
 }
 
 func (c *colonioImpl) Disconnect() {

@@ -305,7 +305,7 @@ func (r *routing1D) getConnections() (map[shared.NodeID]struct{}, map[shared.Nod
 				break
 			}
 
-			maxScore := 0
+			maxScore := -1
 			var maxNodeID *shared.NodeID
 			for nodeID, score := range candidates {
 				nodeID := nodeID
