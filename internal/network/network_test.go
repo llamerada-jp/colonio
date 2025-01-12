@@ -93,7 +93,8 @@ func TestNetwork_Connect_alone(t *testing.T) {
 }
 
 func TestNetwork_Connect(t *testing.T) {
-	nodeIDs := testUtil.UniqueNodeIDs(2)
+	nodeCount := 3
+	nodeIDs := testUtil.UniqueNodeIDs(nodeCount)
 
 	testSeed := testing_seed.NewTestingSeed()
 	defer testSeed.Stop()
@@ -103,12 +104,12 @@ func TestNetwork_Connect(t *testing.T) {
 
 	mtx := sync.Mutex{}
 	configReceived := 0
-	net := make([]*Network, 2)
+	net := make([]*Network, nodeCount)
 
-	for i := 0; i < 2; i++ {
+	for i := 0; i < nodeCount; i++ {
 		net[i] = NewNetwork(&Config{
 			Ctx:         ctx,
-			Logger:      slog.Default(),
+			Logger:      slog.Default().With("by", nodeIDs[i].String()),
 			LocalNodeID: nodeIDs[i],
 			Handler: &networkHandlerHelper{
 				recvConfig: func(c *config.Cluster) {
