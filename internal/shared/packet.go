@@ -15,19 +15,16 @@
  */
 package shared
 
-import (
-	"github.com/llamerada-jp/colonio/internal/proto"
-)
+import proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 
 type PacketMode uint16
 
 const (
-	PacketModeNone      = PacketMode(000000)
-	PacketModeResponse  = PacketMode(0x0001)
-	PacketModeExplicit  = PacketMode(0x0002)
-	PacketModeOneWay    = PacketMode(0x0004)
-	PacketModeRelaySeed = PacketMode(0x0008)
-	PacketModeNoRetry   = PacketMode(0x0010)
+	PacketModeNone     = PacketMode(000000)
+	PacketModeResponse = PacketMode(0x0001)
+	PacketModeExplicit = PacketMode(0x0002)
+	PacketModeOneWay   = PacketMode(0x0004)
+	PacketModeNoRetry  = PacketMode(0x0008)
 )
 
 type Packet struct {

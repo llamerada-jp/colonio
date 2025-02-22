@@ -30,19 +30,12 @@ spec:
       - name: seed
         image: ghcr.io/llamerada-jp/colonio-simulator:latest
         imagePullPolicy: Never # for k3s local repository
-        command: ["./seed"]
-        args: ["--config", "/colonio/config/seed.json"]
+        command: ["./simulator"]
+        args:
+        - "seed"
+        env:
+        - name: COLONIO_COOKIE_SECRET_KEY_PAIR
+          value: "simulator-secret"
         ports:
         - containerPort: 8443
           name: https
-        volumeMounts:
-        - name: config
-          mountPath: /colonio/config/
-          readOnly: true
-      volumes:
-      - name: config
-        configMap:
-          name: seed
-          items:
-          - key: seed.json
-            path: seed.json

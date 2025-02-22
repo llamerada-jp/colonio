@@ -36,7 +36,7 @@ render: work/simulator
 view: work/simulator
 	work/simulator render --input $(DUMP_FILE)
 
-colonio-simulator.tar: Dockerfile work/libcolonio.a work/libwebrtc.a work/simulator work/seed
+colonio-simulator.tar: Dockerfile work/libcolonio.a work/libwebrtc.a work/simulator
 	openssl req -x509 -out work/seed.crt -keyout work/seed.key \
     -newkey rsa:2048 -nodes -sha256 \
     -subj '/CN=seed.colonio-simulator.svc.cluster.local' -extensions EXT -config <( \

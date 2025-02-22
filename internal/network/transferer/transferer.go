@@ -24,8 +24,8 @@ import (
 	"sync"
 	"time"
 
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/constants"
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
@@ -40,11 +40,8 @@ type Handler interface {
 }
 
 type Config struct {
-	Ctx         context.Context
-	Logger      *slog.Logger
-	LocalNodeID *shared.NodeID
-	Handler     Handler
-
+	Logger  *slog.Logger
+	Handler Handler
 	// config parameters for testing
 	retryCountMax uint
 	retryInterval time.Duration
@@ -56,7 +53,16 @@ type ResponseHandler interface {
 }
 
 type Transferer struct {
-	config          *Config
+	logger  *slog.Logger
+	handler Handler
+	// config parameters for testing
+	retryCountMax uint
+	retryInterval time.Duration
+
+	ctx         context.Context
+	cancel      context.CancelFunc
+	localNodeID *shared.NodeID
+
 	mtx             sync.RWMutex
 	requestHandlers map[reflect.Type]func(*shared.Packet)
 	requestRecord   map[uint32]*requestRecord
@@ -73,30 +79,21 @@ type requestRecord struct {
 }
 
 func NewTransferer(config *Config) *Transferer {
-	if config.retryCountMax == 0 {
-		config.retryCountMax = defaultRetryCountMax
-		config.retryInterval = defaultRetryInterval
-	}
-
 	t := &Transferer{
-		config:          config,
+		logger:          config.Logger,
+		handler:         config.Handler,
 		mtx:             sync.RWMutex{},
 		requestHandlers: make(map[reflect.Type]func(*shared.Packet)),
 		requestRecord:   make(map[uint32]*requestRecord),
 	}
 
-	go func() {
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-config.Ctx.Done():
-				return
-			case <-ticker.C:
-				t.subRoutine()
-			}
-		}
-	}()
+	if config.retryCountMax != 0 {
+		t.retryCountMax = config.retryCountMax
+		t.retryInterval = config.retryInterval
+	} else {
+		t.retryCountMax = defaultRetryCountMax
+		t.retryInterval = defaultRetryInterval
+	}
 
 	return t
 }
@@ -113,17 +110,39 @@ func SetRequestHandler[T any](t *Transferer, handler func(*shared.Packet)) {
 	t.requestHandlers[contentType] = handler
 }
 
+func (t *Transferer) Start(ctx context.Context, localNodeID *shared.NodeID) {
+	t.ctx, t.cancel = context.WithCancel(ctx)
+	t.localNodeID = localNodeID
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-t.ctx.Done():
+				return
+			case <-ticker.C:
+				t.subRoutine()
+			}
+		}
+	}()
+}
+
+func (t *Transferer) Stop() {
+	t.cancel()
+}
+
 func (t *Transferer) subRoutine() {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
 
 	for id, record := range t.requestRecord {
-		if time.Now().Before(record.lastSend.Add(t.config.retryInterval)) {
+		if time.Now().Before(record.lastSend.Add(t.retryInterval)) {
 			continue
 		}
 
 		// timeout error
-		if record.tryCount > t.config.retryCountMax {
+		if record.tryCount > t.retryCountMax {
 			delete(t.requestRecord, id)
 			go record.handler.OnError(constants.PacketErrorCodeNetworkTimeout, "request timeout")
 			continue
@@ -133,13 +152,13 @@ func (t *Transferer) subRoutine() {
 		if record.mode&shared.PacketModeNoRetry == 0 {
 			packet := &shared.Packet{
 				DstNodeID: record.dstNodeID,
-				SrcNodeID: t.config.LocalNodeID,
+				SrcNodeID: t.localNodeID,
 				ID:        id,
 				HopCount:  0,
 				Mode:      record.mode,
 				Content:   record.content,
 			}
-			t.config.Handler.TransfererSendPacket(packet)
+			t.handler.TransfererSendPacket(packet)
 		}
 
 		record.tryCount++
@@ -148,7 +167,7 @@ func (t *Transferer) subRoutine() {
 }
 
 func (t *Transferer) Relay(dstNodeID *shared.NodeID, packet *shared.Packet) {
-	t.config.Handler.TransfererRelayPacket(dstNodeID, packet)
+	t.handler.TransfererRelayPacket(dstNodeID, packet)
 }
 
 func (t *Transferer) Request(dstNodeID *shared.NodeID, mode shared.PacketMode, content *proto.PacketContent, handler ResponseHandler) {
@@ -175,25 +194,25 @@ func (t *Transferer) Request(dstNodeID *shared.NodeID, mode shared.PacketMode, c
 
 	packet := &shared.Packet{
 		DstNodeID: dstNodeID,
-		SrcNodeID: t.config.LocalNodeID,
+		SrcNodeID: t.localNodeID,
 		ID:        id,
 		HopCount:  0,
 		Mode:      mode,
 		Content:   content,
 	}
-	t.config.Handler.TransfererSendPacket(packet)
+	t.handler.TransfererSendPacket(packet)
 }
 
 func (t *Transferer) RequestOneWay(dstNodeID *shared.NodeID, mode shared.PacketMode, content *proto.PacketContent) {
 	packet := &shared.Packet{
 		DstNodeID: dstNodeID,
-		SrcNodeID: t.config.LocalNodeID,
+		SrcNodeID: t.localNodeID,
 		ID:        0,
 		HopCount:  0,
 		Mode:      mode | shared.PacketModeOneWay,
 		Content:   content,
 	}
-	t.config.Handler.TransfererSendPacket(packet)
+	t.handler.TransfererSendPacket(packet)
 }
 
 func (t *Transferer) Response(packetFor *shared.Packet, content *proto.PacketContent) {
@@ -202,19 +221,16 @@ func (t *Transferer) Response(packetFor *shared.Packet, content *proto.PacketCon
 	}
 
 	mode := shared.PacketModeResponse | shared.PacketModeExplicit | shared.PacketModeOneWay
-	if packetFor.Mode&shared.PacketModeRelaySeed != 0 {
-		mode |= shared.PacketModeRelaySeed
-	}
 
 	packet := &shared.Packet{
 		DstNodeID: packetFor.SrcNodeID,
-		SrcNodeID: t.config.LocalNodeID,
+		SrcNodeID: t.localNodeID,
 		ID:        packetFor.ID,
 		HopCount:  0,
 		Mode:      mode,
 		Content:   content,
 	}
-	t.config.Handler.TransfererSendPacket(packet)
+	t.handler.TransfererSendPacket(packet)
 }
 
 func (t *Transferer) Error(packetFor *shared.Packet, code constants.PacketErrorCode, message string) {
@@ -242,7 +258,7 @@ func (t *Transferer) Receive(packet *shared.Packet) {
 
 		record := t.requestRecord[packet.ID]
 		if record == nil {
-			t.config.Logger.Warn("response for expired or unknown request")
+			t.logger.Warn("response for expired or unknown request")
 			return
 		}
 		delete(t.requestRecord, packet.ID)

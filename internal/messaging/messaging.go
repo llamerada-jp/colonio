@@ -21,9 +21,9 @@ import (
 	"runtime"
 	"sync"
 
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
@@ -129,31 +129,24 @@ func (r *messagingResponseHandler) OnError(errorCode constants.PacketErrorCode, 
 	close(r.c)
 }
 
-func NewMessaging(logger *slog.Logger) *Messaging {
-	return &Messaging{
-		logger:   logger,
-		mtx:      sync.RWMutex{},
-		handlers: make(map[string]func(*Request, ResponseWriter)),
-	}
+type Config struct {
+	Logger     *slog.Logger
+	Transferer *transferer.Transferer
 }
 
-func (m *Messaging) ApplyConfig(tr *transferer.Transferer) {
-	m.mtx.Lock()
-	m.transferer = tr
-	m.mtx.Unlock()
+func NewMessaging(config *Config) *Messaging {
+	m := &Messaging{
+		logger:     config.Logger,
+		transferer: config.Transferer,
+		handlers:   make(map[string]func(*Request, ResponseWriter)),
+	}
 
 	transferer.SetRequestHandler[proto.PacketContent_Messaging](m.transferer, m.recvMessage)
+
+	return m
 }
 
 func (m *Messaging) Post(dstNodeID *shared.NodeID, name string, val []byte, opt *Options) ([]byte, error) {
-	m.mtx.RLock()
-	tr := m.transferer
-	m.mtx.RUnlock()
-
-	if tr == nil {
-		return nil, fmt.Errorf("post method should be called after online")
-	}
-
 	mode := shared.PacketModeNone
 	if !opt.AcceptNearby {
 		mode = shared.PacketModeExplicit
@@ -169,12 +162,12 @@ func (m *Messaging) Post(dstNodeID *shared.NodeID, name string, val []byte, opt 
 	}
 
 	if opt.IgnoreResponse {
-		tr.RequestOneWay(dstNodeID, mode, content)
+		m.transferer.RequestOneWay(dstNodeID, mode, content)
 		return nil, nil
 	}
 
 	rh := newMessagingResponseHandler()
-	tr.Request(dstNodeID, mode, content, rh)
+	m.transferer.Request(dstNodeID, mode, content, rh)
 	res := <-rh.c
 	if !res.ok {
 		return nil, fmt.Errorf("error response(%d): %s", res.errorCode, res.errorMessage)

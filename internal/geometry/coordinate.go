@@ -16,7 +16,7 @@
 package geometry
 
 import (
-	"github.com/llamerada-jp/colonio/internal/proto"
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 )
 
 type Coordinate struct {

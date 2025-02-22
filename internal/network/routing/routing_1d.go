@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/llamerada-jp/colonio/internal/proto"
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 

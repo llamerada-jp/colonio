@@ -21,17 +21,16 @@ import (
 	"testing"
 
 	"github.com/fogleman/delaunay"
-	"github.com/llamerada-jp/colonio/config"
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/geometry"
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
-	"github.com/llamerada-jp/colonio/test/util"
+	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRouting2D_updateNodeConnections(t *testing.T) {
-	nodeIDs := util.UniqueNodeIDs(2)
+	nodeIDs := testUtil.UniqueNodeIDs(2)
 
 	tests := []struct {
 		routeInfos  map[shared.NodeID]*routeInfo2D
@@ -90,12 +89,7 @@ func TestRouting2D_updateNodeConnections(t *testing.T) {
 	r := newRouting2D(&routing2DConfig{
 		logger:      slog.Default(),
 		localNodeID: shared.NewRandomNodeID(),
-		geometry: geometry.NewPlaneCoordinateSystem(&config.GeometryPlane{
-			XMin: -100,
-			XMax: 100,
-			YMin: -100,
-			YMax: 100,
-		}),
+		geometry:    geometry.NewPlaneCoordinateSystem(-100, 100, -100, 100),
 	})
 
 	for i, tt := range tests {
@@ -113,7 +107,7 @@ func TestRouting2D_updateNodeConnections(t *testing.T) {
 }
 
 func TestRouting2D_getNextStep(t *testing.T) {
-	nodeIDs := util.UniqueNodeIDs(3)
+	nodeIDs := testUtil.UniqueNodeIDs(3)
 
 	tests := []struct {
 		routeInfos map[shared.NodeID]*routeInfo2D
@@ -185,12 +179,7 @@ func TestRouting2D_getNextStep(t *testing.T) {
 	r := newRouting2D(&routing2DConfig{
 		logger:      slog.Default(),
 		localNodeID: shared.NewRandomNodeID(),
-		geometry: geometry.NewPlaneCoordinateSystem(&config.GeometryPlane{
-			XMin: -100,
-			XMax: 100,
-			YMin: -100,
-			YMax: 100,
-		}),
+		geometry:    geometry.NewPlaneCoordinateSystem(-100, 100, -100, 100),
 	})
 	r.updateLocalPosition(&geometry.Coordinate{
 		X: 0,
@@ -206,14 +195,9 @@ func TestRouting2D_getNextStep(t *testing.T) {
 }
 
 func TestRouting2D_recvRoutingPacket(t *testing.T) {
-	planeGeometry := geometry.NewPlaneCoordinateSystem(&config.GeometryPlane{
-		XMin: -100,
-		XMax: 100,
-		YMin: -100,
-		YMax: 100,
-	})
+	planeGeometry := geometry.NewPlaneCoordinateSystem(-100, 100, -100, 100)
 
-	nodeIDs := util.UniqueNodeIDs(4)
+	nodeIDs := testUtil.UniqueNodeIDs(4)
 	positions := getUniquePositions(4, planeGeometry)
 	updatedPositions := getUniquePositions(4, planeGeometry)
 
@@ -366,14 +350,9 @@ func TestRouting2D_recvRoutingPacket(t *testing.T) {
 }
 
 func TestRouting2D_setupRoutingPacket(t *testing.T) {
-	planeGeometry := geometry.NewPlaneCoordinateSystem(&config.GeometryPlane{
-		XMin: -100,
-		XMax: 100,
-		YMin: -100,
-		YMax: 100,
-	})
+	planeGeometry := geometry.NewPlaneCoordinateSystem(-100, 100, -100, 100)
 
-	nodeIDs := util.UniqueNodeIDs(5)
+	nodeIDs := testUtil.UniqueNodeIDs(5)
 	positions := getUniquePositions(5, planeGeometry)
 
 	r := newRouting2D(&routing2DConfig{
@@ -437,14 +416,9 @@ func TestRouting2D_setupRoutingPacket(t *testing.T) {
 }
 
 func TestRouting2D_neighborNodeIDChanged(t *testing.T) {
-	planeGeometry := geometry.NewPlaneCoordinateSystem(&config.GeometryPlane{
-		XMin: -100,
-		XMax: 100,
-		YMin: -100,
-		YMax: 100,
-	})
+	planeGeometry := geometry.NewPlaneCoordinateSystem(-100, 100, -100, 100)
 
-	nodeIDs := util.UniqueNodeIDs(100)
+	nodeIDs := testUtil.UniqueNodeIDs(100)
 	positions := getUniquePositions(100, planeGeometry)
 	points := make([]delaunay.Point, 100)
 	pointsMap := make(map[delaunay.Point]*shared.NodeID)

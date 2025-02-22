@@ -13,17 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package seed_accessor
+package datastore
 
-import (
-	"context"
-)
+import "time"
 
-type SeedTransporterOption struct {
-	Verification bool
-}
-type SeedTransporter interface {
-	Send(ctx context.Context, url string, data []byte) ([]byte, int, error)
+type NoneWriter struct{}
+
+func NewNoneWriter() RawWriter {
+	return &NoneWriter{}
 }
 
-var DefaultSeedTransporterFactory func(opt *SeedTransporterOption) SeedTransporter
+func (n *NoneWriter) Write(timestamp time.Time, nodeID string, record []byte) error {
+	return nil
+}
+
+func (n *NoneWriter) Close() {
+}

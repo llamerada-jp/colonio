@@ -16,14 +16,13 @@
 package transferer
 
 import (
-	"context"
 	"log/slog"
 	"sync"
 	"testing"
 	"time"
 
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/constants"
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/stretchr/testify/assert"
 )
@@ -67,20 +66,15 @@ func (h *responseHandlerHelper) OnError(code constants.PacketErrorCode, message 
 }
 
 func TestRequestHandler(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	config := &Config{
-		Ctx:         ctx,
-		Logger:      slog.Default(),
-		LocalNodeID: nil,
-		Handler:     nil,
-	}
-
 	mtx := sync.Mutex{}
 	handlerCount := 0
 
-	transferer := NewTransferer(config)
+	transferer := NewTransferer(&Config{
+		Logger:  slog.Default(),
+		Handler: nil,
+	})
+	transferer.Start(t.Context(), nil)
+	defer transferer.Stop()
 
 	packet := &shared.Packet{
 		DstNodeID: nil,
@@ -89,19 +83,19 @@ func TestRequestHandler(t *testing.T) {
 		HopCount:  0,
 		Mode:      2,
 		Content: &proto.PacketContent{
-			Content: &proto.PacketContent_SignalingIce{
-				SignalingIce: &proto.SignalingICE{},
+			Content: &proto.PacketContent_SpreadKnock{
+				SpreadKnock: &proto.SpreadKnock{},
 			},
 		},
 	}
 
-	SetRequestHandler[proto.PacketContent_SignalingIce](transferer, func(p *shared.Packet) {
+	SetRequestHandler[proto.PacketContent_SpreadKnock](transferer, func(p *shared.Packet) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		handlerCount++
 		assert.Equal(t, packet, p)
 	})
-	SetRequestHandler[proto.PacketContent_SignalingOffer](transferer, func(p *shared.Packet) {
+	SetRequestHandler[proto.PacketContent_SpreadRelay](transferer, func(p *shared.Packet) {
 		assert.Fail(t, "unexpected call")
 	})
 
@@ -115,17 +109,12 @@ func TestRequestHandler(t *testing.T) {
 }
 
 func TestRelay(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	replyCount := 0
 	dstNodeID := shared.NewRandomNodeID()
 	packet := &shared.Packet{}
 
-	config := &Config{
-		Ctx:         ctx,
-		Logger:      slog.Default(),
-		LocalNodeID: nil,
+	transferer := NewTransferer(&Config{
+		Logger: slog.Default(),
 		Handler: &transfererHandlerHelper{
 			sendPacket: func(p *shared.Packet) {
 				assert.Fail(t, "unexpected call")
@@ -136,28 +125,24 @@ func TestRelay(t *testing.T) {
 				assert.Equal(t, packet, p)
 			},
 		},
-	}
+	})
+	transferer.Start(t.Context(), nil)
+	defer transferer.Stop()
 
-	transferer := NewTransferer(config)
 	transferer.Relay(dstNodeID, packet)
 
 	assert.Equal(t, 1, replyCount)
 }
 
 func TestRequestAndResponse(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	mtx := sync.Mutex{}
 	packets := make([]*shared.Packet, 0)
 	var responsePacket *shared.Packet
 	localNodeID := shared.NewRandomNodeID()
 	dstNodeID := shared.NewRandomNodeID()
 
-	config := &Config{
-		Ctx:         ctx,
-		Logger:      slog.Default(),
-		LocalNodeID: localNodeID,
+	transferer := NewTransferer(&Config{
+		Logger: slog.Default(),
 		Handler: &transfererHandlerHelper{
 			sendPacket: func(p *shared.Packet) {
 				mtx.Lock()
@@ -170,12 +155,13 @@ func TestRequestAndResponse(t *testing.T) {
 		},
 		retryCountMax: 3,
 		retryInterval: 1 * time.Second,
-	}
+	})
+	transferer.Start(t.Context(), localNodeID)
+	defer transferer.Stop()
 
-	transferer := NewTransferer(config)
 	transferer.Request(dstNodeID, shared.PacketModeExplicit,
 		&proto.PacketContent{
-			Content: &proto.PacketContent_SignalingIce{},
+			Content: &proto.PacketContent_SpreadKnock{},
 		},
 		&responseHandlerHelper{
 			onResponse: func(p *shared.Packet) {
@@ -202,7 +188,7 @@ func TestRequestAndResponse(t *testing.T) {
 	assert.NotEqual(t, 0, packets[0].ID)
 	assert.Equal(t, uint32(0), packets[0].HopCount)
 	assert.Equal(t, shared.PacketModeExplicit, packets[0].Mode)
-	assert.IsType(t, &proto.PacketContent_SignalingIce{}, packets[0].Content.Content)
+	assert.IsType(t, &proto.PacketContent_SpreadKnock{}, packets[0].Content.Content)
 
 	// Wait for trying to send packet.
 	assert.Eventually(t, func() bool {
@@ -216,11 +202,11 @@ func TestRequestAndResponse(t *testing.T) {
 	assert.Equal(t, packets[0].ID, packets[1].ID)
 	assert.Equal(t, uint32(0), packets[1].HopCount)
 	assert.Equal(t, shared.PacketModeExplicit, packets[1].Mode)
-	assert.IsType(t, &proto.PacketContent_SignalingIce{}, packets[1].Content.Content)
+	assert.IsType(t, &proto.PacketContent_SpreadKnock{}, packets[1].Content.Content)
 
 	// send response
 	transferer.Response(packets[0], &proto.PacketContent{
-		Content: &proto.PacketContent_SignalingOffer{},
+		Content: &proto.PacketContent_SpreadRelay{},
 	})
 
 	assert.Eventually(t, func() bool {
@@ -242,25 +228,20 @@ func TestRequestAndResponse(t *testing.T) {
 	assert.Equal(t, packets[0].ID, responsePacket.ID)
 	assert.Equal(t, uint32(0), responsePacket.HopCount)
 	assert.Equal(t, shared.PacketModeResponse|shared.PacketModeExplicit|shared.PacketModeOneWay, responsePacket.Mode)
-	assert.IsType(t, &proto.PacketContent_SignalingOffer{}, responsePacket.Content.Content)
+	assert.IsType(t, &proto.PacketContent_SpreadRelay{}, responsePacket.Content.Content)
 
 	// request record is removed
 	assert.Len(t, transferer.requestRecord, 0)
 }
 
 func TestRequestOneWay(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	mtx := sync.Mutex{}
 	var packet *shared.Packet
 	localNodeID := shared.NewRandomNodeID()
 	dstNodeID := shared.NewRandomNodeID()
 
-	config := &Config{
-		Ctx:         ctx,
-		Logger:      slog.Default(),
-		LocalNodeID: localNodeID,
+	transferer := NewTransferer(&Config{
+		Logger: slog.Default(),
 		Handler: &transfererHandlerHelper{
 			sendPacket: func(p *shared.Packet) {
 				mtx.Lock()
@@ -272,11 +253,12 @@ func TestRequestOneWay(t *testing.T) {
 				assert.Fail(t, "unexpected call")
 			},
 		},
-	}
+	})
+	transferer.Start(t.Context(), localNodeID)
+	defer transferer.Stop()
 
-	transferer := NewTransferer(config)
 	transferer.RequestOneWay(dstNodeID, shared.PacketModeExplicit, &proto.PacketContent{
-		Content: &proto.PacketContent_SignalingIce{},
+		Content: &proto.PacketContent_SpreadKnock{},
 	})
 
 	// Wait for the packet to be sent.
@@ -291,26 +273,21 @@ func TestRequestOneWay(t *testing.T) {
 	assert.NotEqual(t, 0, packet.ID)
 	assert.Equal(t, uint32(0), packet.HopCount)
 	assert.Equal(t, shared.PacketModeExplicit|shared.PacketModeOneWay, packet.Mode)
-	assert.IsType(t, &proto.PacketContent_SignalingIce{}, packet.Content.Content)
+	assert.IsType(t, &proto.PacketContent_SpreadKnock{}, packet.Content.Content)
 
 	// request record is not created
 	assert.Len(t, transferer.requestRecord, 0)
 }
 
 func TestTimeout(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	mtx := sync.Mutex{}
 	packetCount := 0
 	hasError := false
 	localNodeID := shared.NewRandomNodeID()
 	dstNodeID := shared.NewRandomNodeID()
 
-	config := &Config{
-		Ctx:         ctx,
-		Logger:      slog.Default(),
-		LocalNodeID: localNodeID,
+	transferer := NewTransferer(&Config{
+		Logger: slog.Default(),
 		Handler: &transfererHandlerHelper{
 			sendPacket: func(p *shared.Packet) {
 				mtx.Lock()
@@ -323,11 +300,12 @@ func TestTimeout(t *testing.T) {
 		},
 		retryCountMax: 3,
 		retryInterval: 1 * time.Second,
-	}
+	})
+	transferer.Start(t.Context(), localNodeID)
+	defer transferer.Stop()
 
-	transferer := NewTransferer(config)
 	transferer.Request(dstNodeID, shared.PacketModeNone,
-		&proto.PacketContent{Content: &proto.PacketContent_SignalingIce{}},
+		&proto.PacketContent{Content: &proto.PacketContent_SpreadKnock{}},
 		&responseHandlerHelper{
 			onResponse: func(p *shared.Packet) {
 				assert.Fail(t, "unexpected call")

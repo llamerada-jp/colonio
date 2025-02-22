@@ -19,12 +19,15 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/cookiejar"
 	"time"
 
 	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/geometry"
 	"github.com/llamerada-jp/colonio/internal/messaging"
 	"github.com/llamerada-jp/colonio/internal/network"
+	"github.com/llamerada-jp/colonio/internal/network/node_accessor"
 	"github.com/llamerada-jp/colonio/internal/observation"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/internal/spread"
@@ -48,8 +51,8 @@ type SpreadRequest struct {
 }
 
 type Colonio interface {
-	Connect(url string, token []byte) error
-	Disconnect()
+	Start(ctx context.Context) error
+	Stop()
 	IsOnline() bool
 	GetLocalNodeID() string
 	UpdateLocalPosition(x, y float64) error
@@ -69,39 +72,38 @@ type Colonio interface {
 type ObservationHandlers observation.Handlers
 
 type Config struct {
-	Ctx    context.Context
-	Logger *slog.Logger
-
-	// Allow insecure server connections. You must not use this option in production. Only for testing.
-	Insecure bool
-	// Interval between retries when a network error occurs.
-	SeedTripInterval time.Duration
-
+	Logger              *slog.Logger
 	ObservationHandlers *ObservationHandlers
+	HttpClient          *http.Client
+	SeedURL             string
+	ICEServers          []config.ICEServer
+	CoordinateSystem    geometry.CoordinateSystem
+
+	// RoutingExchangeInterval is interval at which packets exchanging routing information are sent.
+	// However, if necessary, packets may be sent at intervals shorter than the setting.
+	RoutingExchangeInterval time.Duration
+
+	// PacketHopLimit is the maximum number of hops that a packet can be relayed.
+	// If you set 0, the default value of 64 will be set.
+	PacketHopLimit uint
+
+	// CacheLifetime is the lifetime of the cache. The spread algorithm is
+	// so simple that the same packet may be received multiple times;
+	// if the same packet is received within the cache lifetime, it can be suppressed
+	// for reprocessing. This costs more memory.
+	SpreadCacheLifetime time.Duration
+
+	// Before sending a large payload, you can check whether a cache exists
+	// at the other node using knock packet. For small packets, it is more efficient
+	// to send the packet without knocking.
+	// If you set 0, disable the use of knock packets.
+	SpreadSizeToUseKnock uint
 }
 type ConfigSetter func(*Config)
-
-func WithContext(ctx context.Context) ConfigSetter {
-	return func(c *Config) {
-		c.Ctx = ctx
-	}
-}
 
 func WithLogger(logger *slog.Logger) ConfigSetter {
 	return func(c *Config) {
 		c.Logger = logger
-	}
-}
-
-func WithInsecure() ConfigSetter {
-	return func(c *Config) {
-		c.Insecure = true
-	}
-}
-
-func WithSeedTripInterval(interval time.Duration) ConfigSetter {
-	return func(c *Config) {
-		c.SeedTripInterval = interval
 	}
 }
 
@@ -111,8 +113,45 @@ func WithObservation(handlers *ObservationHandlers) ConfigSetter {
 	}
 }
 
+func WithHttpClient(client *http.Client) ConfigSetter {
+	return func(c *Config) {
+		c.HttpClient = client
+	}
+}
+
+func WithSeedURL(url string) ConfigSetter {
+	return func(c *Config) {
+		c.SeedURL = url
+	}
+}
+
+// IceServers is a list of ICE servers.
+// In Colonio, multiple ICE servers can be used to establish a WebRTC connection.
+// Each entry contains the URLs of the ICE server, the username, and the credential.
+func WithICEServers(servers []config.ICEServer) ConfigSetter {
+	return func(c *Config) {
+		c.ICEServers = servers
+	}
+}
+
+// Plane is a configuration for the plane geometry.
+// If this configuration is set, the 2D position based network will be setup as a plane space.
+func WithPlaneGeometry(xMin, xMax, yMin, yMax float64) ConfigSetter {
+	return func(c *Config) {
+		c.CoordinateSystem = geometry.NewPlaneCoordinateSystem(xMin, xMax, yMin, yMax)
+	}
+}
+
+// Sphere is a configuration for the sphere geometry.
+// If this configuration is set, the 2D position based network will be setup as a sphere space.
+func WithSphereGeometry(radius float64) ConfigSetter {
+	return func(c *Config) {
+		c.CoordinateSystem = geometry.NewSphereCoordinateSystem(radius)
+	}
+}
+
 type colonioImpl struct {
-	config      *Config
+	logger      *slog.Logger
 	ctx         context.Context
 	cancel      context.CancelFunc
 	localNodeID *shared.NodeID
@@ -121,60 +160,122 @@ type colonioImpl struct {
 	spread      *spread.Spread
 }
 
-func NewColonio(setters ...ConfigSetter) Colonio {
+func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 	config := &Config{
-		Ctx:                 context.Background(),
-		Logger:              slog.Default(),
-		SeedTripInterval:    5 * time.Minute,
-		ObservationHandlers: &ObservationHandlers{},
+		Logger:                  slog.Default(),
+		ObservationHandlers:     &ObservationHandlers{},
+		RoutingExchangeInterval: 1 * time.Minute,
+		PacketHopLimit:          64,
+
+		SpreadCacheLifetime:  1 * time.Minute,
+		SpreadSizeToUseKnock: 4096,
 	}
 	for _, setter := range setters {
 		setter(config)
 	}
 
-	ctx, cancel := context.WithCancel(config.Ctx)
+	if len(config.SeedURL) == 0 {
+		return nil, fmt.Errorf("seed url should be set")
+	}
+
+	if len(config.ICEServers) == 0 {
+		return nil, fmt.Errorf("ICE servers should be set")
+	}
+
+	if config.CoordinateSystem == nil {
+		return nil, fmt.Errorf("coordinate system should be set")
+	}
+
+	if config.HttpClient == nil {
+		jar, err := cookiejar.New(nil)
+		if err != nil {
+			return nil, err
+		}
+
+		config.HttpClient = &http.Client{
+			Jar: jar,
+		}
+	}
 
 	impl := &colonioImpl{
-		config:      config,
-		ctx:         ctx,
-		cancel:      cancel,
-		localNodeID: shared.NewRandomNodeID(),
-		messaging:   messaging.NewMessaging(config.Logger),
+		logger: config.Logger,
 	}
 
-	networkConfig := &network.Config{
-		Ctx:              ctx,
+	// create network module
+	net, err := network.NewNetwork(&network.Config{
 		Logger:           config.Logger,
-		LocalNodeID:      impl.localNodeID,
 		Handler:          impl,
 		Observation:      (*observation.Handlers)(config.ObservationHandlers),
-		Insecure:         config.Insecure,
-		SeedTripInterval: config.SeedTripInterval,
+		CoordinateSystem: config.CoordinateSystem,
+		HttpClient:       config.HttpClient,
+		SeedURL:          config.SeedURL,
+		ICEServers:       config.ICEServers,
+		NLC: &node_accessor.NodeLinkConfig{
+			// SessionTimeout is used to determine the timeout of the session.
+			// The seed & nodes will disconnect from node that does not send any packets within the timeout.
+			SessionTimeout: 5 * time.Minute,
+
+			// KeepaliveInterval is the interval to send a ping packet to tell living the node for each nodes.
+			// Keepalive packet is be tried to send  when no packet with content has been sent.
+			// The value should be less than `sessionTimeout`.
+			KeepaliveInterval: 1 * time.Minute,
+
+			// BufferInterval is maximum interval for buffering packets between nodes.
+			// If packets exceeding WebRTCPacketBaseBytes are stored in the buffer even if it is less than interval,
+			// the packets will be flush.
+			// If you set 0, disables packet buffering and tries to transport the packet as immediately as possible.
+			BufferInterval: 10 * time.Millisecond,
+
+			// PacketBaseBytes is a reference value for the packet size to be sent in WebRTC communication,
+			// since WebRTC data channel may fail to send too large packets.
+			// If you set 0, 512KiB will be set as the default value.
+			// For simplification of the internal implementation, the packet size actually sent may be
+			// larger than this value. Therefore, please set this value with a margin.
+			// This value is provided as a fallback, although it may not be necessary depending
+			// on the WebRTC library implementation. In such a case, you can disable this value
+			// the pseudo setting by setting a very large value.
+			PacketBaseBytes: 4096,
+		},
+		RoutingExchangeInterval: config.RoutingExchangeInterval,
+		PacketHopLimit:          config.PacketHopLimit,
+	})
+	if err != nil {
+		return nil, err
 	}
+	impl.network = net
 
-	impl.network = network.NewNetwork(networkConfig)
-	impl.spread = spread.NewSpread(ctx, config.Logger, impl)
+	impl.messaging = messaging.NewMessaging(&messaging.Config{
+		Logger:     config.Logger,
+		Transferer: net.GetTransferer(),
+	})
 
-	return impl
+	impl.spread = spread.NewSpread(&spread.Config{
+		Logger:           config.Logger,
+		Handler:          impl,
+		Transferer:       net.GetTransferer(),
+		CoordinateSystem: config.CoordinateSystem,
+		CacheLifetime:    config.SpreadCacheLifetime,
+		SizeToUseKnock:   config.SpreadSizeToUseKnock,
+	})
+
+	return impl, nil
 }
 
-func (c *colonioImpl) Connect(url string, token []byte) error {
-	if err := c.network.Connect(url, token); err != nil {
+func (c *colonioImpl) Start(ctx context.Context) error {
+	c.ctx, c.cancel = context.WithCancel(ctx)
+
+	var err error
+	c.localNodeID, err = c.network.Start(c.ctx)
+	if err != nil {
 		return err
 	}
-	for {
-		if c.network.IsOnline() {
-			return nil
-		}
-		select {
-		case <-c.ctx.Done():
-			return fmt.Errorf("context is done")
-		case <-time.After(1 * time.Second):
-		}
-	}
+
+	c.spread.Start(c.ctx, c.localNodeID)
+
+	return nil
 }
 
-func (c *colonioImpl) Disconnect() {
+func (c *colonioImpl) Stop() {
 	c.cancel()
 }
 
@@ -263,17 +364,6 @@ func (c *colonioImpl) SpreadSetHandler(name string, handler func(*SpreadRequest)
 
 func (c *colonioImpl) SpreadUnsetHandler(name string) {
 	c.spread.UnsetHandler(name)
-}
-
-func (c *colonioImpl) NetworkRecvConfig(clusterConfig *config.Cluster) {
-	// call GetTransferer asynchronously to avoid deadlock on Network module.
-	go func() {
-		c.messaging.ApplyConfig(c.network.GetTransferer())
-
-		if clusterConfig.Geometry != nil && clusterConfig.Spread != nil {
-			c.spread.ApplyConfig(c.network.GetTransferer(), clusterConfig.Spread, c.localNodeID, c.network.GetCoordinateSystem())
-		}
-	}()
 }
 
 func (c *colonioImpl) NetworkUpdateNextNodePosition(positions map[shared.NodeID]*geometry.Coordinate) {

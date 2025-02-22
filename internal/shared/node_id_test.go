@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/llamerada-jp/colonio/internal/proto"
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/stretchr/testify/assert"
 )
 

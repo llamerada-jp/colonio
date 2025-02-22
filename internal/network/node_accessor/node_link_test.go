@@ -16,15 +16,14 @@
 package node_accessor
 
 import (
-	"context"
 	"log/slog"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/config"
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,9 +55,6 @@ func (h *nodeLinkHandlerHelper) nodeLinkRecvPacket(nl *nodeLink, p *shared.Packe
 }
 
 func TestNodeLinkNormal(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	webRTCConfig, err := defaultWebRTCConfigFactory([]config.ICEServer{
 		{
 			URLs: []string{"stun:stun.l.google.com:19302"},
@@ -68,7 +64,7 @@ func TestNodeLinkNormal(t *testing.T) {
 	defer webRTCConfig.destruct()
 
 	config := &NodeLinkConfig{
-		ctx:               ctx,
+		ctx:               t.Context(),
 		logger:            slog.Default(),
 		webrtcConfig:      webRTCConfig,
 		SessionTimeout:    30 * time.Second,
@@ -208,9 +204,6 @@ func TestNodeLinkNormal(t *testing.T) {
 }
 
 func TestNodeLinkTimeout(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	webRTCConfig, err := defaultWebRTCConfigFactory([]config.ICEServer{
 		{
 			URLs: []string{"stun:stun.l.google.com:19302"},
@@ -220,7 +213,7 @@ func TestNodeLinkTimeout(t *testing.T) {
 	defer webRTCConfig.destruct()
 
 	config := &NodeLinkConfig{
-		ctx:               ctx,
+		ctx:               t.Context(),
 		logger:            slog.Default(),
 		webrtcConfig:      webRTCConfig,
 		SessionTimeout:    5 * time.Second,
@@ -322,9 +315,6 @@ func TestNodeLinkTimeout(t *testing.T) {
 }
 
 func TestNodeLinkBufferInterval(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	webRTCConfig, err := defaultWebRTCConfigFactory([]config.ICEServer{
 		{
 			URLs: []string{"stun:stun.l.google.com:19302"},
@@ -334,7 +324,7 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 	defer webRTCConfig.destruct()
 
 	config1 := &NodeLinkConfig{
-		ctx:               ctx,
+		ctx:               t.Context(),
 		logger:            slog.Default(),
 		webrtcConfig:      webRTCConfig,
 		SessionTimeout:    30 * time.Second,
@@ -443,9 +433,6 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 }
 
 func TestNodeLinkPacketBaseBytes(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	webRTCConfig, err := defaultWebRTCConfigFactory([]config.ICEServer{
 		{
 			URLs: []string{"stun:stun.l.google.com:19302"},
@@ -455,7 +442,7 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 	defer webRTCConfig.destruct()
 
 	config := &NodeLinkConfig{
-		ctx:               ctx,
+		ctx:               t.Context(),
 		logger:            slog.Default(),
 		webrtcConfig:      webRTCConfig,
 		SessionTimeout:    30 * time.Second,

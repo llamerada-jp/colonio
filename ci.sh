@@ -23,17 +23,14 @@ if [ "${OS}" = "Linux" ]; then
     exit 1
   fi
 
-  # check lisence
+  # check license
   ng=0
-  for FILE in $(find . -type f); do
-    if [[ $FILE =~ /\.git|node_modules/ ]]; then
-      continue
-    fi
-    if ! [[ $FILE =~ .*\.(go|ts)$ ]] || [[ $FILE =~ .*\.pb\.go$ ]] ; then
+  for FILE in $(find . -type f -not \( -path './.git/*' -o -path './dep/*' -o -path './node_modules/*' \)); do
+    if ! [[ $FILE =~ .*\.(go|ts)$ ]] || [[ $FILE =~ .*\.pb\.go$ ]] || [[ $FILE =~ .*\.connect\.go$ ]]; then
       continue
     fi
     if ! grep -q "Apache License" $FILE; then
-      echo "Lisence is not applied: $FILE"
+      echo "License is not applied: $FILE"
       ng=1
     fi
   done
@@ -53,5 +50,5 @@ elif [ "${OS}" = "Darwin" ]; then
   exit 0
 fi
 
-echo "Unsupported environemnt. ARCH=${ARCH} OS=${OS}"
+echo "Unsupported environment. ARCH=${ARCH} OS=${OS}"
 exit 1

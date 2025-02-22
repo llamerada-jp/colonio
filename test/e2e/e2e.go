@@ -16,38 +16,56 @@
 package e2e
 
 import (
+	"context"
 	"log"
 	"log/slog"
 	"time"
 
 	"github.com/llamerada-jp/colonio"
+	"github.com/llamerada-jp/colonio/config"
+	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/suite"
 )
 
 type E2eSuite struct {
 	suite.Suite
-	node1 colonio.Colonio
-	node2 colonio.Colonio
+	seedURL string
+	node1   colonio.Colonio
+	node2   colonio.Colonio
 }
 
 func (suite *E2eSuite) SetupSuite() {
 	var err error
 	suite.T().Log("creating a new colonio instance")
-	suite.node1 = colonio.NewColonio(
+	suite.node1, err = colonio.NewColonio(
 		colonio.WithLogger(slog.Default().With(slog.String("node", "node1"))),
-		colonio.WithInsecure())
+		colonio.WithSeedURL(suite.seedURL),
+		colonio.WithICEServers([]config.ICEServer{
+			{
+				URLs: []string{"stun:stun.l.google.com:19302"},
+			},
+		}),
+		colonio.WithHttpClient(testUtil.NewInsecureHttpClient()),
+		colonio.WithSphereGeometry(6378137.0))
 	suite.NoError(err)
 
-	suite.node2 = colonio.NewColonio(
+	suite.node2, err = colonio.NewColonio(
 		colonio.WithLogger(slog.Default().With(slog.String("node", "node2"))),
-		colonio.WithInsecure())
+		colonio.WithSeedURL(suite.seedURL),
+		colonio.WithICEServers([]config.ICEServer{
+			{
+				URLs: []string{"stun:stun.l.google.com:19302"},
+			},
+		}),
+		colonio.WithHttpClient(testUtil.NewInsecureHttpClient()),
+		colonio.WithSphereGeometry(6378137.0))
 	suite.NoError(err)
 
 	suite.T().Log("node1 connect to seed")
-	err = suite.node1.Connect("https://localhost:8080/seed", nil)
+	err = suite.node1.Start(context.Background())
 	suite.NoError(err)
 	suite.T().Log("node2 connect to seed")
-	err = suite.node2.Connect("https://localhost:8080/seed", nil)
+	err = suite.node2.Start(context.Background())
 	suite.NoError(err)
 	suite.Eventually(func() bool {
 		return suite.node1.IsOnline() && suite.node2.IsOnline()
@@ -56,9 +74,9 @@ func (suite *E2eSuite) SetupSuite() {
 
 func (suite *E2eSuite) TearDownSuite() {
 	suite.T().Log("node1 disconnect from seed")
-	suite.node1.Disconnect()
+	suite.node1.Stop()
 	suite.T().Log("node2 disconnect from seed")
-	suite.node2.Disconnect()
+	suite.node2.Stop()
 }
 
 func (suite *E2eSuite) TestE2E() {

@@ -16,6 +16,9 @@
 package util
 
 import (
+	"crypto/tls"
+	"net/http"
+	"net/http/cookiejar"
 	"slices"
 
 	"github.com/llamerada-jp/colonio/internal/shared"
@@ -71,4 +74,21 @@ func SortNodeIDs(nodeIDs []*shared.NodeID) {
 	slices.SortFunc(nodeIDs, func(a, b *shared.NodeID) int {
 		return a.Compare(b)
 	})
+}
+
+// create client to accept self-signed certificate & cookie
+func NewInsecureHttpClient() *http.Client {
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+		Jar: jar,
+	}
 }

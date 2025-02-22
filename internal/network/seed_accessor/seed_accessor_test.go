@@ -19,563 +19,329 @@ package seed_accessor
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"math"
 	"slices"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/llamerada-jp/colonio/config"
-	"github.com/llamerada-jp/colonio/internal/proto"
+	"github.com/llamerada-jp/colonio/internal/network/signal"
 	"github.com/llamerada-jp/colonio/internal/shared"
-	"github.com/llamerada-jp/colonio/test/testing_seed"
+	"github.com/llamerada-jp/colonio/seed"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
+	testServer "github.com/llamerada-jp/colonio/test/util/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-type authenticator struct {
-	expectedAccount map[string][]byte
+type seedAccessorHandlerHelper struct {
+	errorFunc        func(error)
+	recvSignalOffer  func(*shared.NodeID, *signal.Offer)
+	recvSignalAnswer func(*shared.NodeID, *signal.Answer)
+	recvSignalICE    func(*shared.NodeID, *signal.ICE)
 }
 
-func (auth *authenticator) Authenticate(token []byte, nodeID string) (bool, error) {
-	expectedToken, ok := auth.expectedAccount[nodeID]
-	if !ok {
-		return false, nil
-	}
-	return slices.Equal(expectedToken, token), nil
-}
-
-type seedEventHandlerHelper struct {
-	authorizeFailed      func()
-	changeState          func(bool)
-	recvConfig           func(*config.Cluster)
-	recvPacket           func(*shared.Packet)
-	requireRandomConnect func()
-}
-
-func (h *seedEventHandlerHelper) SeedAuthorizeFailed() {
-	if h.authorizeFailed != nil {
-		h.authorizeFailed()
+func (h *seedAccessorHandlerHelper) SeedError(err error) {
+	if h.errorFunc != nil {
+		h.errorFunc(err)
 	}
 }
 
-func (h *seedEventHandlerHelper) SeedChangeState(online bool) {
-	if h.changeState != nil {
-		h.changeState(online)
+func (h *seedAccessorHandlerHelper) SeedRecvSignalOffer(srcNodeID *shared.NodeID, offer *signal.Offer) {
+	if h.recvSignalOffer != nil {
+		h.recvSignalOffer(srcNodeID, offer)
 	}
 }
 
-func (h *seedEventHandlerHelper) SeedRecvConfig(conf *config.Cluster) {
-	if h.recvConfig != nil {
-		h.recvConfig(conf)
+func (h *seedAccessorHandlerHelper) SeedRecvSignalAnswer(srcNodeID *shared.NodeID, answer *signal.Answer) {
+	if h.recvSignalAnswer != nil {
+		h.recvSignalAnswer(srcNodeID, answer)
 	}
 }
 
-func (h *seedEventHandlerHelper) SeedRecvPacket(packet *shared.Packet) {
-	if h.recvPacket != nil {
-		h.recvPacket(packet)
+func (h *seedAccessorHandlerHelper) SeedRecvSignalICE(srcNodeID *shared.NodeID, ice *signal.ICE) {
+	if h.recvSignalICE != nil {
+		h.recvSignalICE(srcNodeID, ice)
 	}
 }
 
-func (h *seedEventHandlerHelper) SeedRequireRandomConnect() {
-	if h.requireRandomConnect != nil {
-		h.requireRandomConnect()
-	}
-}
-
-func TestSeedAccessor_authSuccess(t *testing.T) {
-	nodeID := shared.NewRandomNodeID()
-
-	auth := &authenticator{
-		expectedAccount: map[string][]byte{
-			nodeID.String(): []byte("token"),
-		},
-	}
-
-	testSeed := testing_seed.NewTestingSeed(
-		testing_seed.WithAuthenticator(auth),
-		testing_seed.WithRevision(3.14),
-		testing_seed.WithSessionTimeout(35*time.Second),
-		testing_seed.WithPollingTimeout(12*time.Second),
-	)
-	defer testSeed.Stop()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	mtx := sync.Mutex{}
-	events := ""
-
-	config := &Config{
-		Ctx:    ctx,
-		Logger: slog.Default(),
-		Transporter: DefaultSeedTransporterFactory(&SeedTransporterOption{
-			Verification: false,
-		}),
-		Handler: &seedEventHandlerHelper{
-			authorizeFailed: func() {
-				assert.FailNow(t, "authentication should be success")
-			},
-			changeState: func(online bool) {
-				mtx.Lock()
-				defer mtx.Unlock()
-				if online {
-					events += "1"
-				} else {
-					events += "0"
-				}
-			},
-			recvConfig: func(conf *config.Cluster) {
-				mtx.Lock()
-				defer mtx.Unlock()
-				events += "c"
-
-				assert.Equal(t, 3.14, conf.Revision)
-				assert.Equal(t, 35*time.Second, conf.SessionTimeout)
-				assert.Equal(t, 12*time.Second, conf.PollingTimeout)
-			},
-			recvPacket: func(_ *shared.Packet) {
-				assert.FailNow(t, "no one should send packet on this test")
-			},
-			requireRandomConnect: func() {
-				assert.FailNow(t, "random connect event should not be happened when only one node")
-			},
-		},
-		URL:          testSeed.URL(),
-		LocalNodeID:  nodeID,
-		Token:        []byte("token"),
-		TripInterval: 10 * time.Second,
-	}
-
-	accessor := NewSeedAccessor(config)
-	// defer accessor.destruct()
-	assert.Eventually(t, func() bool {
-		return accessor.IsAuthenticated()
-	}, 3*time.Second, 100*time.Millisecond)
-
-	mtx.Lock()
-	// change state to online, recv config
-	assert.Equal(t, "c1", events)
-	mtx.Unlock()
-
-	accessor.Destruct()
-	assert.True(t, assert.Eventually(t, func() bool {
-		return !accessor.IsAuthenticated()
-	}, 3*time.Second, 100*time.Millisecond))
-
-	mtx.Lock()
-	// change state to online, recv config, change state to offline
-	assert.Equal(t, "c10", events)
-	mtx.Unlock()
-}
-
-func TestSeedAccessor_authFailure(t *testing.T) {
+func TestSeedAccessor_connection(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(2)
-	nodeID, differentID := nodeIDs[0], nodeIDs[1]
+	nodeCount := 0
 
-	auth := &authenticator{
-		expectedAccount: map[string][]byte{
-			nodeID.String(): []byte("token"),
-		},
-	}
-
-	testSeed := testing_seed.NewTestingSeed(testing_seed.WithAuthenticator(auth))
-	defer testSeed.Stop()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	mtx := sync.Mutex{}
-	events := ""
-
-	config := &Config{
-		Ctx:    ctx,
-		Logger: slog.Default(),
-		Transporter: DefaultSeedTransporterFactory(&SeedTransporterOption{
-			Verification: false,
+	seed := seed.NewSeed(
+		seed.WithConnectionHandler(&testUtil.ConnectionHandlerHelper{
+			T: t,
+			AssignNodeIDF: func(ctx context.Context) (*shared.NodeID, error) {
+				// return nodeID for 1st and 2nd node
+				if nodeCount < len(nodeIDs) {
+					nodeID := nodeIDs[nodeCount]
+					nodeCount++
+					return nodeID, nil
+				}
+				// return error when 3rd node is requested
+				return nil, fmt.Errorf("error")
+			},
+			UnassignF: func(nodeID *shared.NodeID) {},
 		}),
-		Handler: &seedEventHandlerHelper{
-			authorizeFailed: func() {
-				mtx.Lock()
-				defer mtx.Unlock()
-				events += "f"
-			},
-			changeState: func(_ bool) {
-				assert.FailNow(t, "state event should not be happened when authentication failed")
-			},
-			recvConfig: func(_ *config.Cluster) {
-				assert.FailNow(t, "config data should not be received when authentication failed")
-			},
-			recvPacket: func(_ *shared.Packet) {
-				assert.FailNow(t, "no one should send packet on this test")
-			},
-			requireRandomConnect: func() {
-				assert.FailNow(t, "random connect event should not be happened when only one node")
-			},
-		},
-		URL:          testSeed.URL(),
-		TripInterval: 10 * time.Second,
+		seed.WithPollingInterval(3*time.Second),
+	)
+	server := testServer.NewHelper(seed)
+	server.Start(t.Context())
+	defer server.Stop()
+
+	// 1st node can get nodeID and is alone
+	accessor1 := newAccessor(server, nil, nil)
+	ctx1, cancel1 := context.WithCancel(t.Context())
+	nodeID1, err := accessor1.Start(ctx1)
+	require.NoError(t, err)
+	assert.True(t, nodeID1.Equal(nodeIDs[0]))
+	assert.True(t, accessor1.IsAlone())
+
+	time.Sleep(1 * time.Second)
+
+	// 2nd node can get nodeID and is not alone
+	accessor2 := newAccessor(server, nil, nil)
+	nodeID2, err := accessor2.Start(t.Context())
+	require.NoError(t, err)
+	assert.True(t, nodeID2.Equal(nodeIDs[1]))
+	assert.False(t, accessor2.IsAlone())
+
+	// 3rd node can't start by error
+	accessor3 := newAccessor(server, nil, nil)
+	_, err = accessor3.Start(t.Context())
+	assert.NotNil(t, err)
+
+	// stop to renew session
+	cancel1()
+
+	// 2nd node will be alone
+	assert.Eventually(t, func() bool {
+		err := accessor2.SendSignalOffer(nodeID2, &signal.Offer{
+			OfferID:   1,
+			OfferType: signal.OfferTypeExplicit,
+			Sdp:       "test",
+		})
+		assert.NoError(t, err)
+		return accessor2.IsAlone()
+	}, 5*time.Second, 500*time.Millisecond)
+
+	// keep session by sending signal
+	for i := 0; i < 5; i++ {
+		time.Sleep(1 * time.Second)
+		err := accessor2.SendSignalOffer(nodeID2, &signal.Offer{
+			OfferID:   1,
+			OfferType: signal.OfferTypeExplicit,
+			Sdp:       "test",
+		})
+		assert.NoError(t, err)
+	}
+}
+
+func newAccessor(server *testServer.Helper, logger *slog.Logger, handler *seedAccessorHandlerHelper) *SeedAccessor {
+	if logger == nil {
+		logger = slog.Default()
 	}
 
-	// authentication failed when token is different
-	config.LocalNodeID = nodeID
-	config.Token = []byte("different")
-	accessor := NewSeedAccessor(config)
-	// defer accessor.destruct()
+	if handler == nil {
+		handler = &seedAccessorHandlerHelper{}
+	}
+
+	return NewSeedAccessor(&Config{
+		Logger:     logger,
+		Handler:    handler,
+		URL:        server.URL(),
+		HttpClient: testUtil.NewInsecureHttpClient(),
+	})
+}
+
+func TestSeedAccessor_SignalingKind(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	nodeCount := 0
+
+	// create seed
+	seed := seed.NewSeed(
+		seed.WithConnectionHandler(&testUtil.ConnectionHandlerHelper{
+			T: t,
+			AssignNodeIDF: func(ctx context.Context) (*shared.NodeID, error) {
+				if nodeCount < len(nodeIDs) {
+					nodeID := nodeIDs[nodeCount]
+					nodeCount++
+					return nodeID, nil
+				}
+				return nil, fmt.Errorf("error")
+			},
+			UnassignF: func(nodeID *shared.NodeID) {},
+		}),
+	)
+	server := testServer.NewHelper(seed)
+	server.Start(t.Context())
+	defer server.Stop()
+
+	// src accessor
+	srcAccessor := newAccessor(server, nil, nil)
+	_, err := srcAccessor.Start(t.Context())
+	require.NoError(t, err)
+
+	// dst accessor
+	mtx := sync.Mutex{}
+	receivedCounts := make([]int, 3)
+	dstAccessor := newAccessor(server, nil, &seedAccessorHandlerHelper{
+		errorFunc: func(err error) {
+			assert.Fail(t, "error", err)
+		},
+		// receive signals and check
+		recvSignalOffer: func(srcNodeID *shared.NodeID, offer *signal.Offer) {
+			mtx.Lock()
+			defer mtx.Unlock()
+			receivedCounts[0]++
+			assert.True(t, srcNodeID.Equal(nodeIDs[0]))
+			assert.Equal(t, uint32(1), offer.OfferID)
+			assert.Equal(t, signal.OfferTypeExplicit, offer.OfferType)
+			assert.Equal(t, "offer", offer.Sdp)
+		},
+		recvSignalAnswer: func(srcNodeID *shared.NodeID, answer *signal.Answer) {
+			mtx.Lock()
+			defer mtx.Unlock()
+			receivedCounts[1]++
+			assert.True(t, srcNodeID.Equal(nodeIDs[0]))
+			assert.Equal(t, uint32(2), answer.OfferID)
+			assert.Equal(t, signal.AnswerStatus(3), answer.Status)
+			assert.Equal(t, "answer", answer.Sdp)
+		},
+		recvSignalICE: func(srcNodeID *shared.NodeID, ice *signal.ICE) {
+			mtx.Lock()
+			defer mtx.Unlock()
+			receivedCounts[2]++
+			assert.True(t, srcNodeID.Equal(nodeIDs[0]))
+			assert.Equal(t, uint32(3), ice.OfferID)
+			assert.Equal(t, []string{"ice"}, ice.Ices)
+		},
+	})
+	_, err = dstAccessor.Start(t.Context())
+	require.NoError(t, err)
+
+	// send signals
+	srcAccessor.SendSignalOffer(nodeIDs[1], &signal.Offer{
+		OfferID:   1,
+		OfferType: signal.OfferTypeExplicit,
+		Sdp:       "offer",
+	})
+	srcAccessor.SendSignalAnswer(nodeIDs[1], &signal.Answer{
+		OfferID: 2,
+		Status:  signal.AnswerStatus(3),
+		Sdp:     "answer",
+	})
+	srcAccessor.SendSignalICE(nodeIDs[1], &signal.ICE{
+		OfferID: 3,
+		Ices:    []string{"ice"},
+	})
+
+	// wait for receiving signals
 	assert.Eventually(t, func() bool {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return events == "f"
-	}, 3*time.Second, 100*time.Millisecond)
-	assert.False(t, accessor.IsAuthenticated())
-	accessor.Destruct()
-
-	// authentication failed when nodeID is different
-	config.LocalNodeID = differentID
-	config.Token = []byte("token")
-	accessor = NewSeedAccessor(config)
-	// defer accessor.destruct()
-	assert.Eventually(t, func() bool {
-		mtx.Lock()
-		defer mtx.Unlock()
-		return events == "ff"
-	}, 3*time.Second, 100*time.Millisecond)
-	assert.False(t, accessor.IsAuthenticated())
-	accessor.Destruct()
+		return receivedCounts[0] == 1 && receivedCounts[1] == 1 && receivedCounts[2] == 1
+	}, 5*time.Second, 500*time.Millisecond)
 }
 
-func TestSeedAccessor_SetEnabled(t *testing.T) {
-	nodeID := shared.NewRandomNodeID()
+func TestSeedAccessor_SignalingTarget(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+	slices.SortFunc(nodeIDs, func(a, b *shared.NodeID) int {
+		return a.Compare(b)
+	})
+	nodeCount := 0
 
-	auth := &authenticator{
-		expectedAccount: map[string][]byte{
-			nodeID.String(): []byte("token"),
-		},
-	}
-
-	testSeed := testing_seed.NewTestingSeed(testing_seed.WithAuthenticator(auth))
-	defer testSeed.Stop()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	mtx := sync.Mutex{}
-	events := ""
-
-	config := &Config{
-		Ctx:    ctx,
-		Logger: slog.Default(),
-		Transporter: DefaultSeedTransporterFactory(&SeedTransporterOption{
-			Verification: false,
-		}),
-		Handler: &seedEventHandlerHelper{
-			authorizeFailed: func() {
-				assert.FailNow(t, "authentication should be success")
-			},
-			changeState: func(online bool) {
-				mtx.Lock()
-				defer mtx.Unlock()
-				if online {
-					events += "1"
-				} else {
-					events += "0"
+	// setup seed
+	seed := seed.NewSeed(
+		seed.WithConnectionHandler(&testUtil.ConnectionHandlerHelper{
+			T: t,
+			AssignNodeIDF: func(ctx context.Context) (*shared.NodeID, error) {
+				if nodeCount < len(nodeIDs) {
+					nodeID := nodeIDs[nodeCount]
+					nodeCount++
+					return nodeID, nil
 				}
+				return nil, fmt.Errorf("error")
 			},
-			recvConfig: func(_ *config.Cluster) {
-				mtx.Lock()
-				defer mtx.Unlock()
-				events += "c"
-			},
-			recvPacket: func(_ *shared.Packet) {
-				assert.FailNow(t, "no one should send packet on this test")
-			},
-			requireRandomConnect: func() {
-				assert.FailNow(t, "random connect event should not be happened when only one node")
-			},
-		},
-		URL:          testSeed.URL(),
-		LocalNodeID:  nodeID,
-		Token:        []byte("token"),
-		TripInterval: 10 * time.Second,
-	}
-
-	accessor := NewSeedAccessor(config)
-	// defer accessor.destruct()
-	assert.Eventually(t, func() bool {
-		return accessor.IsAuthenticated()
-	}, 3*time.Second, 100*time.Millisecond)
-
-	mtx.Lock()
-	assert.Equal(t, "c1", events)
-	mtx.Unlock()
-
-	accessor.SetEnabled(false)
-	assert.Eventually(t, func() bool {
-		return !accessor.IsAuthenticated()
-	}, 3*time.Second, 100*time.Millisecond)
-
-	mtx.Lock()
-	assert.Equal(t, "c10", events)
-	mtx.Unlock()
-
-	accessor.SetEnabled(true)
-	assert.Eventually(t, func() bool {
-		return accessor.IsAuthenticated()
-	}, 3*time.Second, 100*time.Millisecond)
-
-	mtx.Lock()
-	assert.Equal(t, "c10c1", events)
-	mtx.Unlock()
-
-	accessor.Destruct()
-	mtx.Lock()
-	assert.Equal(t, "c10c10", events)
-	mtx.Unlock()
-}
-
-func TestSeedAccessor_sessions(t *testing.T) {
-	nodeIDs := testUtil.UniqueNodeIDs(2)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	testSeed := testing_seed.NewTestingSeed(
-		testing_seed.WithPollingTimeout(500*time.Millisecond),
-		testing_seed.WithSessionTimeout(1500*time.Millisecond),
-		testing_seed.WithKeepaliveInterval(200*time.Millisecond),
-	)
-
-	config := &Config{
-		Ctx: ctx,
-		Transporter: DefaultSeedTransporterFactory(&SeedTransporterOption{
-			Verification: false,
+			UnassignF: func(nodeID *shared.NodeID) {},
 		}),
-		Handler: &seedEventHandlerHelper{
-			authorizeFailed: func() {
-				assert.FailNow(t, "authentication should be success")
-			},
-		},
-		URL:          testSeed.URL(),
-		TripInterval: 1 * time.Second,
-	}
+	)
+	server := testServer.NewHelper(seed)
+	server.Start(t.Context())
+	defer server.Stop()
 
-	// create pinger
-	configPinger := *config
-	configPinger.LocalNodeID = nodeIDs[0]
-	configPinger.Logger = slog.With("node", "pinger")
-	pinger := NewSeedAccessor(&configPinger)
-	defer pinger.Destruct()
-	assert.Eventually(t, func() bool {
-		return pinger.IsAuthenticated()
-	}, 3*time.Second, 100*time.Millisecond)
-	assert.True(t, pinger.IsOnlyOne())
-
-	// create node will be offline gracefully
-	configTarget := *config
-	configTarget.LocalNodeID = nodeIDs[1]
-	configTarget.Logger = slog.With("node", "target")
-	target := NewSeedAccessor(&configTarget)
-	// defer target.destruct()
-	assert.Eventually(t, func() bool {
-		return target.IsAuthenticated() && !target.IsOnlyOne() && !pinger.IsOnlyOne()
-	}, 3*time.Second, 100*time.Millisecond)
-
-	target.SetEnabled(false)
-	assert.Eventually(t, func() bool {
-		return !target.IsAuthenticated() && pinger.IsOnlyOne()
-	}, 3*time.Second, 100*time.Millisecond)
-
-	target.SetEnabled(true)
-	assert.Eventually(t, func() bool {
-		return target.IsAuthenticated() && !target.IsOnlyOne() && !pinger.IsOnlyOne()
-	}, 3*time.Second, 100*time.Millisecond)
-
-	target.Destruct()
-	assert.Eventually(t, func() bool {
-		return !target.IsAuthenticated() && pinger.IsOnlyOne()
-	}, 3*time.Second, 100*time.Millisecond)
-
-	// create node will be offline ungracefully
-	ctx2, cancel2 := context.WithCancel(context.Background())
-	configTarget.Ctx = ctx2
-	target = NewSeedAccessor(&configTarget)
-	defer target.Destruct()
-	assert.Eventually(t, func() bool {
-		return target.IsAuthenticated() && !target.IsOnlyOne() && !pinger.IsOnlyOne()
-	}, 3*time.Second, 100*time.Millisecond)
-
-	cancel2() // cause ungraceful offline by canceling context
-	assert.Eventually(t, func() bool {
-		return pinger.IsOnlyOne()
-	}, 3*time.Second, 100*time.Millisecond)
-
-	// be offline by session timeout
-	testSeed.Pause()
-	assert.Eventually(t, func() bool {
-		return !pinger.IsAuthenticated()
-	}, 10*time.Second, 100*time.Millisecond)
-
-	// be online again
-	testSeed.Resume()
-	defer testSeed.Stop()
-	assert.Eventually(t, func() bool {
-		return pinger.IsAuthenticated()
-	}, 3*time.Second, 100*time.Millisecond)
-}
-
-func TestSeedAccessor_RelayPacket(t *testing.T) {
-	// receiver1, receiver2, sender, destination of random, source of random
-	nodeIDs := testUtil.UniqueNodeIDs(5)
-
-	// test packet base
-	packetBase := shared.Packet{
-		DstNodeID: nodeIDs[3],
-		SrcNodeID: nodeIDs[4],
-		HopCount:  2,
-		Mode:      shared.PacketModeRelaySeed,
-		Content: &proto.PacketContent{
-			Content: &proto.PacketContent_Error{
-				Error: &proto.Error{
-					Code:    2,
-					Message: "test",
+	accessors := make([]*SeedAccessor, 0, len(nodeIDs))
+	mtx := sync.Mutex{}
+	receivedFrom := make([][]*shared.NodeID, len(nodeIDs))
+	for i := range nodeIDs {
+		accessor := newAccessor(server, nil,
+			&seedAccessorHandlerHelper{
+				recvSignalOffer: func(srcNodeID *shared.NodeID, offer *signal.Offer) {
+					mtx.Lock()
+					defer mtx.Unlock()
+					receivedFrom[i] = append(receivedFrom[i], srcNodeID)
 				},
 			},
-		},
+		)
+		_, err := accessor.Start(t.Context())
+		require.NoError(t, err)
+		accessors = append(accessors, accessor)
 	}
 
-	testSeed := testing_seed.NewTestingSeed()
-	defer testSeed.Stop()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	mtx := sync.Mutex{}
-
-	config := &Config{
-		Ctx: ctx,
-		Transporter: DefaultSeedTransporterFactory(&SeedTransporterOption{
-			Verification: false,
-		}),
-		URL:          testSeed.URL(),
-		TripInterval: 1 * time.Second,
+	// send signal to explicit destination
+	for i := range nodeIDs {
+		err := accessors[i].SendSignalOffer(nodeIDs[mod(i+1, len(nodeIDs))], &signal.Offer{
+			OfferID:   uint32(i),
+			OfferType: signal.OfferTypeExplicit,
+		})
+		assert.NoError(t, err)
 	}
 
-	// create accessor for sender
-	configSender := *config
-	configSender.LocalNodeID = nodeIDs[2]
-	configSender.Logger = slog.With("node", "sender")
-	configSender.Handler = &seedEventHandlerHelper{
-		authorizeFailed: func() {
-			assert.FailNow(t, "authentication should be success")
-		},
-		recvPacket: func(packet *shared.Packet) {
-			assert.FailNow(t, "sender should not receive packet")
-		},
-	}
-	sender := NewSeedAccessor(&configSender)
-	defer sender.Destruct()
-
-	// create accessor for receiver 1
-	var received *shared.Packet
-	receiveCount1 := 0
-	configReceiver1 := *config
-	configReceiver1.LocalNodeID = nodeIDs[0]
-	configReceiver1.Logger = slog.With("node", "receiver1")
-	configReceiver1.Handler = &seedEventHandlerHelper{
-		authorizeFailed: func() {
-			assert.FailNow(t, "authentication should be success")
-		},
-		recvPacket: func(packet *shared.Packet) {
-			mtx.Lock()
-			defer mtx.Unlock()
-			received = packet
-			receiveCount1 += 1
-		},
-	}
-	receiver1 := NewSeedAccessor(&configReceiver1)
-
-	// wait for sender and receiver1 to be online
-	assert.Eventually(t, func() bool {
-		return sender.IsAuthenticated() && receiver1.IsAuthenticated()
-	}, 3*time.Second, 100*time.Millisecond)
-
-	// check packet content is correctly relayed
-	packet := packetBase
-	packet.ID = 10
-	sender.RelayPacket(&packet)
 	assert.Eventually(t, func() bool {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return received != nil
-	}, 3*time.Second, 100*time.Millisecond)
-	require.NotNil(t, received)
-	assert.Equal(t, nodeIDs[3].String(), received.DstNodeID.String())
-	assert.Equal(t, nodeIDs[4].String(), received.SrcNodeID.String())
-	assert.Equal(t, uint32(10), received.ID)
-	assert.Equal(t, uint32(2), received.HopCount)
-	assert.Equal(t, shared.PacketModeRelaySeed, received.Mode)
-	assert.Equal(t, uint32(2), received.Content.GetError().Code)
-	assert.Equal(t, "test", received.Content.GetError().Message)
-	receiver1.Destruct()
+		for i := range receivedFrom {
+			if len(receivedFrom[i]) != 1 {
+				return false
+			}
+			if !receivedFrom[i][0].Equal(nodeIDs[mod(i+len(nodeIDs)-1, len(nodeIDs))]) {
+				return false
+			}
+		}
+		return true
+	}, 5*time.Second, 500*time.Millisecond)
 
-	// recreate receiver1 and receiver2
+	// send signal to next destination
 	mtx.Lock()
-	receiveCount1 = 0
+	receivedFrom = make([][]*shared.NodeID, len(nodeIDs))
 	mtx.Unlock()
-	receiver1 = NewSeedAccessor(&configReceiver1)
-	defer receiver1.Destruct()
 
-	configReceiver2 := *config
-	configReceiver2.LocalNodeID = nodeIDs[1]
-	configReceiver2.Logger = slog.With("node", "receiver2")
-	receiveCount2 := 0
-	configReceiver2.Handler = &seedEventHandlerHelper{
-		authorizeFailed: func() {
-			assert.FailNow(t, "authentication should be success")
-		},
-		recvPacket: func(packet *shared.Packet) {
-			mtx.Lock()
-			defer mtx.Unlock()
-			receiveCount2 += 1
-		},
+	for i, dstNodeID := range nodeIDs {
+		err := accessors[i].SendSignalOffer(dstNodeID, &signal.Offer{
+			OfferID:   uint32(i),
+			OfferType: signal.OfferTypeNext,
+		})
+		assert.NoError(t, err)
 	}
-	receiver2 := NewSeedAccessor(&configReceiver2)
-	defer receiver2.Destruct()
 
-	assert.Eventually(t, func() bool {
-		return receiver1.IsAuthenticated() && receiver2.IsAuthenticated()
-	}, 3*time.Second, 100*time.Millisecond)
-
-	// send 10 packets and check if receiver1 or receiver2 receive all packets
-	for i := 0; i < 10; i++ {
-		packet := packetBase
-		packet.ID = uint32(100 + i)
-		sender.RelayPacket(&packet)
-	}
 	assert.Eventually(t, func() bool {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return receiveCount1+receiveCount2 == 10
-	}, 3*time.Second, 100*time.Millisecond)
+		for i := range receivedFrom {
+			if len(receivedFrom[i]) != 1 {
+				return false
+			}
+			if !receivedFrom[i][0].Equal(nodeIDs[mod(i+len(nodeIDs)-1, len(nodeIDs))]) {
+				return false
+			}
+		}
+		return true
+	}, 5*time.Second, 500*time.Millisecond)
+}
 
-	// disconnect the receiver that received more packets and check if the other receiver receives all packets
-	if receiveCount1 > receiveCount2 {
-		receiver1.Destruct()
-	} else {
-		receiver2.Destruct()
-	}
-	receiveCount1 = 0
-	receiveCount2 = 0
-
-	for i := 0; i < 10; i++ {
-		packet := packetBase
-		packet.ID = uint32(200 + i)
-		sender.RelayPacket(&packet)
-	}
-	assert.Eventually(t, func() bool {
-		mtx.Lock()
-		defer mtx.Unlock()
-		return receiveCount1+receiveCount2 == 10
-	}, 3*time.Second, 100*time.Millisecond)
+func mod(a, b int) int {
+	return int(math.Mod(float64(a), float64(b)))
 }

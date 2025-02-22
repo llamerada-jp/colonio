@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package api.colonio.v1alpha;
+
+import "api/colonio/v1alpha/colonio.proto";
+
+option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
+
+service SeedService {
+  rpc AssignNodeID (AssignNodeIDRequest) returns (AssignNodeIDResponse) {}
+  rpc SendSignal (SendSignalRequest) returns (SendSignalResponse) {}
+  rpc PollSignal (PollSignalRequest) returns (stream PollSignalResponse) {}
+}
+
+message Signal {
+  colonio.v1alpha.NodeID dst_node_id = 1;
+  colonio.v1alpha.NodeID src_node_id = 2;
+  oneof content {
+    SignalOffer offer = 3;
+    SignalAnswer answer = 4;
+    SignalICE ice = 5;
+  }
+}
+
+enum SignalOfferType {
+  EXPLICIT = 0;
+  NEXT = 1;
+}
+
+message SignalOffer {
+  uint32 offer_id = 1;
+  SignalOfferType type = 2;
+  string sdp = 3;
+}
+
+message SignalAnswer {
+  uint32 offer_id = 1;
+  uint32 status = 2;
+  string sdp = 3;
+}
+
+message SignalICE {
+  uint32 offer_id = 1;
+  repeated string ices = 2;
+}
+
+message AssignNodeIDRequest {
+}
+
+message AssignNodeIDResponse {
+  colonio.v1alpha.NodeID node_id = 1;
+  bool is_alone = 2;
+}
+
+message SendSignalRequest {
+  Signal signal = 1;
+}
+
+message SendSignalResponse {
+  bool is_alone = 1;
+}
+
+message PollSignalRequest {
+}
+
+message PollSignalResponse {
+  repeated Signal signals = 1;
+}

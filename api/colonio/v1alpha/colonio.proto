@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-option go_package = "github.com/llamerada-jp/colonio/internal/proto";
+package api.colonio.v1alpha;
 
-package colonio.proto;
+option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
 
 // basic types
 message Coordinate {
@@ -39,13 +39,8 @@ message NodePacket {
 
 //
 message PacketContent {
-  oneof Content {
+  oneof content {
     Error error = 1;
-
-    SignalingICE signaling_ice = 5;
-    SignalingOffer signaling_offer = 6;
-    SignalingOfferSuccess signaling_offer_success = 7;
-    SignalingOfferFailure signaling_offer_failure = 8;
 
     Routing routing = 10;
 
@@ -77,73 +72,6 @@ message Error {
   string message = 2;
 }
 
-// for node-seed authenticate and hints
-message SeedAuthenticate {
-  string version = 1;
-  NodeID node_id = 2;
-  bytes token = 3;
-}
-
-message SeedAuthenticateResponse {
-  uint32 hint = 1;
-  bytes config = 2;
-  string session_id = 3;
-}
-
-message SeedClose { string session_id = 1; }
-
-message SeedPacket {
-  NodeID dst_node_id = 1;
-  NodeID src_node_id = 2;
-  uint32 hop_count = 3;
-  uint32 id = 4;
-  uint32 mode = 5;
-  PacketContent content = 6;
-}
-
-message SeedRelay {
-  string session_id = 1;
-  repeated SeedPacket packets = 2;
-}
-
-message SeedRelayResponse { uint32 hint = 1; }
-
-message SeedPoll {
-  string session_id = 1;
-  bool online = 2;
-}
-
-message SeedPollResponse {
-  uint32 hint = 1;
-  string session_id = 2;
-  repeated SeedPacket packets = 3;
-}
-
-// for webrtc signaling
-message SignalingICE {
-  NodeID local_node_id = 1;
-  NodeID remote_node_id = 2;
-  repeated string ices = 3;
-}
-
-message SignalingOffer {
-  NodeID prime_node_id = 1;
-  NodeID second_node_id = 2;
-  string sdp = 3;
-  uint32 type = 4;
-}
-
-message SignalingOfferSuccess {
-  uint32 status = 1;
-  NodeID second_node_id = 2;
-  string sdp = 3;
-}
-
-message SignalingOfferFailure {
-  uint32 status = 1;
-  NodeID prime_node_id = 2;
-}
-
 // for routing
 message RoutingNodeRecord {
   int64 r1d_score = 1;
@@ -151,10 +79,9 @@ message RoutingNodeRecord {
 }
 
 message Routing {
-  uint32 seed_distance = 1;
-  Coordinate r2d_position = 2;
+  Coordinate r2d_position = 1;
   // Key type of map is string from node-id.
-  map<string, RoutingNodeRecord> node_records = 3;
+  map<string, RoutingNodeRecord> node_records = 2;
 }
 
 // for messaging module

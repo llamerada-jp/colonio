@@ -23,11 +23,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/llamerada-jp/colonio/config"
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/geometry"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/internal/wait_any"
 )
@@ -66,18 +65,17 @@ type cache struct {
 }
 
 type Spread struct {
-	ctx      context.Context
-	logger   *slog.Logger
-	handler  Handler
-	mtx      sync.RWMutex
-	handlers map[string]func(*Request)
-
-	transferer *transferer.Transferer
-	config     *config.Spread
-	cache      map[uint64]*cache
+	logger           *slog.Logger
+	handler          Handler
+	mtx              sync.RWMutex
+	transferer       *transferer.Transferer
+	coordinateSystem geometry.CoordinateSystem
+	cacheLifetime    time.Duration
+	sizeToUseKnock   uint
+	handlers         map[string]func(*Request)
+	cache            map[uint64]*cache
 
 	localNodeID       *shared.NodeID
-	coordinateSystem  geometry.CoordinateSystem
 	localPosition     *geometry.Coordinate
 	nextNodePositions map[shared.NodeID]*geometry.Coordinate
 }
@@ -102,34 +100,42 @@ func convertOptFromProto(opt uint32) *Options {
 	return r
 }
 
-func NewSpread(ctx context.Context, logger *slog.Logger, handler Handler) *Spread {
-	return &Spread{
-		ctx:      ctx,
-		logger:   logger,
-		handler:  handler,
-		handlers: make(map[string]func(*Request)),
-		cache:    make(map[uint64]*cache),
-	}
+type Config struct {
+	Logger           *slog.Logger
+	Handler          Handler
+	Transferer       *transferer.Transferer
+	CoordinateSystem geometry.CoordinateSystem
+	CacheLifetime    time.Duration
+	SizeToUseKnock   uint
 }
 
-func (s *Spread) ApplyConfig(tr *transferer.Transferer, config *config.Spread, localNodeID *shared.NodeID, cs geometry.CoordinateSystem) {
-	s.mtx.Lock()
-	s.transferer = tr
-	s.config = config
-	s.localNodeID = localNodeID
-	s.coordinateSystem = cs
-	s.mtx.Unlock()
+func NewSpread(config *Config) *Spread {
+	s := &Spread{
+		logger:           config.Logger,
+		handler:          config.Handler,
+		transferer:       config.Transferer,
+		coordinateSystem: config.CoordinateSystem,
+		cacheLifetime:    config.CacheLifetime,
+		sizeToUseKnock:   config.SizeToUseKnock,
+		handlers:         make(map[string]func(*Request)),
+		cache:            make(map[uint64]*cache),
+	}
 
 	transferer.SetRequestHandler[proto.PacketContent_SpreadKnock](s.transferer, s.recvKnock)
 	transferer.SetRequestHandler[proto.PacketContent_SpreadRelay](s.transferer, s.recvRelay)
 	transferer.SetRequestHandler[proto.PacketContent_Spread](s.transferer, s.recvSpread)
 
+	return s
+}
+
+func (s *Spread) Start(ctx context.Context, localNodeID *shared.NodeID) {
+	s.localNodeID = localNodeID
 	go func() {
-		ticker := time.NewTicker(config.CacheLifetime / 2)
+		ticker := time.NewTicker(s.cacheLifetime / 2)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-s.ctx.Done():
+			case <-ctx.Done():
 				return
 
 			case <-ticker.C:
@@ -154,11 +160,6 @@ func (s *Spread) UpdateNextNodePosition(positions map[shared.NodeID]*geometry.Co
 func (s *Spread) Post(center *geometry.Coordinate, r float64, name string, message []byte, opt *Options) error {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
-	tr := s.transferer
-
-	if tr == nil {
-		return fmt.Errorf("this function can be used when online and enabled Spread feature")
-	}
 
 	cache := s.makeCache(center, r, name, message, opt)
 
@@ -193,7 +194,7 @@ func (s *Spread) Post(center *geometry.Coordinate, r float64, name string, messa
 		return nil
 	}
 
-	if len(message) > int(s.config.SizeToUseKnock) {
+	if len(message) > int(s.sizeToUseKnock) {
 		s.sendKnock(nil, cache)
 
 	} else {
@@ -338,7 +339,7 @@ func (s *Spread) recvRelay(packet *shared.Packet) {
 		s.responseForRelay(packet, true)
 	}
 
-	if len(cache.message) > int(s.config.SizeToUseKnock) {
+	if len(cache.message) > int(s.sizeToUseKnock) {
 		s.sendKnock(packet.SrcNodeID, cache)
 
 	} else {
@@ -390,7 +391,7 @@ func (s *Spread) recvSpread(packet *shared.Packet) {
 		})
 	}
 
-	if len(cache.message) > int(s.config.SizeToUseKnock) {
+	if len(cache.message) > int(s.sizeToUseKnock) {
 		s.sendKnock(packet.SrcNodeID, cache)
 
 	} else {
@@ -528,7 +529,7 @@ func (s *Spread) cleanupCache() {
 
 	now := time.Now()
 	for uid, cache := range s.cache {
-		if now.After(cache.timestamp.Add(s.config.CacheLifetime)) {
+		if now.After(cache.timestamp.Add(s.cacheLifetime)) {
 			delete(s.cache, uid)
 		}
 	}

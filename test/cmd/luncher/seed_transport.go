@@ -26,31 +26,28 @@ const (
 	responseNormal = "✋"
 	responseError  = "🙅"
 
-	SeedPort   = 8080
-	NormalPath = "seed_transport_hello"
-	ErrorPath  = "seed_transport_error"
+	NormalPath = "/seed_transport_hello"
+	ErrorPath  = "/seed_transport_error"
 )
 
-func setSeedTransportHandlers(mux *http.ServeMux) {
-	mux.HandleFunc("/"+NormalPath, func(w http.ResponseWriter, r *http.Request) {
-		bin, err := io.ReadAll(r.Body)
-		if err != nil {
-			panic(err)
-		}
+func normalResponder(w http.ResponseWriter, r *http.Request) {
+	bin, err := io.ReadAll(r.Body)
+	if err != nil {
+		panic(err)
+	}
 
-		if string(bin) != Request {
-			http.Error(w, "request is invalid", http.StatusBadRequest)
-			return
-		}
+	if string(bin) != Request {
+		http.Error(w, "request is invalid", http.StatusBadRequest)
+		return
+	}
 
-		w.Header().Set("Content-Type", "application/octet-stream")
-		_, err = w.Write([]byte(responseNormal))
-		if err != nil {
-			panic(err)
-		}
-	})
+	w.Header().Set("Content-Type", "application/octet-stream")
+	_, err = w.Write([]byte(responseNormal))
+	if err != nil {
+		panic(err)
+	}
+}
 
-	mux.HandleFunc("/"+ErrorPath, func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, responseError, http.StatusInternalServerError)
-	})
+func errorResponder(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, responseError, http.StatusInternalServerError)
 }

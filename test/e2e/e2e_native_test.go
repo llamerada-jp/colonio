@@ -19,59 +19,24 @@
 package e2e
 
 import (
-	"crypto/tls"
-	"net/http"
-	"os"
-	"os/exec"
-	"path"
 	"testing"
-	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/llamerada-jp/colonio/seed"
+	"github.com/llamerada-jp/colonio/test/util/server"
 	"github.com/stretchr/testify/suite"
 )
 
-var seed *exec.Cmd
-
-func setup(t *testing.T) error {
-	cur, _ := os.Getwd()
-	seed = exec.Command(os.Getenv("COLONIO_SEED_BIN_PATH"), "--config", path.Join(cur, "..", "seed.json"))
-	seed.Stdout = os.Stdout
-	seed.Stderr = os.Stderr
-	t.Log("start seed")
-	err := seed.Start()
-	if err != nil {
-		return err
-	}
-
-	require.Eventually(t, func() bool {
-		client := &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true,
-				},
-			},
-		}
-		_, err := client.Get("https://localhost:8080/")
-		return err == nil
-	}, 10*time.Second, time.Second)
-	t.Log("check seed state OK")
-
-	return nil
-}
-
-func teardown() error {
-	return seed.Process.Kill()
-}
-
 func TestNative(t *testing.T) {
-	err := setup(t)
-	require.NoError(t, err)
+	seed := seed.NewSeed()
+	helper := server.NewHelper(seed)
+	helper.Start(t.Context())
+	defer helper.Stop()
+	t.Log("start seed")
 
-	suite.Run(t, new(SingleNodeMessaging))
-	suite.Run(t, new(E2eSuite))
-
-	err = teardown()
-	assert.NoError(t, err)
+	suite.Run(t, &SingleNodeMessaging{
+		seedURL: helper.URL(),
+	})
+	suite.Run(t, &E2eSuite{
+		seedURL: helper.URL(),
+	})
 }

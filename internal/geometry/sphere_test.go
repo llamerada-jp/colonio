@@ -19,14 +19,11 @@ import (
 	"math"
 	"testing"
 
-	"github.com/llamerada-jp/colonio/config"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestSphere(t *testing.T) {
-	cs := NewSphereCoordinateSystem(&config.GeometrySphere{
-		Radius: 1,
-	})
+	cs := NewSphereCoordinateSystem(1)
 
 	// Check default position
 	p := cs.GetLocalPosition()
@@ -77,18 +74,14 @@ func TestSphereDistance(t *testing.T) {
 
 	for i, test := range tests {
 		t.Logf("test %d", i)
-		cs := NewSphereCoordinateSystem(&config.GeometrySphere{
-			Radius: test.r,
-		})
+		cs := NewSphereCoordinateSystem(test.r)
 
 		assert.InDelta(t, test.d, cs.GetDistance(test.p1, test.p2), 1e-10)
 	}
 }
 
 func TestSphereShift(t *testing.T) {
-	cs := NewSphereCoordinateSystem(&config.GeometrySphere{
-		Radius: 10,
-	})
+	cs := NewSphereCoordinateSystem(10)
 
 	tests := []struct {
 		base     *Coordinate
