@@ -16,7 +16,7 @@
 package shared
 
 import (
-	"github.com/llamerada-jp/colonio/internal/proto"
+	"github.com/llamerada-jp/colonio/proto"
 )
 
 type PacketMode uint16

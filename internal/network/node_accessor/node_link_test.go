@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/llamerada-jp/colonio/config"
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	proto3 "google.golang.org/protobuf/proto"

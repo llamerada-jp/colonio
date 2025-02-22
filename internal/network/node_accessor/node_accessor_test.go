@@ -24,8 +24,8 @@ import (
 
 	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/proto"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

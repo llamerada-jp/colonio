@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"math/rand"
 
-	"github.com/llamerada-jp/colonio/internal/proto"
+	"github.com/llamerada-jp/colonio/proto"
 )
 
 const (

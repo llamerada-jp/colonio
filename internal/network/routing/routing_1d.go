@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/proto"
 )
 
 const (

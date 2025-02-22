@@ -26,11 +26,17 @@ build: seed build-lib build-js
 
 .PHONY: seed
 seed: $(OUTPUT_PATH)/seed
-$(OUTPUT_PATH)/seed: internal/proto/colonio.pb.go $(shell find . -type f -name '*.go')
+$(OUTPUT_PATH)/seed: proto/colonio.pb.go proto/seed.pb.go proto/seed_grpc.pb.go $(shell find . -type f -name '*.go')
 	go build -o $(OUTPUT_PATH)/seed ./seed/cmd
 
-internal/proto/colonio.pb.go: colonio.proto
+proto/colonio.pb.go: proto/colonio.proto
 	$(PROTOC) --go_out=module=github.com/llamerada-jp/colonio:. $<
+
+proto/seed.pb.go: proto/seed.proto proto/colonio.proto
+	$(PROTOC) -I . --go_out=module=github.com/llamerada-jp/colonio:. $<
+
+proto/seed_grpc.pb.go:proto/seed.proto proto/colonio.proto
+	$(PROTOC) -I . --go-grpc_out=module=github.com/llamerada-jp/colonio:. $<
 
 .PHONY: build-lib
 INCLUDE_FLAGS := -I$(DEPENDING_PKG_PATH)/include -I$(DEPENDING_PKG_PATH)/include/third_party/abseil-cpp
@@ -102,6 +108,7 @@ setup:
 	unzip -o -d $(DEPENDING_PKG_PATH) protoc.zip bin/protoc 'include/*'
 	rm -f protoc.zip
 	GOBIN=$(BINDIR) go install google.golang.org/protobuf/cmd/protoc-gen-go@v$(PROTOC_GEN_GO_VERSION)
+	GOBIN=$(BINDIR) go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 	# libwebrtc
 	cd $(WORK_PATH) \
 	&& curl -LOS $(LIBWEBRTC_URL) \

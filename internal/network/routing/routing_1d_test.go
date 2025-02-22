@@ -18,8 +18,8 @@ package routing
 import (
 	"testing"
 
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/proto"
 	"github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

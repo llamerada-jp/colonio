@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-option go_package = "github.com/llamerada-jp/colonio/internal/proto";
+package colonio.api.v1;
 
-package colonio.proto;
+option go_package = "github.com/llamerada-jp/colonio/proto";
 
 // basic types
 message Coordinate {
@@ -75,48 +75,6 @@ message PacketContent {
 message Error {
   uint32 code = 1;
   string message = 2;
-}
-
-// for node-seed authenticate and hints
-message SeedAuthenticate {
-  string version = 1;
-  NodeID node_id = 2;
-  bytes token = 3;
-}
-
-message SeedAuthenticateResponse {
-  uint32 hint = 1;
-  bytes config = 2;
-  string session_id = 3;
-}
-
-message SeedClose { string session_id = 1; }
-
-message SeedPacket {
-  NodeID dst_node_id = 1;
-  NodeID src_node_id = 2;
-  uint32 hop_count = 3;
-  uint32 id = 4;
-  uint32 mode = 5;
-  PacketContent content = 6;
-}
-
-message SeedRelay {
-  string session_id = 1;
-  repeated SeedPacket packets = 2;
-}
-
-message SeedRelayResponse { uint32 hint = 1; }
-
-message SeedPoll {
-  string session_id = 1;
-  bool online = 2;
-}
-
-message SeedPollResponse {
-  uint32 hint = 1;
-  string session_id = 2;
-  repeated SeedPacket packets = 3;
 }
 
 // for webrtc signaling

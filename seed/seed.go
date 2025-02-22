@@ -17,21 +17,17 @@ package seed
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"math/rand"
-	"net/http"
 	"sync"
 	"time"
 
-	"github.com/llamerada-jp/colonio/config"
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
-	proto3 "google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
+	"github.com/llamerada-jp/colonio/proto"
+	"google.golang.org/grpc"
 )
+
+const METADATA_KEY = "colonio-seed-metadata"
 
 type ContextKeyType string
 
@@ -41,101 +37,96 @@ type ContextKeyType string
  */
 const CONTEXT_REQUEST_KEY ContextKeyType = "requestID"
 
-type Authenticator interface {
-	Authenticate(token []byte, nodeID string) (bool, error)
-}
-
 type node struct {
-	timestamp   time.Time
-	sessionID   string
-	online      bool
-	chTimestamp time.Time
-	c           chan uint32
+	timestamp time.Time
+	mutex     sync.Mutex
+	packets   []*proto.SeedPacket
 }
 
-type packet struct {
-	timestamp  time.Time
-	stepNodeID *shared.NodeID
-	p          *proto.SeedPacket
+type options struct {
+	logger            *slog.Logger
+	connectionHandler ConnectionHandler
+	multiSeedHandler  MultiSeedHandler
+	sessionStore      SessionStore
+}
+
+type ConnectionHandler interface {
+	AssignNodeID(ctx context.Context) (*shared.NodeID, error)
+	Unassign(nodeID *shared.NodeID)
+}
+
+type MultiSeedHandler interface {
+	IsAlone(nodeID *shared.NodeID) (bool, error)
+	RelayPacket(p *proto.SeedPacket) error
+}
+
+type optionSetter func(*options)
+
+func WithLogger(logger *slog.Logger) optionSetter {
+	return func(c *options) {
+		c.logger = logger
+	}
+}
+
+func WithConnectionHandler(handler ConnectionHandler) optionSetter {
+	return func(c *options) {
+		c.connectionHandler = handler
+	}
+}
+
+func WithMultiSeedHandler(handler MultiSeedHandler) optionSetter {
+	return func(c *options) {
+		c.multiSeedHandler = handler
+	}
+}
+
+func WithSessionStore(store SessionStore) optionSetter {
+	return func(c *options) {
+		c.sessionStore = store
+	}
 }
 
 type Seed struct {
-	logger  *slog.Logger
-	ctx     context.Context
-	mutex   sync.Mutex
-	running bool
+	options
+	proto.UnimplementedSeedServer
+	mutex sync.Mutex
 	// map of node-id and node instance
 	nodes map[shared.NodeID]*node
-	// map of session-id and node-id
-	sessions map[string]*shared.NodeID
-	// packets to relay
-	packets []packet
-
-	configJS       []byte
-	sessionTimeout time.Duration
-	pollingTimeout time.Duration
-
-	authenticator Authenticator
 }
 
 /**
  * NewSeedHandler creates an http handler to provide colonio's seed.
  * It also starts a go routine for the seed features.
  */
-func NewSeed(config *config.Cluster, logger *slog.Logger, authenticator Authenticator) (*Seed, http.Handler) {
-	if err := config.Validate(); err != nil {
-		panic(err)
+func NewSeed(ctx context.Context, optionSetters ...optionSetter) *Seed {
+	opts := options{
+		logger: slog.Default(),
 	}
 
-	configJS, err := json.Marshal(config)
-	if err != nil {
-		panic(err)
+	for _, setter := range optionSetters {
+		setter(&opts)
 	}
 
-	seed := &Seed{
-		logger:         logger,
-		mutex:          sync.Mutex{},
-		running:        false,
-		nodes:          make(map[shared.NodeID]*node),
-		sessions:       make(map[string]*shared.NodeID),
-		configJS:       configJS,
-		sessionTimeout: config.SessionTimeout,
-		pollingTimeout: config.PollingTimeout,
-		authenticator:  authenticator,
+	if opts.sessionStore == nil {
+		opts.sessionStore = NewSessionMemoryStore(ctx, 10*time.Minute)
 	}
 
-	return seed, seed.makeHandler()
+	return &Seed{
+		options: opts,
+		mutex:   sync.Mutex{},
+		nodes:   make(map[shared.NodeID]*node),
+	}
 }
 
-func (seed *Seed) WaitForRun() {
-	for {
-		seed.mutex.Lock()
-		running := seed.running
-		seed.mutex.Unlock()
-
-		if running {
-			return
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
+func (seed *Seed) RegisterGRPCServer(s *grpc.Server) {
+	proto.RegisterSeedServer(s, seed)
 }
 
 func (seed *Seed) Run(ctx context.Context) {
-	seed.mutex.Lock()
-	seed.ctx = ctx
-	seed.running = true
-	seed.mutex.Unlock()
-
 	ticker4Cleanup := time.NewTicker(time.Second)
-	ticker4Random := time.NewTicker(10 * time.Second)
 
 	defer func() {
 		ticker4Cleanup.Stop()
-		ticker4Random.Stop()
-		seed.mutex.Lock()
-		seed.running = false
-		seed.mutex.Unlock()
 	}()
 
 	for {
@@ -147,14 +138,107 @@ func (seed *Seed) Run(ctx context.Context) {
 			if err := seed.cleanup(); err != nil {
 				seed.logger.Error("failed on cleanup", slog.String("err", err.Error()))
 			}
-
-		case <-ticker4Random.C:
-			if err := seed.randomConnect(); err != nil {
-				seed.logger.Error("failed on random connect", slog.String("err", err.Error()))
-			}
 		}
 	}
 }
+
+func (seed *Seed) RelayPacket(p *proto.SeedPacket) error {
+	panic("not implemented")
+	return nil
+}
+
+func (seed *Seed) AssignNodeID(ctx context.Context, _ *proto.AssignNodeIDRequest) (*proto.AssignNodeIDResponse, error) {
+	var nodeID *shared.NodeID
+	if seed.connectionHandler != nil {
+		var err error
+		nodeID, err = seed.connectionHandler.AssignNodeID(ctx)
+		if err != nil {
+			seed.log(ctx).Warn("failed on assign node-id", slog.String("error", err.Error()))
+			return nil, fmt.Errorf("failed on assign node-id")
+		}
+	}
+
+	seed.bindNodeID(nodeID)
+
+	isAlone, err := seed.isAlone(ctx, nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed on assign node-id")
+	}
+
+	return &proto.AssignNodeIDResponse{
+		NodeId:  nodeID.Proto(),
+		IsAlone: isAlone,
+	}, nil
+}
+
+func (seed *Seed) Relay(context.Context, *proto.RelayRequest) (*proto.RelayResponse, error) {
+
+}
+
+func (seed *Seed) PollRelaying(*proto.PollRelayingRequest, grpc.ServerStreamingServer[proto.PollRelayingResponse]) error {
+
+}
+
+func (seed *Seed) log(ctx context.Context) *slog.Logger {
+	requestID := ctx.Value(CONTEXT_REQUEST_KEY)
+	if requestID == nil {
+		return seed.logger
+	}
+
+	return seed.logger.With(slog.String("id", requestID.(string)))
+}
+
+func (seed *Seed) bindNodeID(nodeID *shared.NodeID) {
+	seed.mutex.Lock()
+	defer seed.mutex.Unlock()
+
+	if nodeID != nil {
+		// check duplicate node-id if it is specified
+		if _, ok := seed.nodes[*nodeID]; ok {
+			panic("logic error: duplicate node-id in nodes")
+		}
+	} else {
+		// generate new node-id if it is not specified
+		for {
+			nodeID = shared.NewRandomNodeID()
+			if _, ok := seed.nodes[*nodeID]; !ok {
+				break
+			}
+		}
+	}
+
+	seed.nodes[*nodeID] = &node{
+		timestamp: time.Now(),
+		packets:   make([]*proto.SeedPacket, 0),
+	}
+}
+
+func (seed *Seed) getNode(nodeID *shared.NodeID) *node {
+	seed.mutex.Lock()
+	defer seed.mutex.Unlock()
+
+	return seed.nodes[*nodeID]
+}
+
+func (seed *Seed) isAlone(ctx context.Context, nodeID *shared.NodeID) (bool, error) {
+	if seed.multiSeedHandler != nil {
+		isAlone, err := seed.multiSeedHandler.IsAlone(nodeID)
+		if err != nil {
+			seed.log(ctx).Warn("failed on check alone", slog.String("err", err.Error()))
+		}
+		return isAlone, err
+	}
+
+	seed.mutex.Lock()
+	defer seed.mutex.Unlock()
+	return len(seed.nodes) == 0 || (len(seed.nodes) == 1 && seed.nodes[*nodeID] != nil), nil
+}
+
+func (seed *Seed) cleanup() error {
+	panic("not implemented")
+}
+
+/*
 
 func handleHelper[req, res protoreflect.ProtoMessage](seed *Seed, w http.ResponseWriter, r *http.Request, f func(context.Context, req) (res, int, error), buf req) {
 	ctx := r.Context()
@@ -177,100 +261,9 @@ func handleHelper[req, res protoreflect.ProtoMessage](seed *Seed, w http.Respons
 	}
 }
 
-func (seed *Seed) log(ctx context.Context) *slog.Logger {
-	requestID := ctx.Value(CONTEXT_REQUEST_KEY)
-	if requestID == nil {
-		return seed.logger
-	}
-
-	return seed.logger.With(slog.String("id", requestID.(string)))
-}
-
-func decodeRequest(w http.ResponseWriter, r *http.Request, m protoreflect.ProtoMessage) error {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return fmt.Errorf("request method should be `post`")
-	}
-
-	if r.ProtoMajor != 2 && r.ProtoMajor != 3 {
-		w.WriteHeader(http.StatusPreconditionFailed)
-		return fmt.Errorf("request should be HTTP/2 or HTTP/3")
-	}
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return err
-	}
-
-	if err := proto3.Unmarshal(body, m); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return err
-	}
-
-	return nil
-}
-
-func outputResponse(w http.ResponseWriter, m protoreflect.ProtoMessage, code int) error {
-	if code != http.StatusOK && m.ProtoReflect().IsValid() {
-		panic(fmt.Sprint("logic error: status code should be OK when have response message ", code, m))
-	}
-
-	w.WriteHeader(code)
-	if code != http.StatusOK {
-		return nil
-	}
-
-	response, err := proto3.Marshal(m)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return err
-	}
-
-	w.Header().Add("Content-Type", "application/octet-stream")
-
-	if _, err := w.Write(response); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (seed *Seed) makeHandler() http.Handler {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/authenticate", func(w http.ResponseWriter, r *http.Request) {
-		handleHelper(seed, w, r, seed.authenticate, &proto.SeedAuthenticate{})
-	})
-	mux.HandleFunc("/close", func(w http.ResponseWriter, r *http.Request) {
-		handleHelper(seed, w, r, seed.close, &proto.SeedClose{})
-	})
-	mux.HandleFunc("/relay", func(w http.ResponseWriter, r *http.Request) {
-		handleHelper(seed, w, r, seed.relay, &proto.SeedRelay{})
-	})
-	mux.HandleFunc("/poll", func(w http.ResponseWriter, r *http.Request) {
-		handleHelper(seed, w, r, seed.poll, &proto.SeedPoll{})
-	})
-
-	return mux
-}
-
 func (seed *Seed) authenticate(ctx context.Context, param *proto.SeedAuthenticate) (*proto.SeedAuthenticateResponse, int, error) {
 	if param.Version != shared.ProtocolVersion {
 		return nil, http.StatusBadRequest, fmt.Errorf("wrong version was specified: %s", param.Version)
-	}
-
-	// verify the token
-	if seed.authenticator != nil {
-		nodeID := shared.NewNodeIDFromProto(param.NodeId)
-		verified, err := seed.authenticator.Authenticate(param.Token, nodeID.String())
-		if err != nil {
-			return nil, http.StatusInternalServerError, err
-		}
-
-		if !verified {
-			return nil, http.StatusForbidden, fmt.Errorf("verify failed")
-		}
 	}
 
 	seed.mutex.Lock()
@@ -496,91 +489,6 @@ func (seed *Seed) countChannels(locked bool) int {
 	return count
 }
 
-func (seed *Seed) countOnline(locked bool) int {
-	if !locked {
-		seed.mutex.Lock()
-		defer seed.mutex.Unlock()
-	}
-
-	count := 0
-	for _, node := range seed.nodes {
-		if node.c != nil && node.online {
-			count++
-		}
-	}
-
-	return count
-}
-
-func (seed *Seed) randomConnect() error {
-	seed.mutex.Lock()
-	defer seed.mutex.Unlock()
-
-	// skip if there are few online channels
-	if seed.countOnline(true) < 2 {
-		return nil
-	}
-
-	for nodeID := range seed.nodes {
-		if seed.wakeUp(&nodeID, shared.HintRequireRandom, true) {
-			return nil
-		}
-	}
-
-	return nil
-}
-
-func (seed *Seed) checkSession(sessionID string) (*shared.NodeID, bool) {
-	seed.mutex.Lock()
-	defer seed.mutex.Unlock()
-
-	nodeID, ok := seed.sessions[sessionID]
-	if !ok {
-		return nil, false
-	}
-
-	node, ok := seed.nodes[*nodeID]
-	if !ok {
-		panic("logic error: node should be exist when session exits")
-	}
-
-	node.timestamp = time.Now()
-
-	return nodeID, true
-}
-
-func (seed *Seed) createNode(nodeID *shared.NodeID) string {
-	// should be locked
-	if _, ok := seed.nodes[*nodeID]; ok {
-		panic("logic error: duplicate node-id in nodes")
-	}
-
-	sessionID := seed.assignSessionID(nodeID)
-	seed.nodes[*nodeID] = &node{
-		timestamp: time.Now(),
-		sessionID: sessionID,
-	}
-
-	return sessionID
-}
-
-func (seed *Seed) assignSessionID(nodeID *shared.NodeID) string {
-	// should be locked
-	for {
-		// generate new session-id
-		sessionID := fmt.Sprintf("%016x%016x%016x%016x", rand.Uint64(), rand.Uint64(), rand.Uint64(), rand.Uint64())
-
-		// retry if duplicated
-		if _, ok := seed.sessions[sessionID]; ok {
-			continue
-		}
-
-		// assign new session id
-		seed.sessions[sessionID] = nodeID
-		return sessionID
-	}
-}
-
 func (seed *Seed) closeChannel(nodeID *shared.NodeID, locked bool) {
 	if !locked {
 		seed.mutex.Lock()
@@ -594,21 +502,6 @@ func (seed *Seed) closeChannel(nodeID *shared.NodeID, locked bool) {
 
 	close(node.c)
 	node.c = nil
-}
-
-func (seed *Seed) getHint(locked bool) uint32 {
-	if !locked {
-		seed.mutex.Lock()
-		defer seed.mutex.Unlock()
-	}
-
-	hint := uint32(0)
-
-	if len(seed.nodes) == 1 {
-		hint = shared.HintOnlyOne
-	}
-
-	return hint
 }
 
 func (seed *Seed) disconnect(nodeID *shared.NodeID, locked bool) error {
@@ -664,3 +557,5 @@ func (seed *Seed) assignChannel(nodeID *shared.NodeID, online bool) (chan uint32
 
 	return c, nil
 }
+
+//*/

@@ -26,8 +26,8 @@ import (
 	"time"
 
 	"github.com/llamerada-jp/colonio/config"
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/proto"
 	"github.com/llamerada-jp/colonio/test/testing_seed"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/assert"

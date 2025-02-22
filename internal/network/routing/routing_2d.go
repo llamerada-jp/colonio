@@ -22,8 +22,8 @@ import (
 
 	"github.com/fogleman/delaunay"
 	"github.com/llamerada-jp/colonio/internal/geometry"
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/proto"
 	"golang.org/x/exp/maps"
 )
 
