@@ -19,8 +19,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-
-	"github.com/llamerada-jp/colonio/config"
 )
 
 const (
@@ -31,13 +29,13 @@ const (
 )
 
 type sphereCoordinateSystem struct {
-	config        *config.GeometrySphere
+	radius        float64
 	localPosition Coordinate
 }
 
-func NewSphereCoordinateSystem(config *config.GeometrySphere) CoordinateSystem {
+func NewSphereCoordinateSystem(radius float64) CoordinateSystem {
 	return &sphereCoordinateSystem{
-		config: config,
+		radius: radius,
 		localPosition: Coordinate{
 			X: rand.Float64()*(sphereXMax-sphereXMin) + sphereXMin,
 			Y: rand.Float64()*(sphereYMax-sphereYMin) + sphereYMin,
@@ -49,7 +47,7 @@ func (s *sphereCoordinateSystem) GetDistance(p1, p2 *Coordinate) float64 {
 	avrX := (p1.X - p2.X) / 2
 	avrY := (p1.Y - p2.Y) / 2
 
-	return s.config.Radius * 2 *
+	return s.radius * 2 *
 		math.Asin(math.Sqrt(math.Pow(math.Sin(avrY), 2)+math.Cos(p1.Y)*math.Cos(p2.Y)*math.Pow(math.Sin(avrX), 2)))
 }
 

@@ -1,9 +1,12 @@
 SHELL := /bin/bash -o pipefail
 
 # Tool and lib versions
+# https://github.com/bufbuild/buf/releases
+BUF_VERSION := 1.50.0
 # https://github.com/protocolbuffers/protobuf/releases
 PROTOC_VERSION := 28.3
 PROTOC_GEN_GO_VERSION := $(shell awk '/google.golang.org\/protobuf/ {print substr($$2, 2)}' go.mod)
+CONNECT_GO_VERSION := $(shell awk '/connectrpc.com\/connect/ {print substr($$2, 2)}' go.mod)
 # https://github.com/llamerada-jp/libwebrtc
 LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m119/libwebrtc-119-linux-amd64.tar.gz"
 # https://github.com/kazuho/picojson
@@ -17,20 +20,13 @@ BINDIR := $(DEPENDING_PKG_PATH)/bin
 WORK_PATH := /tmp/work
 
 # Commands
+BUF := $(BINDIR)/buf
 CURL := curl -sSLf
-SUDO := sudo
 PROTOC := PATH=$(BINDIR) $(BINDIR)/protoc
+SUDO := sudo
 
 .PHONY: build
-build: seed build-lib build-js
-
-.PHONY: seed
-seed: $(OUTPUT_PATH)/seed
-$(OUTPUT_PATH)/seed: internal/proto/colonio.pb.go $(shell find . -type f -name '*.go')
-	go build -o $(OUTPUT_PATH)/seed ./seed/cmd
-
-internal/proto/colonio.pb.go: colonio.proto
-	$(PROTOC) --go_out=module=github.com/llamerada-jp/colonio:. $<
+build: build-lib build-js
 
 .PHONY: build-lib
 INCLUDE_FLAGS := -I$(DEPENDING_PKG_PATH)/include -I$(DEPENDING_PKG_PATH)/include/third_party/abseil-cpp
@@ -44,6 +40,14 @@ $(OUTPUT_PATH)/libcolonio.a: $(shell find internal/c -name '*.cpp' -or -name '*.
 	rm -f $(OUTPUT_PATH)/libcolonio.a
 	ar rcs $(OUTPUT_PATH)/libcolonio.a $(WORK_PATH)/webrtc_config.o $(WORK_PATH)/webrtc_link.o
 
+.PHONY: generate
+generate:
+	$(BUF) generate --path ./api/
+
+.PHONY: lint
+lint:
+	$(BUF) lint --path ./api/
+
 .PHONY: format-code
 format-code: $(shell find . -type f -name '*.go')
 	go fmt ./...
@@ -51,12 +55,16 @@ format-code: $(shell find . -type f -name '*.go')
 .PHONY: test
 export COLONIO_TEST_CERT := $(shell pwd)/localhost.crt
 export COLONIO_TEST_KEY := $(shell pwd)/localhost.key
+export COLONIO_COOKIE_SECRET_KEY_PAIR := "test"
 test: build build-test
+	# unit tests
 	go test -v -count=1 -race ./config/...
 	go test -v -count=1 -race ./seed/...
 	go test -v -count=1 -race ./internal/...
-	COLONIO_SEED_BIN_PATH=$(OUTPUT_PATH)/seed go test -v -count=1 -race ./test/e2e/
-	go run ./test/cmd/luncher/ -c test/seed.json
+	# e2e tests for native
+	go test -v -count=1 -race ./test/e2e/
+	# e2e tests for wasm
+	go run ./test/cmd/luncher/ -d ./test/dist -j ./output/
 
 .PHONY: generate-cert
 generate-cert:
@@ -68,12 +76,12 @@ generate-cert:
 .PHONY: build-test
 build-test: build-js test/dist/tests.txt generate-cert test/dist/wasm_exec.js
 
-test/dist/wasm_exec.js: $(shell go env GOROOT)/misc/wasm/wasm_exec.js
+test/dist/wasm_exec.js: $(shell go env GOROOT)/lib/wasm/wasm_exec.js
 	cp $< $@
 
 test/dist/tests.txt: $(shell find . -type f -name '*.go')
 	rm -f test/dist/tests/*.wasm
-	for target in ./config ./internal ./test/e2e; do \
+	for target in ./config ./internal; do \
 		for dir in `find $$target -name '*.go' -printf '%h\n' | sort -u`; do \
 		  if [ "$$(dirname $$dir)" = "." ]; then \
 				outname="$$(basename $$dir).wasm"; \
@@ -101,7 +109,9 @@ setup:
 	$(CURL) -o protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-linux-x86_64.zip
 	unzip -o -d $(DEPENDING_PKG_PATH) protoc.zip bin/protoc 'include/*'
 	rm -f protoc.zip
+	GOBIN=$(BINDIR) go install github.com/bufbuild/buf/cmd/buf@v$(BUF_VERSION)
 	GOBIN=$(BINDIR) go install google.golang.org/protobuf/cmd/protoc-gen-go@v$(PROTOC_GEN_GO_VERSION)
+	GOBIN=$(BINDIR) go install connectrpc.com/connect/cmd/protoc-gen-connect-go@v$(CONNECT_GO_VERSION)
 	# libwebrtc
 	cd $(WORK_PATH) \
 	&& curl -LOS $(LIBWEBRTC_URL) \

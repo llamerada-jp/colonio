@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 
 	"github.com/llamerada-jp/colonio/simulator/datastore"
@@ -31,6 +32,7 @@ var nodeConfig = struct {
 	seedURL       string
 	story         string
 	concurrency   uint
+	writer        string
 	mongodbConfig datastore.MongodbConfig
 }{}
 
@@ -43,19 +45,27 @@ var nodeCmd = &cobra.Command{
 
 		cmd.SilenceUsage = true
 
+		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		}))
+
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		var rawWriter datastore.RawWriter
-		if len(nodeConfig.mongodbConfig.URI) != 0 {
+		switch nodeConfig.writer {
+		case "mongodb":
 			mongo, err := datastore.NewMongodbWriter(ctx, &nodeConfig.mongodbConfig)
 			if err != nil {
 				return fmt.Errorf("failed to create datastore: %w", err)
 			}
 			rawWriter = mongo
 
-		} else {
+		case "stdout":
 			rawWriter = datastore.NewStdWriter()
+
+		default:
+			rawWriter = datastore.NewNoneWriter()
 		}
 
 		writer := datastore.NewWriter(rawWriter)
@@ -67,9 +77,15 @@ var nodeCmd = &cobra.Command{
 		mtx := &sync.Mutex{}
 		var globalErr error
 
+		logger.Info("start node",
+			slog.String("seedURL", nodeConfig.seedURL),
+			slog.String("story", nodeConfig.story),
+			slog.Uint64("concurrency", uint64(nodeConfig.concurrency)),
+			slog.String("mongodbURI", nodeConfig.mongodbConfig.URI))
+
 		for i := uint(0); i < nodeConfig.concurrency; i++ {
 			go func() {
-				if err := run(ctx, writer); err != nil {
+				if err := run(ctx, logger.With(slog.String("no", fmt.Sprintf("#%d", i))), writer); err != nil {
 					cancel()
 					slog.Error("error on node", slog.String("error", err.Error()))
 
@@ -89,10 +105,10 @@ var nodeCmd = &cobra.Command{
 	},
 }
 
-func run(ctx context.Context, writer *datastore.Writer) error {
+func run(ctx context.Context, logger *slog.Logger, writer *datastore.Writer) error {
 	switch nodeConfig.story {
 	case "sphere":
-		return sphere.RunNode(ctx, nodeConfig.seedURL, writer)
+		return sphere.RunNode(ctx, logger, nodeConfig.seedURL, writer)
 	default:
 		return errors.New("unexpected story name")
 	}
@@ -101,8 +117,9 @@ func run(ctx context.Context, writer *datastore.Writer) error {
 func init() {
 	flags := nodeCmd.PersistentFlags()
 
-	flags.StringVarP(&nodeConfig.seedURL, "seed-url", "u", valueFromEnvString("SEED_URL", "https://localhost:8080/seed"), "URL of the seed.")
+	flags.StringVarP(&nodeConfig.seedURL, "seed-url", "u", valueFromEnvString("SEED_URL", "https://localhost:8443"), "URL of the seed.")
 	flags.StringVarP(&nodeConfig.story, "story", "s", valueFromEnvString("STORY", "sphere"), "situation of the simulation.")
+	flags.StringVarP(&nodeConfig.writer, "writer", "w", valueFromEnvString("WRITER", "mongodb"), "writer type.")
 	flags.UintVarP(&nodeConfig.concurrency, "concurrency", "c", valueFromEnvUint("CONCURRENCY", 1), "number of concurrent requests.")
 	bindMongodbConfig(flags, &nodeConfig.mongodbConfig, true)
 

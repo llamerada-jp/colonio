@@ -18,21 +18,11 @@ package geometry
 import (
 	"testing"
 
-	"github.com/llamerada-jp/colonio/config"
 	"github.com/stretchr/testify/assert"
 )
 
-var (
-	testPlaneConfig = &config.GeometryPlane{
-		XMin: 0,
-		XMax: 100,
-		YMin: 0,
-		YMax: 100,
-	}
-)
-
 func TestPlane(t *testing.T) {
-	cs := NewPlaneCoordinateSystem(testPlaneConfig)
+	cs := NewPlaneCoordinateSystem(0, 100, 0, 100)
 
 	// Check default position
 	p := cs.GetLocalPosition()
@@ -55,7 +45,7 @@ func TestPlane(t *testing.T) {
 }
 
 func TestPlaneDistance(t *testing.T) {
-	cs := NewPlaneCoordinateSystem(testPlaneConfig)
+	cs := NewPlaneCoordinateSystem(0, 100, 0, 100)
 
 	// Test GetDistance
 	p1 := &Coordinate{X: 0, Y: 0}
@@ -64,7 +54,7 @@ func TestPlaneDistance(t *testing.T) {
 }
 
 func TestPlaneShift(t *testing.T) {
-	cs := NewPlaneCoordinateSystem(testPlaneConfig)
+	cs := NewPlaneCoordinateSystem(0, 100, 0, 100)
 
 	tests := []struct {
 		base     *Coordinate

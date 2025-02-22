@@ -17,10 +17,8 @@ package network
 
 import (
 	"context"
-	"errors"
 	"log/slog"
-	"math"
-	"sync"
+	"net/http"
 	"time"
 
 	"github.com/llamerada-jp/colonio/config"
@@ -29,316 +27,215 @@ import (
 	"github.com/llamerada-jp/colonio/internal/network/node_accessor"
 	"github.com/llamerada-jp/colonio/internal/network/routing"
 	"github.com/llamerada-jp/colonio/internal/network/seed_accessor"
+	"github.com/llamerada-jp/colonio/internal/network/signal"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
 	"github.com/llamerada-jp/colonio/internal/observation"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
 type Handler interface {
-	NetworkRecvConfig(*config.Cluster)
 	NetworkUpdateNextNodePosition(map[shared.NodeID]*geometry.Coordinate)
 }
 
 type Config struct {
-	Ctx         context.Context
-	Logger      *slog.Logger
-	LocalNodeID *shared.NodeID
-	Handler     Handler
-	Observation observation.Caller
-	// Allow insecure server connections. You must not use this option in production. Only for testing.
-	Insecure bool
-	// Interval between retries when a network error occurs.
-	SeedTripInterval time.Duration
+	Logger           *slog.Logger
+	Handler          Handler
+	Observation      observation.Caller
+	CoordinateSystem geometry.CoordinateSystem
+
+	// config parameters for seed
+	HttpClient *http.Client // optional
+	SeedURL    string
+	// config parameters for webrtc node
+	ICEServers []config.ICEServer
+	NLC        *node_accessor.NodeLinkConfig
+	// config parameters for routing
+	RoutingExchangeInterval time.Duration
+
+	// maximum number of hops that a packet can be relayed.
+	PacketHopLimit uint
+
+	// config parameters for testing
+	ConnectionTimeout      time.Duration
+	NextConnectionInterval time.Duration
 }
 
 type Network struct {
-	config                *Config
-	ctx                   context.Context
-	cancel                context.CancelFunc
-	mtx                   sync.RWMutex
-	enabled               bool
-	clusterConfigRevision float64
-	routing               *routing.Routing
-	seedAccessor          *seed_accessor.SeedAccessor
-	nodeAccessor          *node_accessor.NodeAccessor
-	transferer            *transferer.Transferer
-	coordinateSystem      geometry.CoordinateSystem
+	logger      *slog.Logger
+	handler     Handler
+	observation observation.Caller
 
-	// maximum number of hops that a packet can be relayed.
-	hopLimit uint
+	localNodeID *shared.NodeID
+
+	seedAccessor *seed_accessor.SeedAccessor
+	nodeAccessor *node_accessor.NodeAccessor
+	transferer   *transferer.Transferer
+	routing      *routing.Routing
+
+	packetHopLimit uint
 }
 
-func NewNetwork(config *Config) *Network {
-	ctx, cancel := context.WithCancel(config.Ctx)
-
-	return &Network{
-		config:                config,
-		ctx:                   ctx,
-		cancel:                cancel,
-		mtx:                   sync.RWMutex{},
-		enabled:               false,
-		clusterConfigRevision: math.NaN(),
+func NewNetwork(config *Config) (*Network, error) {
+	n := &Network{
+		logger:         config.Logger,
+		handler:        config.Handler,
+		observation:    config.Observation,
+		packetHopLimit: config.PacketHopLimit,
 	}
-}
 
-func (n *Network) Connect(url string, token []byte) error {
-	n.mtx.Lock()
-	defer n.mtx.Unlock()
+	n.seedAccessor = seed_accessor.NewSeedAccessor(&seed_accessor.Config{
+		Logger:     config.Logger,
+		Handler:    n,
+		URL:        config.SeedURL,
+		HttpClient: config.HttpClient,
+	})
 
-	if n.transferer != nil {
-		return errors.New("network module can be connected only once")
+	na, err := node_accessor.NewNodeAccessor(&node_accessor.Config{
+		Logger:         config.Logger,
+		Handler:        n,
+		ICEServers:     config.ICEServers,
+		NodeLinkConfig: config.NLC,
+		// for testing
+		ConnectionTimeout:      config.ConnectionTimeout,
+		NextConnectionInterval: config.NextConnectionInterval,
+	})
+	if err != nil {
+		return nil, err
 	}
+	n.nodeAccessor = na
 
 	n.transferer = transferer.NewTransferer(&transferer.Config{
-		Ctx:         n.ctx,
-		Logger:      n.config.Logger,
-		LocalNodeID: n.config.LocalNodeID,
-		Handler:     n,
+		Logger:  config.Logger,
+		Handler: n,
 	})
-	n.seedAccessor = seed_accessor.NewSeedAccessor(&seed_accessor.Config{
-		Ctx:    n.ctx,
-		Logger: n.config.Logger,
-		Transporter: seed_accessor.DefaultSeedTransporterFactory(&seed_accessor.SeedTransporterOption{
-			Verification: !n.config.Insecure,
-		}),
-		Handler:      n,
-		URL:          url,
-		LocalNodeID:  n.config.LocalNodeID,
-		Token:        token,
-		TripInterval: n.config.SeedTripInterval,
-	})
-	n.nodeAccessor = node_accessor.NewNodeAccessor(&node_accessor.Config{
-		Ctx:         n.ctx,
-		Logger:      n.config.Logger,
-		LocalNodeID: n.config.LocalNodeID,
-		Handler:     n,
-		Transferer:  n.transferer,
-	})
-	n.enabled = true
 
-	return nil
+	n.routing = routing.NewRouting(&routing.Config{
+		Logger:                  config.Logger,
+		Handler:                 n,
+		Observation:             config.Observation,
+		Transferer:              n.transferer,
+		CoordinateSystem:        config.CoordinateSystem,
+		RoutingExchangeInterval: config.RoutingExchangeInterval,
+	})
+
+	return n, nil
 }
 
-func (n *Network) Disconnect() {
-	n.mtx.Lock()
-	defer n.mtx.Unlock()
-
-	n.enabled = false
-
-	n.routing = nil
-
-	if n.nodeAccessor != nil {
-		n.nodeAccessor.SetEnabled(false)
-		n.nodeAccessor = nil
+func (n *Network) Start(ctx context.Context) (*shared.NodeID, error) {
+	var err error
+	n.localNodeID, err = n.seedAccessor.Start(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	if n.seedAccessor != nil {
-		n.seedAccessor.SetEnabled(false)
-		n.seedAccessor.Destruct()
-		n.seedAccessor = nil
-	}
+	n.nodeAccessor.Start(ctx, n.localNodeID)
+	n.transferer.Start(ctx, n.localNodeID)
+	n.routing.Start(ctx, n.localNodeID)
 
-	n.cancel()
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				n.nodeAccessor.SetBeAlone(n.seedAccessor.IsAlone())
+			}
+		}
+	}()
+
+	return n.localNodeID, nil
 }
 
 func (n *Network) IsOnline() bool {
-	n.mtx.RLock()
-	defer n.mtx.RUnlock()
-
-	if n.nodeAccessor != nil && n.nodeAccessor.IsOnline() {
-		return true
-	}
-
-	if n.seedAccessor != nil && n.seedAccessor.IsAuthenticated() && n.seedAccessor.IsOnlyOne() {
-		return true
-	}
-
-	return false
+	return n.seedAccessor.IsAlone() || n.nodeAccessor.IsOnline()
 }
 
 func (n *Network) GetTransferer() *transferer.Transferer {
-	n.mtx.RLock()
-	defer n.mtx.RUnlock()
-
 	return n.transferer
 }
 
-func (n *Network) GetCoordinateSystem() geometry.CoordinateSystem {
-	n.mtx.RLock()
-	defer n.mtx.RUnlock()
-
-	return n.coordinateSystem
-}
-
 func (n *Network) UpdateLocalPosition(pos *geometry.Coordinate) error {
-	n.mtx.RLock()
-	defer n.mtx.RUnlock()
-
-	if n.routing == nil {
-		return errors.New("network is not initialized")
-	}
-
 	return n.routing.UpdateLocalPosition(pos)
 }
 
 func (n *Network) GetNextStep2D(dst *geometry.Coordinate) *shared.NodeID {
-	n.mtx.RLock()
-	defer n.mtx.RUnlock()
-
-	if n.routing == nil {
-		panic("routing 2D is not enabled")
-	}
-
 	return n.routing.GetNextStep2D(dst)
 }
 
-// implement handlers
+// implements for seed_accessor.Handler
+func (n *Network) SeedRecvSignalOffer(srcNodeID *shared.NodeID, offer *signal.Offer) {
+	n.nodeAccessor.SignalingOffer(srcNodeID, offer)
+}
 
+func (n *Network) SeedRecvSignalAnswer(srcNodeID *shared.NodeID, answer *signal.Answer) {
+	n.nodeAccessor.SignalingAnswer(srcNodeID, answer)
+}
+
+func (n *Network) SeedRecvSignalICE(srcNodeID *shared.NodeID, ice *signal.ICE) {
+	n.nodeAccessor.SignalingICE(srcNodeID, ice)
+}
+
+// implements for node_accessor.Handler
 func (n *Network) NodeAccessorRecvPacket(from *shared.NodeID, packet *shared.Packet) {
 	if !n.checkHopCount(packet) {
 		return
 	}
-	if n.routing != nil && from != nil {
+	if from != nil {
 		n.routing.CountRecvPacket(from, packet)
 	}
 
-	n.classifyPacket(packet, false)
+	n.classifyPacket(packet)
 }
 
 func (n *Network) NodeAccessorChangeConnections(connections map[shared.NodeID]struct{}) {
 	// use go routine to avoid deadlock
-	go func() {
-		n.mtx.RLock()
-		defer n.mtx.RUnlock()
+	go n.routing.UpdateNodeConnections(connections)
 
-		if n.routing != nil {
-			n.routing.UpdateNodeConnections(connections)
-		}
-	}()
-
-	n.config.Observation.ChangeConnectedNodes(shared.ConvertNodeIDSetToStringMap(connections))
+	n.observation.ChangeConnectedNodes(shared.ConvertNodeIDSetToStringMap(connections))
 }
 
-func (n *Network) RoutingSetSeedEnabled(enabled bool) {
-	if n.seedAccessor != nil {
-		n.seedAccessor.SetEnabled(enabled)
-	}
+func (n *Network) NodeAccessorSendSignalOffer(dstNodeID *shared.NodeID, offer *signal.Offer) error {
+	return n.seedAccessor.SendSignalOffer(dstNodeID, offer)
 }
 
-func (n *Network) RoutingUpdateConnection(required, keep map[shared.NodeID]struct{}) {
-	n.mtx.RLock()
-	defer n.mtx.RUnlock()
-
-	if n.nodeAccessor != nil {
-		n.nodeAccessor.ConnectLinks(required, keep)
-	}
+func (n *Network) NodeAccessorSendSignalAnswer(dstNodeID *shared.NodeID, answer *signal.Answer) error {
+	return n.seedAccessor.SendSignalAnswer(dstNodeID, answer)
 }
 
-func (n *Network) RoutingUpdateNextNodePositions(positions map[shared.NodeID]*geometry.Coordinate) {
-	n.config.Handler.NetworkUpdateNextNodePosition(positions)
+func (n *Network) NodeAccessorSendSignalICE(dstNodeID *shared.NodeID, ice *signal.ICE) error {
+	return n.seedAccessor.SendSignalICE(dstNodeID, ice)
 }
 
-func (n *Network) SeedAuthorizeFailed() {
-	panic("not implemented")
-}
-
-func (n *Network) SeedChangeState(online bool) {
-	n.mtx.RLock()
-	defer n.mtx.RUnlock()
-
-	if n.routing != nil {
-		n.routing.UpdateSeedState(online)
-	}
-}
-
-func (n *Network) SeedRecvConfig(clusterConfig *config.Cluster) {
-	n.mtx.Lock()
-	defer n.mtx.Unlock()
-
-	if !math.IsNaN(n.clusterConfigRevision) {
-		if n.clusterConfigRevision == clusterConfig.Revision {
-			return
-		} else {
-			panic("TODO: receive config twice and those are different, suggest to rerun the network.")
-		}
-	}
-	n.clusterConfigRevision = clusterConfig.Revision
-	n.hopLimit = clusterConfig.HopLimit
-
-	if clusterConfig.Geometry != nil {
-		if clusterConfig.Geometry.Plane != nil {
-			n.coordinateSystem = geometry.NewPlaneCoordinateSystem(clusterConfig.Geometry.Plane)
-
-		} else if clusterConfig.Geometry.Sphere != nil {
-			n.coordinateSystem = geometry.NewSphereCoordinateSystem(clusterConfig.Geometry.Sphere)
-		}
-	}
-
-	n.routing = routing.NewRouting(&routing.Config{
-		Ctx:                     n.ctx,
-		Logger:                  n.config.Logger,
-		LocalNodeID:             n.config.LocalNodeID,
-		Handler:                 n,
-		Observation:             n.config.Observation,
-		Transferer:              n.transferer,
-		CoordinateSystem:        n.coordinateSystem,
-		RoutingExchangeInterval: clusterConfig.RoutingExchangeInterval,
-		SeedConnectRate:         clusterConfig.SeedConnectRate,
-		SeedReconnectDuration:   clusterConfig.SeedReconnectDuration,
-	})
-
-	n.nodeAccessor.SetConfig(clusterConfig.IceServers, &node_accessor.NodeLinkConfig{
-		SessionTimeout:    clusterConfig.SessionTimeout,
-		KeepaliveInterval: clusterConfig.KeepaliveInterval,
-		BufferInterval:    clusterConfig.BufferInterval,
-		PacketBaseBytes:   clusterConfig.WebRTCPacketBaseBytes,
-	})
-	n.nodeAccessor.SetEnabled(true)
-
-	n.config.Handler.NetworkRecvConfig(clusterConfig)
-}
-
-func (n *Network) SeedRecvPacket(packet *shared.Packet) {
-	if !n.checkHopCount(packet) {
-		return
-	}
-
-	n.classifyPacket(packet, true)
-}
-
-func (n *Network) SeedRequireRandomConnect() {
-	n.mtx.RLock()
-	defer n.mtx.RUnlock()
-
-	if n.nodeAccessor != nil {
-		n.nodeAccessor.ConnectRandomLink()
-	}
-}
-
+// implements for transferer.Handler
 func (n *Network) TransfererSendPacket(packet *shared.Packet) {
-	n.classifyPacket(packet, false)
+	n.classifyPacket(packet)
 }
 
 func (n *Network) TransfererRelayPacket(dstNodeID *shared.NodeID, packet *shared.Packet) {
-	n.mtx.RLock()
-	defer n.mtx.RUnlock()
-
-	if !n.enabled {
-		return
-	}
-
 	if !n.checkHopCount(packet) {
 		return
 	}
 
 	err := n.nodeAccessor.RelayPacket(dstNodeID, packet)
 	if err != nil {
-		n.config.Logger.Debug("failed to relay packet", slog.String("error", err.Error()))
+		n.logger.Debug("failed to relay packet", slog.String("error", err.Error()))
 	}
 }
 
+// implements for routing.Handler
+func (n *Network) RoutingUpdateConnection(required, keep map[shared.NodeID]struct{}) {
+	n.nodeAccessor.ConnectLinks(required, keep)
+}
+
+func (n *Network) RoutingUpdateNextNodePositions(positions map[shared.NodeID]*geometry.Coordinate) {
+	n.handler.NetworkUpdateNextNodePosition(positions)
+}
+
 func (n *Network) checkHopCount(packet *shared.Packet) bool {
-	if packet.HopCount > uint32(n.hopLimit) {
+	if packet.HopCount > uint32(n.packetHopLimit) {
 		return false
 	}
 
@@ -347,41 +244,9 @@ func (n *Network) checkHopCount(packet *shared.Packet) bool {
 	return true
 }
 
-func (n *Network) classifyPacket(packet *shared.Packet, from_seed bool) {
-	n.mtx.RLock()
-	defer n.mtx.RUnlock()
-
-	if !n.enabled {
-		return
-	}
-
-	if (packet.Mode & shared.PacketModeRelaySeed) != 0x0 {
-		if (packet.Mode&shared.PacketModeResponse) != 0x0 && !from_seed {
-			nextStepToSeed := n.routing.GetNextStepToSeed()
-			if *nextStepToSeed == shared.NodeIDThis {
-				n.seedAccessor.RelayPacket(packet)
-				return
-			}
-
-			err := n.nodeAccessor.RelayPacket(nextStepToSeed, packet)
-			if err != nil {
-				n.config.Logger.Debug("failed to relay packet", slog.String("error", err.Error()))
-			}
-			return
-		}
-
-		if *packet.SrcNodeID == *n.config.LocalNodeID {
-			if *n.routing.GetNextStepToSeed() == shared.NodeIDThis {
-				n.seedAccessor.RelayPacket(packet)
-			} else {
-				n.config.Logger.Debug("drop a packet addressed to the seed")
-			}
-			return
-		}
-	}
-
+func (n *Network) classifyPacket(packet *shared.Packet) {
 	nextNodeID := n.routing.GetNextStep1D(packet)
-	if *nextNodeID == shared.NodeIDThis || *nextNodeID == *n.config.LocalNodeID {
+	if *nextNodeID == shared.NodeIDThis || *nextNodeID == *n.localNodeID {
 		n.transferer.Receive(packet)
 		return
 
@@ -394,5 +259,5 @@ func (n *Network) classifyPacket(packet *shared.Packet, from_seed bool) {
 		return
 	}
 
-	n.config.Logger.Debug("drop packet")
+	n.logger.Debug("drop packet")
 }

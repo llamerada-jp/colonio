@@ -19,29 +19,16 @@
 package e2e
 
 import (
-	"crypto/tls"
-	"net/http"
 	"testing"
-	"time"
 
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
 func TestWasm(t *testing.T) {
-	t.Log("check seed state")
-	require.Eventually(t, func() bool {
-		client := &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true,
-				},
-			},
-		}
-		_, err := client.Get("https://localhost:8080/")
-		return err == nil
-	}, 10*time.Second, time.Second)
-
-	suite.Run(t, new(SingleNodeMessaging))
-	suite.Run(t, new(E2eSuite))
+	suite.Run(t, &SingleNodeMessaging{
+		seedURL: "/",
+	})
+	suite.Run(t, &E2eSuite{
+		seedURL: "/",
+	})
 }

@@ -13,10 +13,38 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package shared
+package signal
 
-// Hint
-const (
-	HintOnlyOne       = uint32(0x01)
-	HintRequireRandom = uint32(0x02)
+import (
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 )
+
+type OfferType int
+type AnswerStatus int
+
+const (
+	OfferTypeExplicit = OfferType(proto.SignalOfferType_EXPLICIT)
+	OfferTypeNext     = OfferType(proto.SignalOfferType_NEXT)
+)
+
+const (
+	AnswerStatusReject = iota
+	AnswerStatusAccept
+)
+
+type Offer struct {
+	OfferID   uint32
+	OfferType OfferType
+	Sdp       string
+}
+
+type Answer struct {
+	OfferID uint32
+	Status  AnswerStatus
+	Sdp     string
+}
+
+type ICE struct {
+	OfferID uint32
+	Ices    []string
+}

@@ -19,21 +19,25 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-
-	"github.com/llamerada-jp/colonio/config"
 )
 
 type planeCoordinateSystem struct {
-	config        *config.GeometryPlane
+	xMin          float64
+	xMax          float64
+	yMin          float64
+	yMax          float64
 	localPosition Coordinate
 }
 
-func NewPlaneCoordinateSystem(config *config.GeometryPlane) CoordinateSystem {
+func NewPlaneCoordinateSystem(xMin, xMax, yMin, yMax float64) CoordinateSystem {
 	return &planeCoordinateSystem{
-		config: config,
+		xMin: xMin,
+		xMax: xMax,
+		yMin: yMin,
+		yMax: yMax,
 		localPosition: Coordinate{
-			X: rand.Float64()*(config.XMax-config.XMin) + config.XMin,
-			Y: rand.Float64()*(config.YMax-config.YMin) + config.YMin,
+			X: rand.Float64()*(xMax-xMin) + xMin,
+			Y: rand.Float64()*(yMax-yMin) + yMin,
 		},
 	}
 }
@@ -51,12 +55,12 @@ func (p *planeCoordinateSystem) GetPrecision() float64 {
 }
 
 func (p *planeCoordinateSystem) SetLocalPosition(position *Coordinate) error {
-	if position.X < p.config.XMin || p.config.XMax < position.X {
-		return fmt.Errorf("the specified X coordinate is out of range (x:%f, min:%f, max:%f)", position.X, p.config.XMin, p.config.XMax)
+	if position.X < p.xMin || p.xMax < position.X {
+		return fmt.Errorf("the specified X coordinate is out of range (x:%f, min:%f, max:%f)", position.X, p.xMin, p.xMax)
 	}
 
-	if position.Y < p.config.YMin || p.config.YMax < position.Y {
-		return fmt.Errorf("the specified Y coordinate is out of range (y:%f, min:%f, max:%f)", position.Y, p.config.YMin, p.config.YMax)
+	if position.Y < p.yMin || p.yMax < position.Y {
+		return fmt.Errorf("the specified Y coordinate is out of range (y:%f, min:%f, max:%f)", position.Y, p.yMin, p.yMax)
 	}
 
 	p.localPosition = *position

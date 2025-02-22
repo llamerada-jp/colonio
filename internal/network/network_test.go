@@ -19,29 +19,29 @@ package network
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/llamerada-jp/colonio/config"
+
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/geometry"
+	"github.com/llamerada-jp/colonio/internal/network/node_accessor"
+	"github.com/llamerada-jp/colonio/internal/network/transferer"
 	"github.com/llamerada-jp/colonio/internal/observation"
 	"github.com/llamerada-jp/colonio/internal/shared"
-	"github.com/llamerada-jp/colonio/test/testing_seed"
+	"github.com/llamerada-jp/colonio/seed"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
+	"github.com/llamerada-jp/colonio/test/util/server"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type networkHandlerHelper struct {
-	recvConfig             func(*config.Cluster)
 	updateNextNodePosition func(map[shared.NodeID]*geometry.Coordinate)
-}
-
-func (h *networkHandlerHelper) NetworkRecvConfig(c *config.Cluster) {
-	if h.recvConfig != nil {
-		h.recvConfig(c)
-	}
 }
 
 func (h *networkHandlerHelper) NetworkUpdateNextNodePosition(p map[shared.NodeID]*geometry.Coordinate) {
@@ -50,158 +50,168 @@ func (h *networkHandlerHelper) NetworkUpdateNextNodePosition(p map[shared.NodeID
 	}
 }
 
-func TestNetwork_Connect_alone(t *testing.T) {
-	nodeIDs := testUtil.UniqueNodeIDs(1)
-
-	testSeed := testing_seed.NewTestingSeed()
-	defer testSeed.Stop()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	mtx := sync.Mutex{}
-	configReceived := false
-
-	net := NewNetwork(&Config{
-		Ctx:         ctx,
-		Logger:      slog.Default(),
-		LocalNodeID: nodeIDs[0],
-		Handler: &networkHandlerHelper{
-			recvConfig: func(c *config.Cluster) {
-				assert.NotNil(t, c)
-				mtx.Lock()
-				defer mtx.Unlock()
-				configReceived = true
+func newTestConfigBase(seedURL string, i int) *Config {
+	return &Config{
+		Logger:           slog.Default().With(slog.String("node", fmt.Sprintf("#%d", i))),
+		Handler:          &networkHandlerHelper{},
+		Observation:      &observation.Handlers{},
+		CoordinateSystem: geometry.NewPlaneCoordinateSystem(-1.0, 1.0, -1.0, 1.0),
+		HttpClient:       testUtil.NewInsecureHttpClient(),
+		SeedURL:          seedURL,
+		ICEServers: []config.ICEServer{
+			{
+				URLs: []string{"stun:stun.l.google.com:19302"},
 			},
 		},
-		Observation:      &observation.Handlers{},
-		Insecure:         true,
-		SeedTripInterval: 1 * time.Minute,
-	})
-
-	err := net.Connect(testSeed.URL(), nil)
-	assert.NoError(t, err)
-
-	assert.Eventually(t, func() bool {
-		return net.IsOnline()
-	}, 60*time.Second, 1*time.Second)
-
-	assert.True(t, configReceived)
-
-	net.Disconnect()
-	assert.False(t, net.IsOnline())
+		NLC: &node_accessor.NodeLinkConfig{
+			SessionTimeout:    5 * time.Second,
+			KeepaliveInterval: 1 * time.Second,
+			BufferInterval:    10 * time.Millisecond,
+			PacketBaseBytes:   1024,
+		},
+		RoutingExchangeInterval: 1 * time.Second,
+		PacketHopLimit:          10,
+		NextConnectionInterval:  5 * time.Second,
+	}
 }
 
-func TestNetwork_Connect(t *testing.T) {
-	nodeCount := 3
-	nodeIDs := testUtil.UniqueNodeIDs(nodeCount)
-
-	testSeed := testing_seed.NewTestingSeed()
-	defer testSeed.Stop()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+func TestNetwork(t *testing.T) {
 	mtx := sync.Mutex{}
-	configReceived := 0
-	net := make([]*Network, nodeCount)
+	nodeIDs := testUtil.UniqueNodeIDs(5)
+	networks := make([]*Network, len(nodeIDs))
+	positionMaps := make([]map[shared.NodeID]*geometry.Coordinate, len(nodeIDs))
 
-	for i := 0; i < nodeCount; i++ {
-		net[i] = NewNetwork(&Config{
-			Ctx:         ctx,
-			Logger:      slog.Default().With("by", nodeIDs[i].String()),
-			LocalNodeID: nodeIDs[i],
-			Handler: &networkHandlerHelper{
-				recvConfig: func(c *config.Cluster) {
-					assert.NotNil(t, c)
-					mtx.Lock()
-					defer mtx.Unlock()
-					configReceived += 1
-				},
+	// start seed
+	nodeCount := 0
+	seed := seed.NewSeed(
+		seed.WithConnectionHandler(&testUtil.ConnectionHandlerHelper{
+			T: t,
+			AssignNodeIDF: func(ctx context.Context) (*shared.NodeID, error) {
+				if nodeCount >= len(nodeIDs) {
+					t.FailNow()
+				}
+				nodeID := nodeIDs[nodeCount]
+				nodeCount++
+				return nodeID, nil
 			},
-			Observation:      &observation.Handlers{},
-			Insecure:         true,
-			SeedTripInterval: 1 * time.Minute,
+			UnassignF: func(nodeID *shared.NodeID) {},
+		}),
+	)
+	server := server.NewHelper(seed)
+	server.Start(t.Context())
+	defer server.Stop()
+
+	// make the first node
+	config := newTestConfigBase(server.URL(), 0)
+	config.Handler = &networkHandlerHelper{
+		updateNextNodePosition: func(m map[shared.NodeID]*geometry.Coordinate) {
+			mtx.Lock()
+			defer mtx.Unlock()
+			positionMaps[0] = m
+		},
+	}
+	var err error
+	networks[0], err = NewNetwork(config)
+	require.NoError(t, err)
+
+	// only the first node can receive packet
+	receivedPackets := make([]*shared.Packet, 0)
+	transferer.SetRequestHandler[proto.PacketContent_Error](networks[0].GetTransferer(), func(p *shared.Packet) {
+		mtx.Lock()
+		defer mtx.Unlock()
+		receivedPackets = append(receivedPackets, p)
+	})
+
+	nodeID, err := networks[0].Start(t.Context())
+	require.NoError(t, err)
+	require.True(t, nodeID.Equal(nodeIDs[0]))
+
+	// can be online only one node
+	require.Eventually(t, func() bool {
+		return networks[0].IsOnline()
+	}, 60*time.Second, 1*time.Second)
+
+	// make other nodes online
+	for i := 1; i < len(nodeIDs); i++ {
+		i := i
+		config := newTestConfigBase(server.URL(), i)
+		config.Handler = &networkHandlerHelper{
+			updateNextNodePosition: func(m map[shared.NodeID]*geometry.Coordinate) {
+				mtx.Lock()
+				defer mtx.Unlock()
+				positionMaps[i] = m
+			},
+		}
+		networks[i], err = NewNetwork(config)
+		require.NoError(t, err)
+
+		transferer.SetRequestHandler[proto.PacketContent_Error](networks[i].GetTransferer(), func(p *shared.Packet) {
+			assert.Fail(t, "should not receive packet")
 		})
 
-		err := net[i].Connect(testSeed.URL(), nil)
-		assert.NoError(t, err)
+		nodeID, err = networks[i].Start(t.Context())
+		require.NoError(t, err)
+		require.True(t, nodeID.Equal(nodeIDs[i]))
 	}
 
-	assert.Eventually(t, func() bool {
-		for _, n := range net {
-			if !n.IsOnline() {
+	// all nodes should be online
+	require.Eventually(t, func() bool {
+		mtx.Lock()
+		defer mtx.Unlock()
+		for _, network := range networks {
+			if !network.IsOnline() {
 				return false
 			}
 		}
 		return true
 	}, 60*time.Second, 1*time.Second)
 
-	assert.Equal(t, len(net), configReceived)
-
-	for _, n := range net {
-		n.Disconnect()
-		assert.False(t, n.IsOnline())
-	}
-}
-
-func TestNetwork_UpdateLocalPosition(t *testing.T) {
-	nodeIDs := testUtil.UniqueNodeIDs(2)
-
-	testSeed := testing_seed.NewTestingSeed(
-		testing_seed.WithGeometrySphere(100.0),
-		testing_seed.WithSpread(time.Minute, 4096),
-	)
-	defer testSeed.Stop()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	mtx := sync.Mutex{}
-	net := make([]*Network, 2)
-	positions := make([]map[shared.NodeID]*geometry.Coordinate, 2)
-
-	for i := 0; i < 2; i++ {
-		net[i] = NewNetwork(&Config{
-			Ctx:         ctx,
-			Logger:      slog.Default(),
-			LocalNodeID: nodeIDs[i],
-			Handler: &networkHandlerHelper{
-				updateNextNodePosition: func(p map[shared.NodeID]*geometry.Coordinate) {
-					assert.NotNil(t, p)
-					mtx.Lock()
-					defer mtx.Unlock()
-					positions[i] = p
-				},
-			},
-			Observation:      &observation.Handlers{},
-			Insecure:         true,
-			SeedTripInterval: 1 * time.Minute,
-		})
-
-		err := net[i].Connect(testSeed.URL(), nil)
-		assert.NoError(t, err)
+	// update position
+	for i, network := range networks {
+		err = network.UpdateLocalPosition(&geometry.Coordinate{X: float64(i) / 10.0, Y: float64(i) / 10.0})
+		require.NoError(t, err)
 	}
 
+	// position should be tolled to each node
 	assert.Eventually(t, func() bool {
-		return net[0].IsOnline() && net[1].IsOnline()
-	}, 60*time.Second, time.Second)
-
-	assert.Eventually(t, func() bool {
-		err := net[0].UpdateLocalPosition(&geometry.Coordinate{X: 1.0, Y: 1.0})
-		assert.NoError(t, err)
-		err = net[1].UpdateLocalPosition(&geometry.Coordinate{X: 2.0, Y: 2.0})
-		assert.NoError(t, err)
-
 		mtx.Lock()
 		defer mtx.Unlock()
 
-		return len(positions[0]) == 1 && len(positions[1]) == 1 &&
-			positions[1][*nodeIDs[0]].X == 1.0 && positions[1][*nodeIDs[0]].Y == 1.0 &&
-			positions[0][*nodeIDs[1]].X == 2.0 && positions[0][*nodeIDs[1]].Y == 2.0
+		for _, pMap := range positionMaps {
+			for i, nodeID := range nodeIDs {
+				if pos, ok := pMap[*nodeID]; ok {
+					if pos.X != float64(i)/10.0 || pos.Y != float64(i)/10.0 {
+						return false
+					}
+				}
+			}
+		}
+
+		return true
 	}, 60*time.Second, 1*time.Second)
 
-	for i := 0; i < 2; i++ {
-		net[i].Disconnect()
-	}
+	// send packet
+	networks[1].GetTransferer().RequestOneWay(nodeIDs[0], shared.PacketModeExplicit, &proto.PacketContent{
+		Content: &proto.PacketContent_Error{
+			Error: &proto.Error{
+				Code:    1,
+				Message: "test",
+			},
+		},
+	})
+
+	networks[2].GetTransferer().RequestOneWay(nodeIDs[0].Add(shared.NewNormalNodeID(0, 1)), shared.PacketModeNone, &proto.PacketContent{
+		Content: &proto.PacketContent_Error{
+			Error: &proto.Error{
+				Code:    2,
+				Message: "test",
+			},
+		},
+	})
+
+	assert.Eventually(t, func() bool {
+		mtx.Lock()
+		defer mtx.Unlock()
+		return len(receivedPackets) == 2
+	}, 60*time.Second, 1*time.Second)
 }

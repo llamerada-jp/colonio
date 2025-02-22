@@ -27,6 +27,8 @@ type Caller interface {
 	UpdateRequiredNodeIDs2D(map[string]struct{})
 }
 
+var _ Caller = &Handlers{}
+
 func (h *Handlers) ChangeConnectedNodes(p1 map[string]struct{}) {
 	if h.OnChangeConnectedNodes != nil {
 		h.OnChangeConnectedNodes(p1)

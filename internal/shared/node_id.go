@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"math/rand"
 
-	"github.com/llamerada-jp/colonio/internal/proto"
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 )
 
 const (
@@ -50,6 +50,10 @@ type NodeID struct {
 }
 
 func NewNodeIDFromProto(p *proto.NodeID) *NodeID {
+	if p == nil {
+		return nil
+	}
+
 	switch p.Type {
 	case typeNormal:
 		return &NodeID{

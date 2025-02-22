@@ -17,457 +17,262 @@ package seed_accessor
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
+	"net/http/cookiejar"
 	"sync"
 	"time"
 
-	"github.com/llamerada-jp/colonio/config"
-	"github.com/llamerada-jp/colonio/internal/proto"
+	"connectrpc.com/connect"
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	service "github.com/llamerada-jp/colonio/api/colonio/v1alpha/v1alphaconnect"
+	"github.com/llamerada-jp/colonio/internal/network/signal"
 	"github.com/llamerada-jp/colonio/internal/shared"
-	proto3 "google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 type Handler interface {
-	SeedAuthorizeFailed()
-	SeedChangeState(bool)
-	SeedRecvConfig(*config.Cluster)
-	SeedRecvPacket(*shared.Packet)
-	SeedRequireRandomConnect()
+	SeedRecvSignalOffer(*shared.NodeID, *signal.Offer)
+	SeedRecvSignalAnswer(*shared.NodeID, *signal.Answer)
+	SeedRecvSignalICE(*shared.NodeID, *signal.ICE)
 }
 
 type Config struct {
-	Ctx         context.Context
-	Logger      *slog.Logger
-	Transporter SeedTransporter
-	Handler     Handler
-	URL         string
-	LocalNodeID *shared.NodeID
-	Token       []byte
-	// Interval between retries when a network error is detected
-	TripInterval time.Duration
+	Logger     *slog.Logger
+	Handler    Handler
+	URL        string
+	HttpClient *http.Client // optional
 }
 
 type SeedAccessor struct {
-	config *Config
-	ctx    context.Context
-	cancel func()
+	logger      *slog.Logger
+	ctx         context.Context
+	handler     Handler
+	client      service.SeedServiceClient
+	localNodeID *shared.NodeID
 
-	// statMtx is for enabled, sessionID, waiting and isNodeOnline
-	statMtx   sync.RWMutex
-	enabled   bool
-	sessionID string
-	// shared session timeout of the cluster
-	sessionTimeout time.Duration
-	waiting        []*proto.SeedPacket
-	// isNodeOnline is true if the node have connections to the other nodes (not contain the seed)
-	isNodeOnline bool
-	// onlyOne is true if this node is the only online node of the seed
-	onlyOne bool
-
-	timestampMtx      sync.RWMutex
-	livenessTimestamp time.Time
-	tripTimestamp     time.Time
-
-	// branch mutexes must lock earlier than statMtx
-	connectiveMtx sync.Mutex
-	pollMtx       sync.Mutex
-	relayMtx      sync.Mutex
+	// mtx is for waiting and isAlone
+	mtx sync.RWMutex
+	// isAlone is true if this node is the only online node of the seed
+	isAlone bool
 }
 
 func NewSeedAccessor(config *Config) *SeedAccessor {
-	ctx, cancel := context.WithCancel(config.Ctx)
-
-	sa := &SeedAccessor{
-		config:            config,
-		ctx:               ctx,
-		cancel:            cancel,
-		enabled:           true,
-		waiting:           make([]*proto.SeedPacket, 0),
-		isNodeOnline:      false,
-		onlyOne:           false,
-		livenessTimestamp: time.Now(),
-		tripTimestamp:     time.Unix(0, 0),
+	if len(config.URL) == 0 {
+		panic("URL should not be empty")
 	}
 
-	// call round every second or finish when context is done
+	sa := &SeedAccessor{
+		logger:  config.Logger,
+		handler: config.Handler,
+		isAlone: false,
+	}
+
+	httpClient := config.HttpClient
+	if httpClient == nil {
+		jar, err := cookiejar.New(nil)
+		if err != nil {
+			panic(err)
+		}
+
+		httpClient = &http.Client{
+			Transport: &http.Transport{},
+			Jar:       jar,
+		}
+	}
+
+	sa.client = service.NewSeedServiceClient(httpClient, config.URL)
+
+	return sa
+}
+
+func (sa *SeedAccessor) Start(ctx context.Context) (*shared.NodeID, error) {
+	sa.ctx = ctx
+
+	res, err := sa.client.AssignNodeID(sa.ctx, &connect.Request[proto.AssignNodeIDRequest]{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to assign node ID: %w", err)
+	}
+
+	sa.mtx.Lock()
+	defer sa.mtx.Unlock()
+	sa.localNodeID = shared.NewNodeIDFromProto(res.Msg.GetNodeId())
+	sa.isAlone = res.Msg.GetIsAlone()
+
 	go func() {
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
+		// call round every second or finish when context is done
+
 		for {
 			select {
 			case <-sa.ctx.Done():
 				return
-			case <-ticker.C:
-				sa.timestampMtx.Lock()
-				willRun := time.Now().After(sa.tripTimestamp.Add(sa.config.TripInterval))
-				sa.timestampMtx.Unlock()
-				if willRun {
-					sa.subRoutine()
+			default:
+				err := sa.poll()
+				if err != nil {
+					if errors.Is(err, context.Canceled) {
+						return
+					}
+					sa.logger.Warn("failed to poll", slog.String("error", err.Error()))
+					time.Sleep(10 * time.Second)
 				}
 			}
 		}
 	}()
 
-	return sa
+	return sa.localNodeID, nil
 }
 
-// IsAuthenticated indicates whether the seedAccessor is authenticated or not.
-// return true if authenticated, otherwise false, contain the state need to re-authenticate.
-func (sa *SeedAccessor) IsAuthenticated() bool {
-	sa.statMtx.RLock()
-	defer sa.statMtx.RUnlock()
-	return sa.sessionID != ""
+// IsAlone indicates whether the node is the only one online of the seed.
+func (sa *SeedAccessor) IsAlone() bool {
+	sa.mtx.RLock()
+	defer sa.mtx.RUnlock()
+	return sa.isAlone
 }
 
-// IsOnlyOne indicates whether the node is the only one online of the seed.
-func (sa *SeedAccessor) IsOnlyOne() bool {
-	sa.statMtx.RLock()
-	defer sa.statMtx.RUnlock()
-	return sa.onlyOne
-}
+func (sa *SeedAccessor) SendSignalOffer(dstNodeID *shared.NodeID, offer *signal.Offer) error {
+	var offerType proto.SignalOfferType
+	switch offer.OfferType {
+	case signal.OfferTypeExplicit:
+		offerType = proto.SignalOfferType_EXPLICIT
+	case signal.OfferTypeNext:
+		offerType = proto.SignalOfferType_NEXT
+	default:
+		return fmt.Errorf("unknown offer type: %d", offer.OfferType)
+	}
 
-func (sa *SeedAccessor) SetEnabled(sw bool) {
-	sa.statMtx.Lock()
-	defer sa.statMtx.Unlock()
-	sa.enabled = sw
-}
-
-func (sa *SeedAccessor) SetNodeOnlineState(sw bool) {
-	sa.statMtx.Lock()
-	defer sa.statMtx.Unlock()
-	sa.isNodeOnline = sw
-}
-
-func (sa *SeedAccessor) RelayPacket(packet *shared.Packet) {
-	sa.statMtx.Lock()
-	defer sa.statMtx.Unlock()
-	sa.waiting = append(sa.waiting, &proto.SeedPacket{
-		DstNodeId: packet.DstNodeID.Proto(),
-		SrcNodeId: packet.SrcNodeID.Proto(),
-		Id:        packet.ID,
-		HopCount:  packet.HopCount,
-		Mode:      uint32(packet.Mode),
-		Content:   packet.Content,
+	res, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
+		Msg: &proto.SendSignalRequest{
+			Signal: &proto.Signal{
+				DstNodeId: dstNodeID.Proto(),
+				SrcNodeId: sa.localNodeID.Proto(),
+				Content: &proto.Signal_Offer{
+					Offer: &proto.SignalOffer{
+						OfferId: offer.OfferID,
+						Type:    offerType,
+						Sdp:     offer.Sdp,
+					},
+				},
+			},
+		},
 	})
+
+	if err != nil {
+		return fmt.Errorf("failed to send signal offer: %w", err)
+	}
+
+	sa.mtx.Lock()
+	sa.isAlone = res.Msg.GetIsAlone()
+	sa.mtx.Unlock()
+	return nil
 }
 
-func (sa *SeedAccessor) Destruct() {
-	sa.statMtx.Lock()
-	sa.enabled = false
-	sa.waiting = nil
-	sa.isNodeOnline = false
-	sa.onlyOne = false
-	sa.statMtx.Unlock()
+func (sa *SeedAccessor) SendSignalAnswer(dstNodeID *shared.NodeID, answer *signal.Answer) error {
+	res, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
+		Msg: &proto.SendSignalRequest{
+			Signal: &proto.Signal{
+				DstNodeId: dstNodeID.Proto(),
+				SrcNodeId: sa.localNodeID.Proto(),
+				Content: &proto.Signal_Answer{
+					Answer: &proto.SignalAnswer{
+						OfferId: answer.OfferID,
+						Status:  uint32(answer.Status),
+						Sdp:     answer.Sdp,
+					},
+				},
+			},
+		},
+	})
 
-	defer sa.cancel()
-	for {
-		sa.statMtx.RLock()
-		haveSession := sa.sessionID != ""
-		sa.statMtx.RUnlock()
-		if !haveSession {
-			return
-		}
-		sa.close()
-		time.Sleep(100 * time.Millisecond)
+	if err != nil {
+		return fmt.Errorf("failed to send signal answer: %w", err)
 	}
+
+	sa.mtx.Lock()
+	sa.isAlone = res.Msg.GetIsAlone()
+	sa.mtx.Unlock()
+	return nil
 }
 
-func (sa *SeedAccessor) subRoutine() {
-	// check if authentication or disconnect is processing
-	runningAuth := !sa.connectiveMtx.TryLock()
-	if runningAuth {
-		return
-	}
-	sa.connectiveMtx.Unlock()
+func (sa *SeedAccessor) SendSignalICE(dstNodeID *shared.NodeID, ices *signal.ICE) error {
+	res, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
+		Msg: &proto.SendSignalRequest{
+			Signal: &proto.Signal{
+				DstNodeId: dstNodeID.Proto(),
+				SrcNodeId: sa.localNodeID.Proto(),
+				Content: &proto.Signal_Ice{
+					Ice: &proto.SignalICE{
+						OfferId: ices.OfferID,
+						Ices:    ices.Ices,
+					},
+				},
+			},
+		},
+	})
 
-	sa.statMtx.RLock()
-	enabled := sa.enabled
-	sessionID := sa.sessionID
-	haveSession := sessionID != ""
-	haveWaiting := len(sa.waiting) > 0
-	isNodeOnline := sa.isNodeOnline
-	sa.statMtx.RUnlock()
-
-	// disconnect if !online and have session
-	if !enabled {
-		if haveSession {
-			sa.close()
-		}
-		return
+	if err != nil {
+		return fmt.Errorf("failed to send signal ICE: %w", err)
 	}
 
-	// connect if !haveSession
-	if !haveSession {
-		sa.authenticate()
-		return
-	}
-
-	sa.polling(sessionID, isNodeOnline)
-
-	if haveWaiting {
-		sa.relay()
-	}
-
-	sa.statMtx.Lock()
-	sa.timestampMtx.Lock()
-	defer func() {
-		sa.statMtx.Unlock()
-		sa.timestampMtx.Unlock()
-	}()
-	if sa.sessionTimeout != 0 &&
-		sa.sessionID != "" &&
-		time.Now().After(sa.livenessTimestamp.Add(sa.sessionTimeout*2)) {
-
-		sa.sessionID = ""
-		go sa.config.Handler.SeedChangeState(false)
-	}
+	sa.mtx.Lock()
+	sa.isAlone = res.Msg.GetIsAlone()
+	sa.mtx.Unlock()
+	return nil
 }
 
-func (sa *SeedAccessor) authenticate() {
-	// try lock connectiveMtx to check if authentication or disconnect are processing
-	if !sa.connectiveMtx.TryLock() {
-		return
-	}
-	// when sending an authenticate packet, unlock mutex after end of sending process
-	sending := false
-	defer func() {
-		if !sending {
-			sa.connectiveMtx.Unlock()
+func (sa *SeedAccessor) poll() error {
+	res, err := sa.client.PollSignal(sa.ctx, &connect.Request[proto.PollSignalRequest]{
+		Msg: &proto.PollSignalRequest{},
+	})
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return err
 		}
-	}()
-
-	sa.statMtx.RLock()
-	defer sa.statMtx.RUnlock()
-	if !sa.enabled || sa.sessionID != "" {
-		return
+		return fmt.Errorf("failed to poll signal: %w", err)
 	}
 
-	packet := &proto.SeedAuthenticate{
-		Version: shared.ProtocolVersion,
-		NodeId:  sa.config.LocalNodeID.Proto(),
-		Token:   sa.config.Token,
-	}
+	for res.Receive() {
+		msg := res.Msg()
 
-	sending = true
-	go func() {
-		defer sa.connectiveMtx.Unlock()
+		for _, s := range msg.GetSignals() {
+			from := shared.NewNodeIDFromProto(s.GetSrcNodeId())
 
-		resBin, code := sa.send("authenticate", packet)
-		if resBin == nil {
-			return
-		}
-
-		switch code {
-		case 0:
-			// may network error and should retry later
-			return
-
-		case http.StatusOK:
-			// success and to be continue
-			break
-
-		case http.StatusForbidden:
-			// failed to authenticate
-			sa.statMtx.Lock()
-			sa.enabled = false
-			sa.statMtx.Unlock()
-			go sa.config.Handler.SeedAuthorizeFailed()
-			return
-
-		default:
-			// unexpected status code
-			sa.config.Logger.Warn("unexpected status code from the seed", slog.Int("code", code))
-			return
-		}
-
-		var res proto.SeedAuthenticateResponse
-		if err := proto3.Unmarshal(resBin, &res); err != nil {
-			sa.config.Logger.Warn("failed to unmarshal authenticate response from the seed", slog.String("err", err.Error()))
-			return
-		}
-
-		var config config.Cluster
-		if err := json.Unmarshal(res.Config, &config); err != nil {
-			sa.config.Logger.Warn("failed to unmarshal config from the seed", slog.String("err", err.Error()))
-			return
-		}
-
-		sa.statMtx.Lock()
-		defer sa.statMtx.Unlock()
-		sa.sessionID = res.SessionId
-		sa.sessionTimeout = config.SessionTimeout
-		sa.decodeHint(res.Hint)
-
-		go func() {
-			sa.config.Handler.SeedRecvConfig(&config)
-			sa.config.Handler.SeedChangeState(true)
-		}()
-	}()
-}
-
-func (sa *SeedAccessor) close() {
-	// try lock connectiveMtx to check if authentication or disconnect are processing
-	if !sa.connectiveMtx.TryLock() {
-		return
-	}
-	// when sending a disconnect packet, unlock mutex after end of sending process
-	sending := false
-	defer func() {
-		if !sending {
-			sa.connectiveMtx.Unlock()
-		}
-	}()
-
-	sa.statMtx.Lock()
-	defer sa.statMtx.Unlock()
-	if sa.sessionID == "" {
-		return
-	}
-
-	packet := &proto.SeedClose{
-		SessionId: sa.sessionID,
-	}
-
-	sending = true
-	go func() {
-		defer sa.connectiveMtx.Unlock()
-		sa.send("close", packet)
-		sa.statMtx.Lock()
-		defer sa.statMtx.Unlock()
-		sa.sessionID = ""
-		go sa.config.Handler.SeedChangeState(false)
-	}()
-}
-
-func (sa *SeedAccessor) polling(sessionID string, isNodeOnline bool) {
-	runningPoll := !sa.pollMtx.TryLock()
-	if runningPoll {
-		return
-	}
-
-	packet := &proto.SeedPoll{
-		SessionId: sessionID,
-		Online:    isNodeOnline,
-	}
-
-	go func() {
-		defer sa.pollMtx.Unlock()
-		resBin, code := sa.send("poll", packet)
-
-		if code != http.StatusOK {
-			return
-		}
-
-		var res proto.SeedPollResponse
-		if err := proto3.Unmarshal(resBin, &res); err != nil {
-			sa.config.Logger.Warn("failed to unmarshal poll response from the seed", slog.String("err", err.Error()))
-			return
-		}
-
-		sa.statMtx.Lock()
-		defer sa.statMtx.Unlock()
-		sa.sessionID = res.SessionId
-		if sa.sessionID == "" {
-			panic("sessionID should not be empty")
-		}
-		sa.decodeHint(res.Hint)
-
-		go func() {
-			for _, packet := range res.Packets {
-				sa.config.Handler.SeedRecvPacket(&shared.Packet{
-					DstNodeID: shared.NewNodeIDFromProto(packet.DstNodeId),
-					SrcNodeID: shared.NewNodeIDFromProto(packet.SrcNodeId),
-					ID:        packet.Id,
-					HopCount:  packet.HopCount,
-					Mode:      shared.PacketMode(packet.Mode),
-					Content:   packet.Content,
+			switch content := s.GetContent().(type) {
+			case *proto.Signal_Offer:
+				var offerType signal.OfferType
+				switch content.Offer.Type {
+				case proto.SignalOfferType_EXPLICIT:
+					offerType = signal.OfferTypeExplicit
+				case proto.SignalOfferType_NEXT:
+					offerType = signal.OfferTypeNext
+				default:
+					sa.logger.Warn("unknown offer type")
+					continue
+				}
+				sa.handler.SeedRecvSignalOffer(from, &signal.Offer{
+					OfferID:   content.Offer.OfferId,
+					OfferType: offerType,
+					Sdp:       content.Offer.Sdp,
 				})
+
+			case *proto.Signal_Answer:
+				sa.handler.SeedRecvSignalAnswer(from, &signal.Answer{
+					OfferID: content.Answer.OfferId,
+					Status:  signal.AnswerStatus(content.Answer.Status),
+					Sdp:     content.Answer.Sdp,
+				})
+
+			case *proto.Signal_Ice:
+				sa.handler.SeedRecvSignalICE(from, &signal.ICE{
+					OfferID: content.Ice.OfferId,
+					Ices:    content.Ice.Ices,
+				})
+
+			default:
+				sa.logger.Warn("unknown signal type", slog.String("type", fmt.Sprintf("%T", content)))
 			}
-		}()
-	}()
-}
-
-func (sa *SeedAccessor) relay() {
-	runningRelay := !sa.relayMtx.TryLock()
-	if runningRelay {
-		return
-	}
-
-	sa.statMtx.Lock()
-	defer sa.statMtx.Unlock()
-	packet := &proto.SeedRelay{
-		SessionId: sa.sessionID,
-		Packets:   sa.waiting,
-	}
-	sa.waiting = make([]*proto.SeedPacket, 0)
-
-	go func() {
-		defer sa.relayMtx.Unlock()
-		resBin, code := sa.send("relay", packet)
-
-		if code != http.StatusOK {
-			return
-		}
-
-		var res proto.SeedRelayResponse
-		if err := proto3.Unmarshal(resBin, &res); err != nil {
-			sa.config.Logger.Warn("failed to unmarshal relay response from the seed", slog.String("err", err.Error()))
-			return
-		}
-
-		sa.statMtx.Lock()
-		defer sa.statMtx.Unlock()
-		sa.decodeHint(res.Hint)
-	}()
-}
-
-func (sa *SeedAccessor) decodeHint(hint uint32) {
-	// stateMtx should be locked
-
-	sa.onlyOne = (hint & shared.HintOnlyOne) != 0
-
-	if (hint & shared.HintRequireRandom) != 0 {
-		go sa.config.Handler.SeedRequireRandomConnect()
-	}
-}
-
-func (sa *SeedAccessor) send(path string, packet protoreflect.ProtoMessage) ([]byte, int) {
-	bin, err := proto3.Marshal(packet)
-	if err != nil {
-		panic(err)
-	}
-
-	url, err := url.JoinPath(sa.config.URL, path)
-	if err != nil {
-		panic(err)
-	}
-
-	res, code, err := sa.config.Transporter.Send(sa.ctx, url, bin)
-	sa.timestampMtx.Lock()
-	defer sa.timestampMtx.Unlock()
-
-	if err != nil {
-		sa.config.Logger.Warn("failed to send packet", slog.String("err", err.Error()))
-		sa.tripTimestamp = time.Now()
-		return nil, 0
-	}
-
-	sa.livenessTimestamp = time.Now()
-	sa.tripTimestamp = time.Unix(0, 0)
-
-	if code == http.StatusUnauthorized {
-		sa.statMtx.Lock()
-		authenticated := sa.sessionID != ""
-		sa.sessionID = ""
-		sa.statMtx.Unlock()
-		if authenticated {
-			go sa.config.Handler.SeedChangeState(false)
 		}
 	}
 
-	return res, code
+	return res.Err()
 }

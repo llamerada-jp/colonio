@@ -4,4 +4,3 @@ commonLabels:
 resources:
 - ../../base
 - node-config.yaml
-- seed-config.yaml

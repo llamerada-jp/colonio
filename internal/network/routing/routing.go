@@ -22,10 +22,10 @@ import (
 	"sync"
 	"time"
 
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/geometry"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
 	"github.com/llamerada-jp/colonio/internal/observation"
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
@@ -34,15 +34,12 @@ const (
 )
 
 type Handler interface {
-	RoutingSetSeedEnabled(bool)
 	RoutingUpdateConnection(required, keep map[shared.NodeID]struct{})
 	RoutingUpdateNextNodePositions(map[shared.NodeID]*geometry.Coordinate)
 }
 
 type Config struct {
-	Ctx              context.Context
 	Logger           *slog.Logger
-	LocalNodeID      *shared.NodeID
 	Handler          Handler
 	Observation      observation.Caller
 	Transferer       *transferer.Transferer
@@ -50,17 +47,21 @@ type Config struct {
 
 	// should be copied from config.RoutingExchangeInterval
 	RoutingExchangeInterval time.Duration
-	// should be copied from config.SeedConnectRate
-	SeedConnectRate uint
-	// should be copied from config.SeedReconnectDuration
-	SeedReconnectDuration time.Duration
 }
 
 type Routing struct {
-	config                  *Config
+	logger           *slog.Logger
+	handler          Handler
+	observation      observation.Caller
+	transferer       *transferer.Transferer
+	coordinateSystem geometry.CoordinateSystem
+
+	// should be copied from config.RoutingExchangeInterval
+	routingExchangeInterval time.Duration
+
+	localNodeID             *shared.NodeID
 	r1d                     *routing1D
 	r2d                     *routing2D
-	rs                      *routingSeed
 	mtx                     sync.Mutex
 	requireUpdateRoute      bool
 	lastRouteUpdate         time.Time
@@ -70,39 +71,42 @@ type Routing struct {
 
 func NewRouting(config *Config) *Routing {
 	r := &Routing{
-		config:               config,
-		mtx:                  sync.Mutex{},
-		lastRouteUpdate:      time.Now(),
-		lastConnectionUpdate: time.Now(),
-	}
-
-	r.r1d = newRouting1D(&routing1DConfig{
-		localNodeID: config.LocalNodeID,
-	})
-
-	if config.CoordinateSystem != nil {
-		r.r2d = newRouting2D(&routing2DConfig{
-			logger:      config.Logger,
-			localNodeID: config.LocalNodeID,
-			geometry:    config.CoordinateSystem,
-		})
-	}
-
-	r.rs = newRoutingSeed(&routingSeedConfig{
-		handler:                 r,
+		logger:                  config.Logger,
+		handler:                 config.Handler,
+		observation:             config.Observation,
+		transferer:              config.Transferer,
+		coordinateSystem:        config.CoordinateSystem,
 		routingExchangeInterval: config.RoutingExchangeInterval,
-		seedConnectRate:         config.SeedConnectRate,
-		seedReconnectDuration:   config.SeedReconnectDuration,
-	})
+		lastRouteUpdate:         time.Now(),
+		lastConnectionUpdate:    time.Now(),
+	}
 
 	transferer.SetRequestHandler[proto.PacketContent_Routing](config.Transferer, r.recvRouting)
+
+	return r
+}
+
+func (r *Routing) Start(ctx context.Context, localNodeID *shared.NodeID) {
+	r.localNodeID = localNodeID
+
+	r.r1d = newRouting1D(&routing1DConfig{
+		localNodeID: localNodeID,
+	})
+
+	if r.coordinateSystem != nil {
+		r.r2d = newRouting2D(&routing2DConfig{
+			logger:      r.logger,
+			localNodeID: localNodeID,
+			geometry:    r.coordinateSystem,
+		})
+	}
 
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-r.config.Ctx.Done():
+			case <-ctx.Done():
 				return
 
 			case <-ticker.C:
@@ -110,8 +114,6 @@ func NewRouting(config *Config) *Routing {
 			}
 		}
 	}()
-
-	return r
 }
 
 func (r *Routing) GetNextStep1D(packet *shared.Packet) *shared.NodeID {
@@ -126,10 +128,6 @@ func (r *Routing) GetNextStep2D(dst *geometry.Coordinate) *shared.NodeID {
 	return r.r2d.getNextStep(dst)
 }
 
-func (r *Routing) GetNextStepToSeed() *shared.NodeID {
-	return r.rs.getNextStep()
-}
-
 func (r *Routing) UpdateLocalPosition(pos *geometry.Coordinate) error {
 	if r.r2d == nil {
 		return fmt.Errorf("position based network is not enabled")
@@ -142,16 +140,9 @@ func (r *Routing) UpdateLocalPosition(pos *geometry.Coordinate) error {
 	return nil
 }
 
-func (r *Routing) UpdateSeedState(online bool) {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-	r.requireUpdateRoute = r.rs.updateSeedState(online) || r.requireUpdateRoute
-}
-
 func (r *Routing) UpdateNodeConnections(connections map[shared.NodeID]struct{}) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
-	r.requireUpdateRoute = r.rs.updateNodeConnections(connections) || r.requireUpdateRoute
 	r.requireUpdateConnection = r.r1d.updateNodeConnections(connections) || r.requireUpdateConnection
 	if r.r2d != nil {
 		r.requireUpdateConnection = r.r2d.updateNodeConnections(connections) || r.requireUpdateConnection
@@ -168,27 +159,27 @@ func (r *Routing) subRoutine() {
 
 	// TODO: should be optimized
 	if r.r2d != nil {
-		r.config.Handler.RoutingUpdateNextNodePositions(r.r2d.getNextNodePositions())
+		r.handler.RoutingUpdateNextNodePositions(r.r2d.getNextNodePositions())
 	}
 
-	r.requireUpdateRoute = r.rs.subRoutine() || r.requireUpdateRoute || r.requireUpdateConnection
+	r.requireUpdateRoute = r.requireUpdateRoute || r.requireUpdateConnection
 
 	if r.requireUpdateConnection || time.Now().After(r.lastConnectionUpdate.Add(connectionUpdateInterval)) {
 		required, keep := r.r1d.getConnections()
-		r.config.Observation.UpdateRequiredNodeIDs1D(shared.ConvertNodeIDSetToStringMap(required))
+		r.observation.UpdateRequiredNodeIDs1D(shared.ConvertNodeIDSetToStringMap(required))
 		if r.r2d != nil {
 			required2d := r.r2d.getConnections()
 			for nodeID := range required2d {
 				required[nodeID] = struct{}{}
 			}
-			r.config.Observation.UpdateRequiredNodeIDs2D(shared.ConvertNodeIDSetToStringMap(required2d))
+			r.observation.UpdateRequiredNodeIDs2D(shared.ConvertNodeIDSetToStringMap(required2d))
 		}
-		r.config.Handler.RoutingUpdateConnection(required, keep)
+		r.handler.RoutingUpdateConnection(required, keep)
 		r.requireUpdateConnection = false
 		r.lastConnectionUpdate = time.Now()
 	}
 
-	if r.requireUpdateRoute || time.Now().After(r.lastRouteUpdate.Add(r.config.RoutingExchangeInterval)) {
+	if r.requireUpdateRoute || time.Now().After(r.lastRouteUpdate.Add(r.routingExchangeInterval)) {
 		r.sendRouting()
 		r.requireUpdateRoute = false
 		r.lastRouteUpdate = time.Now()
@@ -199,13 +190,12 @@ func (r *Routing) sendRouting() {
 	content := &proto.Routing{
 		NodeRecords: make(map[string]*proto.RoutingNodeRecord),
 	}
-	r.rs.setupRoutingPacket(content)
 	r.r1d.setupRoutingPacket(content)
 	if r.r2d != nil {
 		r.r2d.setupRoutingPacket(content)
 	}
 
-	r.config.Transferer.RequestOneWay(&shared.NodeIDNext, shared.PacketModeNoRetry, &proto.PacketContent{
+	r.transferer.RequestOneWay(&shared.NodeIDNext, shared.PacketModeNoRetry, &proto.PacketContent{
 		Content: &proto.PacketContent_Routing{
 			Routing: content,
 		},
@@ -219,14 +209,8 @@ func (r *Routing) recvRouting(p *shared.Packet) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	r.requireUpdateRoute = r.rs.recvRoutingPacket(src, content) || r.requireUpdateRoute
 	r.requireUpdateConnection = r.r1d.recvRoutingPacket(src, content) || r.requireUpdateConnection
 	if r.r2d != nil {
 		r.requireUpdateConnection = r.r2d.recvRoutingPacket(src, content) || r.requireUpdateConnection
 	}
-}
-
-// implement handlers
-func (r *Routing) seedSetEnabled(enabled bool) {
-	r.config.Handler.RoutingSetSeedEnabled(enabled)
 }

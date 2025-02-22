@@ -21,10 +21,12 @@ import (
 	"time"
 
 	"github.com/llamerada-jp/colonio"
+	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
+	"github.com/llamerada-jp/colonio/test/util"
 )
 
-func RunNode(ctx context.Context, seedURL string, writer *datastore.Writer) error {
+func RunNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *datastore.Writer) error {
 	position := newPosition()
 
 	record := &Record{
@@ -33,9 +35,16 @@ func RunNode(ctx context.Context, seedURL string, writer *datastore.Writer) erro
 		RequiredNodeIDs2D: make([]string, 0),
 	}
 
-	col := colonio.NewColonio(
-		colonio.WithContext(ctx),
-		colonio.WithInsecure(),
+	var err error
+	col, err := colonio.NewColonio(
+		colonio.WithLogger(logger),
+		colonio.WithHttpClient(util.NewInsecureHttpClient()),
+		colonio.WithSeedURL(seedURL),
+		colonio.WithICEServers([]config.ICEServer{
+			{
+				URLs: []string{"stun:stun.l.google.com:19302"},
+			},
+		}),
 		colonio.WithObservation(&colonio.ObservationHandlers{
 			OnChangeConnectedNodes: func(nodeIDs map[string]struct{}) {
 				record.ConnectedNodeIDs = convertMapToSlice(nodeIDs)
@@ -47,13 +56,17 @@ func RunNode(ctx context.Context, seedURL string, writer *datastore.Writer) erro
 				record.RequiredNodeIDs2D = convertMapToSlice(nodeIDs)
 			},
 		}),
+		colonio.WithSphereGeometry(6378137.0),
 	)
-	if err := col.Connect(seedURL, nil); err != nil {
+	if err != nil {
 		return err
 	}
-	defer col.Disconnect()
+	if err := col.Start(ctx); err != nil {
+		return err
+	}
+	defer col.Stop()
 
-	slog.Info("connected", "nodeID", col.GetLocalNodeID())
+	logger.Info("connected", "nodeID", col.GetLocalNodeID())
 
 	for {
 		timer := time.NewTimer(1 * time.Second)
@@ -63,9 +76,10 @@ func RunNode(ctx context.Context, seedURL string, writer *datastore.Writer) erro
 
 		case <-timer.C:
 			position.moveRandom()
-			slog.Info("move", "x", position.x, "y", position.y)
+			logger.Info("move", "x", position.x, "y", position.y)
 			if err := col.UpdateLocalPosition(position.x, position.y); err != nil {
-				return err
+				logger.Warn("failed to update position", "error", err)
+				continue
 			}
 
 			record.X = position.x

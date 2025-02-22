@@ -16,23 +16,36 @@
 package e2e
 
 import (
+	"context"
 	"time"
 	"unicode/utf8"
 
 	"github.com/llamerada-jp/colonio"
+	"github.com/llamerada-jp/colonio/config"
+	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/suite"
 )
 
 type SingleNodeMessaging struct {
 	suite.Suite
-	node colonio.Colonio
+	seedURL string
+	node    colonio.Colonio
 }
 
 func (suite *SingleNodeMessaging) SetupSuite() {
 	var err error
 	suite.T().Log("creating a new colonio instance")
-	suite.node = colonio.NewColonio(colonio.WithInsecure())
-	err = suite.node.Connect("https://localhost:8080/seed", nil)
+	suite.node, err = colonio.NewColonio(
+		colonio.WithSeedURL(suite.seedURL),
+		colonio.WithICEServers([]config.ICEServer{
+			{
+				URLs: []string{"stun:stun.l.google.com:19302"},
+			},
+		}),
+		colonio.WithHttpClient(testUtil.NewInsecureHttpClient()),
+		colonio.WithSphereGeometry(6378137.0))
+	suite.NoError(err)
+	err = suite.node.Start(context.Background())
 	suite.NoError(err)
 	suite.Eventually(func() bool {
 		return suite.node.IsOnline()
@@ -41,7 +54,7 @@ func (suite *SingleNodeMessaging) SetupSuite() {
 
 func (suite *SingleNodeMessaging) TearDownSuite() {
 	suite.T().Log("node disconnect from seed")
-	suite.node.Disconnect()
+	suite.node.Stop()
 }
 
 func (suite *SingleNodeMessaging) TestSingle() {

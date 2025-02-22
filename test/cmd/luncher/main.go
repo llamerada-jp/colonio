@@ -22,19 +22,26 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 	"github.com/llamerada-jp/colonio/seed"
-	"github.com/llamerada-jp/colonio/seed/util"
+	"github.com/llamerada-jp/colonio/test/util/server"
 	"github.com/spf13/cobra"
 )
 
-var configFile string
-var url string
-var keyword_success string
-var keyword_failure string
+const (
+	KEYWORD_SUCCESS = "SUCCESS"
+	KEYWORD_FAILURE = "FAIL"
+	SERVER_PORT     = 8080
+)
+
+var (
+	documentPath string
+	jsModulePath string
+)
 
 var cmd = &cobra.Command{
 	Use: "test_luncher",
@@ -50,31 +57,40 @@ var cmd = &cobra.Command{
 		ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(log.Printf))
 		defer cancel()
 
-		config, err := util.ReadConfig(configFile)
+		// create seed & server
+		seed := seed.NewSeed(seed.WithLogger(logger))
+
+		if len(documentPath) == 0 {
+			return fmt.Errorf("document root path is required")
+		}
+		absDocumentPath, err := filepath.Abs(documentPath)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get absolute path for document path: %w", err)
 		}
 
-		// create server
-		service := util.NewService(config, logger)
+		if len(jsModulePath) == 0 {
+			return fmt.Errorf("output path is required")
+		}
+		absJsModulePath, err := filepath.Abs(jsModulePath)
+		if err != nil {
+			return fmt.Errorf("failed to get absolute path for output path: %w", err)
+		}
 
-		// create seed
-		seed, seedHandler := seed.NewSeed(config.Cluster, logger, nil)
-		service.SetHandler(seedHandler)
-
-		// set handlers for test
-		setSeedTransportHandlers(service.RootMux)
+		helper := server.NewHelper(seed,
+			server.WithLogger(logger),
+			server.WithPort(SERVER_PORT),
+			// document root
+			server.WithDocument(absDocumentPath),
+			// document override
+			server.WithDocumentOverride("/colonio.js", absJsModulePath),
+			// handles for test
+			server.WithHandlerFunc(NormalPath, normalResponder),
+			server.WithHandlerFunc(ErrorPath, errorResponder),
+		)
 
 		// start service and seed routine
-		go func() {
-			seed.Run(ctx)
-		}()
-		go func() {
-			if err := service.Run(); err != nil {
-				slog.Error("failed to run service", slog.String("error", err.Error()))
-				os.Exit(1)
-			}
-		}()
+		helper.Start(ctx)
+		defer helper.Stop()
 
 		// wait for keyword to stop
 		finCh := make(chan bool, 1)
@@ -127,10 +143,10 @@ var cmd = &cobra.Command{
 
 				fmt.Println("(browser)" + line)
 				switch strings.TrimSpace(line) {
-				case keyword_success:
+				case KEYWORD_SUCCESS:
 					finCh <- true
 
-				case keyword_failure:
+				case KEYWORD_FAILURE:
 					finCh <- false
 				}
 
@@ -141,7 +157,7 @@ var cmd = &cobra.Command{
 		})
 
 		// run test in headless browser
-		if err := chromedp.Run(ctx, chromedp.Navigate(url)); err != nil {
+		if err := chromedp.Run(ctx, chromedp.Navigate(fmt.Sprintf("https://localhost:%d/index.html", SERVER_PORT))); err != nil {
 			return err
 		}
 
@@ -156,11 +172,9 @@ var cmd = &cobra.Command{
 }
 
 func init() {
-	flags := cmd.PersistentFlags()
-	flags.StringVarP(&configFile, "config", "c", "seed.json", "path to configuration file")
-	flags.StringVarP(&url, "url", "u", "https://localhost:8080/index.html", "URL to access to start the test")
-	flags.StringVarP(&keyword_success, "success", "s", "SUCCESS", "keyword will be output when the test succeeds")
-	flags.StringVarP(&keyword_failure, "failure", "f", "FAIL", "keyword will be output when the test fails")
+	flags := cmd.Flags()
+	flags.StringVarP(&documentPath, "document-root", "d", "", "document root path")
+	flags.StringVarP(&jsModulePath, "js-module", "j", "", "js-module path")
 }
 
 func main() {

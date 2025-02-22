@@ -17,524 +17,322 @@ package seed
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log/slog"
 	"math/rand"
 	"net/http"
-	"slices"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/llamerada-jp/colonio/internal/proto"
+	"connectrpc.com/connect"
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	service "github.com/llamerada-jp/colonio/api/colonio/v1alpha/v1alphaconnect"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func generateEmptySeed() *Seed {
-	return &Seed{
-		logger:         slog.Default(),
-		mutex:          sync.Mutex{},
-		nodes:          make(map[shared.NodeID]*node),
-		sessions:       make(map[string]*shared.NodeID),
-		sessionTimeout: 30 * time.Second,
-		pollingTimeout: 10 * time.Second,
-	}
-}
-
-type dummyAuthenticator struct {
-	validToken []byte
-	lastNodeID string
-}
-
-func (auth *dummyAuthenticator) Authenticate(token []byte, nodeID string) (bool, error) {
-	auth.lastNodeID = nodeID
-	if slices.Equal(auth.validToken, []byte("error")) {
-		return false, fmt.Errorf("invalid")
+func startServer(t *testing.T, ctx context.Context, seed *Seed) uint16 {
+	cert := os.Getenv("COLONIO_TEST_CERT")
+	key := os.Getenv("COLONIO_TEST_KEY")
+	if cert == "" || key == "" {
+		panic("Please set COLONIO_TEST_CERT and COLONIO_TEST_KEY")
 	}
 
-	if slices.Equal(auth.validToken, token) {
-		return true, nil
+	port := 8000 + uint16(rand.Uint32()%1000)
+	mux := http.NewServeMux()
+
+	seed.RegisterService(mux)
+
+	server := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: mux,
 	}
-	return false, nil
-}
 
-func TestAuthenticate(t *testing.T) {
-	assert := assert.New(t)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	seed := generateEmptySeed()
-	seed.configJS = []byte("dummy config")
 	go func() {
 		seed.Run(ctx)
 	}()
-	seed.WaitForRun()
 
-	nodeIDs := testUtil.UniqueNodeIDs(2)
+	go func() {
+		err := server.ListenAndServeTLS(cert, key)
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			t.Logf("http server start error: %v", err)
+		}
+	}()
 
-	// normal
-	res, code, err := seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: shared.ProtocolVersion,
-		NodeId:  nodeIDs[0].Proto(),
-		Token:   nil,
-	})
-	sessionID1 := res.SessionId
-	assert.Equal([]byte("dummy config"), res.Config)
-	assert.Equal(shared.HintOnlyOne, res.Hint)
-	assert.NotNil(res.SessionId)
-	assert.Equal(http.StatusOK, code)
-	assert.NoError(err)
-	assert.Len(seed.nodes, 1)
-	assert.Len(seed.sessions, 1)
-	assert.Equal(*nodeIDs[0], *seed.sessions[sessionID1])
+	go func() {
+		<-ctx.Done()
+		err := server.Shutdown(context.Background())
+		if err != nil {
+			t.Logf("http server shutdown error: %v", err)
+		}
+	}()
 
-	// normal2
-	res, code, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: shared.ProtocolVersion,
-		NodeId:  nodeIDs[1].Proto(),
-		Token:   nil,
-	})
-	sessionID2 := res.SessionId
-	assert.Equal(uint32(0), res.Hint)
-	assert.NotNil(res.SessionId)
-	assert.Equal(http.StatusOK, code)
-	assert.NoError(err)
-	assert.Len(seed.nodes, 2)
-	assert.Len(seed.sessions, 2)
-	assert.Equal(*nodeIDs[1], *seed.sessions[sessionID2])
-
-	assert.NotEqual(nodeIDs[0], nodeIDs[1])
-	assert.NotEqual(sessionID1, sessionID2)
-
-	// duplicate connection
-	res, code, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: shared.ProtocolVersion,
-		NodeId:  nodeIDs[0].Proto(),
-		Token:   nil,
-	})
-	assert.Nil(res)
-	assert.Equal(http.StatusInternalServerError, code)
-	assert.Error(err)
-	assert.Len(seed.nodes, 1)
-	assert.Len(seed.sessions, 1)
-	assert.Equal(*nodeIDs[1], *seed.sessions[sessionID2])
-
-	// invalid version
-	res, code, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: "dummy",
-	})
-	assert.Nil(res)
-	assert.Equal(http.StatusBadRequest, code)
-	assert.Error(err)
-
-	// verification success
-	authenticator := &dummyAuthenticator{
-		validToken: []byte("token!"),
+	// wait for server start
+	client := testUtil.NewInsecureHttpClient()
+	for {
+		_, err := client.Get(fmt.Sprintf("https://localhost:%d/", port))
+		if err == nil {
+			break
+		}
 	}
-	seed.authenticator = authenticator
+
+	return port
+}
+
+func createClient(_ *testing.T, _ context.Context, port uint16) service.SeedServiceClient {
+	return service.NewSeedServiceClient(testUtil.NewInsecureHttpClient(), fmt.Sprintf("https://localhost:%d/", port))
+}
+
+func TestAssignNodeID(t *testing.T) {
+	seed := NewSeed()
+	port := startServer(t, t.Context(), seed)
+
+	// the first node
+	client1 := createClient(t, t.Context(), port)
+	res, err := client1.AssignNodeID(t.Context(), &connect.Request[proto.AssignNodeIDRequest]{})
+	require.NoError(t, err)
+	// check response
+	assert.True(t, res.Msg.IsAlone)
+	assert.NotNil(t, res.Msg.NodeId)
+	nodeID1 := shared.NewNodeIDFromProto(res.Msg.NodeId)
+	assert.NotNil(t, nodeID1)
+	assert.True(t, nodeID1.IsNormal())
+	// check seed
+	assert.Len(t, seed.nodes, 1)
+
+	// the second node
+	client2 := createClient(t, t.Context(), port)
+	res, err = client2.AssignNodeID(t.Context(), &connect.Request[proto.AssignNodeIDRequest]{})
+	require.NoError(t, err)
+	// check response
+	assert.False(t, res.Msg.IsAlone)
+	nodeID2 := shared.NewNodeIDFromProto(res.Msg.NodeId)
+	assert.NotNil(t, nodeID2)
+	assert.True(t, nodeID2.IsNormal())
+	// check seed
+	assert.Len(t, seed.nodes, 2)
+
+	assert.NotEqual(t, nodeID1, nodeID2)
+}
+
+func TestSession(t *testing.T) {
+	seed := NewSeed(WithPollingInterval(1 * time.Second))
+	port := startServer(t, t.Context(), seed)
+
+	client := createClient(t, t.Context(), port)
+
+	// deny if the session is not created yet
+	_, err := client.SendSignal(t.Context(), &connect.Request[proto.SendSignalRequest]{
+		Msg: &proto.SendSignalRequest{
+			Signal: &proto.Signal{
+				DstNodeId: shared.NewRandomNodeID().Proto(),
+				SrcNodeId: shared.NewRandomNodeID().Proto(),
+				Content: &proto.Signal_Offer{
+					Offer: &proto.SignalOffer{},
+				},
+			},
+		},
+	})
+	assert.Error(t, err)
+
+	res, err := client.AssignNodeID(t.Context(), &connect.Request[proto.AssignNodeIDRequest]{})
+	require.NoError(t, err)
+
+	nodeID := shared.NewNodeIDFromProto(res.Msg.NodeId)
+
+	// will success with valid session
+	_, err = client.SendSignal(t.Context(), &connect.Request[proto.SendSignalRequest]{
+		Msg: &proto.SendSignalRequest{
+			Signal: &proto.Signal{
+				DstNodeId: shared.NewRandomNodeID().Proto(),
+				SrcNodeId: nodeID.Proto(),
+				Content: &proto.Signal_Offer{
+					Offer: &proto.SignalOffer{},
+				},
+			},
+		},
+	})
+	assert.NoError(t, err)
+
+	// deny if the session is outdated
+	time.Sleep(2 * time.Second)
+	_, err = client.SendSignal(t.Context(), &connect.Request[proto.SendSignalRequest]{
+		Msg: &proto.SendSignalRequest{
+			Signal: &proto.Signal{
+				DstNodeId: shared.NewRandomNodeID().Proto(),
+				SrcNodeId: nodeID.Proto(),
+				Content: &proto.Signal_Offer{
+					Offer: &proto.SignalOffer{},
+				},
+			},
+		},
+	})
+	assert.Error(t, err)
+}
+
+func TestWithConnectionHandler(t *testing.T) {
 	nodeID := shared.NewRandomNodeID()
-	res, code, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: shared.ProtocolVersion,
-		NodeId:  nodeID.Proto(),
-		Token:   []byte("token!"),
+	var mtx sync.Mutex
+	unassignCalled := false
+
+	seed := NewSeed(
+		WithPollingInterval(1*time.Second),
+		WithConnectionHandler(
+			&testUtil.ConnectionHandlerHelper{
+				T: t,
+				AssignNodeIDF: func(context.Context) (*shared.NodeID, error) {
+					return nodeID, nil
+				},
+				UnassignF: func(n *shared.NodeID) {
+					assert.Equal(t, nodeID, n)
+
+					mtx.Lock()
+					defer mtx.Unlock()
+					unassignCalled = true
+				},
+			}),
+	)
+	port := startServer(t, t.Context(), seed)
+
+	client := createClient(t, t.Context(), port)
+	res, err := client.AssignNodeID(t.Context(), &connect.Request[proto.AssignNodeIDRequest]{
+		Msg: &proto.AssignNodeIDRequest{},
 	})
-	assert.NotNil(res)
-	assert.Equal(http.StatusOK, code)
-	assert.NoError(err)
-	assert.Equal(nodeID.String(), authenticator.lastNodeID)
-	assert.Len(seed.nodes, 2)
-	assert.Len(seed.sessions, 2)
+	require.NoError(t, err)
+	resNodeID := shared.NewNodeIDFromProto(res.Msg.NodeId)
+	assert.Equal(t, nodeID, resNodeID)
 
-	// verification failed
-	res, code, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: shared.ProtocolVersion,
-		NodeId:  shared.NewRandomNodeID().Proto(),
-		Token:   []byte("token?"),
-	})
-	assert.Nil(res)
-	assert.Equal(http.StatusForbidden, code)
-	assert.Error(err)
-	assert.Len(seed.nodes, 2)
-	assert.Len(seed.sessions, 2)
-
-	// verification error
-	authenticator = &dummyAuthenticator{
-		validToken: []byte("error"),
-	}
-	seed.authenticator = authenticator
-	nodeID = shared.NewRandomNodeID()
-	res, code, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: shared.ProtocolVersion,
-		NodeId:  nodeID.Proto(),
-		Token:   nil,
-	})
-	assert.Nil(res)
-	assert.Equal(http.StatusInternalServerError, code)
-	assert.Error(err)
-	assert.Equal(nodeID.String(), authenticator.lastNodeID)
-	assert.Len(seed.nodes, 2)
-	assert.Len(seed.sessions, 2)
-}
-
-func TestClose(t *testing.T) {
-	assert := assert.New(t)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	seed := generateEmptySeed()
-	go func() {
-		seed.Run(ctx)
-	}()
-	seed.WaitForRun()
-
-	// normal
-	resAuth, code, err := seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: shared.ProtocolVersion,
-		NodeId:  shared.NewRandomNodeID().Proto(),
-		Token:   nil,
-	})
-	sessionID1 := resAuth.SessionId
-	assert.Equal(http.StatusOK, code)
-	assert.NoError(err)
-	assert.Len(seed.nodes, 1)
-	assert.Len(seed.sessions, 1)
-
-	// close dummy session
-	resClose, code, err := seed.close(ctx, &proto.SeedClose{
-		SessionId: "dummy",
-	})
-	assert.Nil(resClose)
-	assert.Equal(http.StatusOK, code)
-	assert.NoError(err)
-	assert.Len(seed.nodes, 1)
-	assert.Len(seed.sessions, 1)
-
-	// close existing session
-	resClose, code, err = seed.close(ctx, &proto.SeedClose{
-		SessionId: sessionID1,
-	})
-	assert.Nil(resClose)
-	assert.Equal(http.StatusOK, code)
-	assert.NoError(err)
-	assert.Len(seed.nodes, 0)
-	assert.Len(seed.sessions, 0)
+	// unassign should be called when the connection is closed
+	assert.Eventually(t, func() bool {
+		mtx.Lock()
+		defer mtx.Unlock()
+		return unassignCalled
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func TestRelayPoll(t *testing.T) {
-	assert := assert.New(t)
+	mtx := sync.Mutex{}
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+	clients := make([]service.SeedServiceClient, 2)
+	received := make([][]*proto.Signal, 2)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	seed := generateEmptySeed()
-	go func() {
-		seed.Run(ctx)
-	}()
-	seed.WaitForRun()
+	n := 0
+	seed := NewSeed(WithConnectionHandler(&testUtil.ConnectionHandlerHelper{
+		T: t,
+		AssignNodeIDF: func(context.Context) (*shared.NodeID, error) {
+			nodeID := nodeIDs[n]
+			n++
+			return nodeID, nil
+		},
+	}))
+	port := startServer(t, t.Context(), seed)
 
-	// connection
-	srcNodeID := shared.NewRandomNodeID()
-	resAuth, code, err := seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: shared.ProtocolVersion,
-		NodeId:  srcNodeID.Proto(),
-		Token:   nil,
-	})
-	sessionID1 := resAuth.SessionId
-	assert.Equal(http.StatusOK, code)
-	assert.NoError(err)
+	for i := 0; i < 2; i++ {
+		clients[i] = createClient(t, t.Context(), port)
+		received[i] = []*proto.Signal{}
 
-	resAuth, code, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: shared.ProtocolVersion,
-		NodeId:  shared.NewRandomNodeID().Proto(),
-		Token:   nil,
-	})
-	sessionID2 := resAuth.SessionId
-	assert.Equal(http.StatusOK, code)
-	assert.NoError(err)
-
-	// normal poll
-	chPoll := make(chan *proto.SeedPollResponse, 1)
-	go func() {
-		resPoll, code, err := seed.poll(ctx, &proto.SeedPoll{
-			SessionId: sessionID2,
-			Online:    true,
+		_, err := clients[i].AssignNodeID(t.Context(), &connect.Request[proto.AssignNodeIDRequest]{
+			Msg: &proto.AssignNodeIDRequest{},
 		})
-		assert.Equal(http.StatusOK, code)
-		assert.NoError(err)
-		chPoll <- resPoll
-	}()
+		require.NoError(t, err)
 
-	// normal relay
-	dstNodeID := shared.NewRandomNodeID()
-	packetID := rand.Uint32()
-	resRelay, code, err := seed.relay(ctx, &proto.SeedRelay{
-		SessionId: sessionID1,
-		Packets: []*proto.SeedPacket{
-			{
-				DstNodeId: dstNodeID.Proto(),
-				SrcNodeId: srcNodeID.Proto(),
-				Id:        packetID,
-				Mode:      uint32(shared.PacketModeOneWay),
-			},
-		},
-	})
-	assert.Equal(http.StatusOK, code)
-	assert.NoError(err)
-	assert.Equal(uint32(0), resRelay.Hint)
-
-	resPoll := <-chPoll
-	assert.Equal(uint32(0), resPoll.Hint)
-	assert.Equal(sessionID2, resPoll.SessionId) // temporary
-	assert.Len(resPoll.Packets, 1)
-	assert.Equal(packetID, resPoll.Packets[0].Id)
-
-	// get empty result if the sub process finished
-	ctxPoll, cancelPoll := context.WithCancel(ctx)
-	go func() {
-		resPoll, code, err := seed.poll(ctxPoll, &proto.SeedPoll{
-			SessionId: sessionID2,
-			Online:    true,
+		sc, err := clients[i].PollSignal(t.Context(), &connect.Request[proto.PollSignalRequest]{
+			Msg: &proto.PollSignalRequest{},
 		})
-		assert.NotNil(resPoll)
-		assert.Equal(http.StatusOK, code)
-		assert.NoError(err)
-		chPoll <- resPoll
-	}()
+		require.NoError(t, err)
 
-	cancelPoll()
-	<-chPoll
-
-	// get empty result if the context done
-	go func() {
-		resPoll, code, err = seed.poll(context.Background(), &proto.SeedPoll{
-			SessionId: sessionID2,
-			Online:    true,
-		})
-		assert.NotNil(resPoll)
-		assert.Equal(http.StatusOK, code)
-		assert.NoError(err)
-		chPoll <- resPoll
-	}()
-
-	cancel()
-	<-chPoll
-}
-
-func TestGetPacket(t *testing.T) {
-	assert := assert.New(t)
-
-	seed := generateEmptySeed()
-	nodeIDs := testUtil.UniqueNodeIDs(7)
-
-	packets := []packet{
-		// general packet
-		{
-			stepNodeID: nodeIDs[1],
-			p: &proto.SeedPacket{
-				Id:        0,
-				DstNodeId: nodeIDs[2].Proto(),
-				SrcNodeId: nodeIDs[3].Proto(),
-				Mode:      0,
-			},
-		},
-		// response packet
-		{
-			stepNodeID: nodeIDs[4],
-			p: &proto.SeedPacket{
-				Id:        1,
-				DstNodeId: nodeIDs[5].Proto(),
-				SrcNodeId: nodeIDs[6].Proto(),
-				Mode:      uint32(shared.PacketModeResponse),
-			},
-		},
-		// random request packet
-		{
-			stepNodeID: nodeIDs[1],
-			p: &proto.SeedPacket{
-				Id:        2,
-				DstNodeId: nodeIDs[1].Proto(),
-				SrcNodeId: nodeIDs[1].Proto(),
-				Mode:      0,
-			},
-		},
-	}
-
-	testCases := []struct {
-		title       string
-		nodeID      *shared.NodeID
-		online      bool
-		anotherNode bool
-		expect      []uint32
-	}{
-		{
-			title:       "can get general packet by online normal node",
-			nodeID:      nodeIDs[0],
-			online:      true,
-			anotherNode: true,
-			expect:      []uint32{0, 2},
-		},
-		{
-			title:       "can't get any packet if the packet posted by it self",
-			nodeID:      nodeIDs[1],
-			online:      true,
-			anotherNode: true,
-			expect:      []uint32{},
-		},
-		{
-			title:       "can't get any packet if offline",
-			nodeID:      nodeIDs[0],
-			online:      false,
-			anotherNode: true,
-			expect:      []uint32{},
-		},
-		{
-			title:       "can get general packet when all node are offline",
-			nodeID:      nodeIDs[0],
-			online:      false,
-			anotherNode: false,
-			expect:      []uint32{0, 2},
-		},
-		{
-			title:       "can get general packet when destination is me with offline",
-			nodeID:      nodeIDs[2],
-			online:      false,
-			anotherNode: true,
-			expect:      []uint32{0},
-		},
-		{
-			title:       "can get response packet if destination is me",
-			nodeID:      nodeIDs[5],
-			online:      false,
-			anotherNode: true,
-			expect:      []uint32{1},
-		},
-		{
-			title:       "can get more than two packets",
-			nodeID:      nodeIDs[5],
-			online:      true,
-			anotherNode: true,
-			expect:      []uint32{0, 1, 2},
-		},
-	}
-
-	dummyNodeID := shared.NewRandomNodeID()
-
-	for _, testCase := range testCases {
-		seed.packets = make([]packet, len(packets))
-		copy(seed.packets, packets)
-
-		if testCase.anotherNode {
-			seed.nodes = map[shared.NodeID]*node{
-				*dummyNodeID: {
-					timestamp:   time.Now(),
-					sessionID:   "dummy",
-					online:      true,
-					chTimestamp: time.Now(),
-					c:           make(chan uint32),
-				},
+		go func(i int, sc *connect.ServerStreamForClient[proto.PollSignalResponse]) {
+			for sc.Receive() {
+				res := sc.Msg()
+				mtx.Lock()
+				received[i] = append(received[i], res.Signals...)
+				mtx.Unlock()
 			}
-		}
-
-		res := seed.getPackets(testCase.nodeID, testCase.online, false)
-		assert.Len(res, len(testCase.expect), testCase.title)
-		for _, r := range res {
-			assert.Contains(testCase.expect, r.Id, testCase.title)
-		}
-		assert.Len(seed.packets, len(packets)-len(testCase.expect), testCase.title)
-		for _, p := range seed.packets {
-			assert.NotContains(testCase.expect, p.p.Id, testCase.title)
-		}
-
-		if testCase.anotherNode {
-			close(seed.nodes[*dummyNodeID].c)
-			delete(seed.nodes, *dummyNodeID)
-		}
+		}(i, sc)
 	}
-}
 
-func TestRandomConnect(t *testing.T) {
-	assert := assert.New(t)
+	errorCases := []*proto.Signal{
+		{
+			// src node is not matched
+			DstNodeId: nodeIDs[1].Proto(),
+			SrcNodeId: nodeIDs[1].Proto(),
+			Content: &proto.Signal_Offer{
+				Offer: &proto.SignalOffer{},
+			},
+		},
+		{
+			// dst node is not exist and mode is `explicit`
+			DstNodeId: nodeIDs[2].Proto(),
+			SrcNodeId: nodeIDs[0].Proto(),
+			Content: &proto.Signal_Offer{
+				Offer: &proto.SignalOffer{
+					Type: proto.SignalOfferType_EXPLICIT,
+				},
+			},
+		},
+	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	seed := generateEmptySeed()
-	go func() {
-		seed.Run(ctx)
-	}()
-	seed.WaitForRun()
-
-	nodeIDs := testUtil.UniqueNodeIDs(2)
-
-	// not request random-connect when only one node
-	resAuth, _, err := seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: shared.ProtocolVersion,
-		NodeId:  nodeIDs[0].Proto(),
-	})
-	assert.NoError(err)
-	ch1 := make(chan *proto.SeedPollResponse)
-	go func(sessionID string) {
-		resPoll, _, err := seed.poll(ctx, &proto.SeedPoll{
-			SessionId: sessionID,
-			Online:    true,
+	for _, p := range errorCases {
+		_, err := clients[0].SendSignal(t.Context(), &connect.Request[proto.SendSignalRequest]{
+			Msg: &proto.SendSignalRequest{
+				Signal: p,
+			},
 		})
-		assert.NoError(err)
-		ch1 <- resPoll
-	}(resAuth.SessionId)
-
-	// waiting for starting to poll
-	assert.Eventually(func() bool {
-		return seed.countOnline(false) == 1 &&
-			seed.countChannels(false) == 1
-	}, time.Second, time.Millisecond)
-
-	seed.randomConnect()
-	// polling ch exists
-	assert.Equal(1, seed.countChannels(false))
-	assert.Equal(1, seed.countOnline(false))
-
-	timer := time.NewTimer(1 * time.Second)
-	select {
-	case <-timer.C:
-	case <-ch1:
-		assert.Fail("")
+		assert.Error(t, err)
 	}
 
-	// generate random-connect request when more then two nodes
-	resAuth, _, err = seed.authenticate(ctx, &proto.SeedAuthenticate{
-		Version: shared.ProtocolVersion,
-		NodeId:  nodeIDs[1].Proto(),
-	})
-	assert.NoError(err)
-	ch2 := make(chan *proto.SeedPollResponse)
-	go func(sessionID string) {
-		resPoll, _, err := seed.poll(ctx, &proto.SeedPoll{
-			SessionId: sessionID,
-			Online:    true,
+	mtx.Lock()
+	assert.Len(t, received[0], 0)
+	assert.Len(t, received[1], 0)
+	mtx.Unlock()
+
+	normalCases := []*proto.Signal{
+		{
+			DstNodeId: nodeIDs[1].Proto(),
+			SrcNodeId: nodeIDs[0].Proto(),
+			Content: &proto.Signal_Offer{
+				Offer: &proto.SignalOffer{
+					OfferId: 1,
+					Type:    proto.SignalOfferType_EXPLICIT,
+				},
+			},
+		},
+		{
+			DstNodeId: nodeIDs[2].Proto(),
+			SrcNodeId: nodeIDs[0].Proto(),
+			Content: &proto.Signal_Offer{
+				Offer: &proto.SignalOffer{
+					OfferId: 2,
+					Type:    proto.SignalOfferType_NEXT,
+				},
+			},
+		},
+	}
+
+	// reset received packets
+	mtx.Lock()
+	for i := 0; i < 2; i++ {
+		received[i] = []*proto.Signal{}
+	}
+	mtx.Unlock()
+
+	// send packet
+	for _, p := range normalCases {
+		_, err := clients[0].SendSignal(t.Context(), &connect.Request[proto.SendSignalRequest]{
+			Msg: &proto.SendSignalRequest{
+				Signal: p,
+			},
 		})
-		assert.NoError(err)
-		ch2 <- resPoll
-	}(resAuth.SessionId)
-
-	// waiting for starting to poll
-	assert.Eventually(func() bool {
-		return seed.countOnline(false) == 2 &&
-			seed.countChannels(false) == 2
-	}, time.Second, 100*time.Millisecond)
-
-	seed.randomConnect()
-
-	// a channel will be close after call wakeUp method by randomConnect
-	assert.Eventually(func() bool {
-		return seed.countChannels(false) == 1
-	}, time.Second, 100*time.Millisecond)
-
-	var resPoll *proto.SeedPollResponse
-	select {
-	case resPoll = <-ch1:
-	case resPoll = <-ch2:
+		assert.NoError(t, err)
 	}
-	assert.Equal(shared.HintRequireRandom, resPoll.Hint)
-	assert.Len(resPoll.Packets, 0)
+	// check received packets
+	assert.Eventually(t, func() bool {
+		mtx.Lock()
+		defer mtx.Unlock()
+		return len(received[1]) >= 1 && len(received[0])+len(received[1]) == 2
+	}, 10*time.Second, 100*time.Millisecond)
 }
