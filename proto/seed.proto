@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package colonio.seed.v1;
+
+import "proto/colonio.proto";
+
+option go_package = "github.com/llamerada-jp/colonio/proto";
+
+service Seed {
+  rpc AssignNodeID (AssignNodeIDRequest) returns (AssignNodeIDResponse) {}
+  rpc Relay (RelayRequest) returns (RelayResponse) {}
+  rpc PollRelaying(PollRelayingRequest) returns (stream PollRelayingResponse) {}
+}
+
+message SeedPacket {
+  colonio.api.v1.NodeID dst_node_id = 1;
+  colonio.api.v1.NodeID src_node_id = 2;
+  uint32 hop_count = 3;
+  uint32 id = 4;
+  uint32 mode = 5;
+  colonio.api.v1.PacketContent content = 6;
+}
+
+message AssignNodeIDRequest {
+}
+
+message AssignNodeIDResponse {
+  colonio.api.v1.NodeID node_id = 1;
+  bool is_alone = 2;
+}
+
+message RelayRequest {
+  repeated SeedPacket packets = 1;
+}
+
+message RelayResponse {
+}
+
+message PollRelayingRequest {
+}
+
+message PollRelayingResponse {
+  repeated SeedPacket packets = 1;
+  bool is_alone = 2;
+}

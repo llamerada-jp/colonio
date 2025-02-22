@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/llamerada-jp/colonio/internal/constants"
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/proto"
 	"github.com/stretchr/testify/assert"
 )
 

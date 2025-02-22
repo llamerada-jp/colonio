@@ -27,8 +27,8 @@ import (
 	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
-	"github.com/llamerada-jp/colonio/internal/proto"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/proto"
 )
 
 const (
