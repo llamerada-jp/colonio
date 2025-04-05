@@ -17,32 +17,18 @@
  */
 package node_accessor
 
-/*
-#ifndef SET_LDFLAGS
-#cgo LDFLAGS: -L../../dep/lib -L../../output -lcolonio -lwebrtc -lstdc++ -lm -lpthread
-#endif
-
-#include "../../c/webrtc.h"
-
-void cgo_webrtc_config_init() {
-	webrtc_config_init();
-}
-
-unsigned int cgo_webrtc_config_new(_GoString_ ice) {
-	return webrtc_config_new(_GoStringPtr(ice), _GoStringLen(ice));
-}
-
-void cgo_webrtc_config_destruct(unsigned int id) {
-	webrtc_config_destruct(id);
-}
-*/
-import "C"
-
 import (
-	"encoding/json"
 	"fmt"
+	"math/rand/v2"
+	"sync"
 
 	"github.com/llamerada-jp/colonio/config"
+	webrtc "github.com/pion/webrtc/v4"
+)
+
+var (
+	mtxConfig        sync.RWMutex
+	configurationMap = make(map[uint]*webrtc.Configuration)
 )
 
 type webRTCConfigNative struct {
@@ -51,29 +37,60 @@ type webRTCConfigNative struct {
 
 var _ webRTCConfig = &webRTCConfigNative{}
 
+func getConfigByID(id uint) (*webrtc.Configuration, error) {
+	mtxConfig.RLock()
+	defer mtxConfig.RUnlock()
+
+	config, ok := configurationMap[id]
+	if !ok {
+		return nil, fmt.Errorf("invalid config ID: %d", id)
+	}
+	return config, nil
+}
+
 func newWebRTCConfigNative(ice []config.ICEServer) (*webRTCConfigNative, error) {
-	iceBin, err := json.Marshal(ice)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal ice: %w", err)
+	mtxConfig.Lock()
+	defer mtxConfig.Unlock()
+
+	id := rand.Uint()
+	for {
+		if _, ok := configurationMap[id]; !ok {
+			break
+		}
+		id = rand.Uint()
 	}
 
+	config := &webrtc.Configuration{
+		ICEServers: make([]webrtc.ICEServer, 0, len(ice)),
+	}
+	for _, i := range ice {
+		config.ICEServers = append(config.ICEServers, webrtc.ICEServer{
+			URLs:       i.URLs,
+			Username:   i.Username,
+			Credential: i.Credential,
+		})
+	}
+	configurationMap[id] = config
+
 	return &webRTCConfigNative{
-		id: uint(C.cgo_webrtc_config_new(string(iceBin))),
+		id: id,
 	}, nil
 }
 
 func (w *webRTCConfigNative) getConfigID() uint {
+	mtxConfig.RLock()
+	defer mtxConfig.RUnlock()
 	return w.id
 }
 
 func (w *webRTCConfigNative) destruct() error {
-	C.cgo_webrtc_config_destruct(C.uint(w.id))
+	mtxConfig.Lock()
+	defer mtxConfig.Unlock()
+	delete(configurationMap, w.id)
 	return nil
 }
 
 func init() {
-	C.cgo_webrtc_config_init()
-
 	defaultWebRTCConfigFactory =
 		func(ice []config.ICEServer) (webRTCConfig, error) {
 			return newWebRTCConfigNative(ice)

@@ -16,7 +16,7 @@ if [ "${OS}" = "Linux" ]; then
   make clean setup
 
   # check format
-  make format-code
+  make lint generate format-code
   diffs=$(git diff | wc -l)
   if [ "$diffs" -ne 0 ]; then
     git diff
@@ -38,14 +38,12 @@ if [ "${OS}" = "Linux" ]; then
     exit 1
   fi
 
-  make
   make test
   exit 0
 
 elif [ "${OS}" = "Darwin" ]; then
   # macos x86_64
   make clean setup
-  make
   make test
   exit 0
 fi

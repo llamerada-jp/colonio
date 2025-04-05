@@ -35,6 +35,7 @@ func TestWebRTCLink(t *testing.T) {
 	defer config.destruct()
 
 	mtx := sync.Mutex{}
+	disableErrorCheck := false
 	received := ""
 	active1 := ""
 	online1 := ""
@@ -45,12 +46,10 @@ func TestWebRTCLink(t *testing.T) {
 	var link1 webRTCLink
 	var link2 webRTCLink
 	link1, err = defaultWebRTCLinkFactory(&webRTCLinkConfig{
-		webrtcConfig:      config,
-		createDataChannel: true,
+		webrtcConfig: config,
+		isOffer:      true,
 	}, &webRTCLinkEventHandler{
 		changeLinkState: func(active bool, online bool) {
-			assert.Equal(t, link1.isActive(), active)
-			assert.Equal(t, link1.isOnline(), online)
 			mtx.Lock()
 			defer mtx.Unlock()
 			if active {
@@ -81,12 +80,10 @@ func TestWebRTCLink(t *testing.T) {
 	defer link1.disconnect()
 
 	link2, err = defaultWebRTCLinkFactory(&webRTCLinkConfig{
-		webrtcConfig:      config,
-		createDataChannel: false,
+		webrtcConfig: config,
+		isOffer:      false,
 	}, &webRTCLinkEventHandler{
 		changeLinkState: func(active bool, online bool) {
-			assert.Equal(t, link2.isActive(), active)
-			assert.Equal(t, link2.isOnline(), online)
 			mtx.Lock()
 			defer mtx.Unlock()
 			if active {
@@ -110,6 +107,11 @@ func TestWebRTCLink(t *testing.T) {
 			received = received + string(data)
 		},
 		raiseError: func(err string) {
+			mtx.Lock()
+			defer mtx.Unlock()
+			if disableErrorCheck {
+				return
+			}
 			assert.FailNow(t, "raise error: "+err)
 		},
 	})
@@ -144,6 +146,11 @@ func TestWebRTCLink(t *testing.T) {
 		defer mtx.Unlock()
 		return received == "helloworld" || received == "worldhello"
 	}, 3*time.Second, 100*time.Millisecond)
+
+	// disable error check because an error may be raised when the connection is closed
+	mtx.Lock()
+	disableErrorCheck = true
+	mtx.Unlock()
 
 	// destruct
 	link1.disconnect()

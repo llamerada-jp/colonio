@@ -3,6 +3,7 @@ version: v2
 lint:
   use:
     - STANDARD
+  disallow_comment_ignores: false
 breaking:
   use:
     - FILE

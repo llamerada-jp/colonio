@@ -238,6 +238,16 @@ func (na *NodeAccessor) SignalingOffer(srcNodeID *shared.NodeID, offer *signal.O
 		return
 	}
 
+	if _, ok := na.nodeID2link[*srcNodeID]; ok {
+		na.sendAnswer(srcNodeID, offerID, signal.AnswerStatusReject, "")
+		return
+	}
+
+	if _, ok := na.offerID2state[offerID]; ok {
+		na.sendAnswer(srcNodeID, offerID, signal.AnswerStatusReject, "")
+		return
+	}
+
 	link, err := newNodeLink(na.nodeLinkConfig, na, false)
 	if err != nil {
 		na.logger.Error("failed to create link", slog.String("error", err.Error()))
@@ -292,6 +302,11 @@ func (na *NodeAccessor) SignalingAnswer(srcNodeID *shared.NodeID, answer *signal
 	}
 
 	if answer.Status == signal.AnswerStatusReject {
+		na.disconnectLink(state.link, false)
+		return
+	}
+
+	if _, ok := na.nodeID2link[*srcNodeID]; ok {
 		na.disconnectLink(state.link, false)
 		return
 	}
@@ -420,7 +435,7 @@ func (na *NodeAccessor) disconnectLink(link *nodeLink, lock bool) {
 	if nodeID := na.link2nodeID[link]; nodeID != nil {
 		delete(na.nodeID2link, *nodeID)
 		delete(na.link2nodeID, link)
-		defer na.callChangeConnections()
+		na.callChangeConnections()
 	}
 
 	if offerID, ok := na.link2offerID[link]; ok {

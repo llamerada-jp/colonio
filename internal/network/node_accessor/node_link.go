@@ -81,7 +81,7 @@ type nodeLink struct {
 	stack              []*proto.NodePacket
 }
 
-func newNodeLink(config *NodeLinkConfig, handler nodeLinkHandler, createDataChannel bool) (*nodeLink, error) {
+func newNodeLink(config *NodeLinkConfig, handler nodeLinkHandler, isOffer bool) (*nodeLink, error) {
 	ctx, cancel := context.WithCancel(config.ctx)
 
 	// The bufferTicker fires for configured intervals when some packets are in the buffer,
@@ -115,8 +115,8 @@ func newNodeLink(config *NodeLinkConfig, handler nodeLinkHandler, createDataChan
 
 	var err error
 	link.webrtc, err = defaultWebRTCLinkFactory(&webRTCLinkConfig{
-		webrtcConfig:      config.webrtcConfig,
-		createDataChannel: createDataChannel,
+		webrtcConfig: config.webrtcConfig,
+		isOffer:      isOffer,
 	}, &webRTCLinkEventHandler{
 		raiseError:      link.webrtcRaiseError,
 		changeLinkState: link.webrtcChangeLinkState,

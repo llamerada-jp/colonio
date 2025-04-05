@@ -16,8 +16,8 @@
 package node_accessor
 
 type webRTCLinkConfig struct {
-	webrtcConfig      webRTCConfig
-	createDataChannel bool
+	webrtcConfig webRTCConfig
+	isOffer      bool
 }
 
 type webRTCLinkEventHandler struct {
