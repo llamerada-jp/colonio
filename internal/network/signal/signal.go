@@ -23,8 +23,8 @@ type OfferType int
 type AnswerStatus int
 
 const (
-	OfferTypeExplicit = OfferType(proto.SignalOfferType_EXPLICIT)
-	OfferTypeNext     = OfferType(proto.SignalOfferType_NEXT)
+	OfferTypeExplicit = OfferType(proto.SignalOfferType_SIGNAL_OFFER_TYPE_EXPLICIT)
+	OfferTypeNext     = OfferType(proto.SignalOfferType_SIGNAL_OFFER_TYPE_NEXT)
 )
 
 const (

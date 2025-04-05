@@ -36,7 +36,7 @@ render: work/simulator
 view: work/simulator
 	work/simulator render --input $(DUMP_FILE)
 
-colonio-simulator.tar: Dockerfile work/libcolonio.a work/libwebrtc.a work/simulator
+colonio-simulator.tar: Dockerfile work/simulator
 	openssl req -x509 -out work/seed.crt -keyout work/seed.key \
     -newkey rsa:2048 -nodes -sha256 \
     -subj '/CN=seed.colonio-simulator.svc.cluster.local' -extensions EXT -config <( \
@@ -44,24 +44,10 @@ colonio-simulator.tar: Dockerfile work/libcolonio.a work/libwebrtc.a work/simula
 	docker build . -t $(TAG)
 	docker save $(TAG) -o $@
 
-work/libcolonio.a: ../output/libcolonio.a
-	$(MAKE) -C ..
-	mkdir -p work
-	cp -a $< $@
-
-work/libwebrtc.a: ../dep/lib/libwebrtc.a
-	$(MAKE) -C ..
-	mkdir -p work
-	cp -a $< $@
-
 work/simulator: $(shell find ../ -type f -name '*.go')
 	$(MAKE) -C ..
 	mkdir -p work
 	go build -o $@ ./cmd/
-
-work/seed: ../output/seed
-	mkdir -p work
-	cp -a $< $@
 
 .PHONY: clean
 clean:
