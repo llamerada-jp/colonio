@@ -10,44 +10,16 @@ The purpose of the majority of engineers is to realize their own service, and th
 It is interesting but not essence of work to think and implement difficult algorithms.
 The purpose of Colonio is to make it more versatile and to make it easy for everyone to use distributed algorithms that are easy to use.
 
-## Requirement to build
+## Requirement to use
 
 - Go 1.23+
-- gcc 11+
-- npm
+- npm (for wasm build)
 
-## How to build the node library
-
-### Pre build library
-
-Colonio using WebRTC via cgo. So you need to build native library before run colonio.
-These are not required if you use colonio via WASM.
-
-```console
-$ make build-lib
-```
-
-Following libraries are required to build the application using colonio.
-
-- output/libcolonio.a
-- dep/lib/libwebrtc.a
-
-### Run test
+## Run test
 
 ```console
 $ make test
 ```
-
-### Seed usage
-
-```
-$ ./seed [flags] -config <config file>
-```
-
-| Flag     | Parameter type | Description                     |
-| -------- | -------------- | ------------------------------- |
-| --config | string         | Specify the configuration file. |
-
 
 ## License
 

@@ -355,7 +355,7 @@ func (seed *Seed) SendSignal(ctx context.Context, request *connect.Request[proto
 		}
 
 		relayToNext := false
-		if signal.GetOffer() != nil && signal.GetOffer().GetType() == proto.SignalOfferType_NEXT {
+		if signal.GetOffer() != nil && signal.GetOffer().GetType() == proto.SignalOfferType_SIGNAL_OFFER_TYPE_NEXT {
 			relayToNext = true
 		}
 

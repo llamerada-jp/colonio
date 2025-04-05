@@ -270,7 +270,7 @@ func TestRelayPoll(t *testing.T) {
 			SrcNodeId: nodeIDs[0].Proto(),
 			Content: &proto.Signal_Offer{
 				Offer: &proto.SignalOffer{
-					Type: proto.SignalOfferType_EXPLICIT,
+					Type: proto.SignalOfferType_SIGNAL_OFFER_TYPE_EXPLICIT,
 				},
 			},
 		},
@@ -297,7 +297,7 @@ func TestRelayPoll(t *testing.T) {
 			Content: &proto.Signal_Offer{
 				Offer: &proto.SignalOffer{
 					OfferId: 1,
-					Type:    proto.SignalOfferType_EXPLICIT,
+					Type:    proto.SignalOfferType_SIGNAL_OFFER_TYPE_EXPLICIT,
 				},
 			},
 		},
@@ -307,7 +307,7 @@ func TestRelayPoll(t *testing.T) {
 			Content: &proto.Signal_Offer{
 				Offer: &proto.SignalOffer{
 					OfferId: 2,
-					Type:    proto.SignalOfferType_NEXT,
+					Type:    proto.SignalOfferType_SIGNAL_OFFER_TYPE_NEXT,
 				},
 			},
 		},

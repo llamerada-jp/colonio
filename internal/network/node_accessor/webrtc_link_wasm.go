@@ -136,7 +136,7 @@ func newWebRTCLinkWASM(config *webRTCLinkConfig, eventHandler *webRTCLinkEventHa
 	go func() {
 		linkID := jsWrapper.Call("newLink",
 			js.ValueOf(config.webrtcConfig.getConfigID()),
-			js.ValueOf(config.createDataChannel),
+			js.ValueOf(config.isOffer),
 		).Int()
 		if linkID == 0 {
 			c <- res{

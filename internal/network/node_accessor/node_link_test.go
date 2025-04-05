@@ -247,8 +247,8 @@ func TestNodeLinkTimeout(t *testing.T) {
 	defer link.disconnect()
 
 	webrtcLink, err = defaultWebRTCLinkFactory(&webRTCLinkConfig{
-		webrtcConfig:      webRTCConfig,
-		createDataChannel: true,
+		webrtcConfig: webRTCConfig,
+		isOffer:      true,
 	}, &webRTCLinkEventHandler{
 		changeLinkState: func(active bool, online bool) {},
 		updateICE: func(ice string) {
