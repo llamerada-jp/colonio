@@ -17,225 +17,278 @@
  */
 package node_accessor
 
-/*
-#ifndef SET_LDFLAGS
-#cgo LDFLAGS: -L../../../dep/lib -L../../../output -lcolonio -lwebrtc -lstdc++ -lm -lpthread
-#endif
-
-#include <stdlib.h>
-
-#include "../../c/webrtc.h"
-
-// functions exported from webrtc_link_native_cb.go
-extern void UpdateWebRTCLinkState(unsigned int id, int online);
-extern void UpdateICE(unsigned int id, const void* ice, int ice_len);
-extern void ReceiveData(unsigned int id, const void* data, int data_len);
-extern void ReceiveError(unsigned int id, const char* message, int message_len);
-
-void cgo_webrtc_link_get_error_message(const char** message, int* message_len) {
-	webrtc_link_get_error_message(message, message_len);
-}
-
-void cgo_webrtc_link_init() {
-	webrtc_link_init(UpdateWebRTCLinkState, UpdateICE, ReceiveData, ReceiveError);
-}
-
-int cgo_webrtc_link_disconnect(unsigned int id) {
-	return webrtc_link_disconnect(id);
-}
-
-unsigned int cgo_webrtc_link_new(unsigned int config_id, int create_data_channel) {
-	return webrtc_link_new(config_id, create_data_channel);
-}
-
-int cgo_webrtc_link_get_local_sdp(unsigned int id, const char** sdp, int* sdp_len) {
-	return webrtc_link_get_local_sdp(id, sdp, sdp_len);
-}
-
-int cgo_webrtc_link_set_remote_sdp(unsigned int id, _GoString_ sdp) {
-	return webrtc_link_set_remote_sdp(id, _GoStringPtr(sdp), _GoStringLen(sdp));
-}
-
-int cgo_webrtc_link_update_ice(unsigned int id, _GoString_ ice) {
-	return webrtc_link_update_ice(id, _GoStringPtr(ice), _GoStringLen(ice));
-}
-
-int cgo_webrtc_link_send(unsigned int id, const void* data, int data_len) {
-	return webrtc_link_send(id, data, data_len);
-}
-*/
-import "C"
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
+
+	"github.com/pion/webrtc/v4"
 )
 
 type webRTCLinkNative struct {
-	config       *webRTCLinkConfig
-	eventHandler *webRTCLinkEventHandler
-	id           C.uint
-
-	mtx    sync.RWMutex
-	active bool
-	online bool
+	isOffer        bool
+	eventHandler   *webRTCLinkEventHandler
+	peerConnection *webrtc.PeerConnection
+	dataChannel    *webrtc.DataChannel
+	mtx            sync.RWMutex
+	ices           []string
+	active         bool
+	online         bool
 }
-
-var links = make(map[C.uint]*webRTCLinkNative)
-var linksMtx = sync.RWMutex{}
 
 var _ webRTCLink = &webRTCLinkNative{}
 
-func newWebRTCLinkNative(config *webRTCLinkConfig, eventHandler *webRTCLinkEventHandler) (webRTCLink, error) {
-	createDataChannel := C.int(0)
-	if config.createDataChannel {
-		createDataChannel = C.int(1)
-	}
-	configID := C.uint(config.webrtcConfig.getConfigID())
-	linkID := C.cgo_webrtc_link_new(configID, createDataChannel)
-	if linkID == 0 {
-		return nil, fmt.Errorf("failed to create webrtc link")
+func newWebRTCLinkNative(c *webRTCLinkConfig, eventHandler *webRTCLinkEventHandler) (webRTCLink, error) {
+	configID := c.webrtcConfig.getConfigID()
+	config, err := getConfigByID(configID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get webrtc config by id: %d, %s", configID, err)
 	}
 
-	link := &webRTCLinkNative{
-		config:       config,
-		eventHandler: eventHandler,
-		id:           linkID,
-		mtx:          sync.RWMutex{},
-		active:       true,
-		online:       false,
+	peerConnection, err := webrtc.NewPeerConnection(*config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create peer connection: %s", err)
 	}
 
-	linksMtx.Lock()
-	defer linksMtx.Unlock()
-	links[link.id] = link
+	w := &webRTCLinkNative{
+		isOffer:        c.isOffer,
+		eventHandler:   eventHandler,
+		peerConnection: peerConnection,
+		ices:           make([]string, 0),
+		active:         true,
+		online:         false,
+	}
 
-	return link, nil
+	if c.isOffer {
+		dc, err := peerConnection.CreateDataChannel("data_channel", nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create data channel: %s", err)
+		}
+		w.dataChannel = dc
+		w.setDataChannelHandler(dc)
+	}
+
+	peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		w.mtx.Lock()
+
+		a := w.active
+		o := w.online
+
+		if state == webrtc.PeerConnectionStateDisconnected ||
+			state == webrtc.PeerConnectionStateFailed ||
+			state == webrtc.PeerConnectionStateClosed {
+			w.active = false
+			w.online = false
+		}
+
+		if w.active != a || w.online != o {
+			a := w.active
+			o := w.online
+			defer eventHandler.changeLinkState(a, o)
+		}
+
+		w.mtx.Unlock()
+	})
+
+	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		if candidate == nil {
+			return
+		}
+		w.eventHandler.updateICE(candidate.ToJSON().Candidate)
+	})
+
+	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
+		w.mtx.Lock()
+		defer w.mtx.Unlock()
+		if w.isOffer {
+			if w.dataChannel != d {
+				panic("data channel is not the same")
+			}
+		} else {
+			w.dataChannel = d
+			w.setDataChannelHandler(d)
+		}
+	})
+
+	return w, nil
 }
 
-func getErrorMessage() string {
-	var messagePtr *C.char
-	var messageLen C.int
-	C.cgo_webrtc_link_get_error_message(&messagePtr, &messageLen)
-	return C.GoStringN(messagePtr, messageLen)
+func (w *webRTCLinkNative) setDataChannelHandler(dc *webrtc.DataChannel) {
+	dc.OnOpen(func() {
+		w.mtx.Lock()
+
+		o := w.online
+		w.online = true
+
+		if w.online != o {
+			a := w.active
+			o := w.online
+			defer w.eventHandler.changeLinkState(a, o)
+		}
+
+		w.mtx.Unlock()
+	})
+
+	dc.OnClose(func() {
+		w.mtx.Lock()
+
+		a := w.active
+		o := w.online
+		w.active = false
+		w.online = false
+		if w.active != a || w.online != o {
+			a := w.active
+			o := w.online
+			defer w.eventHandler.changeLinkState(a, o)
+		}
+		w.mtx.Unlock()
+	})
+
+	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+		w.eventHandler.recvData(msg.Data)
+	})
+
+	dc.OnError(func(err error) {
+		w.mtx.RLock()
+		a := w.active
+		w.mtx.RUnlock()
+
+		if !a {
+			return
+		}
+		w.eventHandler.raiseError(err.Error())
+	})
 }
 
 func (w *webRTCLinkNative) isActive() bool {
 	w.mtx.RLock()
 	defer w.mtx.RUnlock()
-	if w.id == 0 {
-		return false
-
-	}
 	return w.active
 }
 
 func (w *webRTCLinkNative) isOnline() bool {
 	w.mtx.RLock()
 	defer w.mtx.RUnlock()
-	if w.id == 0 {
-		return false
-	}
 	return w.online
 }
 
 func (w *webRTCLinkNative) getLocalSDP() (string, error) {
 	w.mtx.Lock()
-	id := w.id
-	w.mtx.Unlock()
-
-	if id == 0 {
-		return "", fmt.Errorf("link is not active")
+	defer w.mtx.Unlock()
+	if w.peerConnection == nil {
+		return "", fmt.Errorf("peer connection has been closed")
 	}
 
-	var sdpPtr *C.char
-	var sdpLen C.int
-	err := C.cgo_webrtc_link_get_local_sdp(id, &sdpPtr, &sdpLen)
-	if err != 0 {
-		return "", fmt.Errorf("failed to get local SDP: %s", getErrorMessage())
+	var sdp webrtc.SessionDescription
+	var err error
+	if w.isOffer {
+		sdp, err = w.peerConnection.CreateOffer(nil)
+		if err != nil {
+			return "", fmt.Errorf("failed to create offer: %s", err)
+		}
+	} else {
+		sdp, err = w.peerConnection.CreateAnswer(nil)
+		if err != nil {
+			return "", fmt.Errorf("failed to create answer: %s", err)
+		}
 	}
-	return C.GoStringN(sdpPtr, sdpLen), nil
+
+	if err := w.peerConnection.SetLocalDescription(sdp); err != nil {
+		return "", fmt.Errorf("failed to set local description: %s", err)
+	}
+
+	b, err := json.Marshal(sdp)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal local description: %s", err)
+	}
+	return string(b), nil
 }
 
 func (w *webRTCLinkNative) setRemoteSDP(sdp string) error {
+	description := &webrtc.SessionDescription{}
+	err := json.Unmarshal([]byte(sdp), description)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal remote description: %s", err)
+	}
+
 	w.mtx.Lock()
-	id := w.id
-	w.mtx.Unlock()
-
-	if id == 0 {
-		return fmt.Errorf("link is not active")
+	defer w.mtx.Unlock()
+	if w.peerConnection == nil {
+		return fmt.Errorf("peer connection has been closed")
 	}
 
-	err := C.cgo_webrtc_link_set_remote_sdp(id, sdp)
-	if err != 0 {
-		return fmt.Errorf("failed to set remote SDP: %s", getErrorMessage())
+	if err := w.peerConnection.SetRemoteDescription(*description); err != nil {
+		return fmt.Errorf("failed to set remote description: %s", err)
 	}
+
+	if w.ices != nil {
+		for _, ice := range w.ices {
+			if err := w.peerConnection.AddICECandidate(webrtc.ICECandidateInit{
+				Candidate: ice,
+			}); err != nil {
+				return fmt.Errorf("failed to add ICE candidate: %s", err)
+			}
+		}
+		w.ices = nil
+	}
+
 	return nil
 }
 
 func (w *webRTCLinkNative) updateICE(ice string) error {
 	w.mtx.Lock()
-	id := w.id
-	w.mtx.Unlock()
-
-	if id == 0 {
-		return fmt.Errorf("link is not active")
+	defer w.mtx.Unlock()
+	if w.ices != nil {
+		w.ices = append(w.ices, ice)
+		return nil
 	}
 
-	err := C.cgo_webrtc_link_update_ice(id, ice)
-	if err != 0 {
-		return fmt.Errorf("failed to update ICE: %s", getErrorMessage())
+	if err := w.peerConnection.AddICECandidate(webrtc.ICECandidateInit{
+		Candidate: ice,
+	}); err != nil {
+		return fmt.Errorf("failed to add ICE candidate: %s", err)
 	}
 	return nil
 }
 
 func (w *webRTCLinkNative) send(data []byte) error {
-	w.mtx.Lock()
-	id := w.id
-	w.mtx.Unlock()
-
-	if id == 0 {
-		return fmt.Errorf("link is not active")
-	}
-
-	ptr := C.CBytes(data)
-	defer C.free(ptr)
-	err := C.cgo_webrtc_link_send(id, ptr, C.int(len(data)))
-	if err != 0 {
-		return fmt.Errorf("failed to send data: %s", getErrorMessage())
+	if err := w.dataChannel.Send(data); err != nil {
+		return fmt.Errorf("failed to send data: %s", err)
 	}
 	return nil
 }
 
 func (w *webRTCLinkNative) disconnect() error {
 	w.mtx.Lock()
-	id := w.id
-	active := w.active
-	w.id = 0
-	w.active = false
-	w.mtx.Unlock()
 
-	if id == 0 {
+	a := w.active
+	w.active = false
+
+	o := w.online
+
+	pc := w.peerConnection
+	w.peerConnection = nil
+
+	w.mtx.Unlock() // should not return before this line
+
+	// the link is already closed
+	if pc == nil {
 		return nil
 	}
 
-	linksMtx.Lock()
-	delete(links, id)
-	linksMtx.Unlock()
-
-	err := C.cgo_webrtc_link_disconnect(id)
-	if err != 0 {
-		return fmt.Errorf("failed to disconnect: %s", getErrorMessage())
+	// when `active` is true before disconnect, state of link is changed to `false` after disconnect
+	if a {
+		defer w.eventHandler.changeLinkState(false, o)
 	}
 
-	if active {
-		go w.eventHandler.changeLinkState(false, false)
+	if err := pc.Close(); err != nil {
+		return fmt.Errorf("failed to close peer connection: %s", err)
 	}
 
 	return nil
 }
 
 func init() {
-	C.cgo_webrtc_link_init()
 	defaultWebRTCLinkFactory = func(config *webRTCLinkConfig, eventHandler *webRTCLinkEventHandler) (webRTCLink, error) {
 		return newWebRTCLinkNative(config, eventHandler)
 	}

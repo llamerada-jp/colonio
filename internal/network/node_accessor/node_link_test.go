@@ -228,6 +228,7 @@ func TestNodeLinkTimeout(t *testing.T) {
 	// turn offline after session timeout passed with do nothing
 	mtx := sync.Mutex{}
 	keepalivePackets := 0
+	disableErrorCheck := false
 
 	link, err = newNodeLink(config, &nodeLinkHandlerHelper{}, true)
 	require.NoError(t, err)
@@ -247,8 +248,8 @@ func TestNodeLinkTimeout(t *testing.T) {
 	defer link.disconnect()
 
 	webrtcLink, err = defaultWebRTCLinkFactory(&webRTCLinkConfig{
-		webrtcConfig:      webRTCConfig,
-		createDataChannel: true,
+		webrtcConfig: webRTCConfig,
+		isOffer:      true,
 	}, &webRTCLinkEventHandler{
 		changeLinkState: func(active bool, online bool) {},
 		updateICE: func(ice string) {
@@ -266,6 +267,11 @@ func TestNodeLinkTimeout(t *testing.T) {
 			keepalivePackets++
 		},
 		raiseError: func(err string) {
+			mtx.Lock()
+			defer mtx.Unlock()
+			if disableErrorCheck {
+				return
+			}
 			assert.FailNow(t, "raise error: "+err)
 		},
 	})
@@ -309,6 +315,10 @@ func TestNodeLinkTimeout(t *testing.T) {
 	require.True(t, webrtcLink.isActive())
 	require.True(t, webrtcLink.isOnline())
 
+	mtx.Lock()
+	// ignore error check since the error may be raised when the link is closed by the peer
+	disableErrorCheck = true
+	mtx.Unlock()
 	require.Eventually(t, func() bool {
 		return link.getLinkState() == nodeLinkStateDisabled && !webrtcLink.isActive() && !webrtcLink.isOnline()
 	}, 10*time.Second, 100*time.Millisecond)

@@ -23,8 +23,9 @@ message Signal {
 }
 
 enum SignalOfferType {
-  EXPLICIT = 0;
-  NEXT = 1;
+  // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+  SIGNAL_OFFER_TYPE_EXPLICIT = 0;
+  SIGNAL_OFFER_TYPE_NEXT = 1;
 }
 
 message SignalOffer {

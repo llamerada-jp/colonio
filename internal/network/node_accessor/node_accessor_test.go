@@ -674,6 +674,8 @@ func TestNodeAccessorConnectLinks(t *testing.T) {
 			for _, na := range nodeAccessors {
 				na.mtx.Lock()
 				defer na.mtx.Unlock()
+				// cancel the connection to the next node
+				na.nextConnectionTimestamp = time.Now()
 			}
 			for i := 2; i < len(nodeIDs); i++ {
 				assert.Len(t, nodeAccessors[i].offerID2state, 0)

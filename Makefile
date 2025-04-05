@@ -2,43 +2,23 @@ SHELL := /bin/bash -o pipefail
 
 # Tool and lib versions
 # https://github.com/bufbuild/buf/releases
-BUF_VERSION := 1.50.0
+BUF_VERSION := 1.51.0
 # https://github.com/protocolbuffers/protobuf/releases
-PROTOC_VERSION := 28.3
+PROTOC_VERSION := 30.2
 PROTOC_GEN_GO_VERSION := $(shell awk '/google.golang.org\/protobuf/ {print substr($$2, 2)}' go.mod)
 CONNECT_GO_VERSION := $(shell awk '/connectrpc.com\/connect/ {print substr($$2, 2)}' go.mod)
-# https://github.com/llamerada-jp/libwebrtc
-LIBWEBRTC_URL := "https://github.com/llamerada-jp/libwebrtc/releases/download/m119/libwebrtc-119-linux-amd64.tar.gz"
-# https://github.com/kazuho/picojson
-PICOJSON_VERSION := 1.3.0
 
 # Paths
 ROOT_PATH := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 OUTPUT_PATH := $(ROOT_PATH)/output
 DEPENDING_PKG_PATH := $(ROOT_PATH)/dep
 BINDIR := $(DEPENDING_PKG_PATH)/bin
-WORK_PATH := /tmp/work
 
 # Commands
-BUF := $(BINDIR)/buf
+BUF := PATH=$(BINDIR) $(BINDIR)/buf
 CURL := curl -sSLf
 PROTOC := PATH=$(BINDIR) $(BINDIR)/protoc
 SUDO := sudo
-
-.PHONY: build
-build: build-lib build-js
-
-.PHONY: build-lib
-INCLUDE_FLAGS := -I$(DEPENDING_PKG_PATH)/include -I$(DEPENDING_PKG_PATH)/include/third_party/abseil-cpp
-WEBRTC_DEFS := -DWEBRTC_LINUX=1 -DWEBRTC_POSIX=1
-CXX_FLAGS := -std=c++17 -fvisibility=hidden -fvisibility-inlines-hidden -Wall $(INCLUDE_FLAGS) $(WEBRTC_DEFS)
-build-lib: $(OUTPUT_PATH)/libcolonio.a
-$(OUTPUT_PATH)/libcolonio.a: $(shell find internal/c -name '*.cpp' -or -name '*.hpp' -or -name '*.h')
-	mkdir -p $(WORK_PATH)
-	$(CXX) -c -o $(WORK_PATH)/webrtc_config.o $(CXX_FLAGS) internal/c/webrtc_config.cpp
-	$(CXX) -c -o $(WORK_PATH)/webrtc_link.o $(CXX_FLAGS) internal/c/webrtc_link.cpp
-	rm -f $(OUTPUT_PATH)/libcolonio.a
-	ar rcs $(OUTPUT_PATH)/libcolonio.a $(WORK_PATH)/webrtc_config.o $(WORK_PATH)/webrtc_link.o
 
 .PHONY: generate
 generate:
@@ -56,7 +36,7 @@ format-code: $(shell find . -type f -name '*.go')
 export COLONIO_TEST_CERT := $(shell pwd)/localhost.crt
 export COLONIO_TEST_KEY := $(shell pwd)/localhost.key
 export COLONIO_COOKIE_SECRET_KEY_PAIR := "test"
-test: build build-test
+test: build-js build-test
 	# unit tests
 	go test -v -count=1 -race ./config/...
 	go test -v -count=1 -race ./seed/...
@@ -102,34 +82,20 @@ $(OUTPUT_PATH)/colonio.js: $(shell find ./src -type f -name '*.ts')
 
 .PHONY: setup
 setup:
-	mkdir -p $(DEPENDING_PKG_PATH) $(WORK_PATH)
+	mkdir -p $(DEPENDING_PKG_PATH)
 	# tools for typescript
 	npm install
 	# protoc
 	$(CURL) -o protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-linux-x86_64.zip
-	unzip -o -d $(DEPENDING_PKG_PATH) protoc.zip bin/protoc 'include/*'
+	unzip -o -d $(DEPENDING_PKG_PATH) protoc.zip bin/protoc
 	rm -f protoc.zip
 	GOBIN=$(BINDIR) go install github.com/bufbuild/buf/cmd/buf@v$(BUF_VERSION)
 	GOBIN=$(BINDIR) go install google.golang.org/protobuf/cmd/protoc-gen-go@v$(PROTOC_GEN_GO_VERSION)
 	GOBIN=$(BINDIR) go install connectrpc.com/connect/cmd/protoc-gen-connect-go@v$(CONNECT_GO_VERSION)
-	# libwebrtc
-	cd $(WORK_PATH) \
-	&& curl -LOS $(LIBWEBRTC_URL) \
-	&& if [ $(shell uname -s) = "Linux" ]; then \
-		tar -zx -C $(shell realpath $(DEPENDING_PKG_PATH)) -f $(shell basename $(LIBWEBRTC_URL)); \
-	elif [ $(shell uname -s) = "Darwin" ]; then \
-		unzip -o -d $(DEPENDING_PKG_PATH) $(shell basename $(LIBWEBRTC_URL)); \
-	fi
-	# picojson
-	cd $(WORK_PATH) \
-	&& $(RM) -r picojson \
-	&& git clone --depth=1 --branch v$(PICOJSON_VERSION) https://github.com/kazuho/picojson.git \
-	&& cd picojson \
-	&& cp picojson.h $(DEPENDING_PKG_PATH)/include/
 
 .PHONY: clean
 clean:
-	rm -rf $(DEPENDING_PKG_PATH) $(WORK_PATH) $(OUTPUT_PATH) \
+	rm -rf $(DEPENDING_PKG_PATH) $(OUTPUT_PATH) \
 	  $(shell pwd)/localhost.crt $(shell pwd)/localhost.key \
 		$(shell pwd)/src/*.d.ts $(shell pwd)/test/dist/tests/*.wasm \
 		$(shell pwd)/test/dist/tests.txt $(shell pwd)/test/dist/wasm_exec.js
