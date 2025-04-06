@@ -36,3 +36,20 @@ spec:
         ports:
         - containerPort: 8443
           name: https
+      initContainers:
+      - name: init
+        image: ghcr.io/llamerada-jp/colonio-simulator:latest
+        imagePullPolicy: Never # for k3s local repository
+        command:
+        - "/bin/sh"
+        - "-c"
+        - |
+          echo "Waiting for seed to be ready..."
+          while true; do            
+            if curl -s --insecure -m 10 -o /dev/null https://seed.colonio-simulator.svc.cluster.local:8443/healthz; then
+              break
+            fi
+            echo "Seed is not ready yet. Waiting..."
+            sleep 1
+          done
+          echo "Seed is ready."
