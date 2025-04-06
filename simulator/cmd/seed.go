@@ -48,6 +48,13 @@ var seedCmd = &cobra.Command{
 
 		seed := sd.NewSeed(sd.WithLogger(logger))
 		seed.RegisterService(mux)
+
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Write([]byte("ok"))
+			w.WriteHeader(http.StatusOK)
+		})
 		go seed.Run(ctx)
 
 		server := &http.Server{
