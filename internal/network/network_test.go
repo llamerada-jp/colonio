@@ -214,4 +214,8 @@ func TestNetwork(t *testing.T) {
 		defer mtx.Unlock()
 		return len(receivedPackets) == 2
 	}, 60*time.Second, 1*time.Second)
+
+	for _, n := range networks {
+		assert.True(t, n.IsOnline())
+	}
 }
