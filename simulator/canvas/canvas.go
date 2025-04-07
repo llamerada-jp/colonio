@@ -16,10 +16,12 @@
 package canvas
 
 import (
+	"os"
 	"slices"
 
 	"github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
+	"github.com/veandco/go-sdl2/ttf"
 )
 
 type context struct {
@@ -53,6 +55,7 @@ func (c *context) getColorByZIndex(src *sdl.Color, z float64) *sdl.Color {
 type Canvas struct {
 	quitSignal   bool
 	window       *sdl.Window
+	font         *ttf.Font
 	context      *context
 	currentColor *sdl.Color
 	objects      []objectRenderer
@@ -102,6 +105,29 @@ func NewCanvas(width, height uint) *Canvas {
 	}
 }
 
+func (c *Canvas) EnableFont(fontPath string, fontSize int) {
+	if c.font != nil {
+		panic("font is already enabled")
+	}
+
+	if err := ttf.Init(); err != nil {
+		panic(err)
+	}
+
+	if len(fontPath) == 0 {
+		fontPath = os.Getenv("FONT_PATH")
+		if len(fontPath) == 0 {
+			panic("font path is not set")
+		}
+	}
+
+	font, err := ttf.OpenFont(fontPath, fontSize)
+	if err != nil {
+		panic(err)
+	}
+	c.font = font
+}
+
 func (c *Canvas) HasQuitSignal() bool {
 	if c.quitSignal {
 		return true
@@ -139,10 +165,10 @@ func (c *Canvas) Render() error {
 	slices.SortFunc(c.objects, func(i, j objectRenderer) int {
 		zi := i.getZIndex()
 		zj := j.getZIndex()
-		if zi < zj {
+		if zi > zj {
 			return 1
 		}
-		if zi > zj {
+		if zi < zj {
 			return -1
 		}
 		return 0
@@ -156,6 +182,14 @@ func (c *Canvas) Render() error {
 	return c.window.UpdateSurface()
 }
 
+func (c *Canvas) GetCanvasWidthPixel() float64 {
+	return c.context.width
+}
+
+func (c *Canvas) GetCanvasHeighPixel() float64 {
+	return c.context.height
+}
+
 func (c *Canvas) SetColor(r, g, b uint8) {
 	c.currentColor = &sdl.Color{
 		R: r,
@@ -163,6 +197,14 @@ func (c *Canvas) SetColor(r, g, b uint8) {
 		B: b,
 		A: 255,
 	}
+}
+
+func (c *Canvas) XFromPixel(x float64) float64 {
+	return (x/c.context.width)*2.0 - 1.0
+}
+
+func (c *Canvas) YFromPixel(y float64) float64 {
+	return (1.0-y/c.context.height)*2.0 - 1.0
 }
 
 func (c *Canvas) DrawLine3(x1, y1, z1, x2, y2, z2 float64) {
@@ -184,6 +226,19 @@ func (c *Canvas) DrawBox3(x, y, z, w float64) {
 		z:     z,
 		width: w,
 		color: c.currentColor,
+	})
+}
+
+func (c *Canvas) DrawText(x, y float64, caption string) {
+	if c.font == nil {
+		panic("should be enable font before rendering text")
+	}
+	c.objects = append(c.objects, &text{
+		x:       x,
+		y:       y,
+		font:    c.font,
+		color:   c.currentColor,
+		caption: caption,
 	})
 }
 

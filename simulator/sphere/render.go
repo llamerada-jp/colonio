@@ -17,12 +17,17 @@ package sphere
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strings"
 	"time"
 
 	"github.com/llamerada-jp/colonio/simulator/canvas"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
+)
+
+const (
+	scale = 0.95
 )
 
 type node struct {
@@ -38,9 +43,12 @@ type edge struct {
 
 func RunRender(ctx context.Context, reader *datastore.Reader, canvas *canvas.Canvas, filer *canvas.Filer) error {
 	var timestamp time.Time
-	nodes := make(map[string]node)
+	sec := 0
+	aliveNodes := make(map[string]*node)
+	silentNodes := make(map[string]*node)
 	connects := make(map[edge]time.Time)
 	required := make(map[edge]time.Time)
+	canvas.EnableFont("", 16)
 
 	for {
 		var record Record
@@ -56,21 +64,22 @@ func RunRender(ctx context.Context, reader *datastore.Reader, canvas *canvas.Can
 		}
 
 		for timestamp.Before(*recordTime) {
-			draw(canvas, nodes, connects, required)
+			sec += 1
+			draw(canvas, sec, aliveNodes, silentNodes, connects, required)
 			if filer != nil {
 				filer.Save()
 			}
 			if canvas.HasQuitSignal() {
 				return nil
 			}
-			cleanupNodes(timestamp, nodes)
+			cleanupNodes(timestamp, aliveNodes, silentNodes)
 			cleanupEdges(timestamp, connects)
 			cleanupEdges(timestamp, required)
 			timestamp = timestamp.Add(time.Second)
-			time.Sleep(20 * time.Millisecond)
+			// time.Sleep(20 * time.Millisecond)
 		}
 
-		nodes[nodeID] = node{
+		aliveNodes[nodeID] = &node{
 			x:         record.X,
 			y:         record.Y,
 			timestamp: timestamp,
@@ -80,41 +89,87 @@ func RunRender(ctx context.Context, reader *datastore.Reader, canvas *canvas.Can
 	}
 }
 
-func draw(canvas *canvas.Canvas, nodes map[string]node, connects map[edge]time.Time, required map[edge]time.Time) {
+func draw(canvas *canvas.Canvas, sec int, aliveNodes, silentNodes map[string]*node, connects map[edge]time.Time, required map[edge]time.Time) {
+	canvas.SetColor(0, 0, 0)
+	canvas.DrawText(
+		canvas.XFromPixel(8),
+		canvas.YFromPixel(canvas.GetCanvasHeighPixel()-96),
+		fmt.Sprintf(
+			"time: %d s\nnodes: %d\nlost nodes: %d\nconnections: %d, avg:%.1f",
+			sec,
+			len(aliveNodes), len(silentNodes), len(connects),
+			// one connection is connected two nodes
+			float64(len(connects))/float64(len(aliveNodes))*2.0,
+		))
+
 	canvas.SetColor(0, 0, 255)
-	for _, n := range nodes {
+	for _, n := range aliveNodes {
+		drawNode(canvas, n)
+	}
+
+	canvas.SetColor(63, 63, 63)
+	for _, n := range silentNodes {
 		drawNode(canvas, n)
 	}
 
 	for e := range connects {
-		drawEdge(canvas, nodes[e.node1], nodes[e.node2])
+		canvas.SetColor(0, 0, 255)
+		var n1, n2 *node
+		if n, ok := aliveNodes[e.node1]; ok {
+			n1 = n
+		} else if n, ok := silentNodes[e.node1]; ok {
+			canvas.SetColor(255, 0, 0)
+			n1 = n
+		} else {
+			continue
+		}
+		if n, ok := aliveNodes[e.node2]; ok {
+			n2 = n
+		} else if n, ok := silentNodes[e.node2]; ok {
+			canvas.SetColor(255, 0, 0)
+			n2 = n
+		} else {
+			continue
+		}
+		drawEdge(canvas, n1, n2)
 	}
 
-	canvas.SetColor(255, 0, 0)
+	canvas.SetColor(0, 255, 63)
 	for e := range required {
 		if _, ok := connects[e]; ok {
 			continue
 		}
-		drawEdge(canvas, nodes[e.node1], nodes[e.node2])
+		n1 := aliveNodes[e.node1]
+		if n1 == nil {
+			n1 = silentNodes[e.node1]
+		}
+		n2 := aliveNodes[e.node2]
+		if n2 == nil {
+			n2 = silentNodes[e.node2]
+		}
+		if n1 == nil || n2 == nil {
+			continue
+		}
+		drawEdge(canvas, n1, n2)
 	}
 
 	canvas.Render()
 }
 
-func drawNode(canvas *canvas.Canvas, n node) {
+func drawNode(canvas *canvas.Canvas, n *node) {
 	x, y, z := convertCoordinate(n)
 	canvas.DrawBox3(x, y, z, 5.0)
 }
 
-func drawEdge(canvas *canvas.Canvas, n1, n2 node) {
+func drawEdge(canvas *canvas.Canvas, n1, n2 *node) {
 	x1, y1, z1 := convertCoordinate(n1)
 	x2, y2, z2 := convertCoordinate(n2)
 	canvas.DrawLine3(x1, y1, z1, x2, y2, z2)
 }
 
-func convertCoordinate(n node) (xo, yo, zo float64) {
-	xo = math.Cos(n.x) * math.Cos(n.y)
-	yo = math.Sin(n.y)
+func convertCoordinate(n *node) (xo, yo, zo float64) {
+	xo = math.Cos(n.x) * math.Cos(n.y) * scale
+	yo = math.Sin(n.y) * scale
 	zo = math.Sin(n.x) * math.Cos(n.y)
 	return
 }
@@ -129,17 +184,20 @@ func appendEdges(timestamp time.Time, edges map[edge]time.Time, nodeID string, n
 	}
 }
 
-func cleanupNodes(timestamp time.Time, nodes map[string]node) {
-	for nodeID, n := range nodes {
-		if n.timestamp.Add(3 * time.Second).After(timestamp) {
-			delete(nodes, nodeID)
+func cleanupNodes(timestamp time.Time, aliveNodes, silentNodes map[string]*node) {
+	for nodeID, n := range aliveNodes {
+		if timestamp.After(n.timestamp.Add(3 * time.Second)) {
+			delete(aliveNodes, nodeID)
+			silentNodes[nodeID] = n
+		} else {
+			delete(silentNodes, nodeID)
 		}
 	}
 }
 
 func cleanupEdges(timestamp time.Time, edges map[edge]time.Time) {
 	for e, t := range edges {
-		if t.Add(3 * time.Second).After(timestamp) {
+		if timestamp.After(t.Add(3 * time.Second)) {
 			delete(edges, e)
 		}
 	}

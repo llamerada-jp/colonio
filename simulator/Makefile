@@ -29,7 +29,7 @@ export: work/simulator
 render: work/simulator
 	rm -rf $(RENDER_DIR)
 	mkdir -p $(RENDER_DIR)
-	work/simulator render --input $(DUMP_FILE) --output-prefix $(RENDER_DIR)/image-
+	FONT_PATH=/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf work/simulator render --input $(DUMP_FILE) --output-prefix $(RENDER_DIR)/image-
 	ffmpeg -y -r 10 -i $(RENDER_DIR)/image-%06d.png -vcodec libx264 -pix_fmt yuv420p -r 10 $(RENDER_FILE)
 
 .PHONY: view
@@ -48,6 +48,10 @@ work/simulator: $(shell find ../ -type f -name '*.go')
 	$(MAKE) -C ..
 	mkdir -p work
 	go build -o $@ ./cmd/
+
+.PHONY: setup
+setup:
+	sudo apt install -y pkgconf ffmpeg libsdl2{,-image,-ttf}-dev
 
 .PHONY: clean
 clean:
