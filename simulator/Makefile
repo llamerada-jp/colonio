@@ -1,7 +1,7 @@
 SHELL := /bin/bash -o pipefail
 
 TAG := ghcr.io/llamerada-jp/colonio-simulator
-DEPLOY_OVERLAY := sphere
+SIMULATION_STORY := circle
 NODES := 3
 DUMP_FILE := dump.json
 RENDER_FILE := out.mp4
@@ -14,7 +14,7 @@ KUBECTL := sudo k3s kubectl
 apply: colonio-simulator.tar
 	sudo k3s ctr images import colonio-simulator.tar
 	$(KUBECTL) delete namespace colonio-simulator || true
-	$(KUBECTL) apply -k deploy/overlays/$(DEPLOY_OVERLAY)
+	$(KUBECTL) apply -k deploy/overlays/$(SIMULATION_STORY)
 	$(KUBECTL) scale deployment -n colonio-simulator node --replicas=$(NODES)
 
 .PHONY: stop
@@ -29,7 +29,7 @@ export: work/simulator
 render: work/simulator
 	rm -rf $(RENDER_DIR)
 	mkdir -p $(RENDER_DIR)
-	FONT_PATH=/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf work/simulator render --input $(DUMP_FILE) --output-prefix $(RENDER_DIR)/image-
+	FONT_PATH=/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf work/simulator render --story $(SIMULATION_STORY) --input $(DUMP_FILE) --output-prefix $(RENDER_DIR)/image-
 	ffmpeg -y -r 10 -i $(RENDER_DIR)/image-%06d.png -vcodec libx264 -pix_fmt yuv420p -r 10 $(RENDER_FILE)
 
 .PHONY: view
@@ -51,7 +51,7 @@ work/simulator: $(shell find ../ -type f -name '*.go')
 
 .PHONY: setup
 setup:
-	sudo apt install -y pkgconf ffmpeg libsdl2{,-image,-ttf}-dev
+	sudo apt install -y pkgconf ffmpeg fonts-noto libsdl2{,-image,-ttf}-dev
 
 .PHONY: clean
 clean:

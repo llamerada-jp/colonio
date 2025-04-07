@@ -23,6 +23,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/llamerada-jp/colonio/simulator/circle"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
 	"github.com/llamerada-jp/colonio/simulator/sphere"
 	"github.com/spf13/cobra"
@@ -107,8 +108,12 @@ var nodeCmd = &cobra.Command{
 
 func run(ctx context.Context, logger *slog.Logger, writer *datastore.Writer) error {
 	switch nodeConfig.story {
+	case "circle":
+		return circle.RunNode(ctx, logger, nodeConfig.seedURL, writer)
+
 	case "sphere":
 		return sphere.RunNode(ctx, logger, nodeConfig.seedURL, writer)
+
 	default:
 		return errors.New("unexpected story name")
 	}
