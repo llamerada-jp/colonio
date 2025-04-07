@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: node
+  namespace: colonio-simulator
+data:
+  story: circle

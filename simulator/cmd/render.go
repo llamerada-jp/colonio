@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/llamerada-jp/colonio/simulator/canvas"
+	"github.com/llamerada-jp/colonio/simulator/circle"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
 	"github.com/llamerada-jp/colonio/simulator/sphere"
 	"github.com/spf13/cobra"
@@ -80,6 +81,9 @@ func (r *renderCmdImpl) forkStory(ctx context.Context, reader *datastore.Reader,
 	switch r.config.story {
 	case "sphere":
 		return sphere.RunRender(ctx, reader, canvas, filer)
+
+	case "circle":
+		return circle.RunRender(ctx, reader, canvas, filer)
 
 	default:
 		return errors.New("unexpected story name")

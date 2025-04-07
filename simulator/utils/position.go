@@ -13,45 +13,45 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package sphere
+package utils
 
 import (
 	"math"
 	"math/rand"
 )
 
-type position struct {
-	x, y   float64
+type Position struct {
+	X, Y   float64
 	ax, ay float64
 }
 
-func newPosition() *position {
-	return &position{
-		x:  rand.Float64()*math.Pi*2 - math.Pi,
-		y:  rand.Float64()*math.Pi - math.Pi/2,
+func NewPosition() *Position {
+	return &Position{
+		X:  rand.Float64()*math.Pi*2 - math.Pi,
+		Y:  rand.Float64()*math.Pi - math.Pi/2,
 		ax: rand.Float64() * 0.01,
 		ay: rand.Float64() * 0.01,
 	}
 }
 
-func (p *position) moveRandom() {
+func (p *Position) MoveRandom() {
 	p.ax = updateAcceleration(p.ax)
 	p.ay = updateAcceleration(p.ay)
-	p.x += p.ax
-	p.y += p.ay
+	p.X += p.ax
+	p.Y += p.ay
 
-	if p.x > math.Pi {
-		p.x -= math.Pi * 2
+	if p.X > math.Pi {
+		p.X -= math.Pi * 2
 	}
-	if p.x < -math.Pi {
-		p.x += math.Pi * 2
+	if p.X < -math.Pi {
+		p.X += math.Pi * 2
 	}
-	if p.y > math.Pi/2 {
-		p.y = math.Pi / 2
+	if p.Y > math.Pi/2 {
+		p.Y = math.Pi / 2
 		p.ay = -p.ay
 	}
-	if p.y < -math.Pi/2 {
-		p.y = -math.Pi / 2
+	if p.Y < -math.Pi/2 {
+		p.Y = -math.Pi / 2
 		p.ay = -p.ay
 	}
 }

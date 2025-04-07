@@ -207,6 +207,16 @@ func (c *Canvas) YFromPixel(y float64) float64 {
 	return (1.0-y/c.context.height)*2.0 - 1.0
 }
 
+func (c *Canvas) DrawLine2(x1, y1, x2, y2 float64) {
+	c.objects = append(c.objects, &line2{
+		x1:    x1,
+		y1:    y1,
+		x2:    x2,
+		y2:    y2,
+		color: c.currentColor,
+	})
+}
+
 func (c *Canvas) DrawLine3(x1, y1, z1, x2, y2, z2 float64) {
 	c.objects = append(c.objects, &line3{
 		x1:    x1,
@@ -215,6 +225,15 @@ func (c *Canvas) DrawLine3(x1, y1, z1, x2, y2, z2 float64) {
 		x2:    x2,
 		y2:    y2,
 		z2:    z2,
+		color: c.currentColor,
+	})
+}
+
+func (c *Canvas) DrawBox2(x, y, w float64) {
+	c.objects = append(c.objects, &box2{
+		x:     x,
+		y:     y,
+		width: w,
 		color: c.currentColor,
 	})
 }

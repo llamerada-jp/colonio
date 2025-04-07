@@ -13,23 +13,50 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package sphere
+package circle
 
 import (
 	"context"
 	"log/slog"
+	"math/rand"
 	"time"
 
 	"github.com/llamerada-jp/colonio"
 	"github.com/llamerada-jp/colonio/config"
+	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
 	"github.com/llamerada-jp/colonio/simulator/utils"
 	"github.com/llamerada-jp/colonio/test/util"
 )
 
-func RunNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *datastore.Writer) error {
-	position := utils.NewPosition()
+const (
+	messageKey = "simulator"
+)
 
+func RunNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *datastore.Writer) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+
+		default:
+			// Randomly generate a duration between 30 seconds and 10 minutes
+			durationSec := rand.Intn(9*60+30) + 30
+			timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(durationSec)*time.Second)
+			if err := node(timeoutCtx, logger, seedURL, writer); err != nil {
+				logger.Error("node error", "error", err)
+				cancel()
+				return err
+			}
+			time.Sleep(time.Duration(rand.Intn(30)) * time.Second)
+			// do cancel to avoid context leak
+			cancel()
+		}
+	}
+}
+
+func node(ctx context.Context, logger *slog.Logger, seedURL string, writer *datastore.Writer) error {
+	position := utils.NewPosition()
 	record := &Record{
 		ConnectedNodeIDs:  make([]string, 0),
 		RequiredNodeIDs1D: make([]string, 0),
@@ -62,29 +89,46 @@ func RunNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *d
 	if err != nil {
 		return err
 	}
+
+	col.MessagingSetHandler(messageKey, func(mr *colonio.MessagingRequest, mrw colonio.MessagingResponseWriter) {
+		// Do nothing
+	})
+
 	if err := col.Start(ctx); err != nil {
 		return err
 	}
-	defer col.Stop()
+	record.State = state_start
+	writer.Write(time.Now(), col.GetLocalNodeID(), record)
+	defer func() {
+		record.State = state_stop
+		writer.Write(time.Now(), col.GetLocalNodeID(), record)
+		col.Stop()
+	}()
 
 	logger.Info("connected", "nodeID", col.GetLocalNodeID())
 
 	for {
 		timer := time.NewTimer(1 * time.Second)
+
+		// send message randomly
+		dstNodeID := shared.NewRandomNodeID().String()
+		col.MessagingPost(dstNodeID, messageKey, []byte("hello"),
+			colonio.MessagingWithAcceptNearby(),
+			colonio.MessagingWithIgnoreResponse(),
+		)
+
+		position.MoveRandom()
+		if err := col.UpdateLocalPosition(position.X, position.Y); err != nil {
+			logger.Warn("failed to update position", "error", err)
+		}
+
 		select {
 		case <-ctx.Done():
+			logger.Info("context done")
 			return nil
 
 		case <-timer.C:
-			position.MoveRandom()
-			logger.Info("move", "x", position.X, "y", position.Y)
-			if err := col.UpdateLocalPosition(position.X, position.Y); err != nil {
-				logger.Warn("failed to update position", "error", err)
-				continue
-			}
-
-			record.X = position.X
-			record.Y = position.Y
+			record.State = state_normal
 			writer.Write(time.Now(), col.GetLocalNodeID(), record)
 		}
 	}

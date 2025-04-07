@@ -16,7 +16,7 @@ This simulation program uses a local Kubernetes setup to launch multiple nodes, 
 ### Setup dependencies
 
 ```sh
-sudo apt install pkgconf ffmpeg libsdl2{,-image,-ttf}-dev
+make setup
 
 #Install  k3s
 curl -sfL https://get.k3s.io | sh -
