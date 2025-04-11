@@ -1,5 +1,6 @@
 /_obj
 /.vscode
+/*.covprofile
 /dep
 /localhost.crt
 /localhost.key
