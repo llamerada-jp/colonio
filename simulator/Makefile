@@ -2,7 +2,7 @@ SHELL := /bin/bash -o pipefail
 
 TAG := ghcr.io/llamerada-jp/colonio-simulator
 SIMULATION_STORY := circle
-NODES := 3
+NODES := 5
 DUMP_FILE := dump.json
 RENDER_FILE := out.mp4
 RENDER_DIR := render

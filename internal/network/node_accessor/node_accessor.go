@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -167,17 +168,23 @@ func (na *NodeAccessor) subRoutine() {
 		return
 	}
 
-	// If both nodes are connected to each other at the same time,
-	// the connection will be broken and started over. So a random number is inserted to change the timing.
-	if len(na.link2nodeID) == 0 && len(na.offerID2state) == 0 && rand.Int()%10 == 0 {
+	// try to connect to first node
+	if len(na.link2nodeID) == 0 && len(na.offerID2state) == 0 {
 		if err := na.connect(signal.OfferTypeNext, na.localNodeID); err != nil {
 			na.logger.Warn("failed to connect first link", slog.String("error", err.Error()))
 		}
 	}
 
 	// try to connect to next node for redundancy
-	if len(na.link2nodeID) != 0 && time.Now().After(na.nextConnectionTimestamp.Add(time.Duration(na.nextConnectionInterval))) {
-		na.nextConnectionTimestamp = time.Now()
+	if len(na.link2nodeID) != 0 && time.Now().After(na.nextConnectionTimestamp.Add(na.nextConnectionInterval)) {
+		if na.nextConnectionTimestamp.IsZero() {
+			na.nextConnectionTimestamp = time.Now()
+			// If interval is very large, the first trying will be run only after 10 sec.
+			if na.nextConnectionInterval > 10*time.Second {
+				na.nextConnectionTimestamp = na.nextConnectionTimestamp.Add(-10*time.Second - na.nextConnectionInterval)
+			}
+			return
+		}
 		if err := na.connect(signal.OfferTypeNext, na.localNodeID); err != nil {
 			na.logger.Warn("failed to connect next link", slog.String("error", err.Error()))
 		}
@@ -195,6 +202,17 @@ func (na *NodeAccessor) ConnectLinks(requiredNodeIDs, keepNodeIDs map[shared.Nod
 			} else {
 				continue
 			}
+		}
+
+		skip := false
+		for _, state := range na.offerID2state {
+			if state.nodeID.Equal(&nodeID) {
+				skip = true
+				break
+			}
+		}
+		if skip {
+			continue
 		}
 
 		err := na.connect(signal.OfferTypeExplicit, &nodeID)
@@ -233,28 +251,12 @@ func (na *NodeAccessor) SignalingOffer(srcNodeID *shared.NodeID, offer *signal.O
 		return
 	}
 
-	if na.assignedNodeID(srcNodeID) {
-		na.sendAnswer(srcNodeID, offerID, signal.AnswerStatusReject, "")
-		return
-	}
-
-	if _, ok := na.nodeID2link[*srcNodeID]; ok {
-		na.sendAnswer(srcNodeID, offerID, signal.AnswerStatusReject, "")
-		return
-	}
-
-	if _, ok := na.offerID2state[offerID]; ok {
-		na.sendAnswer(srcNodeID, offerID, signal.AnswerStatusReject, "")
-		return
-	}
-
 	link, err := newNodeLink(na.nodeLinkConfig, na, false)
 	if err != nil {
 		na.logger.Error("failed to create link", slog.String("error", err.Error()))
 		return
 	}
-	na.nodeID2link[*srcNodeID] = link
-	na.link2nodeID[link] = srcNodeID
+
 	na.offerID2state[offerID] = &connectingState{
 		isPrime:           false,
 		ices:              make([]string, 0),
@@ -305,14 +307,6 @@ func (na *NodeAccessor) SignalingAnswer(srcNodeID *shared.NodeID, answer *signal
 		na.disconnectLink(state.link, false)
 		return
 	}
-
-	if _, ok := na.nodeID2link[*srcNodeID]; ok {
-		na.disconnectLink(state.link, false)
-		return
-	}
-
-	na.nodeID2link[*srcNodeID] = state.link
-	na.link2nodeID[state.link] = srcNodeID
 
 	go func() {
 		if err := state.link.setRemoteSDP(answer.Sdp); err != nil {
@@ -521,21 +515,44 @@ func (na *NodeAccessor) sendICE(dstNodeID *shared.NodeID, offerID uint32, ices [
 	})
 }
 
-func (na *NodeAccessor) nodeLinkChangeState(link *nodeLink, state nodeLinkState) {
+func (na *NodeAccessor) nodeLinkChangeState(link *nodeLink, linkState nodeLinkState) {
 	go func() {
 		na.mtx.Lock()
 		defer na.mtx.Unlock()
 
-		if state == nodeLinkStateOnline {
+		if linkState == nodeLinkStateOnline {
 			offerID, ok := na.link2offerID[link]
 			if ok {
+				state := na.offerID2state[offerID]
 				delete(na.offerID2state, offerID)
 				delete(na.link2offerID, link)
+				// There is a possibility that both nodes try to connect at the same time.
+				// Depending on the timing, links created by each other may interfere with each other,
+				// causing link creation to fail. If there are links to the same node,
+				// the link with the larger data channel label is retained.
+				if existingLink, ok := na.nodeID2link[state.nodeID]; ok {
+					if existingLink.getLinkState() != nodeLinkStateOnline ||
+						strings.Compare(existingLink.getLabel(), link.getLabel()) > 0 {
+						// disconnect existing link and keep new link
+						na.disconnectLink(existingLink, false)
+						na.nodeID2link[state.nodeID] = link
+						na.link2nodeID[link] = &state.nodeID
+					} else {
+						if strings.Compare(existingLink.getLabel(), link.getLabel()) == 0 {
+							panic(fmt.Sprintf("data channel label should be unique, %d, %s", offerID, existingLink.getLabel()))
+						}
+						// disconnect new link and keep existing link
+						na.disconnectLink(link, false)
+					}
+				} else {
+					na.nodeID2link[state.nodeID] = link
+					na.link2nodeID[link] = &state.nodeID
+				}
 				na.callChangeConnections()
 			}
 		}
 
-		if state == nodeLinkStateDisabled {
+		if linkState == nodeLinkStateDisabled {
 			na.disconnectLink(link, false)
 		}
 	}()

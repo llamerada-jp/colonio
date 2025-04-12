@@ -31,6 +31,7 @@ type webRTCLinkWASM struct {
 	mtx        sync.RWMutex
 	active     bool
 	online     bool
+	label      string
 	localSDPCh chan string
 }
 
@@ -62,6 +63,23 @@ func jsOnUpdateLinkState(_ js.Value, args []js.Value) interface{} {
 		a := link.active
 		o := link.online
 		defer link.eventHandler.changeLinkState(a, o)
+
+		if link.online {
+			c := make(chan string, 1)
+			defer close(c)
+
+			go func() {
+				res := jsWrapper.Call("getLabel", js.ValueOf(link.id)).String()
+				c <- res
+			}()
+
+			res := <-c
+			if len(res) == 0 {
+				link.eventHandler.raiseError("failed to get label")
+				return nil
+			}
+			link.label = res
+		}
 	}
 	link.mtx.Unlock()
 
@@ -137,6 +155,7 @@ func newWebRTCLinkWASM(config *webRTCLinkConfig, eventHandler *webRTCLinkEventHa
 		linkID := jsWrapper.Call("newLink",
 			js.ValueOf(config.webrtcConfig.getConfigID()),
 			js.ValueOf(config.isOffer),
+			js.ValueOf(config.label),
 		).Int()
 		if linkID == 0 {
 			c <- res{
@@ -183,6 +202,12 @@ func (w *webRTCLinkWASM) isOnline() bool {
 	w.mtx.RLock()
 	defer w.mtx.RUnlock()
 	return w.online
+}
+
+func (w *webRTCLinkWASM) getLabel() string {
+	w.mtx.RLock()
+	defer w.mtx.RUnlock()
+	return w.label
 }
 
 func (w *webRTCLinkWASM) getLocalSDP() (string, error) {
