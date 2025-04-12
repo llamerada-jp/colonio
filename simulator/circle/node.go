@@ -97,15 +97,19 @@ func node(ctx context.Context, logger *slog.Logger, seedURL string, writer *data
 	if err := col.Start(ctx); err != nil {
 		return err
 	}
+
+	localNodeID := col.GetLocalNodeID()
+	logger.Info("connected", "nodeID", localNodeID)
+
 	record.State = state_start
-	writer.Write(time.Now(), col.GetLocalNodeID(), record)
+	writer.Write(time.Now(), localNodeID, record)
 	defer func() {
-		record.State = state_stop
-		writer.Write(time.Now(), col.GetLocalNodeID(), record)
+		record := &Record{
+			State: state_stop,
+		}
+		writer.Write(time.Now(), localNodeID, record)
 		col.Stop()
 	}()
-
-	logger.Info("connected", "nodeID", col.GetLocalNodeID())
 
 	for {
 		timer := time.NewTimer(1 * time.Second)
@@ -129,7 +133,7 @@ func node(ctx context.Context, logger *slog.Logger, seedURL string, writer *data
 
 		case <-timer.C:
 			record.State = state_normal
-			writer.Write(time.Now(), col.GetLocalNodeID(), record)
+			writer.Write(time.Now(), localNodeID, record)
 		}
 	}
 }

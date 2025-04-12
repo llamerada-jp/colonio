@@ -18,6 +18,7 @@ package sphere
 import (
 	"context"
 	"log/slog"
+	"math/rand"
 	"time"
 
 	"github.com/llamerada-jp/colonio"
@@ -28,6 +29,28 @@ import (
 )
 
 func RunNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *datastore.Writer) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+
+		default:
+			// Randomly generate a duration between 30 seconds and 10 minutes
+			durationSec := rand.Intn(9*60) + 60
+			timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(durationSec)*time.Second)
+			if err := runNode(timeoutCtx, logger, seedURL, writer); err != nil {
+				logger.Error("node error", "error", err)
+				cancel()
+				return err
+			}
+			time.Sleep(time.Duration(rand.Intn(30)) * time.Second)
+			// do cancel to avoid context leak
+			cancel()
+		}
+	}
+}
+
+func runNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *datastore.Writer) error {
 	position := utils.NewPosition()
 
 	record := &Record{
@@ -65,9 +88,19 @@ func RunNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *d
 	if err := col.Start(ctx); err != nil {
 		return err
 	}
-	defer col.Stop()
 
-	logger.Info("connected", "nodeID", col.GetLocalNodeID())
+	localNodeID := col.GetLocalNodeID()
+	logger.Info("connected", "nodeID", localNodeID)
+
+	record.State = state_start
+	writer.Write(time.Now(), localNodeID, record)
+	defer func() {
+		record := &Record{
+			State: state_stop,
+		}
+		writer.Write(time.Now(), localNodeID, record)
+		col.Stop()
+	}()
 
 	for {
 		timer := time.NewTimer(1 * time.Second)
@@ -83,9 +116,10 @@ func RunNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *d
 				continue
 			}
 
+			record.State = state_normal
 			record.X = position.X
 			record.Y = position.Y
-			writer.Write(time.Now(), col.GetLocalNodeID(), record)
+			writer.Write(time.Now(), localNodeID, record)
 		}
 	}
 }

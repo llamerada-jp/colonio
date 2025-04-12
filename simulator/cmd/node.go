@@ -21,7 +21,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 
 	"github.com/llamerada-jp/colonio/simulator/circle"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
@@ -77,6 +79,13 @@ var nodeCmd = &cobra.Command{
 
 		mtx := &sync.Mutex{}
 		var globalErr error
+
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
+		go func() {
+			<-sig
+			cancel()
+		}()
 
 		logger.Info("start node",
 			slog.String("seedURL", nodeConfig.seedURL),

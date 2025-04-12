@@ -63,6 +63,25 @@ func RunRender(ctx context.Context, reader *datastore.Reader, canvas *canvas.Can
 			timestamp = recordTime.Round(time.Second)
 		}
 
+		if record.State == state_start {
+			silentNodes[nodeID] = &node{
+				x:         record.X,
+				y:         record.Y,
+				timestamp: timestamp,
+			}
+			continue
+		}
+		if record.State == state_stop {
+			delete(aliveNodes, nodeID)
+			delete(silentNodes, nodeID)
+		}
+		// skip record if node is not alive
+		_, alive := aliveNodes[nodeID]
+		_, silent := silentNodes[nodeID]
+		if !alive && !silent {
+			continue
+		}
+
 		for timestamp.Before(*recordTime) {
 			sec += 1
 			draw(canvas, sec, aliveNodes, silentNodes, connects, required)
@@ -112,32 +131,34 @@ func draw(canvas *canvas.Canvas, sec int, aliveNodes, silentNodes map[string]*no
 		drawNode(canvas, n)
 	}
 
-	for e := range connects {
-		canvas.SetColor(0, 0, 255)
-		var n1, n2 *node
-		if n, ok := aliveNodes[e.node1]; ok {
-			n1 = n
-		} else if n, ok := silentNodes[e.node1]; ok {
-			canvas.SetColor(255, 0, 0)
-			n1 = n
-		} else {
-			continue
+	/*
+		for e := range connects {
+			canvas.SetColor(0, 0, 255)
+			var n1, n2 *node
+			if n, ok := aliveNodes[e.node1]; ok {
+				n1 = n
+			} else if n, ok := silentNodes[e.node1]; ok {
+				canvas.SetColor(255, 0, 0)
+				n1 = n
+			} else {
+				continue
+			}
+			if n, ok := aliveNodes[e.node2]; ok {
+				n2 = n
+			} else if n, ok := silentNodes[e.node2]; ok {
+				canvas.SetColor(255, 0, 0)
+				n2 = n
+			} else {
+				continue
+			}
+			drawEdge(canvas, n1, n2)
 		}
-		if n, ok := aliveNodes[e.node2]; ok {
-			n2 = n
-		} else if n, ok := silentNodes[e.node2]; ok {
-			canvas.SetColor(255, 0, 0)
-			n2 = n
-		} else {
-			continue
-		}
-		drawEdge(canvas, n1, n2)
-	}
+	//*/
 
-	canvas.SetColor(0, 255, 63)
 	for e := range required {
+		canvas.SetColor(0, 255, 63)
 		if _, ok := connects[e]; ok {
-			continue
+			canvas.SetColor(0, 0, 255)
 		}
 		n1 := aliveNodes[e.node1]
 		if n1 == nil {

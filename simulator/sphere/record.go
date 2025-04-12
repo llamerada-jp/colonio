@@ -15,7 +15,14 @@
  */
 package sphere
 
+const (
+	state_start  = "start"
+	state_normal = ""
+	state_stop   = "stop"
+)
+
 type Record struct {
+	State             string
 	X                 float64
 	Y                 float64
 	ConnectedNodeIDs  []string
