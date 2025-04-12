@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -166,9 +167,13 @@ func TestNetwork(t *testing.T) {
 		return true
 	}, 60*time.Second, 1*time.Second)
 
-	// update position
+	expectedPositionMap := make(map[shared.NodeID]*geometry.Coordinate)
 	for i, network := range networks {
-		err = network.UpdateLocalPosition(&geometry.Coordinate{X: float64(i) / 10.0, Y: float64(i) / 10.0})
+		x := rand.Float64() - 0.5
+		y := rand.Float64() - 0.5
+		expectedPositionMap[*nodeIDs[i]] = &geometry.Coordinate{X: x, Y: y}
+		t.Logf("node %d: %f, %f\n", i, x, y)
+		err = network.UpdateLocalPosition(&geometry.Coordinate{X: x, Y: y})
 		require.NoError(t, err)
 	}
 
@@ -178,9 +183,10 @@ func TestNetwork(t *testing.T) {
 		defer mtx.Unlock()
 
 		for _, pMap := range positionMaps {
-			for i, nodeID := range nodeIDs {
+			for _, nodeID := range nodeIDs {
+				expected := expectedPositionMap[*nodeID]
 				if pos, ok := pMap[*nodeID]; ok {
-					if pos.X != float64(i)/10.0 || pos.Y != float64(i)/10.0 {
+					if pos.X != expected.X || pos.Y != expected.Y {
 						return false
 					}
 				}
@@ -212,6 +218,11 @@ func TestNetwork(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		mtx.Lock()
 		defer mtx.Unlock()
+
+		for _, network := range networks {
+			assert.True(t, network.IsOnline())
+		}
+
 		return len(receivedPackets) == 2
 	}, 60*time.Second, 1*time.Second)
 

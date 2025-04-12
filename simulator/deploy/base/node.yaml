@@ -24,7 +24,7 @@ spec:
         - "--seed-url"
         - "https://seed.colonio-simulator.svc.cluster.local:8443/"
         - "--concurrency"
-        - "25"
+        - "10"
         - "--mongodb-uri"
         - "mongodb://mongodb.colonio-simulator.svc.cluster.local:27017"
         env:
