@@ -14,5 +14,4 @@
  * limitations under the License.
  */
 
-import "./seed_transport"
 import "./webrtc"
