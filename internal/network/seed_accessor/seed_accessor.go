@@ -249,21 +249,21 @@ func (sa *SeedAccessor) poll() error {
 					sa.logger.Warn("unknown offer type")
 					continue
 				}
-				sa.handler.SeedRecvSignalOffer(from, &signal.Offer{
+				go sa.handler.SeedRecvSignalOffer(from, &signal.Offer{
 					OfferID:   content.Offer.OfferId,
 					OfferType: offerType,
 					Sdp:       content.Offer.Sdp,
 				})
 
 			case *proto.Signal_Answer:
-				sa.handler.SeedRecvSignalAnswer(from, &signal.Answer{
+				go sa.handler.SeedRecvSignalAnswer(from, &signal.Answer{
 					OfferID: content.Answer.OfferId,
 					Status:  signal.AnswerStatus(content.Answer.Status),
 					Sdp:     content.Answer.Sdp,
 				})
 
 			case *proto.Signal_Ice:
-				sa.handler.SeedRecvSignalICE(from, &signal.ICE{
+				go sa.handler.SeedRecvSignalICE(from, &signal.ICE{
 					OfferID: content.Ice.OfferId,
 					Ices:    content.Ice.Ices,
 				})

@@ -45,9 +45,11 @@ func TestWebRTCLink(t *testing.T) {
 	// new
 	var link1 webRTCLink
 	var link2 webRTCLink
+	label := "test"
 	link1, err = defaultWebRTCLinkFactory(&webRTCLinkConfig{
 		webrtcConfig: config,
 		isOffer:      true,
+		label:        label,
 	}, &webRTCLinkEventHandler{
 		changeLinkState: func(active bool, online bool) {
 			mtx.Lock()
@@ -134,6 +136,10 @@ func TestWebRTCLink(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return link1.isActive() && link1.isOnline() && link2.isActive() && link2.isOnline()
 	}, 3*time.Second, 100*time.Millisecond)
+
+	// data channel id
+	assert.Equal(t, label, link1.getLabel())
+	assert.Equal(t, label, link2.getLabel())
 
 	// send
 	err = link1.send([]byte("hello"))

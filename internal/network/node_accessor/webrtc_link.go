@@ -18,6 +18,8 @@ package node_accessor
 type webRTCLinkConfig struct {
 	webrtcConfig webRTCConfig
 	isOffer      bool
+	// The label is used when isOffer is only true
+	label string
 }
 
 type webRTCLinkEventHandler struct {
@@ -31,6 +33,7 @@ type webRTCLinkEventHandler struct {
 type webRTCLink interface {
 	isActive() bool
 	isOnline() bool
+	getLabel() string
 	getLocalSDP() (string, error)
 	setRemoteSDP(sdp string) error
 	updateICE(ice string) error

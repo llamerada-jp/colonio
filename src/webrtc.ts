@@ -33,9 +33,10 @@ interface WebRTCImplement {
   newConfig(config: Array<WebRTCICEServerInfo>): number;
   deleteConfig(id: number): void;
   // for WebRTCLink
-  newLink(eventHandler: WebRTCLinkEventHandler, configId: number, createDataChannel: boolean): number;
+  newLink(eventHandler: WebRTCLinkEventHandler, configId: number, createDataChannel: boolean, label: string): number;
   deleteLink(id: number): boolean;
   getLastError(id: number): string;
+  getLabel(id: number): string;
   getLocalSDP(id: number): boolean;
   setRemoteSDP(id: number, sdp: string): boolean;
   updateICE(id: number, ice: string): boolean;
@@ -81,7 +82,7 @@ class DefaultWebRTCImplement implements WebRTCImplement {
     this.configs.delete(id);
   }
 
-  newLink(eventHandler: WebRTCLinkEventHandler, configId: number, createDataChannel: boolean): number {
+  newLink(eventHandler: WebRTCLinkEventHandler, configId: number, isOffer: boolean, label:string): number {
     if (!this.configs.has(configId)) {
       console.error("Invalid config id.");
       return -1;
@@ -103,8 +104,8 @@ class DefaultWebRTCImplement implements WebRTCImplement {
     }
 
     let dataChannel: RTCDataChannel | undefined;
-    if (createDataChannel) {
-      dataChannel = peer.createDataChannel("data_channel",
+    if (isOffer) {
+      dataChannel = peer.createDataChannel(label,
         <RTCDataChannelInit>{
           ordered: true,
           maxPacketLifeTime: 3000,
@@ -139,6 +140,9 @@ class DefaultWebRTCImplement implements WebRTCImplement {
 
       link.dataChannel = event.channel;
       this.setDataChannelEvent(event.channel, eventHandler, id);
+      if (link.dataChannel.readyState == "open") {
+        eventHandler.onUpdateLinkState(id, true);
+      }
     };
 
     peer.oniceconnectionstatechange = (_: Event): void => {
@@ -146,8 +150,6 @@ class DefaultWebRTCImplement implements WebRTCImplement {
       if (link == undefined) {
         return;
       }
-
-      eventHandler.onUpdateLinkState(id, link.peer.iceConnectionState == "connected");
     };
 
     return id;
@@ -223,6 +225,21 @@ class DefaultWebRTCImplement implements WebRTCImplement {
       return "";
     }
     return link.lastError;
+  }
+
+  getLabel(id: number): string {
+    let link = this.links.get(id);
+    if (link == undefined) {
+      console.error("link not found when call getDataChannelID.");
+      return "";
+    }
+
+    if (link.dataChannel == undefined) {
+      console.error("data channel not found when call getDataChannelID.");
+      return "";
+    }
+
+    return link.dataChannel.label;
   }
 
   getLocalSDP(id: number): boolean {
@@ -379,8 +396,8 @@ class WebRTCWrapper implements WebRTCLinkEventHandler {
     console.error("WebRTCWrapper::onRaiseError method must by override by go module");
   }
 
-  newLink(configId: number, createDataChannel: boolean): number {
-    return this.impl!.newLink(this, configId, createDataChannel);
+  newLink(configId: number, createDataChannel: boolean, label:string): number {
+    return this.impl!.newLink(this, configId, createDataChannel, label);
   }
 
   deleteLink(id: number): boolean {
@@ -389,6 +406,10 @@ class WebRTCWrapper implements WebRTCLinkEventHandler {
 
   getLastError(id: number): string {
     return this.impl!.getLastError(id);
+  }
+
+  getLabel(id: number): string {
+    return this.impl!.getLabel(id);
   }
 
   getLocalSDP(id: number): boolean {

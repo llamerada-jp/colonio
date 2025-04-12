@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	proto3 "google.golang.org/protobuf/proto"
@@ -114,9 +115,19 @@ func newNodeLink(config *NodeLinkConfig, handler nodeLinkHandler, isOffer bool) 
 	}
 
 	var err error
+	var label string
+	if isOffer {
+		// use UUID for label
+		id, err := uuid.NewV7()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create UUID %w", err)
+		}
+		label = id.String()
+	}
 	link.webrtc, err = defaultWebRTCLinkFactory(&webRTCLinkConfig{
 		webrtcConfig: config.webrtcConfig,
 		isOffer:      isOffer,
+		label:        label,
 	}, &webRTCLinkEventHandler{
 		raiseError:      link.webrtcRaiseError,
 		changeLinkState: link.webrtcChangeLinkState,
@@ -130,6 +141,10 @@ func newNodeLink(config *NodeLinkConfig, handler nodeLinkHandler, isOffer bool) 
 	go link.routine()
 
 	return link, nil
+}
+
+func (n *nodeLink) getLabel() string {
+	return n.webrtc.getLabel()
 }
 
 func (n *nodeLink) getLocalSDP() (string, error) {

@@ -60,7 +60,7 @@ func newWebRTCLinkNative(c *webRTCLinkConfig, eventHandler *webRTCLinkEventHandl
 	}
 
 	if c.isOffer {
-		dc, err := peerConnection.CreateDataChannel("data_channel", nil)
+		dc, err := peerConnection.CreateDataChannel(c.label, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create data channel: %s", err)
 		}
@@ -170,6 +170,15 @@ func (w *webRTCLinkNative) isOnline() bool {
 	w.mtx.RLock()
 	defer w.mtx.RUnlock()
 	return w.online
+}
+
+func (w *webRTCLinkNative) getLabel() string {
+	w.mtx.RLock()
+	defer w.mtx.RUnlock()
+	if w.dataChannel == nil {
+		panic("data channel should not be nil")
+	}
+	return w.dataChannel.Label()
 }
 
 func (w *webRTCLinkNative) getLocalSDP() (string, error) {

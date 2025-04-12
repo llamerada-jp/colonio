@@ -297,10 +297,19 @@ func TestNodeAccessorPair(t *testing.T) {
 		na.mtx.Lock()
 		assert.Len(t, na.nodeID2link, 1)
 		assert.Len(t, na.link2nodeID, 1)
-		assert.Len(t, na.offerID2state, 0)
-		assert.Len(t, na.link2offerID, 0)
 		na.mtx.Unlock()
 	}
+
+	assert.Eventually(t, func() bool {
+		for _, na := range nodeAccessors {
+			na.mtx.Lock()
+			defer na.mtx.Unlock()
+			if len(na.offerID2state) != 0 || len(na.link2offerID) != 0 {
+				return false
+			}
+		}
+		return true
+	}, 60*time.Second, 100*time.Millisecond)
 
 	mtx.Lock()
 	for _, c := range connections {
@@ -429,10 +438,19 @@ func testNodeAccessorMany(t *testing.T, n int) {
 		na.mtx.Lock()
 		assert.Greater(t, len(na.nodeID2link), 0)
 		assert.Greater(t, len(na.link2nodeID), 0)
-		assert.Len(t, na.offerID2state, 0)
-		assert.Len(t, na.link2offerID, 0)
 		na.mtx.Unlock()
 	}
+
+	assert.Eventually(t, func() bool {
+		for _, na := range nodeAccessors {
+			na.mtx.Lock()
+			defer na.mtx.Unlock()
+			if len(na.offerID2state) != 0 || len(na.link2offerID) != 0 {
+				return false
+			}
+		}
+		return true
+	}, 60*time.Second, 100*time.Millisecond)
 
 	// each accessor connect both of the previous and the next node
 	for i, na := range nodeAccessors {
