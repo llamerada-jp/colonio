@@ -13,13 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package node_accessor
+package constants
 
-import "github.com/llamerada-jp/colonio/config"
+import (
+	"runtime"
 
-type webRTCConfig interface {
-	getConfigID() uint
-	destruct() error
+	"github.com/llamerada-jp/colonio/config"
+)
+
+var TestingICEServers []*config.ICEServer
+
+func init() {
+	if runtime.GOOS == "js" {
+		TestingICEServers = []*config.ICEServer{
+			{
+				URLs: []string{"stun:stun.l.google.com:19302"},
+			},
+		}
+	} else {
+		TestingICEServers = []*config.ICEServer{
+			{
+				URLs: []string{},
+			},
+		}
+	}
 }
-
-var defaultWebRTCConfigFactory func(ice []config.ICEServer) (webRTCConfig, error)

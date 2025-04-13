@@ -23,7 +23,7 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
-	"github.com/llamerada-jp/colonio/config"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -55,18 +55,12 @@ func (h *nodeLinkHandlerHelper) nodeLinkRecvPacket(nl *nodeLink, p *shared.Packe
 }
 
 func TestNodeLinkNormal(t *testing.T) {
-	webRTCConfig, err := defaultWebRTCConfigFactory([]config.ICEServer{
-		{
-			URLs: []string{"stun:stun.l.google.com:19302"},
-		},
-	})
-	require.NoError(t, err)
-	defer webRTCConfig.destruct()
-
+	testLabel := "test"
 	config := &NodeLinkConfig{
 		ctx:               t.Context(),
 		logger:            slog.Default(),
-		webrtcConfig:      webRTCConfig,
+		label:             testLabel,
+		ICEServers:        constants.TestingICEServers,
 		SessionTimeout:    30 * time.Second,
 		KeepaliveInterval: 10 * time.Second,
 		BufferInterval:    10 * time.Millisecond,
@@ -80,6 +74,7 @@ func TestNodeLinkNormal(t *testing.T) {
 
 	var link1 *nodeLink
 	var link2 *nodeLink
+	var err error
 
 	// new
 	link1, err = newNodeLink(config, &nodeLinkHandlerHelper{
@@ -155,6 +150,10 @@ func TestNodeLinkNormal(t *testing.T) {
 		return link1.getLinkState() == nodeLinkStateOnline && link2.getLinkState() == nodeLinkStateOnline
 	}, 10*time.Second, 100*time.Millisecond)
 
+	// check link label
+	assert.Equal(t, link1.getLabel(), testLabel)
+	assert.Equal(t, link2.getLabel(), testLabel)
+
 	// send packet
 	packet := &shared.Packet{
 		DstNodeID: shared.NewRandomNodeID(),
@@ -204,18 +203,11 @@ func TestNodeLinkNormal(t *testing.T) {
 }
 
 func TestNodeLinkTimeout(t *testing.T) {
-	webRTCConfig, err := defaultWebRTCConfigFactory([]config.ICEServer{
-		{
-			URLs: []string{"stun:stun.l.google.com:19302"},
-		},
-	})
-	require.NoError(t, err)
-	defer webRTCConfig.destruct()
-
 	config := &NodeLinkConfig{
 		ctx:               t.Context(),
 		logger:            slog.Default(),
-		webrtcConfig:      webRTCConfig,
+		label:             "test",
+		ICEServers:        constants.TestingICEServers,
 		SessionTimeout:    5 * time.Second,
 		KeepaliveInterval: 1 * time.Second,
 		BufferInterval:    10 * time.Millisecond,
@@ -224,6 +216,7 @@ func TestNodeLinkTimeout(t *testing.T) {
 
 	var link *nodeLink
 	var webrtcLink webRTCLink
+	var err error
 
 	// turn offline after session timeout passed with do nothing
 	mtx := sync.Mutex{}
@@ -248,9 +241,9 @@ func TestNodeLinkTimeout(t *testing.T) {
 	defer link.disconnect()
 
 	webrtcLink, err = defaultWebRTCLinkFactory(&webRTCLinkConfig{
-		webrtcConfig: webRTCConfig,
-		isOffer:      true,
-		label:        "test",
+		iceServers: constants.TestingICEServers,
+		isOffer:    true,
+		label:      "test",
 	}, &webRTCLinkEventHandler{
 		changeLinkState: func(active bool, online bool) {},
 		updateICE: func(ice string) {
@@ -326,18 +319,11 @@ func TestNodeLinkTimeout(t *testing.T) {
 }
 
 func TestNodeLinkBufferInterval(t *testing.T) {
-	webRTCConfig, err := defaultWebRTCConfigFactory([]config.ICEServer{
-		{
-			URLs: []string{"stun:stun.l.google.com:19302"},
-		},
-	})
-	require.NoError(t, err)
-	defer webRTCConfig.destruct()
-
 	config1 := &NodeLinkConfig{
 		ctx:               t.Context(),
 		logger:            slog.Default(),
-		webrtcConfig:      webRTCConfig,
+		label:             "test",
+		ICEServers:        constants.TestingICEServers,
 		SessionTimeout:    30 * time.Second,
 		KeepaliveInterval: 10 * time.Second,
 		BufferInterval:    0, // disable buffer
@@ -353,6 +339,7 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 
 	var link1 *nodeLink
 	var link2 *nodeLink
+	var err error
 
 	// new
 	link1, err = newNodeLink(config1, &nodeLinkHandlerHelper{
@@ -444,18 +431,11 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 }
 
 func TestNodeLinkPacketBaseBytes(t *testing.T) {
-	webRTCConfig, err := defaultWebRTCConfigFactory([]config.ICEServer{
-		{
-			URLs: []string{"stun:stun.l.google.com:19302"},
-		},
-	})
-	require.NoError(t, err)
-	defer webRTCConfig.destruct()
-
 	config := &NodeLinkConfig{
 		ctx:               t.Context(),
 		logger:            slog.Default(),
-		webrtcConfig:      webRTCConfig,
+		label:             "test",
+		ICEServers:        constants.TestingICEServers,
 		SessionTimeout:    30 * time.Second,
 		KeepaliveInterval: 10 * time.Second,
 		BufferInterval:    3 * time.Second,
@@ -466,6 +446,7 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 	received := []*shared.Packet{}
 	var link1 *nodeLink
 	var link2 *nodeLink
+	var err error
 
 	// new
 	link1, err = newNodeLink(config, &nodeLinkHandlerHelper{

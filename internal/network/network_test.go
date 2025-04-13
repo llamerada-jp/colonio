@@ -26,9 +26,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/llamerada-jp/colonio/config"
-
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/geometry"
 	"github.com/llamerada-jp/colonio/internal/network/node_accessor"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
@@ -59,20 +58,15 @@ func newTestConfigBase(seedURL string, i int) *Config {
 		CoordinateSystem: geometry.NewPlaneCoordinateSystem(-1.0, 1.0, -1.0, 1.0),
 		HttpClient:       testUtil.NewInsecureHttpClient(),
 		SeedURL:          seedURL,
-		ICEServers: []config.ICEServer{
-			{
-				URLs: []string{"stun:stun.l.google.com:19302"},
-			},
-		},
 		NLC: &node_accessor.NodeLinkConfig{
-			SessionTimeout:    5 * time.Second,
-			KeepaliveInterval: 1 * time.Second,
+			ICEServers:        constants.TestingICEServers,
+			SessionTimeout:    60 * time.Second,
+			KeepaliveInterval: 5 * time.Second,
 			BufferInterval:    10 * time.Millisecond,
 			PacketBaseBytes:   1024,
 		},
 		RoutingExchangeInterval: 1 * time.Second,
 		PacketHopLimit:          10,
-		NextConnectionInterval:  5 * time.Second,
 	}
 }
 

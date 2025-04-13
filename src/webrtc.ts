@@ -29,11 +29,8 @@ interface WebRTCLinkEventHandler {
 }
 
 interface WebRTCImplement {
-  // for WebRTCConfig
-  newConfig(config: Array<WebRTCICEServerInfo>): number;
-  deleteConfig(id: number): void;
   // for WebRTCLink
-  newLink(eventHandler: WebRTCLinkEventHandler, configId: number, createDataChannel: boolean, label: string): number;
+  newLink(eventHandler: WebRTCLinkEventHandler, iceServers: Array<WebRTCICEServerInfo>, createDataChannel: boolean, label: string): number;
   deleteLink(id: number): boolean;
   getLastError(id: number): string;
   getLabel(id: number): string;
@@ -45,7 +42,6 @@ interface WebRTCImplement {
 
 class DefaultWebRTCImplement implements WebRTCImplement {
   linkEH: WebRTCLinkEventHandler;
-  configs: Map<number, RTCConfiguration> = new Map();
   links: Map<number, {
     lastError: string,
     peer: RTCPeerConnection,
@@ -59,45 +55,25 @@ class DefaultWebRTCImplement implements WebRTCImplement {
     this.links = new Map();
   }
 
-  newConfig(config: Array<WebRTCICEServerInfo>): number {
-    let id = 0;
-    while (this.configs.has(id)) {
-      id++;
-    }
-
+  newLink(eventHandler: WebRTCLinkEventHandler, iceServers: Array<WebRTCICEServerInfo>, isOffer: boolean, label: string): number {
     let rtcConfig = <RTCConfiguration>{};
-    rtcConfig.iceServers = config.map((info) => {
+    rtcConfig.iceServers = iceServers.map((is) => {
       return {
-        urls: info.urls,
-        username: info.username,
-        credential: info.credential,
+        urls: is.urls,
+        username: is.username,
+        credential: is.credential,
       };
     });
 
-    this.configs.set(id, rtcConfig);
-    return id;
-  }
-
-  deleteConfig(id: number): void {
-    this.configs.delete(id);
-  }
-
-  newLink(eventHandler: WebRTCLinkEventHandler, configId: number, isOffer: boolean, label:string): number {
-    if (!this.configs.has(configId)) {
-      console.error("Invalid config id.");
-      return -1;
-    }
-    let config = this.configs.get(configId);
-
     let MAX_ID = 1024 ** 3;
     let id = Math.floor(Math.random() * MAX_ID);
-    while (this.configs.has(id)) {
+    while (this.links.has(id)) {
       id = Math.floor(Math.random() * MAX_ID);
     }
 
     let peer: RTCPeerConnection | undefined;
     try {
-      peer = new RTCPeerConnection(config);
+      peer = new RTCPeerConnection(rtcConfig);
     } catch (e) {
       console.error(e);
       return -1;
@@ -367,15 +343,6 @@ class WebRTCWrapper implements WebRTCLinkEventHandler {
     this.impl = iF;
   }
 
-  newConfig(context: string): number {
-    let c = JSON.parse(context) as Array<WebRTCICEServerInfo>;
-    return this.impl!.newConfig(c);
-  }
-
-  deleteConfig(context: number): void {
-    this.impl!.deleteConfig(context);
-  }
-
   onUpdateLinkState(id: number, online: boolean): void {
     console.error("WebRTCWrapper::onUpdateLinkState method must by override by go module");
   }
@@ -396,8 +363,9 @@ class WebRTCWrapper implements WebRTCLinkEventHandler {
     console.error("WebRTCWrapper::onRaiseError method must by override by go module");
   }
 
-  newLink(configId: number, createDataChannel: boolean, label:string): number {
-    return this.impl!.newLink(this, configId, createDataChannel, label);
+  newLink(iceServersStr: string, createDataChannel: boolean, label: string): number {
+    let iceServers = JSON.parse(iceServersStr) as Array<WebRTCICEServerInfo>;
+    return this.impl!.newLink(this, iceServers, createDataChannel, label);
   }
 
   deleteLink(id: number): boolean {

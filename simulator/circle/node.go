@@ -68,7 +68,7 @@ func node(ctx context.Context, logger *slog.Logger, seedURL string, writer *data
 		colonio.WithLogger(logger),
 		colonio.WithHttpClient(util.NewInsecureHttpClient()),
 		colonio.WithSeedURL(seedURL),
-		colonio.WithICEServers([]config.ICEServer{
+		colonio.WithICEServers([]*config.ICEServer{
 			{
 				URLs: []string{},
 			},

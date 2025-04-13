@@ -21,7 +21,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/geometry"
 	"github.com/llamerada-jp/colonio/internal/network/node_accessor"
@@ -47,17 +46,12 @@ type Config struct {
 	HttpClient *http.Client // optional
 	SeedURL    string
 	// config parameters for webrtc node
-	ICEServers []config.ICEServer
-	NLC        *node_accessor.NodeLinkConfig
+	NLC *node_accessor.NodeLinkConfig
 	// config parameters for routing
 	RoutingExchangeInterval time.Duration
 
 	// maximum number of hops that a packet can be relayed.
 	PacketHopLimit uint
-
-	// config parameters for testing
-	ConnectionTimeout      time.Duration
-	NextConnectionInterval time.Duration
 }
 
 type Network struct {
@@ -93,11 +87,7 @@ func NewNetwork(config *Config) (*Network, error) {
 	na, err := node_accessor.NewNodeAccessor(&node_accessor.Config{
 		Logger:         config.Logger,
 		Handler:        n,
-		ICEServers:     config.ICEServers,
 		NodeLinkConfig: config.NLC,
-		// for testing
-		ConnectionTimeout:      config.ConnectionTimeout,
-		NextConnectionInterval: config.NextConnectionInterval,
 	})
 	if err != nil {
 		return nil, err
