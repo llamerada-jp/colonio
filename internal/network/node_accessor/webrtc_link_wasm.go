@@ -18,6 +18,7 @@
 package node_accessor
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 	"syscall/js"
@@ -151,9 +152,14 @@ func newWebRTCLinkWASM(config *webRTCLinkConfig, eventHandler *webRTCLinkEventHa
 	}
 	c := make(chan res, 1)
 
+	iceServersBin, err := json.Marshal(config.iceServers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal ice: %w", err)
+	}
+
 	go func() {
 		linkID := jsWrapper.Call("newLink",
-			js.ValueOf(config.webrtcConfig.getConfigID()),
+			js.ValueOf(string(iceServersBin)),
 			js.ValueOf(config.isOffer),
 			js.ValueOf(config.label),
 		).Int()

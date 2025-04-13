@@ -39,13 +39,18 @@ type webRTCLinkNative struct {
 var _ webRTCLink = &webRTCLinkNative{}
 
 func newWebRTCLinkNative(c *webRTCLinkConfig, eventHandler *webRTCLinkEventHandler) (webRTCLink, error) {
-	configID := c.webrtcConfig.getConfigID()
-	config, err := getConfigByID(configID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get webrtc config by id: %d, %s", configID, err)
+	config := webrtc.Configuration{
+		ICEServers: make([]webrtc.ICEServer, 0, len(c.iceServers)),
+	}
+	for _, i := range c.iceServers {
+		config.ICEServers = append(config.ICEServers, webrtc.ICEServer{
+			URLs:       i.URLs,
+			Username:   i.Username,
+			Credential: i.Credential,
+		})
 	}
 
-	peerConnection, err := webrtc.NewPeerConnection(*config)
+	peerConnection, err := webrtc.NewPeerConnection(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create peer connection: %s", err)
 	}

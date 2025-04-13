@@ -25,14 +25,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/llamerada-jp/colonio/config"
+	"github.com/google/uuid"
 	"github.com/llamerada-jp/colonio/internal/network/signal"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
 const (
-	defaultConnectionTimeout      = 10 * time.Second
-	defaultNextConnectionInterval = 180 * time.Second
+	defaultConnectionTimeout = 30 * time.Second
+	nextConnectionInterval   = 180 * time.Second
 )
 
 type Handler interface {
@@ -46,12 +46,10 @@ type Handler interface {
 type Config struct {
 	Logger         *slog.Logger
 	Handler        Handler
-	ICEServers     []config.ICEServer
 	NodeLinkConfig *NodeLinkConfig
 
 	// config parameters for testing
-	ConnectionTimeout      time.Duration
-	NextConnectionInterval time.Duration
+	connectionTimeout time.Duration
 }
 
 type NodeAccessor struct {
@@ -60,7 +58,6 @@ type NodeAccessor struct {
 	nodeLinkConfig          *NodeLinkConfig
 	localNodeID             *shared.NodeID
 	connectionTimeout       time.Duration
-	nextConnectionInterval  time.Duration
 	nextConnectionTimestamp time.Time
 
 	mtx sync.RWMutex
@@ -86,35 +83,23 @@ type connectingState struct {
 
 func NewNodeAccessor(config *Config) (*NodeAccessor, error) {
 	ct := defaultConnectionTimeout
-	if config.ConnectionTimeout != 0 {
-		ct = config.ConnectionTimeout
-	}
-	nci := defaultNextConnectionInterval
-	if config.NextConnectionInterval != 0 {
-		nci = config.NextConnectionInterval
-	}
-
-	webrtcConfig, err := defaultWebRTCConfigFactory(config.ICEServers)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create webRTCConfig: %w", err)
+	if config.connectionTimeout != 0 {
+		ct = config.connectionTimeout
 	}
 
 	nlc := *config.NodeLinkConfig
+	nlc.logger = config.Logger
 	na := &NodeAccessor{
-		logger:                 config.Logger,
-		handler:                config.Handler,
-		nodeLinkConfig:         &nlc,
-		connectionTimeout:      ct,
-		nextConnectionInterval: nci,
-		isAlone:                true,
-		nodeID2link:            make(map[shared.NodeID]*nodeLink),
-		link2nodeID:            make(map[*nodeLink]*shared.NodeID),
-		offerID2state:          make(map[uint32]*connectingState),
-		link2offerID:           make(map[*nodeLink]uint32),
+		logger:            config.Logger,
+		handler:           config.Handler,
+		nodeLinkConfig:    &nlc,
+		connectionTimeout: ct,
+		isAlone:           true,
+		nodeID2link:       make(map[shared.NodeID]*nodeLink),
+		link2nodeID:       make(map[*nodeLink]*shared.NodeID),
+		offerID2state:     make(map[uint32]*connectingState),
+		link2offerID:      make(map[*nodeLink]uint32),
 	}
-
-	na.nodeLinkConfig.webrtcConfig = webrtcConfig
-	na.nodeLinkConfig.logger = config.Logger
 
 	return na, nil
 }
@@ -134,11 +119,6 @@ func (na *NodeAccessor) Start(ctx context.Context, localNodeID *shared.NodeID) {
 				defer na.mtx.Unlock()
 				for link := range na.link2nodeID {
 					na.disconnectLink(link, false)
-				}
-
-				if na.nodeLinkConfig.webrtcConfig != nil {
-					na.nodeLinkConfig.webrtcConfig.destruct()
-					na.nodeLinkConfig.webrtcConfig = nil
 				}
 				return
 
@@ -176,13 +156,10 @@ func (na *NodeAccessor) subRoutine() {
 	}
 
 	// try to connect to next node for redundancy
-	if len(na.link2nodeID) != 0 && time.Now().After(na.nextConnectionTimestamp.Add(na.nextConnectionInterval)) {
+	if len(na.link2nodeID) != 0 && time.Now().After(na.nextConnectionTimestamp.Add(nextConnectionInterval)) {
+		// the first trying will be run only after 10 sec.
 		if na.nextConnectionTimestamp.IsZero() {
-			na.nextConnectionTimestamp = time.Now()
-			// If interval is very large, the first trying will be run only after 10 sec.
-			if na.nextConnectionInterval > 10*time.Second {
-				na.nextConnectionTimestamp = na.nextConnectionTimestamp.Add(-10*time.Second - na.nextConnectionInterval)
-			}
+			na.nextConnectionTimestamp = na.nextConnectionTimestamp.Add(-10*time.Second - nextConnectionInterval)
 			return
 		}
 		if err := na.connect(signal.OfferTypeNext, na.localNodeID); err != nil {
@@ -355,7 +332,14 @@ func (na *NodeAccessor) connect(ot signal.OfferType, nodeID *shared.NodeID) erro
 		return errors.New("node ID is already connected")
 	}
 
-	link, err := newNodeLink(na.nodeLinkConfig, na, true)
+	nlc := *na.nodeLinkConfig
+	// make webrtc data channel label unique and ordered
+	uuidV7, err := uuid.NewV7()
+	if err != nil {
+		return fmt.Errorf("failed to create uuid: %w", err)
+	}
+	nlc.label = uuidV7.String()
+	link, err := newNodeLink(&nlc, na, true)
 	if err != nil {
 		return fmt.Errorf("failed to create link: %w", err)
 	}

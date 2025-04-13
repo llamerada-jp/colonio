@@ -15,9 +15,11 @@
  */
 package node_accessor
 
+import "github.com/llamerada-jp/colonio/config"
+
 type webRTCLinkConfig struct {
-	webrtcConfig webRTCConfig
-	isOffer      bool
+	iceServers []*config.ICEServer
+	isOffer    bool
 	// The label is used when isOffer is only true
 	label string
 }

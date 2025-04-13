@@ -24,7 +24,7 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
-	"github.com/llamerada-jp/colonio/config"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/network/signal"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
@@ -32,13 +32,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var iceServers = []config.ICEServer{
-	{
-		URLs: []string{"stun:stun.l.google.com:19302"},
-	},
-}
-
 var nlConfig = &NodeLinkConfig{
+	ICEServers:        constants.TestingICEServers,
 	SessionTimeout:    5 * time.Second,
 	KeepaliveInterval: 1 * time.Second,
 	BufferInterval:    10 * time.Millisecond,
@@ -177,9 +172,9 @@ func TestNodeAccessorAlone(t *testing.T) {
 				return nil
 			},
 		},
-		ICEServers:        iceServers,
-		NodeLinkConfig:    nlConfig,
-		ConnectionTimeout: 1 * time.Second,
+		NodeLinkConfig: nlConfig,
+		// for test, set a short timeout to avoid waiting too long
+		connectionTimeout: 1 * time.Second,
 	})
 	require.NoError(t, err)
 	na.Start(t.Context(), localNodeID)
@@ -270,7 +265,6 @@ func TestNodeAccessorPair(t *testing.T) {
 					}, srcNodeID, nodeIDs, nodeAccessors)
 				},
 			},
-			ICEServers:     iceServers,
 			NodeLinkConfig: nlConfig,
 		})
 		require.NoError(t, err)
@@ -410,9 +404,7 @@ func testNodeAccessorMany(t *testing.T, n int) {
 					}, srcNodeID, nodeIDs, nodeAccessors)
 				},
 			},
-			ICEServers:             iceServers,
-			NodeLinkConfig:         nlConfig,
-			NextConnectionInterval: 5 * time.Second,
+			NodeLinkConfig: nlConfig,
 		})
 		require.NoError(t, err)
 		nodeAccessors = append(nodeAccessors, na)
@@ -584,7 +576,6 @@ func TestNodeAccessorConnectLinks(t *testing.T) {
 					}, srcNodeID, nodeIDs, nodeAccessors)
 				},
 			},
-			ICEServers:     iceServers,
 			NodeLinkConfig: nlConfig,
 		})
 		require.NoError(t, err)

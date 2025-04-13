@@ -20,20 +20,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/llamerada-jp/colonio/config"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestWebRTCLink(t *testing.T) {
-	config, err := defaultWebRTCConfigFactory([]config.ICEServer{
-		{
-			URLs: []string{"stun:stun.l.google.com:19302"},
-		},
-	})
-	require.NoError(t, err)
-	defer config.destruct()
-
 	mtx := sync.Mutex{}
 	disableErrorCheck := false
 	received := ""
@@ -46,10 +38,10 @@ func TestWebRTCLink(t *testing.T) {
 	var link1 webRTCLink
 	var link2 webRTCLink
 	label := "test"
-	link1, err = defaultWebRTCLinkFactory(&webRTCLinkConfig{
-		webrtcConfig: config,
-		isOffer:      true,
-		label:        label,
+	link1, err := defaultWebRTCLinkFactory(&webRTCLinkConfig{
+		iceServers: constants.TestingICEServers,
+		isOffer:    true,
+		label:      label,
 	}, &webRTCLinkEventHandler{
 		changeLinkState: func(active bool, online bool) {
 			mtx.Lock()
@@ -82,8 +74,8 @@ func TestWebRTCLink(t *testing.T) {
 	defer link1.disconnect()
 
 	link2, err = defaultWebRTCLinkFactory(&webRTCLinkConfig{
-		webrtcConfig: config,
-		isOffer:      false,
+		iceServers: constants.TestingICEServers,
+		isOffer:    false,
 	}, &webRTCLinkEventHandler{
 		changeLinkState: func(active bool, online bool) {
 			mtx.Lock()

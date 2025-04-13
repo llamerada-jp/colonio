@@ -21,7 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/llamerada-jp/colonio"
-	"github.com/llamerada-jp/colonio/config"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/suite"
 )
@@ -37,11 +37,7 @@ func (suite *SingleNodeMessaging) SetupSuite() {
 	suite.T().Log("creating a new colonio instance")
 	suite.node, err = colonio.NewColonio(
 		colonio.WithSeedURL(suite.seedURL),
-		colonio.WithICEServers([]config.ICEServer{
-			{
-				URLs: []string{"stun:stun.l.google.com:19302"},
-			},
-		}),
+		colonio.WithICEServers(constants.TestingICEServers),
 		colonio.WithHttpClient(testUtil.NewInsecureHttpClient()),
 		colonio.WithSphereGeometry(6378137.0))
 	suite.NoError(err)

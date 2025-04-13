@@ -76,7 +76,7 @@ type Config struct {
 	ObservationHandlers *ObservationHandlers
 	HttpClient          *http.Client
 	SeedURL             string
-	ICEServers          []config.ICEServer
+	ICEServers          []*config.ICEServer
 	CoordinateSystem    geometry.CoordinateSystem
 
 	// RoutingExchangeInterval is interval at which packets exchanging routing information are sent.
@@ -128,7 +128,7 @@ func WithSeedURL(url string) ConfigSetter {
 // IceServers is a list of ICE servers.
 // In Colonio, multiple ICE servers can be used to establish a WebRTC connection.
 // Each entry contains the URLs of the ICE server, the username, and the credential.
-func WithICEServers(servers []config.ICEServer) ConfigSetter {
+func WithICEServers(servers []*config.ICEServer) ConfigSetter {
 	return func(c *Config) {
 		c.ICEServers = servers
 	}
@@ -209,10 +209,10 @@ func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 		CoordinateSystem: config.CoordinateSystem,
 		HttpClient:       config.HttpClient,
 		SeedURL:          config.SeedURL,
-		ICEServers:       config.ICEServers,
 		NLC: &node_accessor.NodeLinkConfig{
-			// SessionTimeout is used to determine the timeout of the session.
-			// The seed & nodes will disconnect from node that does not send any packets within the timeout.
+			ICEServers: config.ICEServers,
+
+			// SessionTimeout is used to determine the timeout of the WebRTC session between nodes.
 			SessionTimeout: 5 * time.Minute,
 
 			// KeepaliveInterval is the interval to send a ping packet to tell living the node for each nodes.

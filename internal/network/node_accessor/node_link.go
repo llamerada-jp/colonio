@@ -24,8 +24,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	proto3 "google.golang.org/protobuf/proto"
 )
@@ -39,17 +39,21 @@ const (
 )
 
 type NodeLinkConfig struct {
-	ctx          context.Context
-	logger       *slog.Logger
-	webrtcConfig webRTCConfig
+	ctx    context.Context
+	logger *slog.Logger
 
-	// should be copied from config.SessionTimeout
+	// label is used for WebRTC data channel's label when isOffer is true
+	label string
+
+	ICEServers []*config.ICEServer
+	// SessionTimeout is used to determine the timeout of the WebRTC session between nodes.
 	SessionTimeout time.Duration
-	// should be copied from config.KeepaliveInterval
+	// KeepaliveInterval is the interval to send a ping packet to tell living the node for each nodes.
 	KeepaliveInterval time.Duration
-	// should be copied from config.BufferInterval
+	//  BufferInterval is maximum interval for buffering packets between nodes.
 	BufferInterval time.Duration
-	// should be copied from config.WebRTCPacketBaseBytes
+	// PacketBaseBytes is a reference value for the packet size to be sent in WebRTC communication,
+	// since WebRTC data channel may fail to send too large packets.
 	PacketBaseBytes int
 }
 
@@ -114,20 +118,15 @@ func newNodeLink(config *NodeLinkConfig, handler nodeLinkHandler, isOffer bool) 
 		stack:              nil,
 	}
 
-	var err error
-	var label string
+	label := ""
 	if isOffer {
-		// use UUID for label
-		id, err := uuid.NewV7()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create UUID %w", err)
-		}
-		label = id.String()
+		label = config.label
 	}
+	var err error
 	link.webrtc, err = defaultWebRTCLinkFactory(&webRTCLinkConfig{
-		webrtcConfig: config.webrtcConfig,
-		isOffer:      isOffer,
-		label:        label,
+		iceServers: config.ICEServers,
+		isOffer:    isOffer,
+		label:      label,
 	}, &webRTCLinkEventHandler{
 		raiseError:      link.webrtcRaiseError,
 		changeLinkState: link.webrtcChangeLinkState,

@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/llamerada-jp/colonio"
-	"github.com/llamerada-jp/colonio/config"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/suite"
 )
@@ -40,11 +40,7 @@ func (suite *E2eSuite) SetupSuite() {
 	suite.node1, err = colonio.NewColonio(
 		colonio.WithLogger(slog.Default().With(slog.String("node", "node1"))),
 		colonio.WithSeedURL(suite.seedURL),
-		colonio.WithICEServers([]config.ICEServer{
-			{
-				URLs: []string{"stun:stun.l.google.com:19302"},
-			},
-		}),
+		colonio.WithICEServers(constants.TestingICEServers),
 		colonio.WithHttpClient(testUtil.NewInsecureHttpClient()),
 		colonio.WithSphereGeometry(6378137.0))
 	suite.NoError(err)
@@ -52,11 +48,7 @@ func (suite *E2eSuite) SetupSuite() {
 	suite.node2, err = colonio.NewColonio(
 		colonio.WithLogger(slog.Default().With(slog.String("node", "node2"))),
 		colonio.WithSeedURL(suite.seedURL),
-		colonio.WithICEServers([]config.ICEServer{
-			{
-				URLs: []string{"stun:stun.l.google.com:19302"},
-			},
-		}),
+		colonio.WithICEServers(constants.TestingICEServers),
 		colonio.WithHttpClient(testUtil.NewInsecureHttpClient()),
 		colonio.WithSphereGeometry(6378137.0))
 	suite.NoError(err)
