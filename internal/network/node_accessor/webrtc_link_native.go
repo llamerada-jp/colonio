@@ -252,9 +252,14 @@ func (w *webRTCLinkNative) setRemoteSDP(sdp string) error {
 func (w *webRTCLinkNative) updateICE(ice string) error {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
+
 	if w.ices != nil {
 		w.ices = append(w.ices, ice)
 		return nil
+	}
+
+	if w.peerConnection == nil {
+		return fmt.Errorf("peer connection has been closed")
 	}
 
 	if err := w.peerConnection.AddICECandidate(webrtc.ICECandidateInit{
