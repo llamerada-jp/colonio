@@ -67,14 +67,14 @@ func (h *seedAccessorHandlerHelper) SeedRecvSignalICE(srcNodeID *shared.NodeID, 
 	}
 }
 
-func TestSeedAccessor_connection(t *testing.T) {
+func TestSeedAccessor_assignment(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(2)
 	nodeCount := 0
 
 	seed := seed.NewSeed(
-		seed.WithConnectionHandler(&testUtil.ConnectionHandlerHelper{
+		seed.WithAssignmentHandler(&testUtil.AssignmentHandlerHelper{
 			T: t,
-			AssignNodeIDF: func(ctx context.Context) (*shared.NodeID, error) {
+			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
 				// return nodeID for 1st and 2nd node
 				if nodeCount < len(nodeIDs) {
 					nodeID := nodeIDs[nodeCount]
@@ -84,7 +84,7 @@ func TestSeedAccessor_connection(t *testing.T) {
 				// return error when 3rd node is requested
 				return nil, fmt.Errorf("error")
 			},
-			UnassignF: func(nodeID *shared.NodeID) {},
+			UnassignNodeF: func(nodeID *shared.NodeID) {},
 		}),
 		seed.WithPollingInterval(3*time.Second),
 	)
@@ -163,9 +163,9 @@ func TestSeedAccessor_SignalingKind(t *testing.T) {
 
 	// create seed
 	seed := seed.NewSeed(
-		seed.WithConnectionHandler(&testUtil.ConnectionHandlerHelper{
+		seed.WithAssignmentHandler(&testUtil.AssignmentHandlerHelper{
 			T: t,
-			AssignNodeIDF: func(ctx context.Context) (*shared.NodeID, error) {
+			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
 				if nodeCount < len(nodeIDs) {
 					nodeID := nodeIDs[nodeCount]
 					nodeCount++
@@ -173,7 +173,7 @@ func TestSeedAccessor_SignalingKind(t *testing.T) {
 				}
 				return nil, fmt.Errorf("error")
 			},
-			UnassignF: func(nodeID *shared.NodeID) {},
+			UnassignNodeF: func(nodeID *shared.NodeID) {},
 		}),
 	)
 	server := testServer.NewHelper(seed)
@@ -256,9 +256,9 @@ func TestSeedAccessor_SignalingTarget(t *testing.T) {
 
 	// setup seed
 	seed := seed.NewSeed(
-		seed.WithConnectionHandler(&testUtil.ConnectionHandlerHelper{
+		seed.WithAssignmentHandler(&testUtil.AssignmentHandlerHelper{
 			T: t,
-			AssignNodeIDF: func(ctx context.Context) (*shared.NodeID, error) {
+			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
 				if nodeCount < len(nodeIDs) {
 					nodeID := nodeIDs[nodeCount]
 					nodeCount++
@@ -266,7 +266,7 @@ func TestSeedAccessor_SignalingTarget(t *testing.T) {
 				}
 				return nil, fmt.Errorf("error")
 			},
-			UnassignF: func(nodeID *shared.NodeID) {},
+			UnassignNodeF: func(nodeID *shared.NodeID) {},
 		}),
 	)
 	server := testServer.NewHelper(seed)

@@ -87,18 +87,18 @@ func createClient(_ *testing.T, _ context.Context, port uint16) service.SeedServ
 	return service.NewSeedServiceClient(testUtil.NewInsecureHttpClient(), fmt.Sprintf("https://localhost:%d/", port))
 }
 
-func TestAssignNodeID(t *testing.T) {
+func TestAssignNode(t *testing.T) {
 	seed := NewSeed()
 	port := startServer(t, t.Context(), seed)
 
 	// the first node
 	client1 := createClient(t, t.Context(), port)
-	res, err := client1.AssignNodeID(t.Context(), &connect.Request[proto.AssignNodeIDRequest]{})
+	resAn, err := client1.AssignNode(t.Context(), &connect.Request[proto.AssignNodeRequest]{})
 	require.NoError(t, err)
 	// check response
-	assert.True(t, res.Msg.IsAlone)
-	assert.NotNil(t, res.Msg.NodeId)
-	nodeID1 := shared.NewNodeIDFromProto(res.Msg.NodeId)
+	assert.True(t, resAn.Msg.IsAlone)
+	assert.NotNil(t, resAn.Msg.NodeId)
+	nodeID1 := shared.NewNodeIDFromProto(resAn.Msg.NodeId)
 	assert.NotNil(t, nodeID1)
 	assert.True(t, nodeID1.IsNormal())
 	// check seed
@@ -106,17 +106,23 @@ func TestAssignNodeID(t *testing.T) {
 
 	// the second node
 	client2 := createClient(t, t.Context(), port)
-	res, err = client2.AssignNodeID(t.Context(), &connect.Request[proto.AssignNodeIDRequest]{})
+	resAn, err = client2.AssignNode(t.Context(), &connect.Request[proto.AssignNodeRequest]{})
 	require.NoError(t, err)
 	// check response
-	assert.False(t, res.Msg.IsAlone)
-	nodeID2 := shared.NewNodeIDFromProto(res.Msg.NodeId)
+	assert.False(t, resAn.Msg.IsAlone)
+	nodeID2 := shared.NewNodeIDFromProto(resAn.Msg.NodeId)
 	assert.NotNil(t, nodeID2)
 	assert.True(t, nodeID2.IsNormal())
 	// check seed
 	assert.Len(t, seed.nodes, 2)
 
 	assert.NotEqual(t, nodeID1, nodeID2)
+
+	// Unassign client1
+	_, err = client1.UnassignNode(t.Context(), &connect.Request[proto.UnassignNodeRequest]{})
+	require.NoError(t, err)
+	// check seed
+	assert.Len(t, seed.nodes, 1)
 }
 
 func TestSession(t *testing.T) {
@@ -139,7 +145,7 @@ func TestSession(t *testing.T) {
 	})
 	assert.Error(t, err)
 
-	res, err := client.AssignNodeID(t.Context(), &connect.Request[proto.AssignNodeIDRequest]{})
+	res, err := client.AssignNode(t.Context(), &connect.Request[proto.AssignNodeRequest]{})
 	require.NoError(t, err)
 
 	nodeID := shared.NewNodeIDFromProto(res.Msg.NodeId)
@@ -174,20 +180,20 @@ func TestSession(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestWithConnectionHandler(t *testing.T) {
+func TestWithAssignmentHandler(t *testing.T) {
 	nodeID := shared.NewRandomNodeID()
 	var mtx sync.Mutex
 	unassignCalled := false
 
 	seed := NewSeed(
 		WithPollingInterval(1*time.Second),
-		WithConnectionHandler(
-			&testUtil.ConnectionHandlerHelper{
+		WithAssignmentHandler(
+			&testUtil.AssignmentHandlerHelper{
 				T: t,
-				AssignNodeIDF: func(context.Context) (*shared.NodeID, error) {
+				AssignNodeF: func(context.Context) (*shared.NodeID, error) {
 					return nodeID, nil
 				},
-				UnassignF: func(n *shared.NodeID) {
+				UnassignNodeF: func(n *shared.NodeID) {
 					assert.Equal(t, nodeID, n)
 
 					mtx.Lock()
@@ -199,8 +205,8 @@ func TestWithConnectionHandler(t *testing.T) {
 	port := startServer(t, t.Context(), seed)
 
 	client := createClient(t, t.Context(), port)
-	res, err := client.AssignNodeID(t.Context(), &connect.Request[proto.AssignNodeIDRequest]{
-		Msg: &proto.AssignNodeIDRequest{},
+	res, err := client.AssignNode(t.Context(), &connect.Request[proto.AssignNodeRequest]{
+		Msg: &proto.AssignNodeRequest{},
 	})
 	require.NoError(t, err)
 	resNodeID := shared.NewNodeIDFromProto(res.Msg.NodeId)
@@ -221,9 +227,9 @@ func TestRelayPoll(t *testing.T) {
 	received := make([][]*proto.Signal, 2)
 
 	n := 0
-	seed := NewSeed(WithConnectionHandler(&testUtil.ConnectionHandlerHelper{
+	seed := NewSeed(WithAssignmentHandler(&testUtil.AssignmentHandlerHelper{
 		T: t,
-		AssignNodeIDF: func(context.Context) (*shared.NodeID, error) {
+		AssignNodeF: func(context.Context) (*shared.NodeID, error) {
 			nodeID := nodeIDs[n]
 			n++
 			return nodeID, nil
@@ -235,8 +241,8 @@ func TestRelayPoll(t *testing.T) {
 		clients[i] = createClient(t, t.Context(), port)
 		received[i] = []*proto.Signal{}
 
-		_, err := clients[i].AssignNodeID(t.Context(), &connect.Request[proto.AssignNodeIDRequest]{
-			Msg: &proto.AssignNodeIDRequest{},
+		_, err := clients[i].AssignNode(t.Context(), &connect.Request[proto.AssignNodeRequest]{
+			Msg: &proto.AssignNodeRequest{},
 		})
 		require.NoError(t, err)
 

@@ -61,16 +61,16 @@ type node struct {
 
 type options struct {
 	logger            *slog.Logger
-	connectionHandler ConnectionHandler
+	assignmentHandler AssignmentHandler
 	multiSeedHandler  MultiSeedHandler
 	sessionStore      sessions.Store
 	pollingInterval   time.Duration
 	connectHandler    http.Handler
 }
 
-type ConnectionHandler interface {
-	AssignNodeID(ctx context.Context) (*shared.NodeID, error)
-	Unassign(nodeID *shared.NodeID)
+type AssignmentHandler interface {
+	AssignNode(ctx context.Context) (*shared.NodeID, error)
+	UnassignNode(nodeID *shared.NodeID)
 }
 
 type MultiSeedHandler interface {
@@ -86,9 +86,9 @@ func WithLogger(logger *slog.Logger) optionSetter {
 	}
 }
 
-func WithConnectionHandler(handler ConnectionHandler) optionSetter {
+func WithAssignmentHandler(handler AssignmentHandler) optionSetter {
 	return func(c *options) {
-		c.connectionHandler = handler
+		c.assignmentHandler = handler
 	}
 }
 
@@ -280,13 +280,13 @@ func (s *Seed) HandleSignal(ctx context.Context, signal *proto.Signal, relayToNe
 	return nil
 }
 
-func (s *Seed) AssignNodeID(ctx context.Context, _ *connect.Request[proto.AssignNodeIDRequest]) (*connect.Response[proto.AssignNodeIDResponse], error) {
+func (s *Seed) AssignNode(ctx context.Context, _ *connect.Request[proto.AssignNodeRequest]) (*connect.Response[proto.AssignNodeResponse], error) {
 	session := ctx.Value(CONTEXT_KEY_SESSION).(*session)
 
 	var nodeID *shared.NodeID
-	if s.connectionHandler != nil {
+	if s.assignmentHandler != nil {
 		var err error
-		nodeID, err = s.connectionHandler.AssignNodeID(ctx)
+		nodeID, err = s.assignmentHandler.AssignNode(ctx)
 		if err != nil {
 			s.log(ctx).Warn("failed on assign node-id", slog.String("error", err.Error()))
 			return nil, ErrInternal
@@ -332,12 +332,31 @@ func (s *Seed) AssignNodeID(ctx context.Context, _ *connect.Request[proto.Assign
 
 	s.log(ctx).Info("node assigned", slog.String("nodeID", nodeID.String()))
 
-	return &connect.Response[proto.AssignNodeIDResponse]{
-		Msg: &proto.AssignNodeIDResponse{
+	return &connect.Response[proto.AssignNodeResponse]{
+		Msg: &proto.AssignNodeResponse{
 			NodeId:  nodeID.Proto(),
 			IsAlone: isAlone,
 		},
 	}, nil
+}
+
+func (s *Seed) UnassignNode(ctx context.Context, _ *connect.Request[proto.UnassignNodeRequest]) (*connect.Response[proto.UnassignNodeResponse], error) {
+	session := ctx.Value(CONTEXT_KEY_SESSION).(*session)
+	defer session.delete()
+
+	nodeID := session.getNodeID()
+	if nodeID == nil {
+		return &connect.Response[proto.UnassignNodeResponse]{}, nil
+	}
+
+	s.mutex.Lock()
+	node := s.nodes[*nodeID]
+	if node != nil {
+		s.unassign(node)
+	}
+	s.mutex.Unlock()
+
+	return &connect.Response[proto.UnassignNodeResponse]{}, nil
 }
 
 func (s *Seed) SendSignal(ctx context.Context, request *connect.Request[proto.SendSignalRequest]) (*connect.Response[proto.SendSignalResponse], error) {
@@ -525,15 +544,19 @@ func (s *Seed) cleanup() error {
 
 		if time.Since(timestamp) > s.pollingInterval {
 			s.logger.Info("node expired", slog.String("nodeID", nodeID.String()))
-			node.close()
-			delete(s.nodes, nodeID)
-			if s.connectionHandler != nil {
-				s.connectionHandler.Unassign(&nodeID)
-			}
+			s.unassign(node)
 		}
 	}
 
 	return nil
+}
+
+func (s *Seed) unassign(node *node) {
+	node.close()
+	delete(s.nodes, node.nodeID)
+	if s.assignmentHandler != nil {
+		s.assignmentHandler.UnassignNode(&node.nodeID)
+	}
 }
 
 func (n *node) close() {

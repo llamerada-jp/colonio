@@ -33,9 +33,11 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
-	// SeedServiceAssignNodeIDProcedure is the fully-qualified name of the SeedService's AssignNodeID
+	// SeedServiceAssignNodeProcedure is the fully-qualified name of the SeedService's AssignNode RPC.
+	SeedServiceAssignNodeProcedure = "/api.colonio.v1alpha.SeedService/AssignNode"
+	// SeedServiceUnassignNodeProcedure is the fully-qualified name of the SeedService's UnassignNode
 	// RPC.
-	SeedServiceAssignNodeIDProcedure = "/api.colonio.v1alpha.SeedService/AssignNodeID"
+	SeedServiceUnassignNodeProcedure = "/api.colonio.v1alpha.SeedService/UnassignNode"
 	// SeedServiceSendSignalProcedure is the fully-qualified name of the SeedService's SendSignal RPC.
 	SeedServiceSendSignalProcedure = "/api.colonio.v1alpha.SeedService/SendSignal"
 	// SeedServicePollSignalProcedure is the fully-qualified name of the SeedService's PollSignal RPC.
@@ -44,7 +46,8 @@ const (
 
 // SeedServiceClient is a client for the api.colonio.v1alpha.SeedService service.
 type SeedServiceClient interface {
-	AssignNodeID(context.Context, *connect.Request[v1alpha.AssignNodeIDRequest]) (*connect.Response[v1alpha.AssignNodeIDResponse], error)
+	AssignNode(context.Context, *connect.Request[v1alpha.AssignNodeRequest]) (*connect.Response[v1alpha.AssignNodeResponse], error)
+	UnassignNode(context.Context, *connect.Request[v1alpha.UnassignNodeRequest]) (*connect.Response[v1alpha.UnassignNodeResponse], error)
 	SendSignal(context.Context, *connect.Request[v1alpha.SendSignalRequest]) (*connect.Response[v1alpha.SendSignalResponse], error)
 	PollSignal(context.Context, *connect.Request[v1alpha.PollSignalRequest]) (*connect.ServerStreamForClient[v1alpha.PollSignalResponse], error)
 }
@@ -60,10 +63,16 @@ func NewSeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 	baseURL = strings.TrimRight(baseURL, "/")
 	seedServiceMethods := v1alpha.File_api_colonio_v1alpha_seed_proto.Services().ByName("SeedService").Methods()
 	return &seedServiceClient{
-		assignNodeID: connect.NewClient[v1alpha.AssignNodeIDRequest, v1alpha.AssignNodeIDResponse](
+		assignNode: connect.NewClient[v1alpha.AssignNodeRequest, v1alpha.AssignNodeResponse](
 			httpClient,
-			baseURL+SeedServiceAssignNodeIDProcedure,
-			connect.WithSchema(seedServiceMethods.ByName("AssignNodeID")),
+			baseURL+SeedServiceAssignNodeProcedure,
+			connect.WithSchema(seedServiceMethods.ByName("AssignNode")),
+			connect.WithClientOptions(opts...),
+		),
+		unassignNode: connect.NewClient[v1alpha.UnassignNodeRequest, v1alpha.UnassignNodeResponse](
+			httpClient,
+			baseURL+SeedServiceUnassignNodeProcedure,
+			connect.WithSchema(seedServiceMethods.ByName("UnassignNode")),
 			connect.WithClientOptions(opts...),
 		),
 		sendSignal: connect.NewClient[v1alpha.SendSignalRequest, v1alpha.SendSignalResponse](
@@ -83,14 +92,20 @@ func NewSeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 
 // seedServiceClient implements SeedServiceClient.
 type seedServiceClient struct {
-	assignNodeID *connect.Client[v1alpha.AssignNodeIDRequest, v1alpha.AssignNodeIDResponse]
+	assignNode   *connect.Client[v1alpha.AssignNodeRequest, v1alpha.AssignNodeResponse]
+	unassignNode *connect.Client[v1alpha.UnassignNodeRequest, v1alpha.UnassignNodeResponse]
 	sendSignal   *connect.Client[v1alpha.SendSignalRequest, v1alpha.SendSignalResponse]
 	pollSignal   *connect.Client[v1alpha.PollSignalRequest, v1alpha.PollSignalResponse]
 }
 
-// AssignNodeID calls api.colonio.v1alpha.SeedService.AssignNodeID.
-func (c *seedServiceClient) AssignNodeID(ctx context.Context, req *connect.Request[v1alpha.AssignNodeIDRequest]) (*connect.Response[v1alpha.AssignNodeIDResponse], error) {
-	return c.assignNodeID.CallUnary(ctx, req)
+// AssignNode calls api.colonio.v1alpha.SeedService.AssignNode.
+func (c *seedServiceClient) AssignNode(ctx context.Context, req *connect.Request[v1alpha.AssignNodeRequest]) (*connect.Response[v1alpha.AssignNodeResponse], error) {
+	return c.assignNode.CallUnary(ctx, req)
+}
+
+// UnassignNode calls api.colonio.v1alpha.SeedService.UnassignNode.
+func (c *seedServiceClient) UnassignNode(ctx context.Context, req *connect.Request[v1alpha.UnassignNodeRequest]) (*connect.Response[v1alpha.UnassignNodeResponse], error) {
+	return c.unassignNode.CallUnary(ctx, req)
 }
 
 // SendSignal calls api.colonio.v1alpha.SeedService.SendSignal.
@@ -105,7 +120,8 @@ func (c *seedServiceClient) PollSignal(ctx context.Context, req *connect.Request
 
 // SeedServiceHandler is an implementation of the api.colonio.v1alpha.SeedService service.
 type SeedServiceHandler interface {
-	AssignNodeID(context.Context, *connect.Request[v1alpha.AssignNodeIDRequest]) (*connect.Response[v1alpha.AssignNodeIDResponse], error)
+	AssignNode(context.Context, *connect.Request[v1alpha.AssignNodeRequest]) (*connect.Response[v1alpha.AssignNodeResponse], error)
+	UnassignNode(context.Context, *connect.Request[v1alpha.UnassignNodeRequest]) (*connect.Response[v1alpha.UnassignNodeResponse], error)
 	SendSignal(context.Context, *connect.Request[v1alpha.SendSignalRequest]) (*connect.Response[v1alpha.SendSignalResponse], error)
 	PollSignal(context.Context, *connect.Request[v1alpha.PollSignalRequest], *connect.ServerStream[v1alpha.PollSignalResponse]) error
 }
@@ -117,10 +133,16 @@ type SeedServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewSeedServiceHandler(svc SeedServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	seedServiceMethods := v1alpha.File_api_colonio_v1alpha_seed_proto.Services().ByName("SeedService").Methods()
-	seedServiceAssignNodeIDHandler := connect.NewUnaryHandler(
-		SeedServiceAssignNodeIDProcedure,
-		svc.AssignNodeID,
-		connect.WithSchema(seedServiceMethods.ByName("AssignNodeID")),
+	seedServiceAssignNodeHandler := connect.NewUnaryHandler(
+		SeedServiceAssignNodeProcedure,
+		svc.AssignNode,
+		connect.WithSchema(seedServiceMethods.ByName("AssignNode")),
+		connect.WithHandlerOptions(opts...),
+	)
+	seedServiceUnassignNodeHandler := connect.NewUnaryHandler(
+		SeedServiceUnassignNodeProcedure,
+		svc.UnassignNode,
+		connect.WithSchema(seedServiceMethods.ByName("UnassignNode")),
 		connect.WithHandlerOptions(opts...),
 	)
 	seedServiceSendSignalHandler := connect.NewUnaryHandler(
@@ -137,8 +159,10 @@ func NewSeedServiceHandler(svc SeedServiceHandler, opts ...connect.HandlerOption
 	)
 	return "/api.colonio.v1alpha.SeedService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case SeedServiceAssignNodeIDProcedure:
-			seedServiceAssignNodeIDHandler.ServeHTTP(w, r)
+		case SeedServiceAssignNodeProcedure:
+			seedServiceAssignNodeHandler.ServeHTTP(w, r)
+		case SeedServiceUnassignNodeProcedure:
+			seedServiceUnassignNodeHandler.ServeHTTP(w, r)
 		case SeedServiceSendSignalProcedure:
 			seedServiceSendSignalHandler.ServeHTTP(w, r)
 		case SeedServicePollSignalProcedure:
@@ -152,8 +176,12 @@ func NewSeedServiceHandler(svc SeedServiceHandler, opts ...connect.HandlerOption
 // UnimplementedSeedServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedSeedServiceHandler struct{}
 
-func (UnimplementedSeedServiceHandler) AssignNodeID(context.Context, *connect.Request[v1alpha.AssignNodeIDRequest]) (*connect.Response[v1alpha.AssignNodeIDResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.colonio.v1alpha.SeedService.AssignNodeID is not implemented"))
+func (UnimplementedSeedServiceHandler) AssignNode(context.Context, *connect.Request[v1alpha.AssignNodeRequest]) (*connect.Response[v1alpha.AssignNodeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.colonio.v1alpha.SeedService.AssignNode is not implemented"))
+}
+
+func (UnimplementedSeedServiceHandler) UnassignNode(context.Context, *connect.Request[v1alpha.UnassignNodeRequest]) (*connect.Response[v1alpha.UnassignNodeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.colonio.v1alpha.SeedService.UnassignNode is not implemented"))
 }
 
 func (UnimplementedSeedServiceHandler) SendSignal(context.Context, *connect.Request[v1alpha.SendSignalRequest]) (*connect.Response[v1alpha.SendSignalResponse], error) {

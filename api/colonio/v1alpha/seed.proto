@@ -7,7 +7,8 @@ import "api/colonio/v1alpha/colonio.proto";
 option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
 
 service SeedService {
-  rpc AssignNodeID (AssignNodeIDRequest) returns (AssignNodeIDResponse) {}
+  rpc AssignNode (AssignNodeRequest) returns (AssignNodeResponse) {}
+  rpc UnassignNode (UnassignNodeRequest) returns (UnassignNodeResponse) {}
   rpc SendSignal (SendSignalRequest) returns (SendSignalResponse) {}
   rpc PollSignal (PollSignalRequest) returns (stream PollSignalResponse) {}
 }
@@ -45,12 +46,18 @@ message SignalICE {
   repeated string ices = 2;
 }
 
-message AssignNodeIDRequest {
+message AssignNodeRequest {
 }
 
-message AssignNodeIDResponse {
+message AssignNodeResponse {
   colonio.v1alpha.NodeID node_id = 1;
   bool is_alone = 2;
+}
+
+message UnassignNodeRequest {
+}
+
+message UnassignNodeResponse {
 }
 
 message SendSignalRequest {

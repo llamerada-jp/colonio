@@ -90,7 +90,7 @@ func NewSeedAccessor(config *Config) *SeedAccessor {
 func (sa *SeedAccessor) Start(ctx context.Context) (*shared.NodeID, error) {
 	sa.ctx = ctx
 
-	res, err := sa.client.AssignNodeID(sa.ctx, &connect.Request[proto.AssignNodeIDRequest]{})
+	res, err := sa.client.AssignNode(sa.ctx, &connect.Request[proto.AssignNodeRequest]{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to assign node ID: %w", err)
 	}
@@ -102,11 +102,12 @@ func (sa *SeedAccessor) Start(ctx context.Context) (*shared.NodeID, error) {
 
 	go func() {
 		// call round every second or finish when context is done
-
 		for {
 			select {
 			case <-sa.ctx.Done():
+				sa.unassign()
 				return
+
 			default:
 				err := sa.poll()
 				if err != nil {
@@ -218,6 +219,14 @@ func (sa *SeedAccessor) SendSignalICE(dstNodeID *shared.NodeID, ices *signal.ICE
 	sa.isAlone = res.Msg.GetIsAlone()
 	sa.mtx.Unlock()
 	return nil
+}
+
+func (sa *SeedAccessor) unassign() {
+	// use context.Background() because sa.ctx may be already canceled when call this
+	_, err := sa.client.UnassignNode(context.Background(), &connect.Request[proto.UnassignNodeRequest]{})
+	if err != nil {
+		sa.logger.Warn("failed to unassign node", slog.String("error", err.Error()))
+	}
 }
 
 func (sa *SeedAccessor) poll() error {
