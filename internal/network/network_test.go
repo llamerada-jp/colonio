@@ -79,9 +79,9 @@ func TestNetwork(t *testing.T) {
 	// start seed
 	nodeCount := 0
 	seed := seed.NewSeed(
-		seed.WithConnectionHandler(&testUtil.ConnectionHandlerHelper{
+		seed.WithAssignmentHandler(&testUtil.AssignmentHandlerHelper{
 			T: t,
-			AssignNodeIDF: func(ctx context.Context) (*shared.NodeID, error) {
+			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
 				if nodeCount >= len(nodeIDs) {
 					t.FailNow()
 				}
@@ -89,7 +89,7 @@ func TestNetwork(t *testing.T) {
 				nodeCount++
 				return nodeID, nil
 			},
-			UnassignF: func(nodeID *shared.NodeID) {},
+			UnassignNodeF: func(nodeID *shared.NodeID) {},
 		}),
 	)
 	server := server.NewHelper(seed)

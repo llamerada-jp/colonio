@@ -23,24 +23,24 @@ import (
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
-type ConnectionHandlerHelper struct {
+type AssignmentHandlerHelper struct {
 	T             *testing.T
-	AssignNodeIDF func(ctx context.Context) (*shared.NodeID, error)
-	UnassignF     func(nodeID *shared.NodeID)
+	AssignNodeF   func(ctx context.Context) (*shared.NodeID, error)
+	UnassignNodeF func(nodeID *shared.NodeID)
 }
 
-func (h *ConnectionHandlerHelper) AssignNodeID(ctx context.Context) (*shared.NodeID, error) {
-	if h.AssignNodeIDF == nil {
+func (h *AssignmentHandlerHelper) AssignNode(ctx context.Context) (*shared.NodeID, error) {
+	if h.AssignNodeF == nil {
 		h.T.FailNow()
 	}
-	return h.AssignNodeIDF(ctx)
+	return h.AssignNodeF(ctx)
 }
 
-func (h *ConnectionHandlerHelper) Unassign(nodeID *shared.NodeID) {
-	if h.UnassignF == nil {
+func (h *AssignmentHandlerHelper) UnassignNode(nodeID *shared.NodeID) {
+	if h.UnassignNodeF == nil {
 		h.T.FailNow()
 	}
-	h.UnassignF(nodeID)
+	h.UnassignNodeF(nodeID)
 }
 
 type MultiSeedHandlerHelper struct {

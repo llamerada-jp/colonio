@@ -81,3 +81,12 @@ func (s *session) setNodeID(nodeID *shared.NodeID) {
 func (s *session) write() error {
 	return s.sessionStore.Save(s.request, s.response, s.session)
 }
+
+func (s *session) delete() error {
+	if s == nil {
+		return nil
+	}
+
+	s.session.Options.MaxAge = -1
+	return s.sessionStore.Save(s.request, s.response, s.session)
+}
