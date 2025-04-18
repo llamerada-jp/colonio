@@ -19,6 +19,7 @@ import (
 	"context"
 	"log/slog"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/llamerada-jp/colonio"
@@ -53,6 +54,7 @@ func RunNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *d
 func runNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *datastore.Writer) error {
 	position := utils.NewPosition()
 
+	mtx := sync.Mutex{}
 	record := &Record{
 		ConnectedNodeIDs:  make([]string, 0),
 		RequiredNodeIDs1D: make([]string, 0),
@@ -71,12 +73,18 @@ func runNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *d
 		}),
 		colonio.WithObservation(&colonio.ObservationHandlers{
 			OnChangeConnectedNodes: func(nodeIDs map[string]struct{}) {
+				mtx.Lock()
+				defer mtx.Unlock()
 				record.ConnectedNodeIDs = convertMapToSlice(nodeIDs)
 			},
 			OnUpdateRequiredNodeIDs1D: func(nodeIDs map[string]struct{}) {
+				mtx.Lock()
+				defer mtx.Unlock()
 				record.RequiredNodeIDs1D = convertMapToSlice(nodeIDs)
 			},
 			OnUpdateRequiredNodeIDs2D: func(nodeIDs map[string]struct{}) {
+				mtx.Lock()
+				defer mtx.Unlock()
 				record.RequiredNodeIDs2D = convertMapToSlice(nodeIDs)
 			},
 		}),
@@ -92,12 +100,15 @@ func runNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *d
 	localNodeID := col.GetLocalNodeID()
 	logger.Info("connected", "nodeID", localNodeID)
 
+	mtx.Lock()
 	record.State = state_start
 	writer.Write(time.Now(), localNodeID, record)
+	mtx.Unlock()
+
 	defer func() {
-		record := &Record{
-			State: state_stop,
-		}
+		mtx.Lock()
+		defer mtx.Unlock()
+		record.State = state_stop
 		writer.Write(time.Now(), localNodeID, record)
 		col.Stop()
 	}()
@@ -116,10 +127,12 @@ func runNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *d
 				continue
 			}
 
+			mtx.Lock()
 			record.State = state_normal
 			record.X = position.X
 			record.Y = position.Y
 			writer.Write(time.Now(), localNodeID, record)
+			mtx.Unlock()
 		}
 	}
 }
