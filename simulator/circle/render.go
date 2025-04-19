@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/simulator/base"
 	"github.com/llamerada-jp/colonio/simulator/canvas"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
 )
@@ -45,7 +46,7 @@ func RunRender(ctx context.Context, reader *datastore.Reader, canvas *canvas.Can
 	canvas.EnableFont("", 16)
 
 	for {
-		var record Record
+		var record base.Record
 		recordTime, nodeID, err := reader.Read(&record)
 		if err != nil {
 			return err
@@ -57,16 +58,24 @@ func RunRender(ctx context.Context, reader *datastore.Reader, canvas *canvas.Can
 			timestamp = recordTime.Round(time.Second)
 		}
 
-		if record.State == state_start {
+		switch record.State {
+		case base.StateStart:
 			nodes[nodeID] = timestamp
-		}
-		if record.State == state_stop {
+
+		case base.StateNormal:
+			// skip record if node is not alive
+			if _, ok := nodes[nodeID]; !ok {
+				continue
+			}
+			nodes[nodeID] = timestamp
+
+		case base.StateStop:
 			delete(nodes, nodeID)
 		}
-		// skip record if node is not alive
-		if _, ok := nodes[nodeID]; !ok {
-			continue
-		}
+
+		appendEdges(timestamp, connects, nodeID, record.ConnectedNodeIDs)
+		appendEdges(timestamp, required, nodeID, record.RequiredNodeIDs1D)
+		appendEdges(timestamp, required, nodeID, record.RequiredNodeIDs2D)
 
 		for timestamp.Before(*recordTime) {
 			sec += 1
@@ -82,11 +91,6 @@ func RunRender(ctx context.Context, reader *datastore.Reader, canvas *canvas.Can
 			timestamp = timestamp.Add(time.Second)
 			// time.Sleep(20 * time.Millisecond)
 		}
-
-		nodes[nodeID] = timestamp
-		appendEdges(timestamp, connects, nodeID, record.ConnectedNodeIDs)
-		appendEdges(timestamp, required, nodeID, record.RequiredNodeIDs1D)
-		appendEdges(timestamp, required, nodeID, record.RequiredNodeIDs2D)
 	}
 }
 
