@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package circle
+package base
 
 const (
-	state_start  = "start"
-	state_normal = ""
-	state_stop   = "stop"
+	StateStart  = "start"
+	StateNormal = ""
+	StateStop   = "stop"
 )
 
 type Record struct {
@@ -26,4 +26,12 @@ type Record struct {
 	ConnectedNodeIDs  []string
 	RequiredNodeIDs1D []string
 	RequiredNodeIDs2D []string
+}
+
+type RecordInterface interface {
+	GetRecord() *Record
+}
+
+func (r *Record) GetRecord() *Record {
+	return r
 }

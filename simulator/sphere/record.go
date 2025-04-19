@@ -15,17 +15,10 @@
  */
 package sphere
 
-const (
-	state_start  = "start"
-	state_normal = ""
-	state_stop   = "stop"
-)
+import "github.com/llamerada-jp/colonio/simulator/base"
 
 type Record struct {
-	State             string
-	X                 float64
-	Y                 float64
-	ConnectedNodeIDs  []string
-	RequiredNodeIDs1D []string
-	RequiredNodeIDs2D []string
+	base.Record
+	X float64
+	Y float64
 }
