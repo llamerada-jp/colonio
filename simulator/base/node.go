@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/llamerada-jp/colonio"
 	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/shared"
@@ -55,6 +56,8 @@ func NewNode(logger *slog.Logger, seedURL string, writer *datastore.Writer, hand
 	r.ConnectedNodeIDs = make([]string, 0)
 	r.RequiredNodeIDs1D = make([]string, 0)
 	r.RequiredNodeIDs2D = make([]string, 0)
+	r.Post = make(map[string]string)
+	r.Receive = make(map[string]string)
 
 	n := &Node{
 		Logger:   logger,
@@ -96,8 +99,12 @@ func NewNode(logger *slog.Logger, seedURL string, writer *datastore.Writer, hand
 		return nil, err
 	}
 
-	col.MessagingSetHandler(messageKey, func(mr *colonio.MessagingRequest, mrw colonio.MessagingResponseWriter) {
-		// Do nothing
+	col.MessagingSetHandler(messageKey, func(mr *colonio.MessagingRequest, _ colonio.MessagingResponseWriter) {
+		id := string(mr.Message)
+		n.mtx.Lock()
+		defer n.mtx.Unlock()
+		r := n.Record.GetRecord()
+		r.Receive[id] = time.Now().Format(time.RFC3339Nano)
 	})
 
 	n.Col = col
@@ -145,6 +152,10 @@ func (n *Node) Write(f func() error) {
 	if err := n.writer.Write(time.Now(), n.Col.GetLocalNodeID(), n.Record); err != nil {
 		n.Logger.Error("failed to write record", "error", err)
 	}
+
+	r := n.Record.GetRecord()
+	r.Post = make(map[string]string)
+	r.Receive = make(map[string]string)
 }
 
 func (n *Node) runNode(ctx context.Context) error {
@@ -181,7 +192,16 @@ func (n *Node) runNode(ctx context.Context) error {
 
 		// send message randomly
 		dstNodeID := shared.NewRandomNodeID().String()
-		n.Col.MessagingPost(dstNodeID, messageKey, []byte("hello"),
+		id7, err := uuid.NewV7()
+		if err != nil {
+			panic(err)
+		}
+		id := id7.String()
+		r := n.Record.GetRecord()
+		n.mtx.Lock()
+		r.Post[id] = time.Now().Format(time.RFC3339Nano)
+		n.mtx.Unlock()
+		n.Col.MessagingPost(dstNodeID, messageKey, []byte(id),
 			colonio.MessagingWithAcceptNearby(),
 			colonio.MessagingWithIgnoreResponse(),
 		)
