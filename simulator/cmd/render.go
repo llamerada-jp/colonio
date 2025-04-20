@@ -80,10 +80,10 @@ func (r *renderCmdImpl) makeReader(ctx context.Context) (datastore.RawReader, er
 func (r *renderCmdImpl) forkStory(ctx context.Context, reader *datastore.Reader, canvas *canvas.Canvas, filer *canvas.Filer) error {
 	switch r.config.story {
 	case "sphere":
-		return sphere.RunRender(ctx, reader, canvas, filer)
+		return sphere.RunRender(reader, canvas, filer)
 
 	case "circle":
-		return circle.RunRender(ctx, reader, canvas, filer)
+		return circle.RunRender(reader, canvas, filer)
 
 	default:
 		return errors.New("unexpected story name")
