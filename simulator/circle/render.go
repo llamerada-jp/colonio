@@ -16,10 +16,8 @@
 package circle
 
 import (
-	"context"
 	"fmt"
 	"math"
-	"strings"
 	"time"
 
 	"github.com/llamerada-jp/colonio/internal/shared"
@@ -32,81 +30,19 @@ const (
 	scale = 0.95
 )
 
-type edge struct {
-	node1 string
-	node2 string
-}
-
-func RunRender(ctx context.Context, reader *datastore.Reader, canvas *canvas.Canvas, filer *canvas.Filer) error {
-	var timestamp time.Time
-	sec := 0
-	nodes := make(map[string]time.Time)
-	connects := make(map[edge]time.Time)
-	required := make(map[edge]time.Time)
+func RunRender(reader *datastore.Reader, canvas *canvas.Canvas, filer *canvas.Filer) error {
 	canvas.EnableFont("", 16)
-
-	for {
-		var record base.Record
-		recordTime, nodeID, err := reader.Read(&record)
-		if err != nil {
-			return err
-		}
-		if recordTime == nil {
-			return nil
-		}
-		if timestamp.Equal(time.Time{}) {
-			timestamp = recordTime.Round(time.Second)
-		}
-
-		switch record.State {
-		case base.StateStart:
-			nodes[nodeID] = timestamp
-
-		case base.StateNormal:
-			// skip record if node is not alive
-			if _, ok := nodes[nodeID]; !ok {
-				continue
-			}
-			nodes[nodeID] = timestamp
-
-		case base.StateStop:
-			delete(nodes, nodeID)
-		}
-
-		appendEdges(timestamp, connects, nodeID, record.ConnectedNodeIDs)
-		appendEdges(timestamp, required, nodeID, record.RequiredNodeIDs1D)
-		appendEdges(timestamp, required, nodeID, record.RequiredNodeIDs2D)
-
-		for timestamp.Before(*recordTime) {
-			sec += 1
-			draw(canvas, sec, timestamp, nodes, connects, required)
-			if filer != nil {
-				filer.Save()
-			}
-			if canvas.HasQuitSignal() {
-				return nil
-			}
-			cleanupEdges(timestamp, connects)
-			cleanupEdges(timestamp, required)
-			timestamp = timestamp.Add(time.Second)
-			// time.Sleep(20 * time.Millisecond)
-		}
-	}
+	framework := base.NewRenderFramework(reader, canvas, filer, 1, recordReader, drawer)
+	return framework.Start()
 }
 
-func draw(canvas *canvas.Canvas, sec int, current time.Time, nodes map[string]time.Time, connects map[edge]time.Time, required map[edge]time.Time) {
-	silentNodeCount := 0
+func recordReader(reader *datastore.Reader) (*time.Time, string, base.RecordInterface, error) {
+	record := base.Record{}
+	recordTime, nodeID, err := reader.Read(&record)
+	return recordTime, nodeID, &record, err
+}
 
-	for n, t := range nodes {
-		if current.After(t.Add(3 * time.Second)) {
-			silentNodeCount++
-			canvas.SetColor(63, 63, 63)
-		} else {
-			canvas.SetColor(0, 0, 255)
-		}
-		drawNode(canvas, n)
-	}
-
+func drawer(framework *base.RenderFramework, canvas *canvas.Canvas, sec int) {
 	canvas.SetColor(0, 0, 0)
 	canvas.DrawText(
 		canvas.XFromPixel(8),
@@ -114,54 +50,43 @@ func draw(canvas *canvas.Canvas, sec int, current time.Time, nodes map[string]ti
 		fmt.Sprintf(
 			"time: %d s\nnodes: %d\nlost nodes: %d\nconnections: %d, avg:%.1f",
 			sec,
-			len(nodes), silentNodeCount, len(connects),
+			len(framework.AliveNodes), len(framework.SilentNodes), len(framework.ConnectEdges),
 			// one connection is connected two nodes
-			float64(len(connects))/float64(len(nodes))*2.0,
+			float64(len(framework.ConnectEdges))/float64(len(framework.AliveNodes))*2.0,
 		))
 
-	for e := range connects {
-		canvas.SetColor(0, 0, 255)
-		if t, ok := nodes[e.node1]; ok {
-			if current.After(t.Add(3 * time.Second)) {
-				canvas.SetColor(63, 63, 63)
-			}
-		} else {
-			continue
-		}
-		if t, ok := nodes[e.node2]; ok {
-			if current.After(t.Add(3 * time.Second)) {
-				canvas.SetColor(63, 63, 63)
-			}
-		} else {
-			continue
-		}
-		drawEdge(canvas, e.node1, e.node2)
+	canvas.SetColor(0, 63, 255)
+	for n := range framework.AliveNodes {
+		drawNode(canvas, n)
 	}
 
-	canvas.SetColor(191, 255, 191)
-	for e := range required {
-		if _, ok := connects[e]; ok {
-			continue
-		}
-
-		if t, ok := nodes[e.node1]; ok {
-			if current.After(t.Add(3 * time.Second)) {
-				canvas.SetColor(63, 63, 63)
-			}
-		} else {
-			continue
-		}
-		if t, ok := nodes[e.node2]; ok {
-			if current.After(t.Add(3 * time.Second)) {
-				canvas.SetColor(63, 63, 63)
-			}
-		} else {
-			continue
-		}
-		drawEdge(canvas, e.node1, e.node2)
+	canvas.SetColor(63, 63, 63)
+	for n := range framework.SilentNodes {
+		drawNode(canvas, n)
 	}
 
-	canvas.Render()
+	for e := range framework.ConnectEdges {
+		canvas.SetColor(0, 63, 255)
+		n1 := framework.SilentNodes[e.NodeID1]
+		n2 := framework.SilentNodes[e.NodeID2]
+		if n1 != nil || n2 != nil {
+			canvas.SetColor(63, 63, 63)
+		}
+		drawEdge(canvas, e.NodeID1, e.NodeID2)
+	}
+
+	for e := range framework.RequiredEdges {
+		canvas.SetColor(0, 255, 63)
+		if _, ok := framework.ConnectEdges[e]; ok {
+			continue
+		}
+		n1 := framework.SilentNodes[e.NodeID1]
+		n2 := framework.SilentNodes[e.NodeID2]
+		if n1 != nil || n2 != nil {
+			canvas.SetColor(63, 63, 63)
+		}
+		drawEdge(canvas, e.NodeID1, e.NodeID2)
+	}
 }
 
 func drawNode(canvas *canvas.Canvas, n string) {
@@ -185,22 +110,4 @@ func convertCoordinate(n string) (xo, yo float64) {
 	xo = math.Cos(rad) * scale
 	yo = math.Sin(rad) * scale
 	return
-}
-
-func appendEdges(timestamp time.Time, edges map[edge]time.Time, nodeID string, nodes []string) {
-	for _, node := range nodes {
-		if strings.Compare(nodeID, node) < 0 {
-			edges[edge{node1: nodeID, node2: node}] = timestamp
-		} else {
-			edges[edge{node1: node, node2: nodeID}] = timestamp
-		}
-	}
-}
-
-func cleanupEdges(timestamp time.Time, edges map[edge]time.Time) {
-	for e, t := range edges {
-		if timestamp.After(t.Add(3 * time.Second)) {
-			delete(edges, e)
-		}
-	}
 }
