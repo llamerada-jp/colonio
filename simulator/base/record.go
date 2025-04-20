@@ -26,6 +26,10 @@ type Record struct {
 	ConnectedNodeIDs  []string
 	RequiredNodeIDs1D []string
 	RequiredNodeIDs2D []string
+	// message post time (uuid string : RFC3339Nano string)
+	Post map[string]string
+	// message receive time (uuid string : RFC3339Nano string)
+	Receive map[string]string
 }
 
 type RecordInterface interface {
