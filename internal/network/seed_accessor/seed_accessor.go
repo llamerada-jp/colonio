@@ -101,17 +101,19 @@ func (sa *SeedAccessor) Start(ctx context.Context) (*shared.NodeID, error) {
 	sa.isAlone = res.Msg.GetIsAlone()
 
 	go func() {
+		// try to unassign the node when the context is done
+		defer sa.unassign()
+
 		// call round every second or finish when context is done
 		for {
 			select {
 			case <-sa.ctx.Done():
-				sa.unassign()
 				return
 
 			default:
 				err := sa.poll()
 				if err != nil {
-					if errors.Is(err, context.Canceled) {
+					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 						return
 					}
 					sa.logger.Warn("failed to poll", slog.String("error", err.Error()))
@@ -234,8 +236,8 @@ func (sa *SeedAccessor) poll() error {
 		Msg: &proto.PollSignalRequest{},
 	})
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			return err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil
 		}
 		return fmt.Errorf("failed to poll signal: %w", err)
 	}
