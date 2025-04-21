@@ -271,7 +271,7 @@ func (s *Seed) HandleSignal(ctx context.Context, signal *proto.Signal, relayToNe
 
 	if node.signals != nil {
 		if len(node.signals) > 100 {
-			return errors.New("too many signals")
+			return fmt.Errorf("too many signals: %s -> %s", srcNodeID.String(), node.nodeID.String())
 		}
 		node.signals = append(node.signals, signal)
 		return nil
