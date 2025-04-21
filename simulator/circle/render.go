@@ -54,6 +54,16 @@ func drawer(framework *base.RenderFramework, canvas *canvas.Canvas, sec int) {
 			// one connection is connected two nodes
 			float64(len(framework.ConnectEdges))/float64(len(framework.AliveNodes))*2.0,
 		))
+	canvas.DrawText(
+		canvas.XFromPixel(8),
+		canvas.YFromPixel(8),
+		fmt.Sprintf(
+			"packet duration p90: %dms\npacket duration p99: %dms\npackets/min: %d\nloss: %.1f%%",
+			framework.PacketDurationP90.Milliseconds(),
+			framework.PacketDurationP99.Milliseconds(),
+			framework.PacketCount,
+			framework.PacketLossRate*100.0,
+		))
 
 	canvas.SetColor(0, 63, 255)
 	for n := range framework.AliveNodes {

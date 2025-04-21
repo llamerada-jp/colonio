@@ -16,6 +16,7 @@
 package base
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -33,17 +34,27 @@ type Edge struct {
 	NodeID2 string
 }
 
+type PacketInfo struct {
+	PostTime    time.Time
+	ReceiveTime time.Time
+}
+
 type RenderFramework struct {
-	reader        *datastore.Reader
-	canvas        *canvas.Canvas
-	filer         *canvas.Filer
-	edgeKind      int
-	recordReader  func(*datastore.Reader) (*time.Time, string, RecordInterface, error)
-	drawer        func(*RenderFramework, *canvas.Canvas, int)
-	AliveNodes    map[string]*NodeInfo
-	SilentNodes   map[string]*NodeInfo
-	ConnectEdges  map[Edge]time.Time
-	RequiredEdges map[Edge]time.Time
+	reader            *datastore.Reader
+	canvas            *canvas.Canvas
+	filer             *canvas.Filer
+	edgeKind          int
+	packetInfos       map[string]*PacketInfo
+	recordReader      func(*datastore.Reader) (*time.Time, string, RecordInterface, error)
+	drawer            func(*RenderFramework, *canvas.Canvas, int)
+	AliveNodes        map[string]*NodeInfo
+	SilentNodes       map[string]*NodeInfo
+	ConnectEdges      map[Edge]time.Time
+	RequiredEdges     map[Edge]time.Time
+	PacketCount       int
+	PacketLossRate    float64
+	PacketDurationP90 time.Duration
+	PacketDurationP99 time.Duration
 }
 
 func NewRenderFramework(reader *datastore.Reader, canvas *canvas.Canvas, filer *canvas.Filer, edgeKind int,
@@ -61,6 +72,7 @@ func NewRenderFramework(reader *datastore.Reader, canvas *canvas.Canvas, filer *
 		SilentNodes:   make(map[string]*NodeInfo),
 		ConnectEdges:  make(map[Edge]time.Time),
 		RequiredEdges: make(map[Edge]time.Time),
+		packetInfos:   make(map[string]*PacketInfo),
 	}
 	return r
 }
@@ -101,6 +113,26 @@ func (f *RenderFramework) Start() error {
 				Record:    recordIf,
 			}
 
+			for uuid, postTimeStr := range record.Post {
+				postTime, err := time.Parse(time.RFC3339Nano, postTimeStr)
+				if err != nil {
+					panic(err)
+				}
+				f.packetInfos[uuid] = &PacketInfo{
+					PostTime: postTime,
+				}
+			}
+
+			for uuid, receiveTimeStr := range record.Receive {
+				if packetInfo, ok := f.packetInfos[uuid]; ok {
+					receiveTime, err := time.Parse(time.RFC3339Nano, receiveTimeStr)
+					if err != nil {
+						panic(err)
+					}
+					packetInfo.ReceiveTime = receiveTime
+				}
+			}
+
 		case StateStop:
 			delete(f.AliveNodes, nodeID)
 			delete(f.SilentNodes, nodeID)
@@ -116,6 +148,7 @@ func (f *RenderFramework) Start() error {
 		}
 
 		for timestamp.Before(*recordTime) {
+			f.aggregatePacketInfos(timestamp)
 			sec += 1
 			f.drawer(f, f.canvas, sec)
 			f.canvas.Render()
@@ -131,6 +164,45 @@ func (f *RenderFramework) Start() error {
 			timestamp = timestamp.Add(time.Second)
 		}
 	}
+}
+
+// will return loss rate, duration p90 sec, duration p99 sec
+func (f *RenderFramework) aggregatePacketInfos(timestamp time.Time) {
+	durations := make([]time.Duration, 0)
+	count := 0
+	receivedCount := 0
+
+	for uuid, packetInfo := range f.packetInfos {
+		// remove info before 70 seconds
+		if packetInfo.PostTime.Add(70 * time.Second).Before(timestamp) {
+			delete(f.packetInfos, uuid)
+			continue
+		}
+		// skip if info within 10 seconds
+		if packetInfo.PostTime.Add(10 * time.Second).After(timestamp) {
+			continue
+		}
+		count++
+		if !packetInfo.ReceiveTime.IsZero() {
+			receivedCount++
+			durations = append(durations, packetInfo.ReceiveTime.Sub(packetInfo.PostTime))
+		}
+	}
+
+	f.PacketCount = count
+	f.PacketLossRate = float64(count-receivedCount) / float64(count)
+
+	if len(durations) == 0 {
+		f.PacketDurationP90 = 0
+		f.PacketDurationP99 = 0
+		return
+	}
+
+	// sort durations
+	slices.Sort(durations)
+	// calculate p90 and p99
+	f.PacketDurationP90 = durations[int(float64(len(durations))*0.9)]
+	f.PacketDurationP99 = durations[int(float64(len(durations))*0.99)]
 }
 
 func (f *RenderFramework) appendEdges(timestamp time.Time, edges map[Edge]time.Time, nodeID string, nodes []string) {
