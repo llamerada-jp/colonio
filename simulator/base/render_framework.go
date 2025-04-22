@@ -118,18 +118,26 @@ func (f *RenderFramework) Start() error {
 				if err != nil {
 					panic(err)
 				}
-				f.packetInfos[uuid] = &PacketInfo{
-					PostTime: postTime,
+				if packetInfo, ok := f.packetInfos[uuid]; ok {
+					packetInfo.PostTime = postTime
+				} else {
+					f.packetInfos[uuid] = &PacketInfo{
+						PostTime: postTime,
+					}
 				}
 			}
 
 			for uuid, receiveTimeStr := range record.Receive {
+				receiveTime, err := time.Parse(time.RFC3339Nano, receiveTimeStr)
+				if err != nil {
+					panic(err)
+				}
 				if packetInfo, ok := f.packetInfos[uuid]; ok {
-					receiveTime, err := time.Parse(time.RFC3339Nano, receiveTimeStr)
-					if err != nil {
-						panic(err)
-					}
 					packetInfo.ReceiveTime = receiveTime
+				} else {
+					f.packetInfos[uuid] = &PacketInfo{
+						ReceiveTime: receiveTime,
+					}
 				}
 			}
 
@@ -173,13 +181,21 @@ func (f *RenderFramework) aggregatePacketInfos(timestamp time.Time) {
 	receivedCount := 0
 
 	for uuid, packetInfo := range f.packetInfos {
+		baseTime := packetInfo.PostTime
+		if baseTime.IsZero() {
+			baseTime = packetInfo.ReceiveTime
+		}
 		// remove info before 70 seconds
-		if packetInfo.PostTime.Add(70 * time.Second).Before(timestamp) {
+		if baseTime.Add(70 * time.Second).Before(timestamp) {
 			delete(f.packetInfos, uuid)
 			continue
 		}
 		// skip if info within 10 seconds
-		if packetInfo.PostTime.Add(10 * time.Second).After(timestamp) {
+		if baseTime.Add(10 * time.Second).After(timestamp) {
+			continue
+		}
+		// recording order is reversed, so wait until both are aligned
+		if packetInfo.PostTime.IsZero() {
 			continue
 		}
 		count++
