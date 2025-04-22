@@ -241,7 +241,11 @@ func (n *Network) classifyPacket(packet *shared.Packet) {
 		return
 
 	} else if nextNodeID.IsNormal() || *nextNodeID == shared.NodeIDNext {
-		n.nodeAccessor.RelayPacket(nextNodeID, packet)
+		if err := n.nodeAccessor.RelayPacket(nextNodeID, packet); err != nil {
+			n.logger.Debug("failed to relay packet", slog.String("error", err.Error()))
+			n.nodeAccessor.RelayPacket(nextNodeID, packet)
+			return
+		}
 		return
 
 	} else if *nextNodeID == shared.NodeIDNone && (packet.Mode&shared.PacketModeOneWay) == 0x0 {
