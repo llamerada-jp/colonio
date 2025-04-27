@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"os/signal"
 	"sync"
@@ -28,12 +29,16 @@ import (
 	"github.com/llamerada-jp/colonio/simulator/circle"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
 	"github.com/llamerada-jp/colonio/simulator/sphere"
+	"github.com/llamerada-jp/colonio/simulator/utils"
 	"github.com/spf13/cobra"
 )
 
 var nodeConfig = struct {
 	seedURL       string
 	story         string
+	latitude      float64
+	longitude     float64
+	radius        float64
 	concurrency   uint
 	writer        string
 	mongodbConfig datastore.MongodbConfig
@@ -44,6 +49,11 @@ var nodeCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(nodeConfig.seedURL) == 0 {
 			return errors.New("seed URL should be set")
+		}
+
+		if math.IsNaN(nodeConfig.latitude) != math.IsNaN(nodeConfig.longitude) ||
+			math.IsNaN(nodeConfig.latitude) != math.IsNaN(nodeConfig.radius) {
+			return errors.New("latitude, longitude and radius should be set together")
 		}
 
 		cmd.SilenceUsage = true
@@ -90,6 +100,9 @@ var nodeCmd = &cobra.Command{
 		logger.Info("start node",
 			slog.String("seedURL", nodeConfig.seedURL),
 			slog.String("story", nodeConfig.story),
+			slog.Float64("latitude", nodeConfig.latitude),
+			slog.Float64("longitude", nodeConfig.longitude),
+			slog.Float64("radius", nodeConfig.radius),
 			slog.Uint64("concurrency", uint64(nodeConfig.concurrency)),
 			slog.String("mongodbURI", nodeConfig.mongodbConfig.URI))
 
@@ -116,12 +129,23 @@ var nodeCmd = &cobra.Command{
 }
 
 func run(ctx context.Context, logger *slog.Logger, writer *datastore.Writer) error {
+	// convert coordinate to radians
+	var region *utils.Region
+	if !math.IsNaN(nodeConfig.latitude) {
+		region = &utils.Region{
+			X: math.Pi * nodeConfig.longitude / 180,
+			Y: math.Pi * nodeConfig.latitude / 180,
+			// approximate length at the equator
+			R: 2 * math.Pi * nodeConfig.radius / 46000000,
+		}
+	}
+
 	switch nodeConfig.story {
 	case "circle":
-		return circle.RunNode(ctx, logger, nodeConfig.seedURL, writer)
+		return circle.RunNode(ctx, logger, nodeConfig.seedURL, writer, region)
 
 	case "sphere":
-		return sphere.RunNode(ctx, logger, nodeConfig.seedURL, writer)
+		return sphere.RunNode(ctx, logger, nodeConfig.seedURL, writer, region)
 
 	default:
 		return errors.New("unexpected story name")
@@ -131,10 +155,20 @@ func run(ctx context.Context, logger *slog.Logger, writer *datastore.Writer) err
 func init() {
 	flags := nodeCmd.PersistentFlags()
 
-	flags.StringVarP(&nodeConfig.seedURL, "seed-url", "u", valueFromEnvString("SEED_URL", "https://localhost:8443"), "URL of the seed.")
-	flags.StringVarP(&nodeConfig.story, "story", "s", valueFromEnvString("STORY", "sphere"), "situation of the simulation.")
-	flags.StringVarP(&nodeConfig.writer, "writer", "w", valueFromEnvString("WRITER", "mongodb"), "writer type.")
-	flags.UintVarP(&nodeConfig.concurrency, "concurrency", "c", valueFromEnvUint("CONCURRENCY", 1), "number of concurrent requests.")
+	flags.StringVarP(&nodeConfig.seedURL, "seed-url", "u", valueFromEnvString("SEED_URL", "https://localhost:8443"),
+		"URL of the seed.")
+	flags.StringVarP(&nodeConfig.story, "story", "s", valueFromEnvString("STORY", "sphere"),
+		"situation of the simulation.")
+	flags.Float64VarP(&nodeConfig.latitude, "latitude", "l", valueFromEnvFloat64("LATITUDE", math.NaN()),
+		"latitude  of the center coordinate when the node moves.")
+	flags.Float64VarP(&nodeConfig.longitude, "longitude", "g", valueFromEnvFloat64("LONGITUDE", math.NaN()),
+		"longitude  of the center coordinate when the node moves.")
+	flags.Float64VarP(&nodeConfig.radius, "radius", "r", valueFromEnvFloat64("RADIUS", math.NaN()),
+		"radius  at which the node moves.")
+	flags.StringVarP(&nodeConfig.writer, "writer", "w", valueFromEnvString("WRITER", "mongodb"),
+		"writer type.")
+	flags.UintVarP(&nodeConfig.concurrency, "concurrency", "c", valueFromEnvUint("CONCURRENCY", 1),
+		"number of concurrent requests.")
 	bindMongodbConfig(flags, &nodeConfig.mongodbConfig, true)
 
 	rootCmd.AddCommand(nodeCmd)

@@ -21,11 +21,12 @@ import (
 
 	"github.com/llamerada-jp/colonio/simulator/base"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
+	"github.com/llamerada-jp/colonio/simulator/utils"
 )
 
-func RunNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *datastore.Writer) error {
+func RunNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *datastore.Writer, region *utils.Region) error {
 	record := &base.Record{}
-	node, err := base.NewNode(logger, seedURL, writer, nil, record)
+	node, err := base.NewNode(logger, seedURL, writer, nil, record, region)
 	if err != nil {
 		return err
 	}

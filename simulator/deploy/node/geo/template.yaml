@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "node-{{ .name }}"
+  namespace: colonio-simulator
+  labels:
+    app: node
+    area: "{{ .name }}"
+spec:
+  containers:
+  - name: node
+    image: ghcr.io/llamerada-jp/colonio-simulator:latest
+    imagePullPolicy: Never # for k3s local repository
+    command: ["./simulator"]
+    args:
+    - "node"
+    - "--seed-url"
+    - "https://seed.colonio-simulator.svc.cluster.local:8443/"
+    - "--mongodb-uri"
+    - "mongodb://mongodb.colonio-simulator.svc.cluster.local:27017"
+    env:
+    - name: COLONIO_SIMULATOR_STORY
+      valueFrom:
+        configMapKeyRef:
+          name: node
+          key: story
+    - name: COLONIO_SIMULATOR_CONCURRENCY
+      value: "{{ .concurrency }}"
+    - name: COLONIO_SIMULATOR_LATITUDE
+      value: "{{ .latitude }}"
+    - name: COLONIO_SIMULATOR_LONGITUDE
+      value: "{{ .longitude }}"
+    - name: COLONIO_SIMULATOR_RADIUS
+      value: "{{ .radius }}"
+    ports:
+    - containerPort: 8443
+      name: https
+  initContainers:
+  - name: init
+    image: ghcr.io/llamerada-jp/colonio-simulator:latest
+    imagePullPolicy: Never # for k3s local repository
+    command:
+    - "/bin/sh"
+    - "-c"
+    - |
+      echo "Waiting for seed to be ready..."
+      while true; do            
+        if curl -s --insecure -m 10 -o /dev/null https://seed.colonio-simulator.svc.cluster.local:8443/healthz; then
+          break
+        fi
+        echo "Seed is not ready yet. Waiting..."
+        sleep 1
+      done
+      echo "Seed is ready."
