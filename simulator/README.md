@@ -18,7 +18,8 @@ This simulation program uses a local Kubernetes setup to launch multiple nodes, 
 ```sh
 make setup
 
-#Install  k3s
+# Install  k3s
+# cf. https://docs.k3s.io/quick-start
 curl -sfL https://get.k3s.io | sh -
 # to use kubectl command  without sudo (optional)
 # curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
@@ -30,9 +31,15 @@ sudo systemctl start k3s
 ### Deploy the simulator
 
 ```sh
-make apply
+make apply-random
 # If you do not use k3s, please set KUBECTL variable.
 # KUBECTL=kubectl make apply
+
+# Specify simulation story
+# STORY=(circle|sphere)
+
+# Specify the number of node pods
+# NODES=3
 ```
 
 ### Export the logs
@@ -45,6 +52,7 @@ make export
 
 ```sh
 make stop
+
 # If you want to stop k3s
 sudo systemctl stop k3s
 # If you want to remove k3s

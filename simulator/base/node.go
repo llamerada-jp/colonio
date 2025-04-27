@@ -51,7 +51,7 @@ type Node struct {
 	mtx     sync.Mutex
 }
 
-func NewNode(logger *slog.Logger, seedURL string, writer *datastore.Writer, handler *Handler, record RecordInterface) (*Node, error) {
+func NewNode(logger *slog.Logger, seedURL string, writer *datastore.Writer, handler *Handler, record RecordInterface, region *utils.Region) (*Node, error) {
 	r := record.GetRecord()
 	r.ConnectedNodeIDs = make([]string, 0)
 	r.RequiredNodeIDs1D = make([]string, 0)
@@ -61,7 +61,7 @@ func NewNode(logger *slog.Logger, seedURL string, writer *datastore.Writer, hand
 
 	n := &Node{
 		Logger:   logger,
-		Position: utils.NewPosition(),
+		Position: utils.NewPosition(region),
 		Record:   record,
 		writer:   writer,
 		handler:  handler,

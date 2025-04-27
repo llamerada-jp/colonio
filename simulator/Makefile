@@ -1,8 +1,11 @@
 SHELL := /bin/bash -o pipefail
 
 TAG := ghcr.io/llamerada-jp/colonio-simulator
-SIMULATION_STORY := circle
+STORY := circle
+# node pod count for random simulation
 NODES := 5
+# areas for geo simulation
+AREAS := 32
 DUMP_FILE := dump.json
 RENDER_FILE := out.mp4
 RENDER_DIR := render
@@ -10,12 +13,22 @@ RENDER_DIR := render
 # command
 KUBECTL := sudo k3s kubectl
 
-.PHONY: apply
-apply: colonio-simulator.tar
+.PHONY: simulate-random
+simulate-random:
+	$(MAKE) apply-base
+	$(KUBECTL) apply -k deploy/node/random/
+	$(KUBECTL) scale deployment -n colonio-simulator node --replicas=$(NODES)
+
+.PHONY: simulate-geo
+simulate-geo:
+	$(MAKE) apply-base
+	go run ./cmd/ generate -a $(AREAS) -t deploy/node/geo/template.yaml -v deploy/node/geo/values.yaml | $(KUBECTL) apply -f -
+
+.PHONY: apply-base
+apply-base: colonio-simulator.tar
 	sudo k3s ctr images import colonio-simulator.tar
 	$(KUBECTL) delete namespace colonio-simulator || true
-	$(KUBECTL) apply -k deploy/overlays/$(SIMULATION_STORY)
-	$(KUBECTL) scale deployment -n colonio-simulator node --replicas=$(NODES)
+	$(KUBECTL) apply -k deploy/overlays/$(STORY)
 
 .PHONY: stop
 stop:
@@ -29,7 +42,7 @@ export: work/simulator
 render: work/simulator
 	rm -rf $(RENDER_DIR)
 	mkdir -p $(RENDER_DIR)
-	FONT_PATH=/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf work/simulator render --story $(SIMULATION_STORY) --input $(DUMP_FILE) --output-prefix $(RENDER_DIR)/image-
+	FONT_PATH=/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf work/simulator render --story $(STORY) --input $(DUMP_FILE) --output-prefix $(RENDER_DIR)/image-
 	ffmpeg -y -r 10 -i $(RENDER_DIR)/image-%06d.png -vcodec libx264 -pix_fmt yuv420p -r 10 $(RENDER_FILE)
 
 .PHONY: view

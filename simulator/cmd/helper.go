@@ -23,17 +23,30 @@ import (
 	"github.com/spf13/pflag"
 )
 
+const (
+	kEnvVerPrefix = "COLONIO_SIMULATOR_"
+)
+
 func valueFromEnvString(key, defaultValue string) string {
-	if v, ok := os.LookupEnv("COLONIO_SIMULATOR_" + key); ok {
+	if v, ok := os.LookupEnv(kEnvVerPrefix + key); ok {
 		return v
 	}
 	return defaultValue
 }
 
 func valueFromEnvUint(key string, defaultValue uint) uint {
-	if str, ok := os.LookupEnv("COLONIO_SIMULATOR_" + key); ok {
+	if str, ok := os.LookupEnv(kEnvVerPrefix + key); ok {
 		if v, err := strconv.Atoi(str); err == nil {
 			return uint(v)
+		}
+	}
+	return defaultValue
+}
+
+func valueFromEnvFloat64(key string, defaultValue float64) float64 {
+	if str, ok := os.LookupEnv(kEnvVerPrefix + key); ok {
+		if v, err := strconv.ParseFloat(str, 64); err == nil {
+			return v
 		}
 	}
 	return defaultValue

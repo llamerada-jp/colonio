@@ -2,6 +2,4 @@ namespace: colonio-simulator
 commonLabels:
   app.kubernetes.io/part-of: colonio-simulator
 resources:
-- namespace.yaml
-- mongodb.yaml
-- seed.yaml
+- node.yaml

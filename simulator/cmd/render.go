@@ -66,7 +66,7 @@ func (r *renderCmdImpl) run() error {
 		filer = canvas.NewFiler(cvs, r.config.outputPrefix, 6)
 	}
 
-	return r.forkStory(ctx, reader, cvs, filer)
+	return r.forkStory(reader, cvs, filer)
 }
 
 func (r *renderCmdImpl) makeReader(ctx context.Context) (datastore.RawReader, error) {
@@ -77,7 +77,7 @@ func (r *renderCmdImpl) makeReader(ctx context.Context) (datastore.RawReader, er
 	return datastore.NewMongodbReader(ctx, &r.config.mongodbConfig)
 }
 
-func (r *renderCmdImpl) forkStory(ctx context.Context, reader *datastore.Reader, canvas *canvas.Canvas, filer *canvas.Filer) error {
+func (r *renderCmdImpl) forkStory(reader *datastore.Reader, canvas *canvas.Canvas, filer *canvas.Filer) error {
 	switch r.config.story {
 	case "sphere":
 		return sphere.RunRender(reader, canvas, filer)
