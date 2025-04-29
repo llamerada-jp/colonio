@@ -8,6 +8,7 @@
 /output
 /simulator/colonio-simulator.tar
 /simulator/dump.json
+/simulator/material/*
 /simulator/out.mp4
 /simulator/render
 /simulator/work

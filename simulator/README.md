@@ -4,7 +4,6 @@ This simulation program uses a local Kubernetes setup to launch multiple nodes, 
 
 ## Components in the cluster
 
-- **TURN server**: The TURN server using coTurn.
 - **DB**: MongoDB to store the logs.
 - **seed**: The colonio seed.
 - **node**: A simple node that sends and receives messages to/from other nodes. And outputs the logs to DB.
@@ -16,7 +15,7 @@ This simulation program uses a local Kubernetes setup to launch multiple nodes, 
 ### Setup dependencies
 
 ```sh
-make setup
+make setup download
 
 # Install  k3s
 # cf. https://docs.k3s.io/quick-start
@@ -26,6 +25,10 @@ curl -sfL https://get.k3s.io | sh -
 
 # Start k3s
 sudo systemctl start k3s
+
+# Install Chaos Mesh for k3s
+# cf. https://chaos-mesh.org/docs/quick-start/
+curl -sSL https://mirrors.chaos-mesh.org/v2.7.1/install.sh | bash -s -- --k3s
 ```
 
 ### Deploy the simulator
@@ -55,6 +58,10 @@ make stop
 
 # If you want to stop k3s
 sudo systemctl stop k3s
+
+# If you want to remove chaos-mesh
+k3s kubectl delete ns chaos-mesh
+
 # If you want to remove k3s
 sudo k3s-uninstall.sh
 ```
