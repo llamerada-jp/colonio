@@ -4,13 +4,21 @@ metadata:
   name: "node-{{ .name }}"
   namespace: colonio-simulator
   labels:
+    app.kubernetes.io/part-of: colonio-simulator
     app: node
     area: "{{ .name }}"
+  annotations:
+    latitude: "{{ .latitude }}"
+    longitude: "{{ .longitude }}"
 spec:
   containers:
   - name: node
     image: ghcr.io/llamerada-jp/colonio-simulator:latest
     imagePullPolicy: Never # for k3s local repository
+    # to use tc command
+    securityContext:
+      capabilities:
+        add: ["NET_ADMIN"]
     command: ["./simulator"]
     args:
     - "node"

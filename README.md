@@ -12,8 +12,10 @@ The purpose of Colonio is to make it more versatile and to make it easy for ever
 
 ## Requirement to use
 
-- Go 1.23+
+- Go 1.24+
 - npm (for wasm build)
+- make
+- zip
 
 ## Run test
 
