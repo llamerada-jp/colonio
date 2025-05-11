@@ -76,9 +76,8 @@ func (x *Coordinate) GetY() float64 {
 
 type NodeID struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          uint32                 `protobuf:"varint,1,opt,name=type,proto3" json:"type,omitempty"`
-	Id0           uint64                 `protobuf:"varint,2,opt,name=id0,proto3" json:"id0,omitempty"`
-	Id1           uint64                 `protobuf:"varint,3,opt,name=id1,proto3" json:"id1,omitempty"`
+	Id0           uint64                 `protobuf:"varint,1,opt,name=id0,proto3" json:"id0,omitempty"`
+	Id1           uint64                 `protobuf:"varint,2,opt,name=id1,proto3" json:"id1,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -111,13 +110,6 @@ func (x *NodeID) ProtoReflect() protoreflect.Message {
 // Deprecated: Use NodeID.ProtoReflect.Descriptor instead.
 func (*NodeID) Descriptor() ([]byte, []int) {
 	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *NodeID) GetType() uint32 {
-	if x != nil {
-		return x.Type
-	}
-	return 0
 }
 
 func (x *NodeID) GetId0() uint64 {
@@ -2013,11 +2005,10 @@ const file_api_colonio_v1alpha_colonio_proto_rawDesc = "" +
 	"\n" +
 	"Coordinate\x12\f\n" +
 	"\x01x\x18\x01 \x01(\x01R\x01x\x12\f\n" +
-	"\x01y\x18\x02 \x01(\x01R\x01y\"@\n" +
-	"\x06NodeID\x12\x12\n" +
-	"\x04type\x18\x01 \x01(\rR\x04type\x12\x10\n" +
-	"\x03id0\x18\x02 \x01(\x04R\x03id0\x12\x10\n" +
-	"\x03id1\x18\x03 \x01(\x04R\x03id1\"H\n" +
+	"\x01y\x18\x02 \x01(\x01R\x01y\",\n" +
+	"\x06NodeID\x12\x10\n" +
+	"\x03id0\x18\x01 \x01(\x04R\x03id0\x12\x10\n" +
+	"\x03id1\x18\x02 \x01(\x04R\x03id1\"H\n" +
 	"\vNodePackets\x129\n" +
 	"\apackets\x18\x01 \x03(\v2\x1f.api.colonio.v1alpha.NodePacketR\apackets\"\xbb\x01\n" +
 	"\x0eNodePacketHead\x12;\n" +

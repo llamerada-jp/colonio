@@ -111,9 +111,9 @@ func drawEdge(canvas *canvas.Canvas, n1, n2 string) {
 }
 
 func convertCoordinate(n string) (xo, yo float64) {
-	nodeID := shared.NewNodeIDFromString(n)
-	if nodeID == nil {
-		panic(fmt.Sprintf("invalid nodeID: %s", n))
+	nodeID, err := shared.NewNodeIDFromString(n)
+	if err != nil {
+		panic(fmt.Sprintf("invalid nodeID: %s, %s", n, err.Error()))
 	}
 	i, _ := nodeID.Raw()
 	rad := 2 * math.Pi * float64(i) / math.MaxUint64

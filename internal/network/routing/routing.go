@@ -195,7 +195,7 @@ func (r *Routing) sendRouting() {
 		r.r2d.setupRoutingPacket(content)
 	}
 
-	r.transferer.RequestOneWay(&shared.NodeIDNext, shared.PacketModeNoRetry, &proto.PacketContent{
+	r.transferer.RequestOneWay(&shared.NodeNeighborhoods, shared.PacketModeNoRetry, &proto.PacketContent{
 		Content: &proto.PacketContent_Routing{
 			Routing: content,
 		},
@@ -209,8 +209,18 @@ func (r *Routing) recvRouting(p *shared.Packet) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	r.requireUpdateConnection = r.r1d.recvRoutingPacket(src, content) || r.requireUpdateConnection
+	flag, err := r.r1d.recvRoutingPacket(src, content)
+	if err != nil {
+		r.logger.Warn("error on processing routing packet", slog.String("error", err.Error()))
+		return
+	}
+	r.requireUpdateConnection = flag || r.requireUpdateConnection
 	if r.r2d != nil {
-		r.requireUpdateConnection = r.r2d.recvRoutingPacket(src, content) || r.requireUpdateConnection
+		flag, err = r.r2d.recvRoutingPacket(src, content)
+		if err != nil {
+			r.logger.Warn("error on processing routing packet", slog.String("error", err.Error()))
+			return
+		}
+		r.requireUpdateConnection = flag || r.requireUpdateConnection
 	}
 }

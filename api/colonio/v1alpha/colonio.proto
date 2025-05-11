@@ -11,9 +11,8 @@ message Coordinate {
 }
 
 message NodeID {
-  uint32 type = 1;
-  uint64 id0 = 2;
-  uint64 id1 = 3;
+  uint64 id0 = 1;
+  uint64 id1 = 2;
 }
 
 // node-node packet container

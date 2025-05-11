@@ -516,9 +516,21 @@ func (n *nodeLink) webrtcRecvData(data []byte) {
 			n.disconnect()
 			return
 		}
+		dstNodeID, err := shared.NewNodeIDFromProto(head.DstNodeId)
+		if err != nil {
+			n.config.logger.Warn("failed to unmarshal destination node id", slog.String("err", err.Error()))
+			n.disconnect()
+			return
+		}
+		srcNodeID, err := shared.NewNodeIDFromProto(head.SrcNodeId)
+		if err != nil {
+			n.config.logger.Warn("failed to unmarshal source node id", slog.String("err", err.Error()))
+			n.disconnect()
+			return
+		}
 		packet := &shared.Packet{
-			DstNodeID: shared.NewNodeIDFromProto(head.DstNodeId),
-			SrcNodeID: shared.NewNodeIDFromProto(head.SrcNodeId),
+			DstNodeID: dstNodeID,
+			SrcNodeID: srcNodeID,
 			ID:        packet.Id,
 			HopCount:  head.HopCount,
 			Mode:      shared.PacketMode(head.Mode),

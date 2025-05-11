@@ -16,6 +16,7 @@
 package routing
 
 import (
+	"fmt"
 	"slices"
 	"sync"
 	"time"
@@ -72,8 +73,6 @@ type routing1D struct {
 func newRouting1D(config *routing1DConfig) *routing1D {
 	return &routing1D{
 		config:         config,
-		prevNodeID:     &shared.NodeIDNone,
-		nextNodeID:     &shared.NodeIDNone,
 		connectedInfos: make(map[shared.NodeID]*connectedInfo),
 		routeInfos:     make([]*routeInfo1D, 0),
 	}
@@ -112,36 +111,36 @@ func (r *routing1D) updateNodeConnections(connections map[shared.NodeID]struct{}
 func (r *routing1D) getNextStep(packet *shared.Packet) *shared.NodeID {
 	isExplicit := (packet.Mode & shared.PacketModeExplicit) != 0
 
-	if packet.DstNodeID.Equal(&shared.NodeIDThis) ||
+	if packet.DstNodeID.Equal(&shared.NodeLocal) ||
 		packet.DstNodeID.Equal(r.config.localNodeID) {
-		return &shared.NodeIDThis
+		return &shared.NodeLocal
 	}
 
-	if packet.DstNodeID.Equal(&shared.NodeIDNext) {
-		return &shared.NodeIDNext
+	if packet.DstNodeID.Equal(&shared.NodeNeighborhoods) {
+		return &shared.NodeNeighborhoods
 	}
 
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
 	// there is no connected node
-	if r.nextNodeID.Equal(&shared.NodeIDNone) {
+	if r.nextNodeID == nil {
 		if isExplicit {
-			return &shared.NodeIDNone
+			return nil
 		}
-		return &shared.NodeIDThis
+		return &shared.NodeLocal
 	}
 
 	if isBetween(r.config.localNodeID, r.nextNodeID, packet.DstNodeID) {
 		if isExplicit {
-			return &shared.NodeIDNone
+			return nil
 		}
-		return &shared.NodeIDThis
+		return &shared.NodeLocal
 	}
 
 	if isBetween(r.prevNodeID, r.config.localNodeID, packet.DstNodeID) {
 		if isExplicit && !r.prevNodeID.Equal(packet.DstNodeID) {
-			return &shared.NodeIDNone
+			return nil
 		}
 		return r.prevNodeID
 	}
@@ -172,7 +171,7 @@ func (r *routing1D) countRecvPacket(from *shared.NodeID) {
 	}
 }
 
-func (r *routing1D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing) bool {
+func (r *routing1D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing) (bool, error) {
 	if r.config.localNodeID.Equal(src) {
 		panic("it is not allowed to receive packet from local node")
 	}
@@ -182,7 +181,7 @@ func (r *routing1D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing
 
 	info, ok := r.connectedInfos[*src]
 	if !ok {
-		return false
+		return false, nil
 	}
 
 	updated := false
@@ -195,7 +194,10 @@ func (r *routing1D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing
 
 	oddScore := 0
 	for nodeIDStr, record := range content.NodeRecords {
-		nodeID := shared.NewNodeIDFromString(nodeIDStr)
+		nodeID, err := shared.NewNodeIDFromString(nodeIDStr)
+		if err != nil {
+			return false, fmt.Errorf("failed to parse node id %w", err)
+		}
 		if nodeID.Equal(r.config.localNodeID) {
 			oddScore = int(record.R1DScore)
 			continue
@@ -208,10 +210,10 @@ func (r *routing1D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing
 	info.oddScore = oddScore
 
 	if !updated {
-		return false
+		return false, nil
 	}
 	r.updateRouteInfos()
-	return r.nextNodeIDChanged()
+	return r.nextNodeIDChanged(), nil
 }
 
 func (r *routing1D) setupRoutingPacket(content *proto.Routing) {
@@ -247,7 +249,7 @@ func (r *routing1D) getConnections() (map[shared.NodeID]struct{}, map[shared.Nod
 
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
-	if !r.prevNodeID.Equal(&shared.NodeIDNone) {
+	if r.prevNodeID != nil {
 		required[*r.nextNodeID] = struct{}{}
 		required[*r.prevNodeID] = struct{}{}
 	}
@@ -395,18 +397,18 @@ func (r *routing1D) updateRouteInfos() {
 func (r *routing1D) nextNodeIDChanged() bool {
 	// not connected any node
 	if len(r.connectedInfos) == 0 {
-		if r.nextNodeID.Equal(&shared.NodeIDNone) {
+		if r.nextNodeID == nil {
 			return false
 		}
-		r.nextNodeID = &shared.NodeIDNone
-		r.prevNodeID = &shared.NodeIDNone
+		r.nextNodeID = nil
+		r.prevNodeID = nil
 		return true
 	}
 
-	connectedNext := &shared.NodeIDThis
-	connectedPrev := &shared.NodeIDNone
-	connectedMin := &shared.NodeIDThis
-	connectedMax := &shared.NodeIDNone
+	connectedNext := &shared.NodeLocal
+	connectedPrev := (*shared.NodeID)(nil)
+	connectedMin := &shared.NodeLocal
+	connectedMax := (*shared.NodeID)(nil)
 	knownNodeIDs := make(map[shared.NodeID]struct{})
 
 	for nodeID, info := range r.connectedInfos {
@@ -414,13 +416,13 @@ func (r *routing1D) nextNodeIDChanged() bool {
 		if r.config.localNodeID.Smaller(&nodeID) && nodeID.Smaller(connectedNext) {
 			connectedNext = &nodeID
 		}
-		if nodeID.Smaller(r.config.localNodeID) && connectedPrev.Smaller(&nodeID) {
+		if nodeID.Smaller(r.config.localNodeID) && (connectedPrev == nil || connectedPrev.Smaller(&nodeID)) {
 			connectedPrev = &nodeID
 		}
 		if nodeID.Smaller(connectedMin) {
 			connectedMin = &nodeID
 		}
-		if connectedMax.Smaller(&nodeID) {
+		if connectedMax == nil || connectedMax.Smaller(&nodeID) {
 			connectedMax = &nodeID
 		}
 
@@ -429,10 +431,10 @@ func (r *routing1D) nextNodeIDChanged() bool {
 			knownNodeIDs[connectedNodeID] = struct{}{}
 		}
 	}
-	if connectedNext.Equal(&shared.NodeIDThis) {
+	if connectedNext.Equal(&shared.NodeLocal) {
 		connectedNext = connectedMin
 	}
-	if connectedPrev.Equal(&shared.NodeIDNone) {
+	if connectedPrev == nil {
 		connectedPrev = connectedMax
 	}
 
@@ -487,10 +489,10 @@ func isBetween(a, b, target *shared.NodeID) bool {
 }
 
 func getNextAndPrevNodeID(baseNodeID *shared.NodeID, nodeIDs map[shared.NodeID]struct{}) (*shared.NodeID, *shared.NodeID) {
-	nextCandidate := &shared.NodeIDThis
-	prevCandidate := &shared.NodeIDNone
-	minNodeID := &shared.NodeIDThis
-	maxNodeID := &shared.NodeIDNone
+	nextCandidate := &shared.NodeLocal
+	prevCandidate := (*shared.NodeID)(nil)
+	minNodeID := &shared.NodeLocal
+	maxNodeID := (*shared.NodeID)(nil)
 	for nodeID := range nodeIDs {
 		nodeID := nodeID
 		if baseNodeID.Equal(&nodeID) {
@@ -499,23 +501,23 @@ func getNextAndPrevNodeID(baseNodeID *shared.NodeID, nodeIDs map[shared.NodeID]s
 		if baseNodeID.Smaller(&nodeID) && nodeID.Smaller(nextCandidate) {
 			nextCandidate = &nodeID
 		}
-		if nodeID.Smaller(baseNodeID) && prevCandidate.Smaller(&nodeID) {
+		if nodeID.Smaller(baseNodeID) && (prevCandidate == nil || prevCandidate.Smaller(&nodeID)) {
 			prevCandidate = &nodeID
 		}
 		if nodeID.Smaller(minNodeID) {
 			minNodeID = &nodeID
 		}
-		if maxNodeID.Smaller(&nodeID) {
+		if maxNodeID == nil || maxNodeID.Smaller(&nodeID) {
 			maxNodeID = &nodeID
 		}
 	}
-	if nextCandidate.Equal(&shared.NodeIDThis) {
+	if nextCandidate.Equal(&shared.NodeLocal) {
 		nextCandidate = minNodeID
-		if nextCandidate.Equal(&shared.NodeIDThis) {
-			nextCandidate = &shared.NodeIDNone
+		if nextCandidate.Equal(&shared.NodeLocal) {
+			nextCandidate = nil
 		}
 	}
-	if prevCandidate.Equal(&shared.NodeIDNone) {
+	if prevCandidate == nil {
 		prevCandidate = maxNodeID
 	}
 
