@@ -16,6 +16,7 @@
 package routing
 
 import (
+	"fmt"
 	"log/slog"
 	"math"
 	"sync"
@@ -80,7 +81,7 @@ func (r *routing2D) updateNodeConnections(connections map[shared.NodeID]struct{}
 }
 
 func (r *routing2D) getNextStep(dst *geometry.Coordinate) *shared.NodeID {
-	candidateNodeID := &shared.NodeIDThis
+	candidateNodeID := &shared.NodeLocal
 	var candidateInfo *routeInfo2D
 	min := r.config.geometry.GetDistance(&r.localPosition, dst)
 
@@ -153,7 +154,7 @@ func (r *routing2D) updateLocalPosition(pos *geometry.Coordinate) bool {
 	return true
 }
 
-func (r *routing2D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing) bool {
+func (r *routing2D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing) (bool, error) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
@@ -175,7 +176,10 @@ func (r *routing2D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing
 	}
 
 	for nodeIDStr, record := range content.GetNodeRecords() {
-		nodeID := shared.NewNodeIDFromString(nodeIDStr)
+		nodeID, err := shared.NewNodeIDFromString(nodeIDStr)
+		if err != nil {
+			return false, fmt.Errorf("failed to parse node id %w", err)
+		}
 		if nodeID.Equal(r.config.localNodeID) {
 			continue
 		}
@@ -225,10 +229,10 @@ func (r *routing2D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing
 	}
 
 	if !updated {
-		return false
+		return false, nil
 	}
 
-	return r.neighborNodeIDChanged()
+	return r.neighborNodeIDChanged(), nil
 }
 
 func (r *routing2D) setupRoutingPacket(content *proto.Routing) {

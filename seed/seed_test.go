@@ -98,7 +98,8 @@ func TestAssignNode(t *testing.T) {
 	// check response
 	assert.True(t, resAn.Msg.IsAlone)
 	assert.NotNil(t, resAn.Msg.NodeId)
-	nodeID1 := shared.NewNodeIDFromProto(resAn.Msg.NodeId)
+	nodeID1, err := shared.NewNodeIDFromProto(resAn.Msg.NodeId)
+	require.NoError(t, err)
 	assert.NotNil(t, nodeID1)
 	assert.True(t, nodeID1.IsNormal())
 	// check seed
@@ -110,7 +111,8 @@ func TestAssignNode(t *testing.T) {
 	require.NoError(t, err)
 	// check response
 	assert.False(t, resAn.Msg.IsAlone)
-	nodeID2 := shared.NewNodeIDFromProto(resAn.Msg.NodeId)
+	nodeID2, err := shared.NewNodeIDFromProto(resAn.Msg.NodeId)
+	require.NoError(t, err)
 	assert.NotNil(t, nodeID2)
 	assert.True(t, nodeID2.IsNormal())
 	// check seed
@@ -148,7 +150,8 @@ func TestSession(t *testing.T) {
 	res, err := client.AssignNode(t.Context(), &connect.Request[proto.AssignNodeRequest]{})
 	require.NoError(t, err)
 
-	nodeID := shared.NewNodeIDFromProto(res.Msg.NodeId)
+	nodeID, err := shared.NewNodeIDFromProto(res.Msg.NodeId)
+	require.NoError(t, err)
 
 	// will success with valid session
 	_, err = client.SendSignal(t.Context(), &connect.Request[proto.SendSignalRequest]{
@@ -209,7 +212,8 @@ func TestWithAssignmentHandler(t *testing.T) {
 		Msg: &proto.AssignNodeRequest{},
 	})
 	require.NoError(t, err)
-	resNodeID := shared.NewNodeIDFromProto(res.Msg.NodeId)
+	resNodeID, err := shared.NewNodeIDFromProto(res.Msg.NodeId)
+	require.NoError(t, err)
 	assert.Equal(t, nodeID, resNodeID)
 
 	// unassign should be called when the connection is closed

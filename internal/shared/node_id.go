@@ -18,28 +18,23 @@ package shared
 import (
 	"fmt"
 	"math/rand"
+	"strconv"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 )
 
 const (
-	strNone = ""
-	strThis = "."
-	strSeed = "seed"
-	strNext = "next"
+	strLocal         = "local"
+	strNeighborhoods = "neighbor"
 
-	typeNone   = uint32(0)
-	typeNormal = uint32(1)
-	typeThis   = uint32(2)
-	typeSeed   = uint32(3)
-	typeNext   = uint32(4)
+	typeNormal = uint32(iota)
+	typeLocal
+	typeNeighborhoods
 )
 
 var (
-	NodeIDNone = NodeID{t: typeNone}
-	NodeIDThis = NodeID{t: typeThis}
-	NodeIDSeed = NodeID{t: typeSeed}
-	NodeIDNext = NodeID{t: typeNext}
+	NodeLocal         = NodeID{t: typeLocal}
+	NodeNeighborhoods = NodeID{t: typeNeighborhoods}
 )
 
 // DO NOT USE NodeID pointer for map key.
@@ -49,62 +44,35 @@ type NodeID struct {
 	id1 uint64
 }
 
-func NewNodeIDFromProto(p *proto.NodeID) *NodeID {
+func NewNodeIDFromProto(p *proto.NodeID) (*NodeID, error) {
 	if p == nil {
-		return nil
+		return nil, fmt.Errorf("the source should not be nil")
 	}
 
-	switch p.Type {
-	case typeNormal:
-		return &NodeID{
-			t:   typeNormal,
-			id0: p.Id0,
-			id1: p.Id1,
-		}
-
-	case typeNone, typeThis, typeSeed, typeNext:
-		return &NodeID{
-			t:   p.Type,
-			id0: 0,
-			id1: 0,
-		}
-
-	default:
-		return nil
-	}
+	return &NodeID{
+		t:   typeNormal,
+		id0: p.Id0,
+		id1: p.Id1,
+	}, nil
 }
 
-func NewNodeIDFromString(s string) *NodeID {
-	switch s {
-	case strNone:
-		return &NodeIDNone
-
-	case strThis:
-		return &NodeIDThis
-
-	case strSeed:
-		return &NodeIDSeed
-
-	case strNext:
-		return &NodeIDNext
-
-	default:
-		if len(s) != 32 {
-			return nil
-		}
-		id0Str := s[:16]
-		id1Str := s[16:]
-		r := &NodeID{
-			t: typeNormal,
-		}
-		if _, err := fmt.Sscanf(id0Str, "%016x", &r.id0); err != nil {
-			return nil
-		}
-		if _, err := fmt.Sscanf(id1Str, "%016x", &r.id1); err != nil {
-			return nil
-		}
-		return r
+func NewNodeIDFromString(s string) (*NodeID, error) {
+	if len(s) != 32 {
+		return nil, fmt.Errorf("invalid node id string: %s", s)
 	}
+	for _, r := range s {
+		if !('0' <= r && r <= '9') && !('a' <= r && r <= 'f') {
+			return nil, fmt.Errorf("invalid node id string: %s", s)
+		}
+	}
+	id0, _ := strconv.ParseUint(s[:16], 16, 64)
+	id1, _ := strconv.ParseUint(s[16:], 16, 64)
+	r := &NodeID{
+		t:   typeNormal,
+		id0: id0,
+		id1: id1,
+	}
+	return r, nil
 }
 
 func NewNormalNodeID(id0, id1 uint64) *NodeID {
@@ -123,11 +91,21 @@ func NewRandomNodeID() *NodeID {
 	}
 }
 
+func (n *NodeID) Copy() *NodeID {
+	return &NodeID{
+		t:   n.t,
+		id0: n.id0,
+		id1: n.id1,
+	}
+}
+
 func (n *NodeID) Proto() *proto.NodeID {
+	if n.t != typeNormal {
+		panic("invalid node id type for `Proto`")
+	}
 	return &proto.NodeID{
-		Type: uint32(n.t),
-		Id0:  n.id0,
-		Id1:  n.id1,
+		Id0: n.id0,
+		Id1: n.id1,
 	}
 }
 
@@ -136,20 +114,20 @@ func (n *NodeID) String() string {
 	case typeNormal:
 		return fmt.Sprintf("%016x%016x", n.id0, n.id1)
 
-	case typeThis:
-		return strThis
+	case typeLocal:
+		return strLocal
 
-	case typeSeed:
-		return strSeed
-
-	case typeNext:
-		return strNext
+	case typeNeighborhoods:
+		return strNeighborhoods
 	}
 
-	return strNone
+	panic("invalid node id type")
 }
 
 func (n *NodeID) Raw() (uint64, uint64) {
+	if n.t != typeNormal {
+		panic("invalid node id type for `Raw`")
+	}
 	return n.id0, n.id1
 }
 
@@ -157,14 +135,15 @@ func (n *NodeID) IsNormal() bool {
 	return n.t == typeNormal
 }
 
-// TODO: remove
-// see https://go.dev/ref/spec#Comparison_operators
 func (n *NodeID) Equal(o *NodeID) bool {
+	if n == nil && o == nil {
+		return true
+	} else if n == nil || o == nil {
+		return false
+	}
 	return n.t == o.t && n.id0 == o.id0 && n.id1 == o.id1
 }
 
-// TODO: remove
-// see https://go.dev/ref/spec#Comparison_operators
 func (n *NodeID) Smaller(o *NodeID) bool {
 	if n.t != o.t {
 		return n.t < o.t

@@ -236,20 +236,21 @@ func (n *Network) checkHopCount(packet *shared.Packet) bool {
 
 func (n *Network) classifyPacket(packet *shared.Packet) {
 	nextNodeID := n.routing.GetNextStep1D(packet)
-	if *nextNodeID == shared.NodeIDThis || *nextNodeID == *n.localNodeID {
+	if nextNodeID == nil {
+		if (packet.Mode & shared.PacketModeOneWay) == 0x0 {
+			n.transferer.Error(packet, constants.PacketErrorCodeNoOneReceive, "no one receive the packet")
+			return
+		}
+	} else if nextNodeID.Equal(&shared.NodeLocal) || nextNodeID.Equal(n.localNodeID) {
 		n.transferer.Receive(packet)
 		return
 
-	} else if nextNodeID.IsNormal() || *nextNodeID == shared.NodeIDNext {
+	} else if nextNodeID.IsNormal() || nextNodeID.Equal(&shared.NodeNeighborhoods) {
 		if err := n.nodeAccessor.RelayPacket(nextNodeID, packet); err != nil {
 			n.logger.Debug("failed to relay packet", slog.String("error", err.Error()))
 			n.nodeAccessor.RelayPacket(nextNodeID, packet)
 			return
 		}
-		return
-
-	} else if *nextNodeID == shared.NodeIDNone && (packet.Mode&shared.PacketModeOneWay) == 0x0 {
-		n.transferer.Error(packet, constants.PacketErrorCodeNoOneReceive, "no one receive the packet")
 		return
 	}
 

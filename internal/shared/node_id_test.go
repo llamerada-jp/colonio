@@ -21,26 +21,19 @@ import (
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestNodeID_NewProto(t *testing.T) {
+func TestNodeID_NewNodeIDFromProto(t *testing.T) {
 	tests := []struct {
-		input  *proto.NodeID
-		expect *NodeID
+		input    *proto.NodeID
+		expect   *NodeID
+		hasError bool
 	}{
 		{
 			input: &proto.NodeID{
-				Type: typeNone,
-				Id0:  1,
-				Id1:  1,
-			},
-			expect: &NodeIDNone,
-		},
-		{
-			input: &proto.NodeID{
-				Type: typeNormal,
-				Id0:  1,
-				Id1:  1,
+				Id0: 1,
+				Id1: 1,
 			},
 			expect: &NodeID{
 				t:   typeNormal,
@@ -49,78 +42,172 @@ func TestNodeID_NewProto(t *testing.T) {
 			},
 		},
 		{
-			input: &proto.NodeID{
-				Type: 99, // invalid
-			},
-			expect: nil,
+			input:    nil,
+			expect:   nil,
+			hasError: true,
 		},
 	}
 
 	for _, test := range tests {
-		nodeID := NewNodeIDFromProto(test.input)
-		if test.expect == nil {
-			assert.Nil(t, nodeID)
-		} else {
+		nodeID, err := NewNodeIDFromProto(test.input)
+		if test.expect != nil {
 			assert.True(t, test.expect.Equal(nodeID))
+		}
+		if test.hasError {
+			assert.Error(t, err)
+		} else {
+			assert.NoError(t, err)
 		}
 	}
 }
 
-func TestNodeID_NewString(t *testing.T) {
+func TestNodeID_NewNodeIDFromString(t *testing.T) {
 	tests := []struct {
-		input  string
-		expect *NodeID
+		input    string
+		expect   *NodeID
+		hasError bool
 	}{
-		{
-			input:  strNone,
-			expect: &NodeIDNone,
-		},
 		{
 			input:  "00000000000000010000000000000001",
 			expect: NewNormalNodeID(1, 1),
 		},
 		{
-			input:  "invalid",
-			expect: nil,
+			input:    strLocal,
+			hasError: true,
 		},
 		{
-			input:  strThis,
-			expect: &NodeIDThis,
+			input:    strNeighborhoods,
+			hasError: true,
 		},
 		{
-			input:  strSeed,
-			expect: &NodeIDSeed,
+			input:    "invalid",
+			hasError: true,
 		},
 		{
-			input:  strNext,
-			expect: &NodeIDNext,
+			input:    "0x000000000000010000000000000001",
+			hasError: true,
 		},
 	}
 
 	for _, test := range tests {
-		nodeID := NewNodeIDFromString(test.input)
-		if test.expect == nil {
-			assert.Nil(t, nodeID)
-		} else {
+		t.Log(test.input)
+		nodeID, err := NewNodeIDFromString(test.input)
+		if test.expect != nil {
 			assert.True(t, test.expect.Equal(nodeID))
 		}
+		if test.hasError {
+			assert.Error(t, err)
+		} else {
+			assert.NoError(t, err)
+		}
+	}
+}
+
+func TestNodeID_NewNormalNodeID(t *testing.T) {
+	nodeID := NewNormalNodeID(1, 2)
+	assert.Equal(t, typeNormal, nodeID.t)
+	assert.Equal(t, uint64(1), nodeID.id0)
+	assert.Equal(t, uint64(2), nodeID.id1)
+}
+
+func TestNodeID_NewRandomNodeID(t *testing.T) {
+	nodeID := NewRandomNodeID()
+	assert.Equal(t, typeNormal, nodeID.t)
+	// It is a random number, so it may rarely be zero
+	assert.NotEqual(t, 0, nodeID.id0)
+	assert.NotEqual(t, 0, nodeID.id1)
+}
+
+func TestNodeID_Copy(t *testing.T) {
+	tests := []*NodeID{
+		NewRandomNodeID(),
+		&NodeLocal,
+		&NodeNeighborhoods,
+	}
+
+	for _, nodeID := range tests {
+		copied := nodeID.Copy()
+		assert.True(t, nodeID.Equal(copied))
+	}
+}
+
+func TestNodeID_Proto(t *testing.T) {
+	nodeID := NewRandomNodeID()
+	protoNodeID := nodeID.Proto()
+	assert.Equal(t, nodeID.id0, protoNodeID.Id0)
+	assert.Equal(t, nodeID.id1, protoNodeID.Id1)
+}
+
+func TestNodeID_String(t *testing.T) {
+	tests := []struct {
+		nodeID *NodeID
+		expect string
+	}{
+		{
+			nodeID: NewNormalNodeID(1, 2),
+			expect: "00000000000000010000000000000002",
+		},
+		{
+			nodeID: &NodeLocal,
+			expect: strLocal,
+		},
+		{
+			nodeID: &NodeNeighborhoods,
+			expect: strNeighborhoods,
+		},
+	}
+
+	for _, test := range tests {
+		assert.Equal(t, test.expect, test.nodeID.String())
+	}
+}
+
+func TestNodeID_Raw(t *testing.T) {
+	nodeID := NewRandomNodeID()
+	id0, id1 := nodeID.Raw()
+	assert.Equal(t, nodeID.id0, id0)
+	assert.Equal(t, nodeID.id1, id1)
+}
+
+func TestNodeID_IsNormal(t *testing.T) {
+	tests := []struct {
+		nodeID *NodeID
+		expect bool
+	}{
+		{
+			nodeID: NewNormalNodeID(1, 2),
+			expect: true,
+		},
+		{
+			nodeID: NewRandomNodeID(),
+			expect: true,
+		},
+		{
+			nodeID: &NodeLocal,
+			expect: false,
+		},
+		{
+			nodeID: &NodeNeighborhoods,
+			expect: false,
+		},
+	}
+
+	for _, test := range tests {
+		assert.Equal(t, test.expect, test.nodeID.IsNormal())
 	}
 }
 
 func TestNodeID_Equal(t *testing.T) {
 	patterns := []*NodeID{
-		&NodeIDNone,
 		NewNormalNodeID(0, 1),
 		NewNormalNodeID(0, 2),
-		&NodeIDThis,
-		&NodeIDSeed,
-		&NodeIDNext,
+		nil,
+		&NodeLocal,
+		&NodeNeighborhoods,
 	}
 
 	for i, nodeID1 := range patterns {
 		for j, nodeID2 := range patterns {
-			nodeID2 = NewNodeIDFromString(nodeID2.String())
-
 			if i == j {
 				assert.True(t, nodeID1.Equal(nodeID2))
 			} else {
@@ -162,23 +249,13 @@ func TestNodeID_Smaller(t *testing.T) {
 			expect: false,
 		},
 		{
-			a:      &NodeIDNone,
-			b:      NewNormalNodeID(0, 0),
-			expect: true,
-		},
-		{
-			a:      NewNormalNodeID(0, 0),
-			b:      &NodeIDNone,
-			expect: false,
-		},
-		{
-			a:      &NodeIDThis,
+			a:      &NodeLocal,
 			b:      NewNormalNodeID(0, 0),
 			expect: false,
 		},
 		{
 			a:      NewNormalNodeID(9, 9),
-			b:      &NodeIDThis,
+			b:      &NodeLocal,
 			expect: true,
 		},
 	}
@@ -210,12 +287,7 @@ func TestNodeID_Compare(t *testing.T) {
 			expect: 1,
 		},
 		{
-			a:      &NodeIDNone,
-			b:      NewNormalNodeID(0, 0),
-			expect: -1,
-		},
-		{
-			a:      &NodeIDThis,
+			a:      &NodeLocal,
 			b:      NewNormalNodeID(0, 0),
 			expect: 1,
 		},
@@ -330,9 +402,22 @@ func TestNodeID_DistanceFrom(t *testing.T) {
 	}
 }
 
+func TestNodeID_ConvertNodeIDSetToStringMap(t *testing.T) {
+	src := map[NodeID]struct{}{
+		*NewNormalNodeID(1, 2): {},
+		*NewNormalNodeID(3, 4): {},
+	}
+
+	dst := ConvertNodeIDSetToStringMap(src)
+	assert.Len(t, dst, 2)
+	assert.Contains(t, dst, "00000000000000010000000000000002")
+	assert.Contains(t, dst, "00000000000000030000000000000004")
+}
+
 func TestNodeID_MapKey(t *testing.T) {
 	origin := NewRandomNodeID()
-	clone := NewNodeIDFromProto(origin.Proto())
+	clone, err := NewNodeIDFromProto(origin.Proto())
+	require.NoError(t, err)
 
 	m := make(map[NodeID]int)
 	m[*origin] = 1

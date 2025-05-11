@@ -62,8 +62,8 @@ func (s *session) getNodeID() *shared.NodeID {
 		return nil
 	}
 
-	nodeID := shared.NewNodeIDFromString(value)
-	if nodeID == nil || !nodeID.IsNormal() {
+	nodeID, err := shared.NewNodeIDFromString(value)
+	if err != nil {
 		return nil
 	}
 

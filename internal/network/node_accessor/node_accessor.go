@@ -77,7 +77,7 @@ type connectingState struct {
 	icesMtx           sync.Mutex
 	ices              []string
 	link              *nodeLink
-	nodeID            shared.NodeID
+	nodeID            *shared.NodeID
 	creationTimestamp time.Time
 }
 
@@ -238,7 +238,7 @@ func (na *NodeAccessor) SignalingOffer(srcNodeID *shared.NodeID, offer *signal.O
 		isPrime:           false,
 		ices:              make([]string, 0),
 		link:              link,
-		nodeID:            *srcNodeID,
+		nodeID:            srcNodeID.Copy(),
 		creationTimestamp: time.Now(),
 	}
 	na.link2offerID[link] = offerID
@@ -274,8 +274,8 @@ func (na *NodeAccessor) SignalingAnswer(srcNodeID *shared.NodeID, answer *signal
 		return
 	}
 
-	if state.nodeID.Equal(&shared.NodeIDNone) {
-		state.nodeID = *srcNodeID
+	if state.nodeID == nil {
+		state.nodeID = srcNodeID.Copy()
 	} else if !state.nodeID.Equal(srcNodeID) {
 		return
 	}
@@ -351,9 +351,9 @@ func (na *NodeAccessor) connect(ot signal.OfferType, nodeID *shared.NodeID) erro
 		creationTimestamp: time.Now(),
 	}
 	if ot == signal.OfferTypeExplicit {
-		state.nodeID = *nodeID
+		state.nodeID = nodeID.Copy()
 	} else {
-		state.nodeID = shared.NodeIDNone
+		state.nodeID = nil
 	}
 	// assign unique offerID
 	offerID := rand.Uint32()
@@ -457,7 +457,7 @@ func (na *NodeAccessor) RelayPacket(dstNodeID *shared.NodeID, packet *shared.Pac
 	na.mtx.RLock()
 	defer na.mtx.RUnlock()
 
-	if dstNodeID.Equal(&shared.NodeIDNext) {
+	if dstNodeID.Equal(&shared.NodeNeighborhoods) {
 		if (packet.Mode & shared.PacketModeOneWay) == shared.PacketModeNone {
 			return errors.New("packet mode should be one way when multicast")
 		}
@@ -514,13 +514,13 @@ func (na *NodeAccessor) nodeLinkChangeState(link *nodeLink, linkState nodeLinkSt
 				// Depending on the timing, links created by each other may interfere with each other,
 				// causing link creation to fail. If there are links to the same node,
 				// the link with the larger data channel label is retained.
-				if existingLink, ok := na.nodeID2link[state.nodeID]; ok {
+				if existingLink, ok := na.nodeID2link[*state.nodeID]; ok {
 					if existingLink.getLinkState() != nodeLinkStateOnline ||
 						strings.Compare(existingLink.getLabel(), link.getLabel()) > 0 {
 						// disconnect existing link and keep new link
 						na.disconnectLink(existingLink, false)
-						na.nodeID2link[state.nodeID] = link
-						na.link2nodeID[link] = &state.nodeID
+						na.nodeID2link[*state.nodeID] = link
+						na.link2nodeID[link] = state.nodeID.Copy()
 					} else {
 						if strings.Compare(existingLink.getLabel(), link.getLabel()) == 0 {
 							panic(fmt.Sprintf("data channel label should be unique, %d, %s", offerID, existingLink.getLabel()))
@@ -529,8 +529,8 @@ func (na *NodeAccessor) nodeLinkChangeState(link *nodeLink, linkState nodeLinkSt
 						na.disconnectLink(link, false)
 					}
 				} else {
-					na.nodeID2link[state.nodeID] = link
-					na.link2nodeID[link] = &state.nodeID
+					na.nodeID2link[*state.nodeID] = link
+					na.link2nodeID[link] = state.nodeID.Copy()
 				}
 				na.callChangeConnections()
 			}
@@ -556,7 +556,7 @@ func (na *NodeAccessor) nodeLinkUpdateICE(link *nodeLink, ice string) {
 		state.icesMtx.Lock()
 		defer state.icesMtx.Unlock()
 		if state.ices == nil {
-			na.sendICE(&state.nodeID, offerID, []string{ice})
+			na.sendICE(state.nodeID, offerID, []string{ice})
 		} else {
 			state.ices = append(state.ices, ice)
 		}

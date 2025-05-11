@@ -308,8 +308,8 @@ func MessagingWithIgnoreResponse() MessagingOptionSetter {
 }
 
 func (c *colonioImpl) MessagingPost(dst, name string, val []byte, setters ...MessagingOptionSetter) ([]byte, error) {
-	dstNodeID := shared.NewNodeIDFromString(dst)
-	if dstNodeID == nil {
+	dstNodeID, err := shared.NewNodeIDFromString(dst)
+	if err != nil {
 		return nil, fmt.Errorf("invalid node id")
 	}
 

@@ -175,7 +175,7 @@ func (s *Spread) Post(center *geometry.Coordinate, r float64, name string, messa
 
 		} else {
 			nextNodeID := s.handler.SpreadGetRelayNodeID(center)
-			if *nextNodeID == shared.NodeIDThis {
+			if nextNodeID.Equal(&shared.NodeLocal) {
 				return ErrSomeoneMustReceiveViolation
 			}
 			wa.Add(1)
@@ -308,15 +308,20 @@ func (s *Spread) recvRelay(packet *shared.Packet) {
 		return
 	}
 
+	srcNodeID, err := shared.NewNodeIDFromProto(content.Source)
+	if err != nil {
+		s.logger.Warn("invalid node id from packet", slog.String("error", err.Error()))
+		return
+	}
 	cache := s.makeCacheWithUID(
-		shared.NewNodeIDFromProto(content.Source),
+		srcNodeID,
 		uid, center, r, name,
 		content.Message,
 		convertOptFromProto(content.Opt))
 
 	if s.coordinateSystem.GetDistance(center, s.localPosition) > r {
 		nextNodeID := s.handler.SpreadGetRelayNodeID(center)
-		if *nextNodeID == shared.NodeIDThis {
+		if nextNodeID.Equal(&shared.NodeLocal) {
 			if !oneWay {
 				s.responseForRelay(packet, false)
 			}
@@ -375,8 +380,13 @@ func (s *Spread) recvSpread(packet *shared.Packet) {
 		return
 	}
 
+	srcNodeID, err := shared.NewNodeIDFromProto(content.Source)
+	if err != nil {
+		s.logger.Warn("invalid node id from packet", slog.String("error", err.Error()))
+		return
+	}
 	cache := s.makeCacheWithUID(
-		shared.NewNodeIDFromProto(content.Source),
+		srcNodeID,
 		uid, center, r,
 		content.Name,
 		content.Message,

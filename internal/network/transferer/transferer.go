@@ -171,7 +171,7 @@ func (t *Transferer) Relay(dstNodeID *shared.NodeID, packet *shared.Packet) {
 }
 
 func (t *Transferer) Request(dstNodeID *shared.NodeID, mode shared.PacketMode, content *proto.PacketContent, handler ResponseHandler) {
-	if dstNodeID.Equal(&shared.NodeIDNext) && (mode&shared.PacketModeOneWay) == 0 {
+	if dstNodeID.Equal(&shared.NodeNeighborhoods) && (mode&shared.PacketModeOneWay) == 0 {
 		panic("packet mode should be one way if destination is for next nodes")
 	}
 

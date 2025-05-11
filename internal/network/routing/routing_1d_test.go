@@ -111,27 +111,27 @@ func TestRouting1D_getNextStep_offline(t *testing.T) {
 		{
 			dstNodeID: nodeIDs[1],
 			mode:      0,
-			expect:    &shared.NodeIDThis,
+			expect:    &shared.NodeLocal,
 		},
 		{
 			dstNodeID: nodeIDs[1],
 			mode:      shared.PacketModeExplicit,
-			expect:    &shared.NodeIDNone,
+			expect:    nil,
 		},
 		{
 			dstNodeID: localNodeID,
 			mode:      0,
-			expect:    &shared.NodeIDThis,
+			expect:    &shared.NodeLocal,
 		},
 		{
-			dstNodeID: &shared.NodeIDThis,
+			dstNodeID: &shared.NodeLocal,
 			mode:      0,
-			expect:    &shared.NodeIDThis,
+			expect:    &shared.NodeLocal,
 		},
 		{
-			dstNodeID: &shared.NodeIDNext,
+			dstNodeID: &shared.NodeNeighborhoods,
 			mode:      0,
-			expect:    &shared.NodeIDNext,
+			expect:    &shared.NodeNeighborhoods,
 		},
 	}
 
@@ -143,7 +143,7 @@ func TestRouting1D_getNextStep_offline(t *testing.T) {
 			SrcNodeID: shared.NewRandomNodeID(),
 			Mode:      tt.mode,
 		})
-		assert.Equal(t, *r, *tt.expect)
+		assert.Equal(t, r, tt.expect)
 	}
 }
 
@@ -199,22 +199,22 @@ func TestRouting1D_getNextStep_online(t *testing.T) {
 		{
 			dstNodeID: testUtil.UniqueNodeIDsWithRange(nodeIDs[0].Add(one), nodeIDs[1], 1)[0],
 			explicit:  true,
-			expect:    &shared.NodeIDNone,
+			expect:    nil,
 		},
 		{
 			dstNodeID: localNodeID,
 			explicit:  false,
-			expect:    &shared.NodeIDThis,
+			expect:    &shared.NodeLocal,
 		},
 		{
 			dstNodeID: testUtil.UniqueNodeIDsWithRange(nodeIDs[1].Add(one), nodeIDs[2], 1)[0],
 			explicit:  false,
-			expect:    &shared.NodeIDThis,
+			expect:    &shared.NodeLocal,
 		},
 		{
 			dstNodeID: testUtil.UniqueNodeIDsWithRange(nodeIDs[1].Add(one), nodeIDs[2], 1)[0],
 			explicit:  true,
-			expect:    &shared.NodeIDNone,
+			expect:    nil,
 		},
 		{
 			dstNodeID: testUtil.UniqueNodeIDsWithRange(nodeIDs[2].Add(one), nodeIDs[4], 1)[0],
@@ -249,7 +249,7 @@ func TestRouting1D_getNextStep_online(t *testing.T) {
 			SrcNodeID: shared.NewRandomNodeID(),
 			Mode:      mode,
 		})
-		assert.Equal(t, *r, *tt.expect)
+		assert.Equal(t, r, tt.expect)
 	}
 }
 
@@ -312,7 +312,7 @@ func TestRouting1D_recvRoutingPacket(t *testing.T) {
 		},
 	}
 
-	r := r1d.recvRoutingPacket(nodeIDs[2], &proto.Routing{
+	r, err := r1d.recvRoutingPacket(nodeIDs[2], &proto.Routing{
 		NodeRecords: map[string]*proto.RoutingNodeRecord{
 			nodeIDs[0].String(): {
 				R1DScore: 3,
@@ -322,6 +322,7 @@ func TestRouting1D_recvRoutingPacket(t *testing.T) {
 			},
 		},
 	})
+	require.NoError(t, err)
 	assert.True(t, r)
 	assert.Len(t, r1d.connectedInfos, 2)
 	info := r1d.connectedInfos[*nodeIDs[2]]
@@ -329,13 +330,14 @@ func TestRouting1D_recvRoutingPacket(t *testing.T) {
 	assert.Len(t, info.connectedNodeIDs, 2)
 	assert.Contains(t, info.connectedNodeIDs, *nodeIDs[0], *nodeIDs[3])
 
-	r = r1d.recvRoutingPacket(nodeIDs[2], &proto.Routing{
+	r, err = r1d.recvRoutingPacket(nodeIDs[2], &proto.Routing{
 		NodeRecords: map[string]*proto.RoutingNodeRecord{
 			nodeIDs[0].String(): {
 				R1DScore: 4,
 			},
 		},
 	})
+	require.NoError(t, err)
 	assert.True(t, r)
 	info = r1d.connectedInfos[*nodeIDs[2]]
 	assert.Equal(t, 4, info.oddScore)
@@ -649,8 +651,8 @@ func TestRouting1D_nextNodeIDChanged(t *testing.T) {
 			nextNodeID:  nodeIDs[1],
 			connected:   map[shared.NodeID][]*shared.NodeID{},
 			expect:      true,
-			expectPrev:  &shared.NodeIDNone,
-			expectNext:  &shared.NodeIDNone,
+			expectPrev:  nil,
+			expectNext:  nil,
 		},
 	}
 
@@ -771,14 +773,14 @@ func TestRouting1D_getNextAndPrevNodeID(t *testing.T) {
 		{
 			base:       nodeIDs[0],
 			nodeIDs:    []*shared.NodeID{},
-			expectNext: &shared.NodeIDNone,
-			expectPrev: &shared.NodeIDNone,
+			expectNext: nil,
+			expectPrev: nil,
 		},
 		{
 			base:       nodeIDs[0],
 			nodeIDs:    []*shared.NodeID{nodeIDs[0]},
-			expectNext: &shared.NodeIDNone,
-			expectPrev: &shared.NodeIDNone,
+			expectNext: nil,
+			expectPrev: nil,
 		},
 		{
 			base:       nodeIDs[0],
@@ -808,7 +810,7 @@ func TestRouting1D_getNextAndPrevNodeID(t *testing.T) {
 			nodeIDs[*nodeID] = struct{}{}
 		}
 		next, prev := getNextAndPrevNodeID(tt.base, nodeIDs)
-		assert.Equal(t, *tt.expectNext, *next)
-		assert.Equal(t, *tt.expectPrev, *prev)
+		assert.Equal(t, tt.expectNext, next)
+		assert.Equal(t, tt.expectPrev, prev)
 	}
 }

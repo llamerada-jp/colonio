@@ -241,10 +241,13 @@ func (s *Seed) Run(ctx context.Context) {
 }
 
 func (s *Seed) HandleSignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error {
-	dstNodeID := shared.NewNodeIDFromProto(signal.GetDstNodeId())
-	srcNodeID := shared.NewNodeIDFromProto(signal.GetSrcNodeId())
-	if dstNodeID == nil || srcNodeID == nil {
-		return fmt.Errorf("invalid packet")
+	dstNodeID, err := shared.NewNodeIDFromProto(signal.GetDstNodeId())
+	if err != nil {
+		return fmt.Errorf("invalid dst node id in the packet: %w", err)
+	}
+	srcNodeID, err := shared.NewNodeIDFromProto(signal.GetSrcNodeId())
+	if err != nil {
+		return fmt.Errorf("invalid src node id in the packet: %w", err)
 	}
 
 	var node *node
@@ -414,14 +417,16 @@ func (s *Seed) SendSignal(ctx context.Context, request *connect.Request[proto.Se
 }
 
 func (s *Seed) validateSignal(signal *proto.Signal, srcNodeID *shared.NodeID) error {
-	if signal.GetSrcNodeId() == nil {
-		return fmt.Errorf("src_node_id is required")
+	signalSrcNodeID, err := shared.NewNodeIDFromProto(signal.GetSrcNodeId())
+	if err != nil {
+		return fmt.Errorf("failed to parse src node id in signal packet: %w", err)
 	}
-	if !srcNodeID.Equal(shared.NewNodeIDFromProto(signal.GetSrcNodeId())) {
-		return fmt.Errorf("src_node_id is invalid")
+	if !srcNodeID.Equal(signalSrcNodeID) {
+		return fmt.Errorf("src node id is invalid")
 	}
-	if signal.GetDstNodeId() == nil {
-		return fmt.Errorf("dst_node_id is required")
+	_, err = shared.NewNodeIDFromProto(signal.GetDstNodeId())
+	if err != nil {
+		return fmt.Errorf("failed to parse dst node id in signal packet: %w", err)
 	}
 	if signal.GetOffer() == nil && signal.GetAnswer() == nil && signal.GetIce() == nil {
 		return fmt.Errorf("signal content is required")
@@ -493,28 +498,28 @@ func (s *Seed) getNextNode(nodeID *shared.NodeID) *node {
 	defer s.mutex.Unlock()
 
 	// TODO: improve performance, this logic is worst: O(n)
-	minNodeID := shared.NodeIDNone
-	nextNodeID := shared.NodeIDNone
+	minNodeID := (*shared.NodeID)(nil)
+	nextNodeID := (*shared.NodeID)(nil)
 	for n := range s.nodes {
 		if n.Equal(nodeID) {
 			continue
 		}
-		if minNodeID == shared.NodeIDNone || n.Smaller(&minNodeID) {
-			minNodeID = n
+		if minNodeID == nil || n.Smaller(minNodeID) {
+			minNodeID = n.Copy()
 		}
 		if n.Smaller(nodeID) {
 			continue
 		}
-		if nextNodeID == shared.NodeIDNone || n.Smaller(&nextNodeID) {
-			nextNodeID = n
+		if nextNodeID == nil || n.Smaller(nextNodeID) {
+			nextNodeID = n.Copy()
 		}
 	}
 
-	if nextNodeID != shared.NodeIDNone {
-		return s.nodes[nextNodeID]
+	if nextNodeID != nil {
+		return s.nodes[*nextNodeID]
 	}
-	if minNodeID != shared.NodeIDNone {
-		return s.nodes[minNodeID]
+	if minNodeID != nil {
+		return s.nodes[*minNodeID]
 	}
 	return nil
 }

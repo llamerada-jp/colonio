@@ -97,7 +97,10 @@ func (sa *SeedAccessor) Start(ctx context.Context) (*shared.NodeID, error) {
 
 	sa.mtx.Lock()
 	defer sa.mtx.Unlock()
-	sa.localNodeID = shared.NewNodeIDFromProto(res.Msg.GetNodeId())
+	sa.localNodeID, err = shared.NewNodeIDFromProto(res.Msg.GetNodeId())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse node id: %w", err)
+	}
 	sa.isAlone = res.Msg.GetIsAlone()
 
 	go func() {
@@ -246,7 +249,10 @@ func (sa *SeedAccessor) poll() error {
 		msg := res.Msg()
 
 		for _, s := range msg.GetSignals() {
-			from := shared.NewNodeIDFromProto(s.GetSrcNodeId())
+			from, err := shared.NewNodeIDFromProto(s.GetSrcNodeId())
+			if err != nil {
+				return fmt.Errorf("failed to parse node id: %w", err)
+			}
 
 			switch content := s.GetContent().(type) {
 			case *proto.Signal_Offer:

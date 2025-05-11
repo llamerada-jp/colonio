@@ -117,7 +117,7 @@ func TestRouting2D_getNextStep(t *testing.T) {
 		{
 			routeInfos: map[shared.NodeID]*routeInfo2D{},
 			dst:        getRandomPosition(),
-			expect:     &shared.NodeIDThis,
+			expect:     &shared.NodeLocal,
 		},
 		{
 			routeInfos: map[shared.NodeID]*routeInfo2D{
@@ -129,7 +129,7 @@ func TestRouting2D_getNextStep(t *testing.T) {
 				},
 			},
 			dst:    &geometry.Coordinate{X: -1, Y: -1},
-			expect: &shared.NodeIDThis,
+			expect: &shared.NodeLocal,
 		},
 		{
 			routeInfos: map[shared.NodeID]*routeInfo2D{
