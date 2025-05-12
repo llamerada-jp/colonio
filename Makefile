@@ -37,12 +37,12 @@ export COLONIO_TEST_CERT := $(shell pwd)/localhost.crt
 export COLONIO_TEST_KEY := $(shell pwd)/localhost.key
 export COLONIO_COOKIE_SECRET_KEY_PAIR := "test"
 test: build-js build-test
-	# unit tests
-	go test -v -count=1 -race -coverprofile=seed.covprofile ./seed/...
-	go test -v -count=1 -race -coverprofile=internal.covprofile ./internal/...
-	# e2e tests for native
-	go test -v -count=1 -race -coverprofile=e2e.covprofile ./test/e2e/
-	# e2e tests for wasm
+	# tests for native
+	go test -v -count=1 -race -coverprofile=coverage.covprofile \
+		./seed/... \
+		./internal/... \
+		./test/e2e/
+	# tests for wasm
 	go run ./test/cmd/luncher/ -d ./test/dist -j ./output/
 
 .PHONY: generate-cert

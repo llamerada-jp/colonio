@@ -26,4 +26,4 @@ jobs:
     - name: Upload coverage
       env:
         COVERALLS_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
-      run: goveralls -coverprofile=internal.covprofile,e2e.covprofile,seed.covprofile -service=github
+      run: goveralls -coverprofile=coverage.covprofile -service=github
