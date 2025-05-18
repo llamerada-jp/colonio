@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package util
+package seed
 
 import (
 	"context"
@@ -44,9 +44,25 @@ func (h *AssignmentHandlerHelper) UnassignNode(nodeID *shared.NodeID) {
 }
 
 type MultiSeedHandlerHelper struct {
-	T            *testing.T
-	IsAloneF     func(ctx context.Context, nodeID *shared.NodeID) (bool, error)
-	RelaySignalF func(ctx context.Context, signal *proto.Signal, relayToNext bool) error
+	T                   *testing.T
+	GetNodeReportsF     func(ctx context.Context, from, to *shared.NodeID) (map[shared.NodeID]*NodeReport, error)
+	ReportDisconnectedF func(ctx context.Context, target *shared.NodeID, from []*shared.NodeID) error
+	IsAloneF            func(ctx context.Context, nodeID *shared.NodeID) (bool, error)
+	RelaySignalF        func(ctx context.Context, signal *proto.Signal, relayToNext bool) error
+}
+
+func (h *MultiSeedHandlerHelper) GetNodeReports(ctx context.Context, from, to *shared.NodeID) (map[shared.NodeID]*NodeReport, error) {
+	if h.GetNodeReportsF == nil {
+		h.T.FailNow()
+	}
+	return h.GetNodeReportsF(ctx, from, to)
+}
+
+func (h *MultiSeedHandlerHelper) ReportDisconnected(ctx context.Context, target *shared.NodeID, from []*shared.NodeID) error {
+	if h.ReportDisconnectedF == nil {
+		h.T.FailNow()
+	}
+	return h.ReportDisconnectedF(ctx, target, from)
 }
 
 func (h *MultiSeedHandlerHelper) IsAlone(ctx context.Context, nodeID *shared.NodeID) (bool, error) {
