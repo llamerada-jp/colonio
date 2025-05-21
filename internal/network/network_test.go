@@ -79,7 +79,7 @@ func TestNetwork(t *testing.T) {
 	// start seed
 	nodeCount := 0
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&testUtil.AssignmentHandlerHelper{
+		seed.WithAssignmentHandler(&seed.AssignmentHandlerHelper{
 			T: t,
 			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
 				if nodeCount >= len(nodeIDs) {

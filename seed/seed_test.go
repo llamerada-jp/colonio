@@ -19,9 +19,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"os"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -34,6 +36,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type multiSeedHandlerHelper struct {
+	isAlone     func(ctx context.Context, nodeID *shared.NodeID) (bool, error)
+	relaySignal func(ctx context.Context, signal *proto.Signal, relayToNext bool) error
+}
 
 func startServer(t *testing.T, ctx context.Context, seed *Seed) uint16 {
 	cert := os.Getenv("COLONIO_TEST_CERT")
@@ -87,7 +94,7 @@ func createClient(_ *testing.T, _ context.Context, port uint16) service.SeedServ
 	return service.NewSeedServiceClient(testUtil.NewInsecureHttpClient(), fmt.Sprintf("https://localhost:%d/", port))
 }
 
-func TestAssignNode(t *testing.T) {
+func TestSeed_AssignNode(t *testing.T) {
 	seed := NewSeed()
 	port := startServer(t, t.Context(), seed)
 
@@ -183,7 +190,7 @@ func TestSession(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestWithAssignmentHandler(t *testing.T) {
+func TestSeed_AssignNodeWithAssignmentHandler(t *testing.T) {
 	nodeID := shared.NewRandomNodeID()
 	var mtx sync.Mutex
 	unassignCalled := false
@@ -191,7 +198,7 @@ func TestWithAssignmentHandler(t *testing.T) {
 	seed := NewSeed(
 		WithPollingInterval(1*time.Second),
 		WithAssignmentHandler(
-			&testUtil.AssignmentHandlerHelper{
+			&AssignmentHandlerHelper{
 				T: t,
 				AssignNodeF: func(context.Context) (*shared.NodeID, error) {
 					return nodeID, nil
@@ -224,14 +231,14 @@ func TestWithAssignmentHandler(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
-func TestRelayPoll(t *testing.T) {
+func TestSeed_SendSignal(t *testing.T) {
 	mtx := sync.Mutex{}
 	nodeIDs := testUtil.UniqueNodeIDs(3)
 	clients := make([]service.SeedServiceClient, 2)
 	received := make([][]*proto.Signal, 2)
 
 	n := 0
-	seed := NewSeed(WithAssignmentHandler(&testUtil.AssignmentHandlerHelper{
+	seed := NewSeed(WithAssignmentHandler(&AssignmentHandlerHelper{
 		T: t,
 		AssignNodeF: func(context.Context) (*shared.NodeID, error) {
 			nodeID := nodeIDs[n]
@@ -345,4 +352,394 @@ func TestRelayPoll(t *testing.T) {
 		defer mtx.Unlock()
 		return len(received[1]) >= 1 && len(received[0])+len(received[1]) == 2
 	}, 10*time.Second, 100*time.Millisecond)
+}
+
+func TestSeed_ReconcileNextNodes(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(8)
+	slices.SortFunc(nodeIDs, func(a, b *shared.NodeID) int {
+		return a.Compare(b)
+	})
+	clients := make([]service.SeedServiceClient, len(nodeIDs))
+
+	n := 0
+	seed := NewSeed(WithAssignmentHandler(&AssignmentHandlerHelper{
+		T: t,
+		AssignNodeF: func(context.Context) (*shared.NodeID, error) {
+			nodeID := nodeIDs[n]
+			n++
+			return nodeID, nil
+		},
+	}))
+	port := startServer(t, t.Context(), seed)
+
+	for i := 0; i < len(nodeIDs); i++ {
+		clients[i] = createClient(t, t.Context(), port)
+		_, err := clients[i].AssignNode(t.Context(), &connect.Request[proto.AssignNodeRequest]{
+			Msg: &proto.AssignNodeRequest{},
+		})
+		require.NoError(t, err)
+	}
+
+	tests := []struct {
+		srcNodeID       int
+		nextNodeIDs     []*shared.NodeID
+		disconnectedIDs []*shared.NodeID
+		expectMatched   bool
+	}{
+		{
+			srcNodeID:       3,
+			nextNodeIDs:     []*shared.NodeID{nodeIDs[1], nodeIDs[2], nodeIDs[4], nodeIDs[5]},
+			disconnectedIDs: nil,
+			expectMatched:   true,
+		},
+		{
+			srcNodeID:       2,
+			nextNodeIDs:     []*shared.NodeID{nodeIDs[0], nodeIDs[1], nodeIDs[3], nodeIDs[5]},
+			disconnectedIDs: []*shared.NodeID{nodeIDs[4]},
+			expectMatched:   false,
+		},
+		{
+			srcNodeID:       3,
+			nextNodeIDs:     []*shared.NodeID{nodeIDs[1], nodeIDs[2], nodeIDs[5], nodeIDs[6]},
+			disconnectedIDs: []*shared.NodeID{nodeIDs[4]},
+			expectMatched:   false,
+		},
+		{
+			srcNodeID:       5,
+			nextNodeIDs:     []*shared.NodeID{nodeIDs[2], nodeIDs[3], nodeIDs[6], nodeIDs[7]},
+			disconnectedIDs: []*shared.NodeID{nodeIDs[4]},
+			expectMatched:   true,
+		},
+		{
+			srcNodeID:       2,
+			nextNodeIDs:     []*shared.NodeID{nodeIDs[0], nodeIDs[1], nodeIDs[3], nodeIDs[5]},
+			disconnectedIDs: []*shared.NodeID{nodeIDs[4]},
+			expectMatched:   true,
+		},
+		{
+			srcNodeID:       3,
+			nextNodeIDs:     []*shared.NodeID{nodeIDs[1], nodeIDs[2], nodeIDs[5], nodeIDs[6]},
+			disconnectedIDs: []*shared.NodeID{nodeIDs[4]},
+			expectMatched:   true,
+		},
+		{
+			srcNodeID:       7,
+			nextNodeIDs:     []*shared.NodeID{nodeIDs[5], nodeIDs[6], nodeIDs[0], nodeIDs[2]},
+			disconnectedIDs: []*shared.NodeID{nodeIDs[1]},
+			expectMatched:   false,
+		},
+	}
+
+	for i, test := range tests {
+		fmt.Println(i)
+		res, err := clients[test.srcNodeID].ReconcileNextNodes(t.Context(), &connect.Request[proto.ReconcileNextNodesRequest]{
+			Msg: &proto.ReconcileNextNodesRequest{
+				NextNodeIds:     testSeed_convertNodeIDSlice(test.nextNodeIDs),
+				DisconnectedIds: testSeed_convertNodeIDSlice(test.disconnectedIDs),
+			},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, test.expectMatched, res.Msg.Matched)
+	}
+}
+
+func TestSeed_reportDisconnects_withMultiSeedHandler(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+	opts := options{
+		logger: slog.Default(),
+		multiSeedHandler: &MultiSeedHandlerHelper{
+			T: t,
+			ReportDisconnectedF: func(ctx context.Context, target *shared.NodeID, from []*shared.NodeID) error {
+				assert.True(t, target.Equal(nodeIDs[0]))
+				assert.Len(t, from, 2)
+				assert.True(t, from[0].Equal(nodeIDs[1]))
+				assert.True(t, from[1].Equal(nodeIDs[2]))
+				return nil
+			},
+		},
+	}
+	seed := &Seed{
+		options: opts,
+	}
+	err := seed.reportDisconnects(t.Context(), nodeIDs[0],
+		[]*shared.NodeID{nodeIDs[1], nodeIDs[2]})
+	require.NoError(t, err)
+}
+
+func TestSeed_reportDisconnects_withoutMultiSeedHandler(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(4)
+	seed := &Seed{
+		nodes: make(map[shared.NodeID]*node),
+	}
+	testSeed_setNode(seed, nodeIDs[0], 0, nil)
+	testSeed_setNode(seed, nodeIDs[1], 0, nil)
+	testSeed_setNode(seed, nodeIDs[2], 0, nil)
+
+	baseTime := time.Now().Add(-1 * time.Second)
+	// report for a node that is not exist
+	seed.reportDisconnects(t.Context(), nodeIDs[0], []*shared.NodeID{nodeIDs[1], nodeIDs[3]})
+	// report for a duplicate node
+	seed.reportDisconnects(t.Context(), nodeIDs[0], []*shared.NodeID{nodeIDs[1], nodeIDs[2]})
+	seed.reportDisconnects(t.Context(), nodeIDs[1], []*shared.NodeID{nodeIDs[2]})
+
+	assert.Len(t, seed.nodes, 3)
+	assert.Len(t, seed.nodes[*nodeIDs[0]].disconnected, 0)
+	assert.Len(t, seed.nodes[*nodeIDs[1]].disconnected, 1)
+	assert.Len(t, seed.nodes[*nodeIDs[2]].disconnected, 2)
+	assert.True(t, seed.nodes[*nodeIDs[1]].disconnected[*nodeIDs[0]].After(baseTime))
+	assert.True(t, seed.nodes[*nodeIDs[2]].disconnected[*nodeIDs[0]].After(baseTime))
+	assert.True(t, seed.nodes[*nodeIDs[2]].disconnected[*nodeIDs[1]].After(baseTime))
+}
+
+func TestSeed_getNodeReports_withMultiSeedHandler(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+	opts := options{
+		logger: slog.Default(),
+		multiSeedHandler: &MultiSeedHandlerHelper{
+			GetNodeReportsF: func(ctx context.Context, from, to *shared.NodeID) (map[shared.NodeID]*NodeReport, error) {
+				require.True(t, from.Equal(nodeIDs[0]))
+				require.True(t, to.Equal(nodeIDs[2]))
+				return map[shared.NodeID]*NodeReport{
+					*nodeIDs[0]: {
+						Disconnected: nil,
+					},
+					*nodeIDs[1]: {
+						Disconnected: map[shared.NodeID]time.Time{
+							*nodeIDs[0]: time.Now(),
+							*nodeIDs[2]: time.Now(),
+						},
+					},
+					*nodeIDs[2]: {
+						Disconnected: map[shared.NodeID]time.Time{
+							*nodeIDs[0]: time.Now(),
+							*nodeIDs[1]: time.Now().Add(-1*REPORT_TIMEOUT - 10*time.Second),
+						},
+					},
+				}, nil
+			},
+		},
+	}
+	seed := &Seed{
+		options: opts,
+	}
+	reports, err := seed.getNodeReports(t.Context(), nodeIDs[0], nodeIDs[2])
+	require.NoError(t, err)
+	require.Len(t, reports, 3)
+	require.Len(t, reports[*nodeIDs[0]].Disconnected, 0)
+	require.Len(t, reports[*nodeIDs[1]].Disconnected, 2)
+	require.Len(t, reports[*nodeIDs[2]].Disconnected, 1)
+}
+
+func TestSeed_getNodeReports_withoutMultiSeedHandler(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(5)
+	slices.SortFunc(nodeIDs, func(a, b *shared.NodeID) int {
+		return a.Compare(b)
+	})
+
+	seed := &Seed{
+		nodes: make(map[shared.NodeID]*node),
+	}
+	testSeed_setNode(seed, nodeIDs[0], 0, nil)
+	testSeed_setNode(seed, nodeIDs[1], 0, nil)
+	testSeed_setNode(seed, nodeIDs[2], 0, map[shared.NodeID]time.Duration{
+		*nodeIDs[0]: 0,
+		*nodeIDs[1]: REPORT_TIMEOUT / 2,
+	})
+	testSeed_setNode(seed, nodeIDs[3], 0, map[shared.NodeID]time.Duration{
+		*nodeIDs[0]: 0,
+		*nodeIDs[1]: REPORT_TIMEOUT + 10*time.Second,
+	})
+	testSeed_setNode(seed, nodeIDs[4], 0, nil)
+
+	reports, err := seed.getNodeReports(t.Context(), nodeIDs[1], nodeIDs[3])
+	require.NoError(t, err)
+	require.Len(t, reports, 3)
+	require.Len(t, reports[*nodeIDs[1]].Disconnected, 0)
+	require.Len(t, reports[*nodeIDs[2]].Disconnected, 2)
+	require.Len(t, reports[*nodeIDs[3]].Disconnected, 1)
+}
+
+func TestSeed_cleanup(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(6)
+
+	opts := options{
+		logger:          slog.Default(),
+		pollingInterval: 10 * time.Minute,
+	}
+	seed := &Seed{
+		options: opts,
+		nodes:   make(map[shared.NodeID]*node),
+	}
+
+	// the first node timeout
+	testSeed_setNode(seed, nodeIDs[0], 15*time.Minute, nil)
+	seed.cleanup()
+	assert.Len(t, seed.nodes, 0)
+
+	// disconnect by reports in small cluster
+	testSeed_setNode(seed, nodeIDs[0], 5*time.Minute, map[shared.NodeID]time.Duration{
+		*nodeIDs[2]: 10 * time.Second,
+	})
+	testSeed_setNode(seed, nodeIDs[1], 5*time.Minute, map[shared.NodeID]time.Duration{
+		*nodeIDs[0]: 10 * time.Second,
+		*nodeIDs[2]: 10 * time.Second,
+	})
+	testSeed_setNode(seed, nodeIDs[2], 5*time.Minute, map[shared.NodeID]time.Duration{
+		*nodeIDs[0]: 10 * time.Second,
+		*nodeIDs[1]: 10 * time.Second,
+	})
+	require.Len(t, seed.nodes, 3)
+	seed.cleanup()
+	assert.Len(t, seed.nodes, 1)
+	assert.Contains(t, seed.nodes, *nodeIDs[0])
+
+	// normal cluster
+	testSeed_setNode(seed, nodeIDs[0], 5*time.Minute, map[shared.NodeID]time.Duration{
+		*nodeIDs[2]: 10 * time.Second,
+	})
+	testSeed_setNode(seed, nodeIDs[1], 5*time.Minute, map[shared.NodeID]time.Duration{
+		*nodeIDs[0]: 10 * time.Second,
+		*nodeIDs[2]: 10 * time.Second,
+	})
+	testSeed_setNode(seed, nodeIDs[2], 5*time.Minute, map[shared.NodeID]time.Duration{
+		*nodeIDs[0]: 10 * time.Second,
+		*nodeIDs[1]: 10 * time.Second,
+	})
+	testSeed_setNode(seed, nodeIDs[3], 5*time.Minute, nil)
+	testSeed_setNode(seed, nodeIDs[4], 15*time.Minute, nil)
+	testSeed_setNode(seed, nodeIDs[5], 5*time.Minute, map[shared.NodeID]time.Duration{
+		*nodeIDs[0]: 10 * time.Second,
+		*nodeIDs[1]: 10 * time.Second,
+		*nodeIDs[2]: 10 * time.Second,
+	})
+}
+
+func TestNode_isExpired(t *testing.T) {
+	tests := []struct {
+		node            *node
+		pollingInterval time.Duration
+		reportThreshold int
+		expect          bool
+	}{
+		{
+			// not expired
+			node: &node{
+				timestamp: time.Now().Add(-5 * time.Second),
+				disconnected: map[shared.NodeID]time.Time{
+					*shared.NewRandomNodeID(): time.Now(),
+					*shared.NewRandomNodeID(): time.Now(),
+				},
+			},
+			pollingInterval: 10 * time.Second,
+			reportThreshold: 3,
+			expect:          false,
+		},
+		{
+			// timeout
+			node: &node{
+				timestamp: time.Now().Add(-15 * time.Second),
+				disconnected: map[shared.NodeID]time.Time{
+					*shared.NewRandomNodeID(): time.Now(),
+					*shared.NewRandomNodeID(): time.Now(),
+				},
+			},
+			pollingInterval: 10 * time.Second,
+			reportThreshold: 3,
+			expect:          true,
+		},
+		{
+			// reportThreshold is small
+			node: &node{
+				timestamp: time.Now().Add(-5 * time.Second),
+				disconnected: map[shared.NodeID]time.Time{
+					*shared.NewRandomNodeID(): time.Now(),
+				},
+			},
+			pollingInterval: 10 * time.Second,
+			reportThreshold: 1,
+			expect:          true,
+		},
+		{
+			// there are more reports than the threshold
+			node: &node{
+				timestamp: time.Now().Add(-5 * time.Second),
+				disconnected: map[shared.NodeID]time.Time{
+					*shared.NewRandomNodeID(): time.Now(),
+					*shared.NewRandomNodeID(): time.Now(),
+					*shared.NewRandomNodeID(): time.Now(),
+					*shared.NewRandomNodeID(): time.Now(),
+				},
+			},
+			pollingInterval: 10 * time.Second,
+			reportThreshold: 3,
+			expect:          true,
+		},
+		{
+			// report expired
+			node: &node{
+				timestamp: time.Now().Add(-5 * time.Second),
+				disconnected: map[shared.NodeID]time.Time{
+					*shared.NewRandomNodeID(): time.Now(),
+					*shared.NewRandomNodeID(): time.Now(),
+					*shared.NewRandomNodeID(): time.Now().Add(-60 * time.Second),
+					*shared.NewRandomNodeID(): time.Now().Add(-60 * time.Second),
+				},
+			},
+			pollingInterval: 10 * time.Second,
+			reportThreshold: 3,
+			expect:          false,
+		},
+	}
+
+	for _, test := range tests {
+		assert.Equal(t, test.expect, test.node.isExpired(test.pollingInterval, test.reportThreshold))
+	}
+}
+
+func Test_nodeIDBetween(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+	slices.SortFunc(nodeIDs, func(a, b *shared.NodeID) int {
+		return a.Compare(b)
+	})
+
+	for i := 0; i < len(nodeIDs); i++ {
+		assert.True(t, nodeIDBetween(nodeIDs[i], nodeIDs[(i+2)%3], nodeIDs[(i+1)%3]))
+		assert.False(t, nodeIDBetween(nodeIDs[i], nodeIDs[(i+1)%3], nodeIDs[(i+2)%3]))
+	}
+}
+
+func Test_nodeIDsFromProto(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+
+	nodeIDProtos := make([]*proto.NodeID, len(nodeIDs))
+	for i, nodeID := range nodeIDs {
+		nodeIDProtos[i] = nodeID.Proto()
+	}
+	convertedNodeIDs, err := nodeIDsFromProto(nodeIDProtos)
+	require.NoError(t, err)
+	assert.Len(t, convertedNodeIDs, len(nodeIDs))
+	for i, nodeID := range convertedNodeIDs {
+		assert.True(t, nodeID.Equal(nodeIDs[i]))
+	}
+}
+
+func testSeed_setNode(seed *Seed, nodeID *shared.NodeID, age time.Duration, disconnectedSrc map[shared.NodeID]time.Duration) {
+	disconnected := make(map[shared.NodeID]time.Time)
+	for nodeID, passed := range disconnectedSrc {
+		disconnected[nodeID] = time.Now().Add(-1 * passed)
+	}
+	seed.nodes[*nodeID] = &node{
+		nodeID:       *nodeID,
+		timestamp:    time.Now().Add(-1 * age),
+		term:         make(chan struct{}),
+		disconnected: disconnected,
+	}
+}
+
+func testSeed_convertNodeIDSlice(nodeIDProtos []*shared.NodeID) []*proto.NodeID {
+	nodeIDs := make([]*proto.NodeID, len(nodeIDProtos))
+	for i, nodeID := range nodeIDProtos {
+		nodeIDs[i] = nodeID.Proto()
+	}
+	return nodeIDs
 }
