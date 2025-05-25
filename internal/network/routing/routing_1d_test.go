@@ -16,6 +16,7 @@
 package routing
 
 import (
+	"slices"
 	"testing"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
@@ -25,73 +26,94 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRouting1D_updateNodeConnection(t *testing.T) {
-	nodeIDs := testUtil.UniqueNodeIDs(6)
+func TestRouting1D_updateNodeConnections(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(4)
 	testUtil.SortNodeIDs(nodeIDs)
 	r1d := newRouting1D(&routing1DConfig{
-		localNodeID: nodeIDs[1],
+		localNodeID: nodeIDs[0],
 	})
 
 	tests := []struct {
-		nodeIDs                 map[shared.NodeID]struct{}
-		expectResult            bool
-		expectConnectedInfosLen int
-		expectPrevNodeID        *shared.NodeID
-		expectNextNodeID        *shared.NodeID
+		name              string
+		neighborhoodInfos map[shared.NodeID]*neighborhoodInfo
+		nodeIDs           map[shared.NodeID]struct{}
+		expect            int
 	}{
 		{
+			name:              "initial connections",
+			neighborhoodInfos: map[shared.NodeID]*neighborhoodInfo{},
 			nodeIDs: map[shared.NodeID]struct{}{
-				*nodeIDs[0]: {},
+				*nodeIDs[1]: {},
 			},
-			expectResult:            true,
-			expectConnectedInfosLen: 1,
-			expectPrevNodeID:        nodeIDs[0],
-			expectNextNodeID:        nodeIDs[0],
+			expect: requireExchangeRouting,
 		},
 		{
+			name: "no connections",
+			neighborhoodInfos: map[shared.NodeID]*neighborhoodInfo{
+				*nodeIDs[1]: {
+					secondNeighborhoods: map[shared.NodeID]struct{}{},
+				},
+			},
+			nodeIDs: map[shared.NodeID]struct{}{},
+			expect:  requireExchangeRouting,
+		},
+		{
+			name: "new connection",
+			neighborhoodInfos: map[shared.NodeID]*neighborhoodInfo{
+				*nodeIDs[1]: {
+					secondNeighborhoods: map[shared.NodeID]struct{}{
+						*nodeIDs[2]: {},
+					},
+				},
+				*nodeIDs[2]: {
+					secondNeighborhoods: map[shared.NodeID]struct{}{
+						*nodeIDs[1]: {},
+					},
+				},
+			},
 			nodeIDs: map[shared.NodeID]struct{}{
-				*nodeIDs[0]: {},
+				*nodeIDs[1]: {},
+				*nodeIDs[2]: {},
 				*nodeIDs[3]: {},
-				*nodeIDs[5]: {},
 			},
-			expectResult:            true,
-			expectConnectedInfosLen: 3,
-			expectPrevNodeID:        nodeIDs[0],
-			expectNextNodeID:        nodeIDs[3],
+			expect: requireExchangeRouting,
 		},
 		{
-			nodeIDs: map[shared.NodeID]struct{}{
-				*nodeIDs[0]: {},
-				*nodeIDs[3]: {},
-				*nodeIDs[4]: {},
-				*nodeIDs[5]: {},
+			name: "disconnected",
+			neighborhoodInfos: map[shared.NodeID]*neighborhoodInfo{
+				*nodeIDs[1]: {
+					secondNeighborhoods: map[shared.NodeID]struct{}{
+						*nodeIDs[2]: {},
+					},
+				},
+				*nodeIDs[2]: {
+					secondNeighborhoods: map[shared.NodeID]struct{}{
+						*nodeIDs[1]: {},
+					},
+				},
 			},
-			expectResult:            false,
-			expectConnectedInfosLen: 4,
-			expectPrevNodeID:        nodeIDs[0],
-			expectNextNodeID:        nodeIDs[3],
-		},
-		{
 			nodeIDs: map[shared.NodeID]struct{}{
-				*nodeIDs[0]: {},
-				*nodeIDs[4]: {},
-				*nodeIDs[5]: {},
+				*nodeIDs[1]: {},
 			},
-			expectResult:            true,
-			expectConnectedInfosLen: 3,
-			expectPrevNodeID:        nodeIDs[0],
-			expectNextNodeID:        nodeIDs[4],
+			expect: requireExchangeRouting | requireUpdateConnections,
 		},
 	}
 
-	for i, tt := range tests {
-		t.Logf("test %d", i)
+	for _, tt := range tests {
+		t.Logf("%s", tt.name)
 
+		r1d.neighborhoodInfos = tt.neighborhoodInfos
 		r := r1d.updateNodeConnections(tt.nodeIDs)
-		assert.Equal(t, tt.expectResult, r)
-		assert.Len(t, r1d.connectedInfos, tt.expectConnectedInfosLen)
-		assert.Equal(t, *tt.expectPrevNodeID, *r1d.prevNodeID)
-		assert.Equal(t, *tt.expectNextNodeID, *r1d.nextNodeID)
+		assert.Equal(t, tt.expect, r)
+		assert.Len(t, r1d.neighborhoodInfos, len(tt.nodeIDs))
+		for nodeID, info := range r1d.neighborhoodInfos {
+			assert.Contains(t, tt.nodeIDs, nodeID)
+			if _, ok := tt.neighborhoodInfos[nodeID]; ok {
+				assert.Equal(t, tt.neighborhoodInfos[nodeID].secondNeighborhoods, info.secondNeighborhoods)
+			} else {
+				assert.Len(t, info.secondNeighborhoods, 0)
+			}
+		}
 	}
 }
 
@@ -148,35 +170,35 @@ func TestRouting1D_getNextStep_offline(t *testing.T) {
 }
 
 func TestRouting1D_getNextStep_online(t *testing.T) {
-	nodeIDs := testUtil.UniqueNodeIDs(6)
+	nodeIDs := testUtil.UniqueNodeIDs(8)
 	testUtil.SortNodeIDs(nodeIDs)
 	localNodeID := nodeIDs[1]
 
 	r1d := newRouting1D(&routing1DConfig{
 		localNodeID: localNodeID,
 	})
-	r1d.prevNodeID = nodeIDs[0]
-	r1d.nextNodeID = nodeIDs[2]
+	r1d.backwardNextNodeIDs = []*shared.NodeID{nodeIDs[7], nodeIDs[0]}
+	r1d.frontwardNextNodeIDs = []*shared.NodeID{nodeIDs[2], nodeIDs[3]}
 	r1d.routeInfos = []*routeInfo1D{
 		{
-			nodeID:          nodeIDs[0],
-			connectedNodeID: nodeIDs[0],
+			nodeID:            nodeIDs[0],
+			firstNeighborhood: nodeIDs[0],
 		},
 		{
-			nodeID:          nodeIDs[2],
-			connectedNodeID: nodeIDs[4],
+			nodeID:            nodeIDs[2],
+			firstNeighborhood: nodeIDs[4],
 		},
 		{
-			nodeID:          nodeIDs[3],
-			connectedNodeID: nodeIDs[4],
+			nodeID:            nodeIDs[3],
+			firstNeighborhood: nodeIDs[4],
 		},
 		{
-			nodeID:          nodeIDs[4],
-			connectedNodeID: nodeIDs[4],
+			nodeID:            nodeIDs[4],
+			firstNeighborhood: nodeIDs[4],
 		},
 		{
-			nodeID:          nodeIDs[5],
-			connectedNodeID: nodeIDs[5],
+			nodeID:            nodeIDs[5],
+			firstNeighborhood: nodeIDs[5],
 		},
 	}
 
@@ -260,28 +282,28 @@ func TestRouting1D_countRecvPacket(t *testing.T) {
 	r1d := newRouting1D(&routing1DConfig{
 		localNodeID: nodeIDs[0],
 	})
-	r1d.prevNodeID = nodeIDs[1]
-	r1d.nextNodeID = nodeIDs[1]
-	r1d.connectedInfos[*nodeIDs[1]] = &connectedInfo{
-		connectedNodeIDs: map[shared.NodeID]struct{}{
+	r1d.backwardNextNodeIDs = []*shared.NodeID{nodeIDs[1]}
+	r1d.frontwardNextNodeIDs = []*shared.NodeID{nodeIDs[1]}
+	r1d.neighborhoodInfos[*nodeIDs[1]] = &neighborhoodInfo{
+		secondNeighborhoods: map[shared.NodeID]struct{}{
 			*nodeIDs[0]: {},
 		},
 		scoreByRecv: 1,
 	}
 	r1d.routeInfos = []*routeInfo1D{
 		{
-			nodeID:          nodeIDs[1],
-			connectedNodeID: nodeIDs[1],
-			scoreBySend:     3,
+			nodeID:            nodeIDs[1],
+			firstNeighborhood: nodeIDs[1],
+			scoreBySend:       3,
 		},
 	}
 
 	r1d.countRecvPacket(nodeIDs[1])
-	assert.Equal(t, 2, r1d.connectedInfos[*nodeIDs[1]].scoreByRecv)
+	assert.Equal(t, 2, r1d.neighborhoodInfos[*nodeIDs[1]].scoreByRecv)
 	assert.Equal(t, 3, r1d.routeInfos[0].scoreBySend)
 
 	r1d.countRecvPacket(nodeIDs[2])
-	assert.Equal(t, 2, r1d.connectedInfos[*nodeIDs[1]].scoreByRecv)
+	assert.Equal(t, 2, r1d.neighborhoodInfos[*nodeIDs[1]].scoreByRecv)
 	assert.Equal(t, 3, r1d.routeInfos[0].scoreBySend)
 }
 
@@ -292,23 +314,23 @@ func TestRouting1D_recvRoutingPacket(t *testing.T) {
 	r1d := newRouting1D(&routing1DConfig{
 		localNodeID: nodeIDs[0],
 	})
-	r1d.prevNodeID = nodeIDs[1]
-	r1d.nextNodeID = nodeIDs[1]
-	r1d.connectedInfos[*nodeIDs[1]] = &connectedInfo{
-		connectedNodeIDs: map[shared.NodeID]struct{}{
+	r1d.backwardNextNodeIDs = []*shared.NodeID{nodeIDs[1]}
+	r1d.frontwardNextNodeIDs = []*shared.NodeID{nodeIDs[1]}
+	r1d.neighborhoodInfos[*nodeIDs[1]] = &neighborhoodInfo{
+		secondNeighborhoods: map[shared.NodeID]struct{}{
 			*nodeIDs[0]: {},
 		},
 	}
-	r1d.connectedInfos[*nodeIDs[2]] = &connectedInfo{
-		connectedNodeIDs: map[shared.NodeID]struct{}{
+	r1d.neighborhoodInfos[*nodeIDs[2]] = &neighborhoodInfo{
+		secondNeighborhoods: map[shared.NodeID]struct{}{
 			*nodeIDs[0]: {},
 		},
 		oddScore: 1,
 	}
 	r1d.routeInfos = []*routeInfo1D{
 		{
-			nodeID:          nodeIDs[1],
-			connectedNodeID: nodeIDs[1],
+			nodeID:            nodeIDs[1],
+			firstNeighborhood: nodeIDs[1],
 		},
 	}
 
@@ -323,12 +345,12 @@ func TestRouting1D_recvRoutingPacket(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	assert.True(t, r)
-	assert.Len(t, r1d.connectedInfos, 2)
-	info := r1d.connectedInfos[*nodeIDs[2]]
+	assert.Equal(t, requireUpdateConnections, r)
+	assert.Len(t, r1d.neighborhoodInfos, 2)
+	info := r1d.neighborhoodInfos[*nodeIDs[2]]
 	assert.Equal(t, 3, info.oddScore)
-	assert.Len(t, info.connectedNodeIDs, 2)
-	assert.Contains(t, info.connectedNodeIDs, *nodeIDs[0], *nodeIDs[3])
+	assert.Len(t, info.secondNeighborhoods, 2)
+	assert.Contains(t, info.secondNeighborhoods, *nodeIDs[0], *nodeIDs[3])
 
 	r, err = r1d.recvRoutingPacket(nodeIDs[2], &proto.Routing{
 		NodeRecords: map[string]*proto.RoutingNodeRecord{
@@ -338,11 +360,11 @@ func TestRouting1D_recvRoutingPacket(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	assert.True(t, r)
-	info = r1d.connectedInfos[*nodeIDs[2]]
+	assert.Equal(t, requireUpdateConnections, r)
+	info = r1d.neighborhoodInfos[*nodeIDs[2]]
 	assert.Equal(t, 4, info.oddScore)
-	assert.Len(t, info.connectedNodeIDs, 1)
-	assert.Contains(t, info.connectedNodeIDs, *nodeIDs[0])
+	assert.Len(t, info.secondNeighborhoods, 1)
+	assert.Contains(t, info.secondNeighborhoods, *nodeIDs[0])
 }
 
 func TestRouting1D_setupRoutingPacket(t *testing.T) {
@@ -352,15 +374,15 @@ func TestRouting1D_setupRoutingPacket(t *testing.T) {
 	r1d := newRouting1D(&routing1DConfig{
 		localNodeID: nodeIDs[0],
 	})
-	r1d.prevNodeID = nodeIDs[1]
-	r1d.nextNodeID = nodeIDs[1]
-	r1d.connectedInfos[*nodeIDs[1]] = &connectedInfo{
-		connectedNodeIDs: map[shared.NodeID]struct{}{
+	r1d.backwardNextNodeIDs = []*shared.NodeID{nodeIDs[1]}
+	r1d.frontwardNextNodeIDs = []*shared.NodeID{nodeIDs[1]}
+	r1d.neighborhoodInfos[*nodeIDs[1]] = &neighborhoodInfo{
+		secondNeighborhoods: map[shared.NodeID]struct{}{
 			*nodeIDs[0]: {},
 		},
 	}
-	r1d.connectedInfos[*nodeIDs[2]] = &connectedInfo{
-		connectedNodeIDs: map[shared.NodeID]struct{}{
+	r1d.neighborhoodInfos[*nodeIDs[2]] = &neighborhoodInfo{
+		secondNeighborhoods: map[shared.NodeID]struct{}{
 			*nodeIDs[0]: {},
 		},
 		scoreByRecv: 1,
@@ -385,7 +407,89 @@ func TestRouting1D_setupRoutingPacket(t *testing.T) {
 }
 
 func TestRouting1D_getConnections(t *testing.T) {
-	// TODO: implement tests after simulation
+	nodeIDs := testUtil.UniqueNodeIDs(20)
+	t.Logf("nodeIDs: %s", nodeIDListToString(nodeIDs))
+
+	// Sort dummy nodeIDs
+	localNodeID := nodeIDs[0]
+	oppositeNodeID := localNodeID.Add(shared.NewNormalNodeID(0x8000000000000000, 0x0))
+	largerNodeIDs := []*shared.NodeID{}
+	smallerNodeIDs := []*shared.NodeID{}
+	frontwardNodeIDs := []*shared.NodeID{}
+	backwardNodeIDs := []*shared.NodeID{}
+	for _, nodeID := range nodeIDs[1:] {
+		if nodeID.Smaller(localNodeID) {
+			smallerNodeIDs = append(smallerNodeIDs, nodeID)
+		} else {
+			largerNodeIDs = append(largerNodeIDs, nodeID)
+		}
+		if isBetween(nodeID, localNodeID, oppositeNodeID) {
+			frontwardNodeIDs = append(frontwardNodeIDs, nodeID)
+		} else {
+			backwardNodeIDs = append(backwardNodeIDs, nodeID)
+		}
+	}
+	slices.SortFunc(largerNodeIDs, func(a, b *shared.NodeID) int {
+		return a.Compare(b)
+	})
+	slices.SortFunc(smallerNodeIDs, func(a, b *shared.NodeID) int {
+		return a.Compare(b)
+	})
+	sortedNodeIDs := append(largerNodeIDs, smallerNodeIDs...)
+
+	r1d := newRouting1D(&routing1DConfig{
+		localNodeID: localNodeID,
+	})
+	r1d.frontwardNextNodeIDs = sortedNodeIDs[0:2]
+	r1d.backwardNextNodeIDs = sortedNodeIDs[len(sortedNodeIDs)-2:]
+	for _, nodeID := range sortedNodeIDs {
+		r1d.neighborhoodInfos[*nodeID] = &neighborhoodInfo{
+			level: r1d.calcLevel(nodeID),
+		}
+	}
+
+	required, keep := r1d.getConnections()
+	t.Logf("required: %s", nodeIDMapToString(required))
+	t.Logf("keep: %s", nodeIDMapToString(keep))
+	// next nodes should be included in required connections
+	for _, nodeID := range append(sortedNodeIDs[0:2], sortedNodeIDs[len(sortedNodeIDs)-2:]...) {
+		assert.Contains(t, required, *nodeID)
+	}
+	// backward nodes should be included in keep connections
+	for _, nodeID := range backwardNodeIDs {
+		assert.Contains(t, keep, *nodeID)
+	}
+	// required nodes should be included in frontward nodes
+	for nodeID := range required {
+		// skip check backward next nodes
+		if nodeID.Equal(sortedNodeIDs[len(sortedNodeIDs)-1]) ||
+			nodeID.Equal(sortedNodeIDs[len(sortedNodeIDs)-2]) {
+			continue
+		}
+		assert.Contains(t, frontwardNodeIDs, &nodeID)
+	}
+}
+
+func nodeIDListToString(nodeIDs []*shared.NodeID) string {
+	nodeIDStr := ""
+	for i, nodeID := range nodeIDs {
+		if i != 0 {
+			nodeIDStr += ", "
+		}
+		nodeIDStr += nodeID.String()
+	}
+	return nodeIDStr
+}
+
+func nodeIDMapToString(nodeIDs map[shared.NodeID]struct{}) string {
+	nodeIDStr := ""
+	for nodeID := range nodeIDs {
+		if nodeIDStr != "" {
+			nodeIDStr += ", "
+		}
+		nodeIDStr += nodeID.String()
+	}
+	return nodeIDStr
 }
 
 func TestRouting1D_calcLevel(t *testing.T) {
@@ -433,9 +537,9 @@ func TestRouting1D_updateRouteInfos(t *testing.T) {
 			connected: map[shared.NodeID][]*shared.NodeID{},
 			routeInfos: []*routeInfo1D{
 				{
-					nodeID:          nodeIDs[1],
-					connectedNodeID: nodeIDs[2],
-					scoreBySend:     1,
+					nodeID:            nodeIDs[1],
+					firstNeighborhood: nodeIDs[2],
+					scoreBySend:       1,
 				},
 			},
 			expectRouteInfos: []*routeInfo1D{},
@@ -447,31 +551,31 @@ func TestRouting1D_updateRouteInfos(t *testing.T) {
 			},
 			routeInfos: []*routeInfo1D{
 				{
-					nodeID:          nodeIDs[1],
-					connectedNodeID: nodeIDs[1],
-					scoreBySend:     1,
+					nodeID:            nodeIDs[1],
+					firstNeighborhood: nodeIDs[1],
+					scoreBySend:       1,
 				},
 				{
-					nodeID:          nodeIDs[2],
-					connectedNodeID: nodeIDs[1],
-					scoreBySend:     2,
+					nodeID:            nodeIDs[2],
+					firstNeighborhood: nodeIDs[1],
+					scoreBySend:       2,
 				},
 			},
 			expectRouteInfos: []*routeInfo1D{
 				{
-					nodeID:          nodeIDs[1],
-					connectedNodeID: nodeIDs[1],
-					scoreBySend:     1,
+					nodeID:            nodeIDs[1],
+					firstNeighborhood: nodeIDs[1],
+					scoreBySend:       1,
 				},
 				{
-					nodeID:          nodeIDs[2],
-					connectedNodeID: nodeIDs[2],
-					scoreBySend:     2,
+					nodeID:            nodeIDs[2],
+					firstNeighborhood: nodeIDs[2],
+					scoreBySend:       2,
 				},
 				{
-					nodeID:          nodeIDs[3],
-					connectedNodeID: nodeIDs[2],
-					scoreBySend:     0,
+					nodeID:            nodeIDs[3],
+					firstNeighborhood: nodeIDs[2],
+					scoreBySend:       0,
 				},
 			},
 		},
@@ -481,31 +585,31 @@ func TestRouting1D_updateRouteInfos(t *testing.T) {
 			},
 			routeInfos: []*routeInfo1D{
 				{
-					nodeID:          nodeIDs[1],
-					connectedNodeID: nodeIDs[1],
-					scoreBySend:     1,
+					nodeID:            nodeIDs[1],
+					firstNeighborhood: nodeIDs[1],
+					scoreBySend:       1,
 				},
 				{
-					nodeID:          nodeIDs[2],
-					connectedNodeID: nodeIDs[2],
-					scoreBySend:     2,
+					nodeID:            nodeIDs[2],
+					firstNeighborhood: nodeIDs[2],
+					scoreBySend:       2,
 				},
 				{
-					nodeID:          nodeIDs[3],
-					connectedNodeID: nodeIDs[2],
-					scoreBySend:     0,
+					nodeID:            nodeIDs[3],
+					firstNeighborhood: nodeIDs[2],
+					scoreBySend:       0,
 				},
 			},
 			expectRouteInfos: []*routeInfo1D{
 				{
-					nodeID:          nodeIDs[1],
-					connectedNodeID: nodeIDs[1],
-					scoreBySend:     1,
+					nodeID:            nodeIDs[1],
+					firstNeighborhood: nodeIDs[1],
+					scoreBySend:       1,
 				},
 				{
-					nodeID:          nodeIDs[2],
-					connectedNodeID: nodeIDs[1],
-					scoreBySend:     2,
+					nodeID:            nodeIDs[2],
+					firstNeighborhood: nodeIDs[1],
+					scoreBySend:       2,
 				},
 			},
 		},
@@ -516,41 +620,41 @@ func TestRouting1D_updateRouteInfos(t *testing.T) {
 				*nodeIDs[4]: {nodeIDs[3]}},
 			routeInfos: []*routeInfo1D{
 				{
-					nodeID:          nodeIDs[1],
-					connectedNodeID: nodeIDs[1],
-					scoreBySend:     1,
+					nodeID:            nodeIDs[1],
+					firstNeighborhood: nodeIDs[1],
+					scoreBySend:       1,
 				},
 				{
-					nodeID:          nodeIDs[2],
-					connectedNodeID: nodeIDs[2],
-					scoreBySend:     2,
+					nodeID:            nodeIDs[2],
+					firstNeighborhood: nodeIDs[2],
+					scoreBySend:       2,
 				},
 				{
-					nodeID:          nodeIDs[3],
-					connectedNodeID: nodeIDs[2],
-					scoreBySend:     3,
+					nodeID:            nodeIDs[3],
+					firstNeighborhood: nodeIDs[2],
+					scoreBySend:       3,
 				},
 			},
 			expectRouteInfos: []*routeInfo1D{
 				{
-					nodeID:          nodeIDs[1],
-					connectedNodeID: nodeIDs[1],
-					scoreBySend:     1,
+					nodeID:            nodeIDs[1],
+					firstNeighborhood: nodeIDs[1],
+					scoreBySend:       1,
 				},
 				{
-					nodeID:          nodeIDs[2],
-					connectedNodeID: nodeIDs[2],
-					scoreBySend:     2,
+					nodeID:            nodeIDs[2],
+					firstNeighborhood: nodeIDs[2],
+					scoreBySend:       2,
 				},
 				{
-					nodeID:          nodeIDs[3],
-					connectedNodeID: nodeIDs[4],
-					scoreBySend:     3,
+					nodeID:            nodeIDs[3],
+					firstNeighborhood: nodeIDs[4],
+					scoreBySend:       3,
 				},
 				{
-					nodeID:          nodeIDs[4],
-					connectedNodeID: nodeIDs[4],
-					scoreBySend:     0,
+					nodeID:            nodeIDs[4],
+					firstNeighborhood: nodeIDs[4],
+					scoreBySend:       0,
 				},
 			},
 		},
@@ -562,14 +666,14 @@ func TestRouting1D_updateRouteInfos(t *testing.T) {
 		r1d := newRouting1D(&routing1DConfig{
 			localNodeID: nodeIDs[0],
 		})
-		r1d.connectedInfos = make(map[shared.NodeID]*connectedInfo)
+		r1d.neighborhoodInfos = make(map[shared.NodeID]*neighborhoodInfo)
 		for connectedNodeID, connected := range tt.connected {
 			c := make(map[shared.NodeID]struct{})
 			for _, nodeID := range connected {
 				c[*nodeID] = struct{}{}
 			}
-			r1d.connectedInfos[connectedNodeID] = &connectedInfo{
-				connectedNodeIDs: c,
+			r1d.neighborhoodInfos[connectedNodeID] = &neighborhoodInfo{
+				secondNeighborhoods: c,
 			}
 		}
 		r1d.routeInfos = tt.routeInfos
@@ -578,107 +682,179 @@ func TestRouting1D_updateRouteInfos(t *testing.T) {
 		require.Len(t, r1d.routeInfos, len(tt.expectRouteInfos))
 		for i, routeInfo := range r1d.routeInfos {
 			assert.Equal(t, *tt.expectRouteInfos[i].nodeID, *routeInfo.nodeID)
-			assert.Equal(t, *tt.expectRouteInfos[i].connectedNodeID, *routeInfo.connectedNodeID)
+			assert.Equal(t, *tt.expectRouteInfos[i].firstNeighborhood, *routeInfo.firstNeighborhood)
 			assert.Equal(t, tt.expectRouteInfos[i].scoreBySend, routeInfo.scoreBySend)
 		}
 	}
 }
 
-func TestRouting1D_nextNodeIDChanged(t *testing.T) {
-	nodeIDs := testUtil.UniqueNodeIDs(4)
+func TestRouting1D_updateNextNodeIDs(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(6)
 	testUtil.SortNodeIDs(nodeIDs)
 
 	tests := []struct {
-		localNodeID *shared.NodeID
-		prevNodeID  *shared.NodeID
-		nextNodeID  *shared.NodeID
-		connected   map[shared.NodeID][]*shared.NodeID
-		expect      bool
-		expectPrev  *shared.NodeID
-		expectNext  *shared.NodeID
+		name                 string
+		localNodeID          *shared.NodeID
+		neighborhoodInfos    map[shared.NodeID]*neighborhoodInfo
+		frontwardNextNodeIDs []*shared.NodeID
+		backwardNextNodeIDs  []*shared.NodeID
 	}{
 		{
-			localNodeID: nodeIDs[0],
-			prevNodeID:  nodeIDs[2],
-			nextNodeID:  nodeIDs[1],
-			connected: map[shared.NodeID][]*shared.NodeID{
-				*nodeIDs[1]: {nodeIDs[0], nodeIDs[2]},
-				*nodeIDs[2]: {nodeIDs[0], nodeIDs[1]},
-			},
-			expect:     false,
-			expectPrev: nodeIDs[2],
-			expectNext: nodeIDs[1],
+			name:                 "no neighborhoods",
+			localNodeID:          nodeIDs[0],
+			neighborhoodInfos:    map[shared.NodeID]*neighborhoodInfo{},
+			frontwardNextNodeIDs: nil,
+			backwardNextNodeIDs:  nil,
 		},
 		{
+			name:        "one neighborhood",
 			localNodeID: nodeIDs[0],
-			prevNodeID:  nodeIDs[2],
-			nextNodeID:  nodeIDs[1],
-			connected: map[shared.NodeID][]*shared.NodeID{
-				*nodeIDs[1]: {nodeIDs[0], nodeIDs[2]},
-				*nodeIDs[2]: {nodeIDs[0], nodeIDs[1]},
-				*nodeIDs[3]: {nodeIDs[0], nodeIDs[1]},
+			neighborhoodInfos: map[shared.NodeID]*neighborhoodInfo{
+				*nodeIDs[1]: {},
 			},
-			expect:     true,
-			expectPrev: nodeIDs[3],
-			expectNext: nodeIDs[1],
+			frontwardNextNodeIDs: []*shared.NodeID{nodeIDs[1]},
+			backwardNextNodeIDs:  []*shared.NodeID{nodeIDs[1]},
 		},
 		{
-			localNodeID: nodeIDs[0],
-			prevNodeID:  nodeIDs[2],
-			nextNodeID:  nodeIDs[1],
-			connected: map[shared.NodeID][]*shared.NodeID{
-				*nodeIDs[1]: {nodeIDs[0], nodeIDs[2]},
-				*nodeIDs[2]: {nodeIDs[0], nodeIDs[3]},
+			name:        "normal neighborhoods",
+			localNodeID: nodeIDs[2],
+			neighborhoodInfos: map[shared.NodeID]*neighborhoodInfo{
+				*nodeIDs[0]: {
+					secondNeighborhoods: map[shared.NodeID]struct{}{
+						*nodeIDs[1]: {},
+					},
+				},
+				*nodeIDs[1]: {
+					secondNeighborhoods: map[shared.NodeID]struct{}{
+						*nodeIDs[0]: {},
+					},
+				},
+				*nodeIDs[3]: {
+					secondNeighborhoods: map[shared.NodeID]struct{}{
+						*nodeIDs[4]: {},
+						*nodeIDs[5]: {},
+					},
+				},
+				*nodeIDs[4]: {
+					secondNeighborhoods: map[shared.NodeID]struct{}{
+						*nodeIDs[3]: {},
+					},
+				},
 			},
-			expect:     true,
-			expectPrev: nodeIDs[3],
-			expectNext: nodeIDs[1],
+			frontwardNextNodeIDs: []*shared.NodeID{nodeIDs[3], nodeIDs[4]},
+			backwardNextNodeIDs:  []*shared.NodeID{nodeIDs[1], nodeIDs[0]},
 		},
 		{
-			localNodeID: nodeIDs[0],
-			prevNodeID:  nodeIDs[2],
-			nextNodeID:  nodeIDs[1],
-			connected: map[shared.NodeID][]*shared.NodeID{
-				*nodeIDs[1]: {nodeIDs[0], nodeIDs[3]},
+			name:        "frontward next nodes crosses over 0",
+			localNodeID: nodeIDs[4],
+			neighborhoodInfos: map[shared.NodeID]*neighborhoodInfo{
+				*nodeIDs[0]: {},
+				*nodeIDs[1]: {},
+				*nodeIDs[2]: {},
+				*nodeIDs[3]: {},
+				*nodeIDs[5]: {},
 			},
-			expect:     true,
-			expectPrev: nodeIDs[3],
-			expectNext: nodeIDs[1],
+			frontwardNextNodeIDs: []*shared.NodeID{nodeIDs[5], nodeIDs[0]},
+			backwardNextNodeIDs:  []*shared.NodeID{nodeIDs[3], nodeIDs[2]},
 		},
 		{
-			localNodeID: nodeIDs[0],
-			prevNodeID:  nodeIDs[2],
-			nextNodeID:  nodeIDs[1],
-			connected:   map[shared.NodeID][]*shared.NodeID{},
-			expect:      true,
-			expectPrev:  nil,
-			expectNext:  nil,
+			name:        "backward next nodes crosses over 0",
+			localNodeID: nodeIDs[1],
+			neighborhoodInfos: map[shared.NodeID]*neighborhoodInfo{
+				*nodeIDs[0]: {},
+				*nodeIDs[2]: {
+					secondNeighborhoods: map[shared.NodeID]struct{}{
+						*nodeIDs[3]: {},
+						*nodeIDs[4]: {},
+						*nodeIDs[5]: {},
+					},
+				},
+			},
+			frontwardNextNodeIDs: []*shared.NodeID{nodeIDs[2], nodeIDs[3]},
+			backwardNextNodeIDs:  []*shared.NodeID{nodeIDs[0], nodeIDs[5]},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Logf("%s", tt.name)
+
+		r1d := newRouting1D(&routing1DConfig{
+			localNodeID: tt.localNodeID,
+		})
+		r1d.neighborhoodInfos = tt.neighborhoodInfos
+
+		r1d.updateNextNodeIDs()
+		assert.Equal(t, tt.frontwardNextNodeIDs, r1d.frontwardNextNodeIDs)
+		assert.Equal(t, tt.backwardNextNodeIDs, r1d.backwardNextNodeIDs)
+	}
+}
+
+func TestRouting1D_connectedToNextNodes(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(6)
+	testUtil.SortNodeIDs(nodeIDs)
+
+	r1d := newRouting1D(&routing1DConfig{
+		localNodeID: nodeIDs[0],
+	})
+
+	tests := []struct {
+		name                 string
+		neighborhoodInfos    map[shared.NodeID]*neighborhoodInfo
+		frontwardNextNodeIDs []*shared.NodeID
+		backwardNextNodeIDs  []*shared.NodeID
+		expect               bool
+	}{
+		{
+			name:                 "no next nodes",
+			neighborhoodInfos:    map[shared.NodeID]*neighborhoodInfo{},
+			frontwardNextNodeIDs: []*shared.NodeID{},
+			backwardNextNodeIDs:  []*shared.NodeID{},
+			expect:               true,
+		},
+		{
+			name: "only one next node",
+			neighborhoodInfos: map[shared.NodeID]*neighborhoodInfo{
+				*nodeIDs[1]: {},
+			},
+			frontwardNextNodeIDs: []*shared.NodeID{nodeIDs[1]},
+			backwardNextNodeIDs:  []*shared.NodeID{nodeIDs[1]},
+			expect:               true,
+		},
+		{
+			name: "connected to next nodes",
+			neighborhoodInfos: map[shared.NodeID]*neighborhoodInfo{
+				*nodeIDs[1]: {},
+				*nodeIDs[2]: {},
+				*nodeIDs[3]: {},
+				*nodeIDs[4]: {},
+				*nodeIDs[5]: {},
+			},
+			frontwardNextNodeIDs: []*shared.NodeID{nodeIDs[1], nodeIDs[2]},
+			backwardNextNodeIDs:  []*shared.NodeID{nodeIDs[4], nodeIDs[5]},
+			expect:               true,
+		},
+		{
+			name: "not connected to next nodes",
+			neighborhoodInfos: map[shared.NodeID]*neighborhoodInfo{
+				*nodeIDs[1]: {},
+				*nodeIDs[2]: {},
+				*nodeIDs[3]: {},
+				*nodeIDs[4]: {},
+			},
+			frontwardNextNodeIDs: []*shared.NodeID{nodeIDs[1], nodeIDs[2]},
+			backwardNextNodeIDs:  []*shared.NodeID{nodeIDs[4], nodeIDs[5]},
+			expect:               false,
 		},
 	}
 
 	for i, tt := range tests {
 		t.Logf("test %d", i)
 
-		r1d := newRouting1D(&routing1DConfig{
-			localNodeID: tt.localNodeID,
-		})
-		r1d.nextNodeID = tt.nextNodeID
-		r1d.prevNodeID = tt.prevNodeID
-		r1d.connectedInfos = make(map[shared.NodeID]*connectedInfo)
-		for nodeID, connected := range tt.connected {
-			connectedNodeIDs := make(map[shared.NodeID]struct{})
-			for _, nodeID := range connected {
-				connectedNodeIDs[*nodeID] = struct{}{}
-			}
-			r1d.connectedInfos[nodeID] = &connectedInfo{
-				connectedNodeIDs: connectedNodeIDs,
-			}
-		}
-
-		r := r1d.nextNodeIDChanged()
+		r1d.neighborhoodInfos = tt.neighborhoodInfos
+		r1d.frontwardNextNodeIDs = tt.frontwardNextNodeIDs
+		r1d.backwardNextNodeIDs = tt.backwardNextNodeIDs
+		r := r1d.connectedToNextNodes()
 		assert.Equal(t, tt.expect, r)
-		assert.Equal(t, tt.expectNext, r1d.nextNodeID)
-		assert.Equal(t, tt.expectPrev, r1d.prevNodeID)
 	}
 }
 
@@ -703,7 +879,7 @@ func TestRouting1D_normalizeScore(t *testing.T) {
 		r1d := newRouting1D(&routing1DConfig{})
 		nodeIDs := testUtil.UniqueNodeIDs(len(tt.score))
 		for i, score := range tt.score {
-			r1d.connectedInfos[*nodeIDs[i]] = &connectedInfo{
+			r1d.neighborhoodInfos[*nodeIDs[i]] = &neighborhoodInfo{
 				scoreByRecv: score,
 			}
 			r1d.routeInfos = append(r1d.routeInfos, &routeInfo1D{
@@ -713,7 +889,7 @@ func TestRouting1D_normalizeScore(t *testing.T) {
 		}
 		r1d.normalizeScore()
 		for i, nodeID := range nodeIDs {
-			assert.Equal(t, tt.expect[i], r1d.connectedInfos[*nodeID].scoreByRecv)
+			assert.Equal(t, tt.expect[i], r1d.neighborhoodInfos[*nodeID].scoreByRecv)
 			assert.Equal(t, tt.expect[i], r1d.routeInfos[i].scoreBySend)
 		}
 	}
@@ -757,60 +933,5 @@ func TestRouting1D_isBetween(t *testing.T) {
 		t.Logf("test %d", i)
 
 		assert.Equal(t, tt.expect, isBetween(tt.a, tt.b, tt.target))
-	}
-}
-
-func TestRouting1D_getNextAndPrevNodeID(t *testing.T) {
-	nodeIDs := testUtil.UniqueNodeIDs(4)
-	testUtil.SortNodeIDs(nodeIDs)
-
-	tests := []struct {
-		base       *shared.NodeID
-		nodeIDs    []*shared.NodeID
-		expectNext *shared.NodeID
-		expectPrev *shared.NodeID
-	}{
-		{
-			base:       nodeIDs[0],
-			nodeIDs:    []*shared.NodeID{},
-			expectNext: nil,
-			expectPrev: nil,
-		},
-		{
-			base:       nodeIDs[0],
-			nodeIDs:    []*shared.NodeID{nodeIDs[0]},
-			expectNext: nil,
-			expectPrev: nil,
-		},
-		{
-			base:       nodeIDs[0],
-			nodeIDs:    []*shared.NodeID{nodeIDs[1]},
-			expectNext: nodeIDs[1],
-			expectPrev: nodeIDs[1],
-		},
-		{
-			base:       nodeIDs[0],
-			nodeIDs:    []*shared.NodeID{nodeIDs[0], nodeIDs[1], nodeIDs[2], nodeIDs[3]},
-			expectNext: nodeIDs[1],
-			expectPrev: nodeIDs[3],
-		},
-		{
-			base:       nodeIDs[3],
-			nodeIDs:    []*shared.NodeID{nodeIDs[0], nodeIDs[1], nodeIDs[2]},
-			expectNext: nodeIDs[0],
-			expectPrev: nodeIDs[2],
-		},
-	}
-
-	for i, tt := range tests {
-		t.Logf("test %d", i)
-
-		nodeIDs := make(map[shared.NodeID]struct{})
-		for _, nodeID := range tt.nodeIDs {
-			nodeIDs[*nodeID] = struct{}{}
-		}
-		next, prev := getNextAndPrevNodeID(tt.base, nodeIDs)
-		assert.Equal(t, tt.expectNext, next)
-		assert.Equal(t, tt.expectPrev, prev)
 	}
 }

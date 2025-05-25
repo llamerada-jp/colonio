@@ -79,10 +79,6 @@ type Config struct {
 	ICEServers          []*config.ICEServer
 	CoordinateSystem    geometry.CoordinateSystem
 
-	// RoutingExchangeInterval is interval at which packets exchanging routing information are sent.
-	// However, if necessary, packets may be sent at intervals shorter than the setting.
-	RoutingExchangeInterval time.Duration
-
 	// PacketHopLimit is the maximum number of hops that a packet can be relayed.
 	// If you set 0, the default value of 64 will be set.
 	PacketHopLimit uint
@@ -162,10 +158,9 @@ type colonioImpl struct {
 
 func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 	config := &Config{
-		Logger:                  slog.Default(),
-		ObservationHandlers:     &ObservationHandlers{},
-		RoutingExchangeInterval: 1 * time.Minute,
-		PacketHopLimit:          64,
+		Logger:              slog.Default(),
+		ObservationHandlers: &ObservationHandlers{},
+		PacketHopLimit:      64,
 
 		SpreadCacheLifetime:  1 * time.Minute,
 		SpreadSizeToUseKnock: 4096,
@@ -236,8 +231,7 @@ func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 			// the pseudo setting by setting a very large value.
 			PacketBaseBytes: 4096,
 		},
-		RoutingExchangeInterval: config.RoutingExchangeInterval,
-		PacketHopLimit:          config.PacketHopLimit,
+		PacketHopLimit: config.PacketHopLimit,
 	})
 	if err != nil {
 		return nil, err
