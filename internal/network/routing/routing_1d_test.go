@@ -90,8 +90,8 @@ func TestRouting1D_updateNodeConnection(t *testing.T) {
 		r := r1d.updateNodeConnections(tt.nodeIDs)
 		assert.Equal(t, tt.expectResult, r)
 		assert.Len(t, r1d.connectedInfos, tt.expectConnectedInfosLen)
-		assert.Equal(t, *tt.expectPrevNodeID, *r1d.prevNodeID)
-		assert.Equal(t, *tt.expectNextNodeID, *r1d.nextNodeID)
+		assert.Equal(t, *tt.expectPrevNodeID, *r1d.backwardNextNodeIDs)
+		assert.Equal(t, *tt.expectNextNodeID, *r1d.frontwardNextNodeIDs)
 	}
 }
 
@@ -155,8 +155,8 @@ func TestRouting1D_getNextStep_online(t *testing.T) {
 	r1d := newRouting1D(&routing1DConfig{
 		localNodeID: localNodeID,
 	})
-	r1d.prevNodeID = nodeIDs[0]
-	r1d.nextNodeID = nodeIDs[2]
+	r1d.backwardNextNodeIDs = nodeIDs[0]
+	r1d.frontwardNextNodeIDs = nodeIDs[2]
 	r1d.routeInfos = []*routeInfo1D{
 		{
 			nodeID:          nodeIDs[0],
@@ -260,8 +260,8 @@ func TestRouting1D_countRecvPacket(t *testing.T) {
 	r1d := newRouting1D(&routing1DConfig{
 		localNodeID: nodeIDs[0],
 	})
-	r1d.prevNodeID = nodeIDs[1]
-	r1d.nextNodeID = nodeIDs[1]
+	r1d.backwardNextNodeIDs = nodeIDs[1]
+	r1d.frontwardNextNodeIDs = nodeIDs[1]
 	r1d.connectedInfos[*nodeIDs[1]] = &connectedInfo{
 		connectedNodeIDs: map[shared.NodeID]struct{}{
 			*nodeIDs[0]: {},
@@ -292,8 +292,8 @@ func TestRouting1D_recvRoutingPacket(t *testing.T) {
 	r1d := newRouting1D(&routing1DConfig{
 		localNodeID: nodeIDs[0],
 	})
-	r1d.prevNodeID = nodeIDs[1]
-	r1d.nextNodeID = nodeIDs[1]
+	r1d.backwardNextNodeIDs = nodeIDs[1]
+	r1d.frontwardNextNodeIDs = nodeIDs[1]
 	r1d.connectedInfos[*nodeIDs[1]] = &connectedInfo{
 		connectedNodeIDs: map[shared.NodeID]struct{}{
 			*nodeIDs[0]: {},
@@ -352,8 +352,8 @@ func TestRouting1D_setupRoutingPacket(t *testing.T) {
 	r1d := newRouting1D(&routing1DConfig{
 		localNodeID: nodeIDs[0],
 	})
-	r1d.prevNodeID = nodeIDs[1]
-	r1d.nextNodeID = nodeIDs[1]
+	r1d.backwardNextNodeIDs = nodeIDs[1]
+	r1d.frontwardNextNodeIDs = nodeIDs[1]
 	r1d.connectedInfos[*nodeIDs[1]] = &connectedInfo{
 		connectedNodeIDs: map[shared.NodeID]struct{}{
 			*nodeIDs[0]: {},
@@ -662,8 +662,8 @@ func TestRouting1D_nextNodeIDChanged(t *testing.T) {
 		r1d := newRouting1D(&routing1DConfig{
 			localNodeID: tt.localNodeID,
 		})
-		r1d.nextNodeID = tt.nextNodeID
-		r1d.prevNodeID = tt.prevNodeID
+		r1d.frontwardNextNodeIDs = tt.nextNodeID
+		r1d.backwardNextNodeIDs = tt.prevNodeID
 		r1d.connectedInfos = make(map[shared.NodeID]*connectedInfo)
 		for nodeID, connected := range tt.connected {
 			connectedNodeIDs := make(map[shared.NodeID]struct{})
@@ -677,8 +677,8 @@ func TestRouting1D_nextNodeIDChanged(t *testing.T) {
 
 		r := r1d.nextNodeIDChanged()
 		assert.Equal(t, tt.expect, r)
-		assert.Equal(t, tt.expectNext, r1d.nextNodeID)
-		assert.Equal(t, tt.expectPrev, r1d.prevNodeID)
+		assert.Equal(t, tt.expectNext, r1d.frontwardNextNodeIDs)
+		assert.Equal(t, tt.expectPrev, r1d.backwardNextNodeIDs)
 	}
 }
 

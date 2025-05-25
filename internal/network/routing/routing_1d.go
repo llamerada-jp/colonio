@@ -64,8 +64,7 @@ type routeInfo1D struct {
 type routing1D struct {
 	config         *routing1DConfig
 	mtx            sync.RWMutex
-	prevNodeID     *shared.NodeID
-	nextNodeID     *shared.NodeID
+	nextNodeIDs    []*shared.NodeID
 	connectedInfos map[shared.NodeID]*connectedInfo
 	routeInfos     []*routeInfo1D
 }
@@ -73,6 +72,7 @@ type routing1D struct {
 func newRouting1D(config *routing1DConfig) *routing1D {
 	return &routing1D{
 		config:         config,
+		nextNodeIDs:    make([]*shared.NodeID, 0),
 		connectedInfos: make(map[shared.NodeID]*connectedInfo),
 		routeInfos:     make([]*routeInfo1D, 0),
 	}
@@ -124,25 +124,26 @@ func (r *routing1D) getNextStep(packet *shared.Packet) *shared.NodeID {
 	defer r.mtx.RUnlock()
 
 	// there is no connected node
-	if r.nextNodeID == nil {
+	if len(r.nextNodeIDs) == 0 {
 		if isExplicit {
 			return nil
 		}
 		return &shared.NodeLocal
 	}
 
-	if isBetween(r.config.localNodeID, r.nextNodeID, packet.DstNodeID) {
+	if isBetween(r.config.localNodeID, r.nextNodeIDs[0], packet.DstNodeID) {
 		if isExplicit {
 			return nil
 		}
 		return &shared.NodeLocal
 	}
 
-	if isBetween(r.prevNodeID, r.config.localNodeID, packet.DstNodeID) {
-		if isExplicit && !r.prevNodeID.Equal(packet.DstNodeID) {
+	backwardNextNodeID := r.nextNodeIDs[len(r.nextNodeIDs)-1]
+	if isBetween(backwardNextNodeID, r.config.localNodeID, packet.DstNodeID) {
+		if isExplicit && !backwardNextNodeID.Equal(packet.DstNodeID) {
 			return nil
 		}
-		return r.prevNodeID
+		return backwardNextNodeID
 	}
 
 	last := r.routeInfos[len(r.routeInfos)-1]
@@ -249,9 +250,9 @@ func (r *routing1D) getConnections() (map[shared.NodeID]struct{}, map[shared.Nod
 
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
-	if r.prevNodeID != nil {
-		required[*r.nextNodeID] = struct{}{}
-		required[*r.prevNodeID] = struct{}{}
+	if r.backwardNextNodeIDs != nil {
+		required[*r.frontwardNextNodeIDs] = struct{}{}
+		required[*r.backwardNextNodeIDs] = struct{}{}
 	}
 
 	for connectedNodeID, connectedInfo := range r.connectedInfos {
@@ -397,11 +398,11 @@ func (r *routing1D) updateRouteInfos() {
 func (r *routing1D) nextNodeIDChanged() bool {
 	// not connected any node
 	if len(r.connectedInfos) == 0 {
-		if r.nextNodeID == nil {
+		if r.frontwardNextNodeIDs == nil {
 			return false
 		}
-		r.nextNodeID = nil
-		r.prevNodeID = nil
+		r.frontwardNextNodeIDs = nil
+		r.backwardNextNodeIDs = nil
 		return true
 	}
 
@@ -439,12 +440,12 @@ func (r *routing1D) nextNodeIDChanged() bool {
 	}
 
 	n, p := getNextAndPrevNodeID(r.config.localNodeID, knownNodeIDs)
-	if connectedNext.Equal(r.nextNodeID) && connectedNext.Equal(n) &&
-		connectedPrev.Equal(r.prevNodeID) && connectedPrev.Equal(p) {
+	if connectedNext.Equal(r.frontwardNextNodeIDs) && connectedNext.Equal(n) &&
+		connectedPrev.Equal(r.backwardNextNodeIDs) && connectedPrev.Equal(p) {
 		return false
 	}
 
-	r.nextNodeID, r.prevNodeID = n, p
+	r.frontwardNextNodeIDs, r.backwardNextNodeIDs = n, p
 	return true
 }
 
