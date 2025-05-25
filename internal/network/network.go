@@ -47,8 +47,6 @@ type Config struct {
 	SeedURL    string
 	// config parameters for webrtc node
 	NLC *node_accessor.NodeLinkConfig
-	// config parameters for routing
-	RoutingExchangeInterval time.Duration
 
 	// maximum number of hops that a packet can be relayed.
 	PacketHopLimit uint
@@ -100,12 +98,11 @@ func NewNetwork(config *Config) (*Network, error) {
 	})
 
 	n.routing = routing.NewRouting(&routing.Config{
-		Logger:                  config.Logger,
-		Handler:                 n,
-		Observation:             config.Observation,
-		Transferer:              n.transferer,
-		CoordinateSystem:        config.CoordinateSystem,
-		RoutingExchangeInterval: config.RoutingExchangeInterval,
+		Logger:           config.Logger,
+		Handler:          n,
+		Observation:      config.Observation,
+		Transferer:       n.transferer,
+		CoordinateSystem: config.CoordinateSystem,
 	})
 
 	return n, nil

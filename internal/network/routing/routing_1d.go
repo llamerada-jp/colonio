@@ -46,66 +46,75 @@ type routing1DConfig struct {
 	localNodeID *shared.NodeID
 }
 
-type connectedInfo struct {
-	timestamp        time.Time
-	level            int
-	connectedNodeIDs map[shared.NodeID]struct{}
-	oddScore         int
-	scoreByRecv      int
+type neighborhoodInfo struct {
+	timestamp time.Time
+	level     int
+	// it is the first neighborhood of the node of the first neighborhood
+	// it is strictly different from the second neighborhood of the graph logic
+	// this set isn't containing the local node ID
+	secondNeighborhoods map[shared.NodeID]struct{}
+	oddScore            int
+	scoreByRecv         int
 }
 
 type routeInfo1D struct {
-	nodeID          *shared.NodeID
-	connectedNodeID *shared.NodeID
-	level           int
-	scoreBySend     int
+	nodeID            *shared.NodeID
+	firstNeighborhood *shared.NodeID
+	level             int
+	scoreBySend       int
 }
 
 type routing1D struct {
-	config         *routing1DConfig
-	mtx            sync.RWMutex
-	prevNodeID     *shared.NodeID
-	nextNodeID     *shared.NodeID
-	connectedInfos map[shared.NodeID]*connectedInfo
-	routeInfos     []*routeInfo1D
+	config *routing1DConfig
+	mtx    sync.RWMutex
+	// there is some overlap between frontward and backward.
+	frontwardNextNodeIDs []*shared.NodeID
+	backwardNextNodeIDs  []*shared.NodeID
+	neighborhoodInfos    map[shared.NodeID]*neighborhoodInfo
+	routeInfos           []*routeInfo1D
 }
 
 func newRouting1D(config *routing1DConfig) *routing1D {
 	return &routing1D{
-		config:         config,
-		connectedInfos: make(map[shared.NodeID]*connectedInfo),
-		routeInfos:     make([]*routeInfo1D, 0),
+		config:            config,
+		neighborhoodInfos: make(map[shared.NodeID]*neighborhoodInfo),
+		routeInfos:        make([]*routeInfo1D, 0),
 	}
 }
 
-func (r *routing1D) updateNodeConnections(connections map[shared.NodeID]struct{}) bool {
+func (r *routing1D) updateNodeConnections(connections map[shared.NodeID]struct{}) int {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	updated := false
 
 	for nodeID := range connections {
-		if _, ok := r.connectedInfos[nodeID]; !ok {
-			r.connectedInfos[nodeID] = &connectedInfo{
-				timestamp:        time.Now(),
-				level:            r.calcLevel(&nodeID),
-				connectedNodeIDs: make(map[shared.NodeID]struct{}),
+		if _, ok := r.neighborhoodInfos[nodeID]; !ok {
+			r.neighborhoodInfos[nodeID] = &neighborhoodInfo{
+				timestamp:           time.Now(),
+				level:               r.calcLevel(&nodeID),
+				secondNeighborhoods: make(map[shared.NodeID]struct{}),
 			}
 			updated = true
 		}
 	}
 
-	for nodeID := range r.connectedInfos {
+	for nodeID := range r.neighborhoodInfos {
 		if _, ok := connections[nodeID]; !ok {
-			delete(r.connectedInfos, nodeID)
+			delete(r.neighborhoodInfos, nodeID)
 			updated = true
 		}
 	}
 
 	if !updated {
-		return false
+		return 0
 	}
 	r.updateRouteInfos()
-	return r.nextNodeIDChanged()
+	r.updateNextNodeIDs()
+	if r.connectedToNextNodes() {
+		return requireExchangeRouting
+	} else {
+		return requireExchangeRouting | requireUpdateConnections
+	}
 }
 
 func (r *routing1D) getNextStep(packet *shared.Packet) *shared.NodeID {
@@ -124,37 +133,36 @@ func (r *routing1D) getNextStep(packet *shared.Packet) *shared.NodeID {
 	defer r.mtx.RUnlock()
 
 	// there is no connected node
-	if r.nextNodeID == nil {
+	if len(r.frontwardNextNodeIDs)+len(r.backwardNextNodeIDs) == 0 {
 		if isExplicit {
 			return nil
 		}
 		return &shared.NodeLocal
 	}
 
-	if isBetween(r.config.localNodeID, r.nextNodeID, packet.DstNodeID) {
+	if isBetween(r.config.localNodeID, r.frontwardNextNodeIDs[0], packet.DstNodeID) {
 		if isExplicit {
 			return nil
 		}
 		return &shared.NodeLocal
 	}
 
-	if isBetween(r.prevNodeID, r.config.localNodeID, packet.DstNodeID) {
-		if isExplicit && !r.prevNodeID.Equal(packet.DstNodeID) {
+	if isBetween(r.backwardNextNodeIDs[0], r.config.localNodeID, packet.DstNodeID) {
+		if isExplicit && !r.backwardNextNodeIDs[0].Equal(packet.DstNodeID) {
 			return nil
 		}
-		return r.prevNodeID
 	}
 
 	last := r.routeInfos[len(r.routeInfos)-1]
 	if !packet.DstNodeID.Smaller(last.nodeID) {
-		return last.connectedNodeID
+		return last.firstNeighborhood
 	}
 	// TODO: binary search is better
 	candidate := last
 	for _, info := range r.routeInfos {
 		if packet.DstNodeID.Smaller(info.nodeID) {
 			candidate.scoreBySend += 1
-			return candidate.connectedNodeID
+			return candidate.firstNeighborhood
 		}
 		candidate = info
 	}
@@ -166,12 +174,12 @@ func (r *routing1D) countRecvPacket(from *shared.NodeID) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	if info, ok := r.connectedInfos[*from]; ok {
+	if info, ok := r.neighborhoodInfos[*from]; ok {
 		info.scoreByRecv += 1
 	}
 }
 
-func (r *routing1D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing) (bool, error) {
+func (r *routing1D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing) (int, error) {
 	if r.config.localNodeID.Equal(src) {
 		panic("it is not allowed to receive packet from local node")
 	}
@@ -179,15 +187,15 @@ func (r *routing1D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	info, ok := r.connectedInfos[*src]
+	info, ok := r.neighborhoodInfos[*src]
 	if !ok {
-		return false, nil
+		return 0, nil
 	}
 
 	updated := false
-	for nodeID := range info.connectedNodeIDs {
+	for nodeID := range info.secondNeighborhoods {
 		if _, ok := content.NodeRecords[nodeID.String()]; !ok {
-			delete(info.connectedNodeIDs, nodeID)
+			delete(info.secondNeighborhoods, nodeID)
 			updated = true
 		}
 	}
@@ -196,24 +204,29 @@ func (r *routing1D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing
 	for nodeIDStr, record := range content.NodeRecords {
 		nodeID, err := shared.NewNodeIDFromString(nodeIDStr)
 		if err != nil {
-			return false, fmt.Errorf("failed to parse node id %w", err)
+			return 0, fmt.Errorf("failed to parse node id %w", err)
 		}
 		if nodeID.Equal(r.config.localNodeID) {
 			oddScore = int(record.R1DScore)
 			continue
 		}
-		if _, ok := info.connectedNodeIDs[*nodeID]; !ok {
-			info.connectedNodeIDs[*nodeID] = struct{}{}
+		if _, ok := info.secondNeighborhoods[*nodeID]; !ok {
+			info.secondNeighborhoods[*nodeID] = struct{}{}
 			updated = true
 		}
 	}
 	info.oddScore = oddScore
 
 	if !updated {
-		return false, nil
+		return 0, nil
 	}
 	r.updateRouteInfos()
-	return r.nextNodeIDChanged(), nil
+	r.updateNextNodeIDs()
+	if r.connectedToNextNodes() {
+		return 0, nil
+	} else {
+		return requireUpdateConnections, nil
+	}
 }
 
 func (r *routing1D) setupRoutingPacket(content *proto.Routing) {
@@ -221,7 +234,7 @@ func (r *routing1D) setupRoutingPacket(content *proto.Routing) {
 	defer r.mtx.Unlock()
 	r.normalizeScore()
 
-	for nodeID, info := range r.connectedInfos {
+	for nodeID, info := range r.neighborhoodInfos {
 		nodeIDStr := nodeID.String()
 		if nodeRecord, ok := content.NodeRecords[nodeIDStr]; !ok {
 			content.NodeRecords[nodeIDStr] = &proto.RoutingNodeRecord{
@@ -249,37 +262,53 @@ func (r *routing1D) getConnections() (map[shared.NodeID]struct{}, map[shared.Nod
 
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
-	if r.prevNodeID != nil {
-		required[*r.nextNodeID] = struct{}{}
-		required[*r.prevNodeID] = struct{}{}
+	for _, nodeID := range r.frontwardNextNodeIDs {
+		required[*nodeID] = struct{}{}
+	}
+	for _, nodeID := range r.backwardNextNodeIDs {
+		required[*nodeID] = struct{}{}
 	}
 
-	for connectedNodeID, connectedInfo := range r.connectedInfos {
-		connectedNodeID := connectedNodeID
+	for neighborhoodNodeID, neighborhoodInfo := range r.neighborhoodInfos {
 		// keep connections when the connection level is over the levelRangesCount
-		if connectedInfo.level == -1 {
-			keep[connectedNodeID] = struct{}{}
+		if neighborhoodInfo.level == -1 {
+			keep[neighborhoodNodeID] = struct{}{}
 			continue
 		}
 
 		// keep connections when the number of connections is less than linksMin or the connection is yang
-		if len(required) < linksMin ||
-			len(connectedInfo.connectedNodeIDs) < linksMin ||
-			now.Before(connectedInfo.timestamp.Add(linkKeepLinkDuration)) {
-			required[connectedNodeID] = struct{}{}
-			requiredLevelCount[connectedInfo.level]++
+		if len(r.neighborhoodInfos) < linksMin ||
+			len(neighborhoodInfo.secondNeighborhoods) < linksMin ||
+			now.Before(neighborhoodInfo.timestamp.Add(linkKeepLinkDuration)) {
+			required[neighborhoodNodeID] = struct{}{}
+			requiredLevelCount[neighborhoodInfo.level]++
 			continue
 		}
 
 		// keep connections when the nearest node from the connected node is this node
-		n, p := getNextAndPrevNodeID((&connectedNodeID), connectedInfo.connectedNodeIDs)
-		if n.Equal(r.config.localNodeID) || p.Equal(r.config.localNodeID) {
-			required[connectedNodeID] = struct{}{}
-			requiredLevelCount[connectedInfo.level]++
+		largerNodeIDs := []*shared.NodeID{r.config.localNodeID}
+		smallerNodeIDs := []*shared.NodeID{r.config.localNodeID}
+		for nodeID := range neighborhoodInfo.secondNeighborhoods {
+			if nodeID.Smaller(&neighborhoodNodeID) {
+				smallerNodeIDs = append(smallerNodeIDs, &nodeID)
+			} else {
+				largerNodeIDs = append(largerNodeIDs, &nodeID)
+			}
+		}
+		slices.SortFunc(largerNodeIDs, func(a, b *shared.NodeID) int {
+			return a.Compare(b)
+		})
+		slices.SortFunc(smallerNodeIDs, func(a, b *shared.NodeID) int {
+			return a.Compare(b)
+		})
+		if largerNodeIDs[0].Equal(r.config.localNodeID) ||
+			smallerNodeIDs[len(smallerNodeIDs)-1].Equal(r.config.localNodeID) {
+			required[neighborhoodNodeID] = struct{}{}
+			requiredLevelCount[neighborhoodInfo.level]++
 			continue
 		}
 
-		candidatesByLevel[connectedInfo.level][connectedNodeID] = connectedInfo.scoreByRecv
+		candidatesByLevel[neighborhoodInfo.level][neighborhoodNodeID] = neighborhoodInfo.scoreByRecv
 	}
 
 	for _, routeInfo := range r.routeInfos {
@@ -289,7 +318,7 @@ func (r *routing1D) getConnections() (map[shared.NodeID]struct{}, map[shared.Nod
 		if _, ok := required[*routeInfo.nodeID]; ok {
 			continue
 		}
-		if _, ok := r.connectedInfos[*routeInfo.nodeID]; ok {
+		if _, ok := r.neighborhoodInfos[*routeInfo.nodeID]; ok {
 			continue
 		}
 
@@ -310,7 +339,6 @@ func (r *routing1D) getConnections() (map[shared.NodeID]struct{}, map[shared.Nod
 			maxScore := -1
 			var maxNodeID *shared.NodeID
 			for nodeID, score := range candidates {
-				nodeID := nodeID
 				if maxScore < score {
 					maxScore = score
 					maxNodeID = &nodeID
@@ -338,24 +366,24 @@ func (r *routing1D) calcLevel(nodeID *shared.NodeID) int {
 func (r *routing1D) updateRouteInfos() {
 	idMap := make(map[shared.NodeID]*shared.NodeID)
 
-	for nodeID, cInfo := range r.connectedInfos {
-		nodeID := nodeID
-		idMap[nodeID] = &nodeID
-		for connectedNodeID := range cInfo.connectedNodeIDs {
-			if r.config.localNodeID.Equal(&connectedNodeID) {
+	for firstNeighborhood, neighborhoodInfo := range r.neighborhoodInfos {
+		firstNeighborhood := firstNeighborhood
+		idMap[firstNeighborhood] = &firstNeighborhood
+		for secondNeighborhood := range neighborhoodInfo.secondNeighborhoods {
+			if r.config.localNodeID.Equal(&secondNeighborhood) {
 				continue
 			}
-			if _, ok := idMap[connectedNodeID]; !ok {
-				idMap[connectedNodeID] = &nodeID
+			if _, ok := idMap[secondNeighborhood]; !ok {
+				idMap[secondNeighborhood] = &firstNeighborhood
 				continue
 			}
-			if idMap[connectedNodeID].Equal(&connectedNodeID) {
+			if idMap[secondNeighborhood].Equal(&secondNeighborhood) {
 				continue
 			}
-			distance1 := idMap[connectedNodeID].DistanceFrom(&connectedNodeID)
-			distance2 := nodeID.DistanceFrom(&connectedNodeID)
+			distance1 := idMap[secondNeighborhood].DistanceFrom(&secondNeighborhood)
+			distance2 := firstNeighborhood.DistanceFrom(&secondNeighborhood)
 			if distance2.Smaller(distance1) {
-				idMap[connectedNodeID] = &nodeID
+				idMap[secondNeighborhood] = &firstNeighborhood
 			}
 		}
 	}
@@ -369,95 +397,99 @@ func (r *routing1D) updateRouteInfos() {
 
 	for _, rInfo := range r.routeInfos {
 		nodeID := idMap[*rInfo.nodeID]
-		rInfo.connectedNodeID = nodeID
+		rInfo.firstNeighborhood = nodeID
 		delete(idMap, *rInfo.nodeID)
 	}
 
 	for nodeID, connectedNodeID := range idMap {
 		nodeID := nodeID
 		r.routeInfos = append(r.routeInfos, &routeInfo1D{
-			nodeID:          &nodeID,
-			connectedNodeID: connectedNodeID,
-			level:           r.calcLevel(&nodeID),
-			scoreBySend:     0,
+			nodeID:            &nodeID,
+			firstNeighborhood: connectedNodeID,
+			level:             r.calcLevel(&nodeID),
+			scoreBySend:       0,
 		})
 	}
 
 	slices.SortFunc(r.routeInfos, func(a, b *routeInfo1D) int {
-		if a.nodeID.Smaller(b.nodeID) {
-			return -1
-		}
-		if a.nodeID.Equal(b.nodeID) {
-			return 0
-		}
-		return 1
+		return a.nodeID.Compare(b.nodeID)
 	})
 }
 
-func (r *routing1D) nextNodeIDChanged() bool {
+// updateNextNodeIDs updates frontward and backward next node IDs.
+func (r *routing1D) updateNextNodeIDs() {
 	// not connected any node
-	if len(r.connectedInfos) == 0 {
-		if r.nextNodeID == nil {
+	if len(r.neighborhoodInfos) == 0 {
+		r.frontwardNextNodeIDs = nil
+		r.backwardNextNodeIDs = nil
+		return
+	}
+
+	knownNodeIDs := make(map[shared.NodeID]struct{})
+	for nodeID, info := range r.neighborhoodInfos {
+		knownNodeIDs[nodeID] = struct{}{}
+		for nodeID2 := range info.secondNeighborhoods {
+			knownNodeIDs[nodeID2] = struct{}{}
+		}
+	}
+
+	if len(knownNodeIDs) == 1 {
+		for nodeID := range knownNodeIDs {
+			r.frontwardNextNodeIDs = []*shared.NodeID{&nodeID}
+			r.backwardNextNodeIDs = []*shared.NodeID{&nodeID}
+		}
+		return
+	}
+
+	largerNodeIDs := make([]*shared.NodeID, 0)
+	smallerNodeIDs := make([]*shared.NodeID, 0)
+	for nodeID := range knownNodeIDs {
+		if nodeID.Smaller(r.config.localNodeID) {
+			smallerNodeIDs = append(smallerNodeIDs, &nodeID)
+		} else {
+			largerNodeIDs = append(largerNodeIDs, &nodeID)
+		}
+	}
+	slices.SortFunc(largerNodeIDs, func(a, b *shared.NodeID) int {
+		return a.Compare(b)
+	})
+	slices.SortFunc(smallerNodeIDs, func(a, b *shared.NodeID) int {
+		return a.Compare(b)
+	})
+
+	nodeIDs := append(largerNodeIDs, smallerNodeIDs...)
+	r.frontwardNextNodeIDs = nodeIDs[0:2]
+	r.backwardNextNodeIDs = []*shared.NodeID{
+		nodeIDs[(len(nodeIDs) - 1)],
+		nodeIDs[(len(nodeIDs) - 2)],
+	}
+}
+
+// connectedToNextNodes returns true if connected to all next nodes.
+func (r *routing1D) connectedToNextNodes() bool {
+	for _, nextNodeID := range r.frontwardNextNodeIDs {
+		if _, ok := r.neighborhoodInfos[*nextNodeID]; !ok {
 			return false
 		}
-		r.nextNodeID = nil
-		r.prevNodeID = nil
-		return true
 	}
-
-	connectedNext := &shared.NodeLocal
-	connectedPrev := (*shared.NodeID)(nil)
-	connectedMin := &shared.NodeLocal
-	connectedMax := (*shared.NodeID)(nil)
-	knownNodeIDs := make(map[shared.NodeID]struct{})
-
-	for nodeID, info := range r.connectedInfos {
-		nodeID := nodeID
-		if r.config.localNodeID.Smaller(&nodeID) && nodeID.Smaller(connectedNext) {
-			connectedNext = &nodeID
-		}
-		if nodeID.Smaller(r.config.localNodeID) && (connectedPrev == nil || connectedPrev.Smaller(&nodeID)) {
-			connectedPrev = &nodeID
-		}
-		if nodeID.Smaller(connectedMin) {
-			connectedMin = &nodeID
-		}
-		if connectedMax == nil || connectedMax.Smaller(&nodeID) {
-			connectedMax = &nodeID
-		}
-
-		knownNodeIDs[nodeID] = struct{}{}
-		for connectedNodeID := range info.connectedNodeIDs {
-			knownNodeIDs[connectedNodeID] = struct{}{}
+	for _, nextNodeID := range r.backwardNextNodeIDs {
+		if _, ok := r.neighborhoodInfos[*nextNodeID]; !ok {
+			return false
 		}
 	}
-	if connectedNext.Equal(&shared.NodeLocal) {
-		connectedNext = connectedMin
-	}
-	if connectedPrev == nil {
-		connectedPrev = connectedMax
-	}
-
-	n, p := getNextAndPrevNodeID(r.config.localNodeID, knownNodeIDs)
-	if connectedNext.Equal(r.nextNodeID) && connectedNext.Equal(n) &&
-		connectedPrev.Equal(r.prevNodeID) && connectedPrev.Equal(p) {
-		return false
-	}
-
-	r.nextNodeID, r.prevNodeID = n, p
 	return true
 }
 
 func (r *routing1D) normalizeScore() {
 	sum := 0
-	for _, connectedInfo := range r.connectedInfos {
+	for _, connectedInfo := range r.neighborhoodInfos {
 		sum += connectedInfo.scoreByRecv
 	}
 	rate := float64(1)
 	if sum >= 1024*1024 {
 		rate = float64(1024*1024) / float64(sum)
 	}
-	for _, connectedInfo := range r.connectedInfos {
+	for _, connectedInfo := range r.neighborhoodInfos {
 		connectedInfo.scoreByRecv = int(float64(connectedInfo.scoreByRecv) * rate)
 	}
 
@@ -486,40 +518,4 @@ func isBetween(a, b, target *shared.NodeID) bool {
 
 	// a > b : a <= target || target < b
 	return !target.Smaller(a) || target.Smaller(b)
-}
-
-func getNextAndPrevNodeID(baseNodeID *shared.NodeID, nodeIDs map[shared.NodeID]struct{}) (*shared.NodeID, *shared.NodeID) {
-	nextCandidate := &shared.NodeLocal
-	prevCandidate := (*shared.NodeID)(nil)
-	minNodeID := &shared.NodeLocal
-	maxNodeID := (*shared.NodeID)(nil)
-	for nodeID := range nodeIDs {
-		nodeID := nodeID
-		if baseNodeID.Equal(&nodeID) {
-			continue
-		}
-		if baseNodeID.Smaller(&nodeID) && nodeID.Smaller(nextCandidate) {
-			nextCandidate = &nodeID
-		}
-		if nodeID.Smaller(baseNodeID) && (prevCandidate == nil || prevCandidate.Smaller(&nodeID)) {
-			prevCandidate = &nodeID
-		}
-		if nodeID.Smaller(minNodeID) {
-			minNodeID = &nodeID
-		}
-		if maxNodeID == nil || maxNodeID.Smaller(&nodeID) {
-			maxNodeID = &nodeID
-		}
-	}
-	if nextCandidate.Equal(&shared.NodeLocal) {
-		nextCandidate = minNodeID
-		if nextCandidate.Equal(&shared.NodeLocal) {
-			nextCandidate = nil
-		}
-	}
-	if prevCandidate == nil {
-		prevCandidate = maxNodeID
-	}
-
-	return nextCandidate, prevCandidate
 }

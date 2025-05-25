@@ -65,8 +65,7 @@ func newTestConfigBase(seedURL string, i int) *Config {
 			BufferInterval:    10 * time.Millisecond,
 			PacketBaseBytes:   1024,
 		},
-		RoutingExchangeInterval: 1 * time.Second,
-		PacketHopLimit:          10,
+		PacketHopLimit: 10,
 	}
 }
 

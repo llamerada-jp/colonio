@@ -55,7 +55,7 @@ func newRouting2D(config *routing2DConfig) *routing2D {
 	}
 }
 
-func (r *routing2D) updateNodeConnections(connections map[shared.NodeID]struct{}) bool {
+func (r *routing2D) updateNodeConnections(connections map[shared.NodeID]struct{}) int {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
@@ -73,11 +73,10 @@ func (r *routing2D) updateNodeConnections(connections map[shared.NodeID]struct{}
 		}
 	}
 
-	if !updated {
-		return false
+	if updated && r.neighborNodeIDChanged() {
+		return requireExchangeRouting | requireUpdateConnections
 	}
-
-	return r.neighborNodeIDChanged()
+	return 0
 }
 
 func (r *routing2D) getNextStep(dst *geometry.Coordinate) *shared.NodeID {
@@ -140,21 +139,21 @@ func (r *routing2D) getNextNodePositions() map[shared.NodeID]*geometry.Coordinat
 	return positions
 }
 
-func (r *routing2D) updateLocalPosition(pos *geometry.Coordinate) bool {
+func (r *routing2D) updateLocalPosition(pos *geometry.Coordinate) int {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
 	if r.localPosition == *pos {
-		return false
+		return 0
 	}
 
 	r.localPosition = *pos
 	r.neighborNodeIDChanged()
 
-	return true
+	return requireExchangeRouting
 }
 
-func (r *routing2D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing) (bool, error) {
+func (r *routing2D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing) (int, error) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
@@ -178,7 +177,7 @@ func (r *routing2D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing
 	for nodeIDStr, record := range content.GetNodeRecords() {
 		nodeID, err := shared.NewNodeIDFromString(nodeIDStr)
 		if err != nil {
-			return false, fmt.Errorf("failed to parse node id %w", err)
+			return 0, fmt.Errorf("failed to parse node id %w", err)
 		}
 		if nodeID.Equal(r.config.localNodeID) {
 			continue
@@ -228,11 +227,10 @@ func (r *routing2D) recvRoutingPacket(src *shared.NodeID, content *proto.Routing
 		}
 	}
 
-	if !updated {
-		return false, nil
+	if updated && r.neighborNodeIDChanged() {
+		return requireExchangeRouting | requireUpdateConnections, nil
 	}
-
-	return r.neighborNodeIDChanged(), nil
+	return 0, nil
 }
 
 func (r *routing2D) setupRoutingPacket(content *proto.Routing) {

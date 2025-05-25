@@ -31,6 +31,8 @@ import (
 
 const (
 	connectionUpdateInterval = 10 * time.Second
+	requireUpdateConnections = 0x1
+	requireExchangeRouting   = 0x2
 )
 
 type Handler interface {
@@ -44,9 +46,6 @@ type Config struct {
 	Observation      observation.Caller
 	Transferer       *transferer.Transferer
 	CoordinateSystem geometry.CoordinateSystem
-
-	// should be copied from config.RoutingExchangeInterval
-	RoutingExchangeInterval time.Duration
 }
 
 type Routing struct {
@@ -56,29 +55,24 @@ type Routing struct {
 	transferer       *transferer.Transferer
 	coordinateSystem geometry.CoordinateSystem
 
-	// should be copied from config.RoutingExchangeInterval
-	routingExchangeInterval time.Duration
-
-	localNodeID             *shared.NodeID
-	r1d                     *routing1D
-	r2d                     *routing2D
-	mtx                     sync.Mutex
-	requireUpdateRoute      bool
-	lastRouteUpdate         time.Time
-	requireUpdateConnection bool
-	lastConnectionUpdate    time.Time
+	localNodeID          *shared.NodeID
+	r1d                  *routing1D
+	r2d                  *routing2D
+	mtx                  sync.Mutex
+	lastRouteUpdate      time.Time
+	triggeredAction      int
+	lastConnectionUpdate time.Time
 }
 
 func NewRouting(config *Config) *Routing {
 	r := &Routing{
-		logger:                  config.Logger,
-		handler:                 config.Handler,
-		observation:             config.Observation,
-		transferer:              config.Transferer,
-		coordinateSystem:        config.CoordinateSystem,
-		routingExchangeInterval: config.RoutingExchangeInterval,
-		lastRouteUpdate:         time.Now(),
-		lastConnectionUpdate:    time.Now(),
+		logger:               config.Logger,
+		handler:              config.Handler,
+		observation:          config.Observation,
+		transferer:           config.Transferer,
+		coordinateSystem:     config.CoordinateSystem,
+		lastRouteUpdate:      time.Now(),
+		lastConnectionUpdate: time.Now(),
 	}
 
 	transferer.SetRequestHandler[proto.PacketContent_Routing](config.Transferer, r.recvRouting)
@@ -136,16 +130,16 @@ func (r *Routing) UpdateLocalPosition(pos *geometry.Coordinate) error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	r.requireUpdateRoute = r.r2d.updateLocalPosition(pos) || r.requireUpdateRoute
+	r.triggeredAction = r.triggeredAction | r.r2d.updateLocalPosition(pos)
 	return nil
 }
 
 func (r *Routing) UpdateNodeConnections(connections map[shared.NodeID]struct{}) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
-	r.requireUpdateConnection = r.r1d.updateNodeConnections(connections) || r.requireUpdateConnection
+	r.triggeredAction = r.triggeredAction | r.r1d.updateNodeConnections(connections)
 	if r.r2d != nil {
-		r.requireUpdateConnection = r.r2d.updateNodeConnections(connections) || r.requireUpdateConnection
+		r.triggeredAction = r.triggeredAction | r.r2d.updateNodeConnections(connections)
 	}
 }
 
@@ -162,9 +156,8 @@ func (r *Routing) subRoutine() {
 		r.handler.RoutingUpdateNextNodePositions(r.r2d.getNextNodePositions())
 	}
 
-	r.requireUpdateRoute = r.requireUpdateRoute || r.requireUpdateConnection
-
-	if r.requireUpdateConnection || time.Now().After(r.lastConnectionUpdate.Add(connectionUpdateInterval)) {
+	if (r.triggeredAction&requireUpdateConnections) != 0 ||
+		time.Now().After(r.lastConnectionUpdate.Add(connectionUpdateInterval)) {
 		required, keep := r.r1d.getConnections()
 		r.observation.UpdateRequiredNodeIDs1D(shared.ConvertNodeIDSetToStringMap(required))
 		if r.r2d != nil {
@@ -175,13 +168,13 @@ func (r *Routing) subRoutine() {
 			r.observation.UpdateRequiredNodeIDs2D(shared.ConvertNodeIDSetToStringMap(required2d))
 		}
 		r.handler.RoutingUpdateConnection(required, keep)
-		r.requireUpdateConnection = false
+		r.triggeredAction = r.triggeredAction &^ requireUpdateConnections
 		r.lastConnectionUpdate = time.Now()
 	}
 
-	if r.requireUpdateRoute || time.Now().After(r.lastRouteUpdate.Add(r.routingExchangeInterval)) {
+	if (r.triggeredAction & requireExchangeRouting) != 0 {
 		r.sendRouting()
-		r.requireUpdateRoute = false
+		r.triggeredAction = r.triggeredAction &^ requireExchangeRouting
 		r.lastRouteUpdate = time.Now()
 	}
 }
@@ -209,18 +202,18 @@ func (r *Routing) recvRouting(p *shared.Packet) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	flag, err := r.r1d.recvRoutingPacket(src, content)
+	action, err := r.r1d.recvRoutingPacket(src, content)
 	if err != nil {
 		r.logger.Warn("error on processing routing packet", slog.String("error", err.Error()))
 		return
 	}
-	r.requireUpdateConnection = flag || r.requireUpdateConnection
+	r.triggeredAction = r.triggeredAction | action
 	if r.r2d != nil {
-		flag, err = r.r2d.recvRoutingPacket(src, content)
+		action, err = r.r2d.recvRoutingPacket(src, content)
 		if err != nil {
 			r.logger.Warn("error on processing routing packet", slog.String("error", err.Error()))
 			return
 		}
-		r.requireUpdateConnection = flag || r.requireUpdateConnection
+		r.triggeredAction = r.triggeredAction | action
 	}
 }
