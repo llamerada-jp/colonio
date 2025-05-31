@@ -72,7 +72,7 @@ func TestSeedAccessor_assignment(t *testing.T) {
 	nodeCount := 0
 
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&testUtil.AssignmentHandlerHelper{
+		seed.WithAssignmentHandler(&seed.AssignmentHandlerHelper{
 			T: t,
 			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
 				// return nodeID for 1st and 2nd node
@@ -163,7 +163,7 @@ func TestSeedAccessor_SignalingKind(t *testing.T) {
 
 	// create seed
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&testUtil.AssignmentHandlerHelper{
+		seed.WithAssignmentHandler(&seed.AssignmentHandlerHelper{
 			T: t,
 			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
 				if nodeCount < len(nodeIDs) {
@@ -256,7 +256,7 @@ func TestSeedAccessor_SignalingTarget(t *testing.T) {
 
 	// setup seed
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&testUtil.AssignmentHandlerHelper{
+		seed.WithAssignmentHandler(&seed.AssignmentHandlerHelper{
 			T: t,
 			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
 				if nodeCount < len(nodeIDs) {
