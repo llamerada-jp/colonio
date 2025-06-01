@@ -226,7 +226,7 @@ func (sa *SeedAccessor) SendSignalICE(dstNodeID *shared.NodeID, ices *signal.ICE
 	return nil
 }
 
-func (sa *SeedAccessor) ReconcileNextNode(nextNodeIDs, disconnectedNodeIDs []*shared.NodeID) (bool, error) {
+func (sa *SeedAccessor) ReconcileNextNodes(nextNodeIDs, disconnectedNodeIDs []*shared.NodeID) (bool, error) {
 	res, err := sa.client.ReconcileNextNodes(sa.ctx, &connect.Request[proto.ReconcileNextNodesRequest]{
 		Msg: &proto.ReconcileNextNodesRequest{
 			NextNodeIds:         shared.ConvertNodeIDsToProto(nextNodeIDs),
