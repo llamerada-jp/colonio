@@ -386,7 +386,7 @@ func TestSeedAccessor_ReconcileNextNode(t *testing.T) {
 	_, err := accessor.Start(t.Context())
 	require.NoError(t, err)
 
-	res, err := accessor.ReconcileNextNode(
+	res, err := accessor.ReconcileNextNodes(
 		[]*shared.NodeID{nodeIDs[1]},
 		[]*shared.NodeID{nodeIDs[2]},
 	)
