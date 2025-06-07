@@ -414,6 +414,42 @@ func TestNodeID_ConvertNodeIDSetToStringMap(t *testing.T) {
 	assert.Contains(t, dst, "00000000000000030000000000000004")
 }
 
+func TestNodeID_ConvertNodeIDsToProto(t *testing.T) {
+	dst := ConvertNodeIDsToProto(nil)
+	assert.Len(t, dst, 0)
+
+	src := []*NodeID{
+		NewNormalNodeID(1, 2),
+		NewNormalNodeID(3, 4),
+	}
+
+	dst = ConvertNodeIDsToProto(src)
+	assert.Len(t, dst, 2)
+	assert.Equal(t, uint64(1), dst[0].Id0)
+	assert.Equal(t, uint64(2), dst[0].Id1)
+	assert.Equal(t, uint64(3), dst[1].Id0)
+	assert.Equal(t, uint64(4), dst[1].Id1)
+}
+
+func TestNodeID_ConvertNodeIDsFromProto(t *testing.T) {
+	nodeIDs := []*NodeID{
+		NewRandomNodeID(),
+		NewRandomNodeID(),
+		NewRandomNodeID(),
+	}
+
+	nodeIDProtos := make([]*proto.NodeID, len(nodeIDs))
+	for i, nodeID := range nodeIDs {
+		nodeIDProtos[i] = nodeID.Proto()
+	}
+	convertedNodeIDs, err := ConvertNodeIDsFromProto(nodeIDProtos)
+	require.NoError(t, err)
+	assert.Len(t, convertedNodeIDs, len(nodeIDs))
+	for i, nodeID := range convertedNodeIDs {
+		assert.True(t, nodeID.Equal(nodeIDs[i]))
+	}
+}
+
 func TestNodeID_MapKey(t *testing.T) {
 	origin := NewRandomNodeID()
 	clone, err := NewNodeIDFromProto(origin.Proto())

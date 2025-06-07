@@ -226,6 +226,21 @@ func (sa *SeedAccessor) SendSignalICE(dstNodeID *shared.NodeID, ices *signal.ICE
 	return nil
 }
 
+func (sa *SeedAccessor) ReconcileNextNodes(nextNodeIDs, disconnectedNodeIDs []*shared.NodeID) (bool, error) {
+	res, err := sa.client.ReconcileNextNodes(sa.ctx, &connect.Request[proto.ReconcileNextNodesRequest]{
+		Msg: &proto.ReconcileNextNodesRequest{
+			NextNodeIds:         shared.ConvertNodeIDsToProto(nextNodeIDs),
+			DisconnectedNodeIds: shared.ConvertNodeIDsToProto(disconnectedNodeIDs),
+		},
+	})
+
+	if err != nil {
+		return false, fmt.Errorf("failed to reconcile next nodes: %w", err)
+	}
+
+	return res.Msg.Matched, nil
+}
+
 func (sa *SeedAccessor) unassign() {
 	// use context.Background() because sa.ctx may be already canceled when call this
 	_, err := sa.client.UnassignNode(context.Background(), &connect.Request[proto.UnassignNodeRequest]{})

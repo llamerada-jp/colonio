@@ -250,3 +250,31 @@ func ConvertNodeIDSetToStringMap(set map[NodeID]struct{}) map[string]struct{} {
 	}
 	return r
 }
+
+func ConvertNodeIDsToProto(ids []*NodeID) []*proto.NodeID {
+	r := make([]*proto.NodeID, len(ids))
+	for i, id := range ids {
+		if id == nil {
+			r[i] = nil
+		} else {
+			r[i] = id.Proto()
+		}
+	}
+	return r
+}
+
+func ConvertNodeIDsFromProto(ids []*proto.NodeID) ([]*NodeID, error) {
+	if ids == nil {
+		return nil, nil
+	}
+
+	result := make([]*NodeID, len(ids))
+	var err error
+	for i, nodeID := range ids {
+		result[i], err = NewNodeIDFromProto(nodeID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse node id: %w", err)
+		}
+	}
+	return result, nil
+}

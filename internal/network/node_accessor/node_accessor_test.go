@@ -600,10 +600,28 @@ func TestNodeAccessorConnectLinks(t *testing.T) {
 
 	// node 1 ~ 3 connect to node 0
 	for i := 1; i < len(nodeIDs); i++ {
+		keepNodeIDs := make(map[shared.NodeID]struct{})
+		for j := 1; j < len(nodeIDs); j++ {
+			if j != i {
+				keepNodeIDs[*nodeIDs[j]] = struct{}{}
+			}
+		}
 		err := nodeAccessors[i].ConnectLinks(
 			map[shared.NodeID]struct{}{
 				*nodeIDs[0]: {},
 			},
+			keepNodeIDs,
+		)
+		require.NoError(t, err)
+	}
+	// wait for connecting
+	time.Sleep(1 * time.Second)
+	for i := 1; i < len(nodeIDs); i++ {
+		err := nodeAccessors[i].ConnectLinks(
+			map[shared.NodeID]struct{}{
+				*nodeIDs[0]: {},
+			},
+			// disconnect from other than node 0.
 			map[shared.NodeID]struct{}{},
 		)
 		require.NoError(t, err)

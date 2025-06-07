@@ -31,6 +31,9 @@ func TestRouting1D_updateNodeConnections(t *testing.T) {
 	testUtil.SortNodeIDs(nodeIDs)
 	r1d := newRouting1D(&routing1DConfig{
 		localNodeID: nodeIDs[0],
+		reconcileNextNodes: func(_, _ []*shared.NodeID) (bool, error) {
+			return true, nil
+		},
 	})
 
 	tests := []struct {
