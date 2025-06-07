@@ -21,6 +21,7 @@ import (
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/stretchr/testify/require"
 )
 
 type AssignmentHandlerHelper struct {
@@ -32,16 +33,12 @@ type AssignmentHandlerHelper struct {
 var _ AssignmentHandler = (*AssignmentHandlerHelper)(nil)
 
 func (h *AssignmentHandlerHelper) AssignNode(ctx context.Context) (*shared.NodeID, error) {
-	if h.AssignNodeF == nil {
-		h.T.FailNow()
-	}
+	require.NotNil(h.T, h.AssignNodeF, "AssignNodeF must not be nil")
 	return h.AssignNodeF(ctx)
 }
 
 func (h *AssignmentHandlerHelper) UnassignNode(nodeID *shared.NodeID) {
-	if h.UnassignNodeF == nil {
-		h.T.FailNow()
-	}
+	require.NotNil(h.T, h.UnassignNodeF, "UnassignNodeF must not be nil")
 	h.UnassignNodeF(nodeID)
 }
 
@@ -57,36 +54,26 @@ type MultiSeedHandlerHelper struct {
 var _ MultiSeedHandler = (*MultiSeedHandlerHelper)(nil)
 
 func (h *MultiSeedHandlerHelper) GetNodeReports(ctx context.Context, from, to *shared.NodeID) (map[shared.NodeID]*NodeReport, error) {
-	if h.GetNodeReportsF == nil {
-		h.T.FailNow()
-	}
+	require.NotNil(h.T, h.GetNodeReportsF, "GetNodeReportsF must not be nil")
 	return h.GetNodeReportsF(ctx, from, to)
 }
 
 func (h *MultiSeedHandlerHelper) ReportDisconnected(ctx context.Context, target *shared.NodeID, from []*shared.NodeID) error {
-	if h.ReportDisconnectedF == nil {
-		h.T.FailNow()
-	}
+	require.NotNil(h.T, h.ReportDisconnectedF, "ReportDisconnectedF must not be nil")
 	return h.ReportDisconnectedF(ctx, target, from)
 }
 
 func (h *MultiSeedHandlerHelper) ClearDisconnected(ctx context.Context, from *shared.NodeID, target []*shared.NodeID) error {
-	if h.ClearDisconnectedF == nil {
-		h.T.FailNow()
-	}
+	require.NotNil(h.T, h.ClearDisconnectedF, "ClearDisconnectedF must not be nil")
 	return h.ClearDisconnectedF(ctx, from, target)
 }
 
 func (h *MultiSeedHandlerHelper) GetNodeCount(ctx context.Context) (uint64, error) {
-	if h.GetNodeCountF == nil {
-		h.T.FailNow()
-	}
+	require.NotNil(h.T, h.GetNodeCountF, "GetNodeCountF must not be nil")
 	return h.GetNodeCountF(ctx)
 }
 
 func (h *MultiSeedHandlerHelper) RelaySignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error {
-	if h.RelaySignalF == nil {
-		h.T.FailNow()
-	}
+	require.NotNil(h.T, h.RelaySignalF, "RelaySignalF must not be nil")
 	return h.RelaySignalF(ctx, signal, relayToNext)
 }

@@ -358,7 +358,11 @@ func (s *Seed) AssignNode(ctx context.Context, _ *connect.Request[proto.AssignNo
 
 func (s *Seed) UnassignNode(ctx context.Context, _ *connect.Request[proto.UnassignNodeRequest]) (*connect.Response[proto.UnassignNodeResponse], error) {
 	session := ctx.Value(CONTEXT_KEY_SESSION).(*session)
-	defer session.delete()
+	defer func() {
+		if session != nil {
+			session.delete()
+		}
+	}()
 
 	nodeID := session.getNodeID()
 	if nodeID == nil {
