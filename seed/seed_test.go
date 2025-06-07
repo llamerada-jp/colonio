@@ -814,6 +814,7 @@ func TestSeed_getNodeReports_withMultiSeedHandler(t *testing.T) {
 	opts := options{
 		logger: slog.Default(),
 		multiSeedHandler: &MultiSeedHandlerHelper{
+			T: t,
 			GetNodeReportsF: func(ctx context.Context, from, to *shared.NodeID) (map[shared.NodeID]*NodeReport, error) {
 				require.True(t, from.Equal(nodeIDs[0]))
 				require.True(t, to.Equal(nodeIDs[2]))
