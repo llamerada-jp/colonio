@@ -23,6 +23,8 @@ const (
 
 type Record struct {
 	State             string
+	IsOnline          bool
+	IsStable          bool
 	ConnectedNodeIDs  []string
 	RequiredNodeIDs1D []string
 	RequiredNodeIDs2D []string
