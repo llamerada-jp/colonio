@@ -78,7 +78,7 @@ func TestNetwork(t *testing.T) {
 	// start seed
 	nodeCount := 0
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&testUtil.AssignmentHandlerHelper{
+		seed.WithAssignmentHandler(&seed.AssignmentHandlerHelper{
 			T: t,
 			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
 				if nodeCount >= len(nodeIDs) {
@@ -122,7 +122,7 @@ func TestNetwork(t *testing.T) {
 
 	// can be online only one node
 	require.Eventually(t, func() bool {
-		return networks[0].IsOnline()
+		return networks[0].IsOnline() && networks[0].IsStable()
 	}, 60*time.Second, 1*time.Second)
 
 	// make other nodes online
@@ -150,10 +150,8 @@ func TestNetwork(t *testing.T) {
 
 	// all nodes should be online
 	require.Eventually(t, func() bool {
-		mtx.Lock()
-		defer mtx.Unlock()
 		for _, network := range networks {
-			if !network.IsOnline() {
+			if !network.IsOnline() || !network.IsStable() {
 				return false
 			}
 		}
@@ -170,7 +168,7 @@ func TestNetwork(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// position should be tolled to each node
+	// position should be told to each node
 	assert.Eventually(t, func() bool {
 		mtx.Lock()
 		defer mtx.Unlock()
@@ -214,12 +212,9 @@ func TestNetwork(t *testing.T) {
 
 		for _, network := range networks {
 			assert.True(t, network.IsOnline())
+			assert.True(t, network.IsStable())
 		}
 
 		return len(receivedPackets) == 2
 	}, 60*time.Second, 1*time.Second)
-
-	for _, n := range networks {
-		assert.True(t, n.IsOnline())
-	}
 }
