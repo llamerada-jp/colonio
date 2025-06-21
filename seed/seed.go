@@ -52,17 +52,12 @@ var (
 )
 
 type node struct {
-	nodeID       shared.NodeID
-	timestamp    time.Time
-	mutex        sync.Mutex
-	term         chan struct{}
-	signals      []*proto.Signal
-	stream       *connect.ServerStream[proto.PollSignalResponse]
-	disconnected map[shared.NodeID]time.Time
-}
-
-type NodeReport struct {
-	Disconnected map[shared.NodeID]time.Time
+	nodeID    shared.NodeID
+	timestamp time.Time
+	mutex     sync.Mutex
+	term      chan struct{}
+	signals   []*proto.Signal
+	stream    *connect.ServerStream[proto.PollSignalResponse]
 }
 
 type options struct {
@@ -80,14 +75,11 @@ type AssignmentHandler interface {
 }
 
 type MultiSeedHandler interface {
-	// should return all node's reports when from and to are nil
-	GetNodeReports(ctx context.Context, from, to *shared.NodeID) (map[shared.NodeID]*NodeReport, error)
 	ReportDisconnected(ctx context.Context, from *shared.NodeID, targets []*shared.NodeID) error
-	// ClearDisconnected should clear the disconnected reports for the target node from the specified node.
-	// If the node does not exist, ignore the node and delete only the report of the node that does exist.
-	ClearDisconnected(ctx context.Context, from *shared.NodeID, target []*shared.NodeID) error
 	GetNodeCount(ctx context.Context) (uint64, error)
 	RelaySignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error
+	KeepaliveStart(ctx context.Context, nodeID *shared.NodeID) error
+	KeepaliveStop(ctx context.Context, nodeID *shared.NodeID) error
 }
 
 type optionSetter func(*options)
@@ -326,11 +318,10 @@ func (s *Seed) AssignNode(ctx context.Context, _ *connect.Request[proto.AssignNo
 	}
 
 	s.nodes[*nodeID] = &node{
-		nodeID:       *nodeID,
-		timestamp:    time.Now(),
-		term:         make(chan struct{}, 1),
-		signals:      make([]*proto.Signal, 0),
-		disconnected: make(map[shared.NodeID]time.Time),
+		nodeID:    *nodeID,
+		timestamp: time.Now(),
+		term:      make(chan struct{}, 1),
+		signals:   make([]*proto.Signal, 0),
 	}
 
 	s.mutex.Unlock()
@@ -514,13 +505,6 @@ func (s *Seed) ReconcileNextNodes(ctx context.Context, request *connect.Request[
 		return nil, ErrInternal
 	}
 
-	if len(nextNodeIDs) != 0 {
-		if err := s.clearDisconnects(ctx, nodeID, nextNodeIDs); err != nil {
-			s.log(ctx).Warn("failed to clear disconnects", slog.String("error", err.Error()))
-			return nil, ErrInternal
-		}
-	}
-
 	if len(disconnectedIDs) != 0 {
 		if err := s.reportDisconnects(ctx, nodeID, disconnectedIDs); err != nil {
 			s.log(ctx).Warn("failed to report disconnects", slog.String("error", err.Error()))
@@ -543,12 +527,6 @@ func (s *Seed) ReconcileNextNodes(ctx context.Context, request *connect.Request[
 			},
 		}, nil
 	}
-
-	nodeReports, err := s.getNodeReports(ctx, nextNodeIDs[0], nextNodeIDs[len(nextNodeIDs)-1])
-	if err != nil {
-		return nil, ErrInternal
-	}
-	delete(nodeReports, *nodeID)
 
 	matched := true
 	for _, nextNodeID := range nextNodeIDs {
@@ -586,36 +564,7 @@ func (s *Seed) reportDisconnects(ctx context.Context, nodeID *shared.NodeID, tar
 		return nil
 	}
 
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	for _, id := range targetIDs {
-		if node, ok := s.nodes[*id]; ok {
-			node.mutex.Lock()
-			node.disconnected[*nodeID] = time.Now()
-			node.mutex.Unlock()
-		}
-	}
-	return nil
-}
-
-func (s *Seed) clearDisconnects(ctx context.Context, nodeID *shared.NodeID, targetIDs []*shared.NodeID) error {
-	if s.multiSeedHandler != nil {
-		if err := s.multiSeedHandler.ClearDisconnected(ctx, nodeID, targetIDs); err != nil {
-			s.log(ctx).Warn("failed to clear disconnects", slog.String("error", err.Error()))
-			return err
-		}
-		return nil
-	}
-
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	for _, id := range targetIDs {
-		if node, ok := s.nodes[*id]; ok {
-			node.mutex.Lock()
-			delete(node.disconnected, *nodeID)
-			node.mutex.Unlock()
-		}
-	}
+	panic("kick!")
 	return nil
 }
 
@@ -680,66 +629,12 @@ func (s *Seed) isAlone(ctx context.Context, nodeID *shared.NodeID) (bool, error)
 			return false, nil
 		}
 
-		nodeReports, err := s.multiSeedHandler.GetNodeReports(ctx, nil, nil)
-		if err != nil {
-			s.log(ctx).Warn("failed to get node reports", slog.String("err", err.Error()))
-			return false, err
-		}
-		if len(nodeReports) == 0 || (len(nodeReports) == 1 && nodeReports[*nodeID] != nil) {
-			return true, nil
-		}
-
 		return false, nil
 	}
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	return len(s.nodes) == 0 || (len(s.nodes) == 1 && s.nodes[*nodeID] != nil), nil
-}
-
-func (s *Seed) getNodeReports(ctx context.Context, from, to *shared.NodeID) (map[shared.NodeID]*NodeReport, error) {
-	if s.multiSeedHandler != nil {
-		nodeReports, err := s.multiSeedHandler.GetNodeReports(ctx, from, to)
-		if err != nil {
-			s.log(ctx).Warn("failed to get disconnected", slog.String("err", err.Error()))
-			return nil, err
-		}
-		for _, report := range nodeReports {
-			if report.Disconnected == nil {
-				continue
-			}
-			for disconnectedID, timestamp := range report.Disconnected {
-				if time.Since(timestamp) > REPORT_TIMEOUT {
-					delete(report.Disconnected, disconnectedID)
-				}
-			}
-		}
-		return nodeReports, err
-	}
-
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	nodeReports := make(map[shared.NodeID]*NodeReport)
-	for nodeID, node := range s.nodes {
-		if !nodeIDBetween(&nodeID, from, to) {
-			continue
-		}
-		nodeReports[nodeID] = &NodeReport{
-			Disconnected: make(map[shared.NodeID]time.Time),
-		}
-		node.mutex.Lock()
-		for disconnectedID, timestamp := range node.disconnected {
-			if time.Since(timestamp) > REPORT_TIMEOUT {
-				delete(node.disconnected, disconnectedID)
-			} else {
-				nodeReports[nodeID].Disconnected[disconnectedID] = timestamp
-			}
-		}
-		node.mutex.Unlock()
-	}
-
-	return nodeReports, nil
 }
 
 func (s *Seed) cleanup() error {
@@ -780,16 +675,7 @@ func (n *node) isExpired(pollingInterval time.Duration, reportThreshold int) boo
 		return true
 	}
 
-	reportCount := 0
-	for nodeID, timestamp := range n.disconnected {
-		if time.Since(timestamp) > REPORT_TIMEOUT {
-			delete(n.disconnected, nodeID)
-		} else {
-			reportCount++
-		}
-	}
-
-	return reportCount >= reportThreshold
+	return false
 }
 
 func (n *node) close() {
