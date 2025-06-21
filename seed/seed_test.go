@@ -37,7 +37,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func startServer(t *testing.T, ctx context.Context, seed *Seed) uint16 {
+func startServer(t *testing.T, ctx context.Context, seed *Controller) uint16 {
 	cert := os.Getenv("COLONIO_TEST_CERT")
 	key := os.Getenv("COLONIO_TEST_KEY")
 	if cert == "" || key == "" {
@@ -90,7 +90,7 @@ func createClient(_ *testing.T, _ context.Context, port uint16) service.SeedServ
 }
 
 func TestSeed_AssignNode(t *testing.T) {
-	seed := NewSeed()
+	seed := NewController()
 	port := startServer(t, t.Context(), seed)
 
 	// the first node
@@ -130,7 +130,7 @@ func TestSeed_AssignNode(t *testing.T) {
 }
 
 func TestSession(t *testing.T) {
-	seed := NewSeed(WithPollingInterval(1 * time.Second))
+	seed := NewController(WithPollingInterval(1 * time.Second))
 	port := startServer(t, t.Context(), seed)
 
 	client := createClient(t, t.Context(), port)
@@ -190,7 +190,7 @@ func TestSeed_AssignNodeWithAssignmentHandler(t *testing.T) {
 	var mtx sync.Mutex
 	unassignCalled := false
 
-	seed := NewSeed(
+	seed := NewController(
 		WithPollingInterval(1*time.Second),
 		WithAssignmentHandler(
 			&AssignmentHandlerHelper{
@@ -233,7 +233,7 @@ func TestSeed_SendSignal(t *testing.T) {
 	received := make([][]*proto.Signal, 2)
 
 	n := 0
-	seed := NewSeed(WithAssignmentHandler(&AssignmentHandlerHelper{
+	seed := NewController(WithAssignmentHandler(&AssignmentHandlerHelper{
 		T: t,
 		AssignNodeF: func(context.Context) (*shared.NodeID, error) {
 			nodeID := nodeIDs[n]
@@ -355,7 +355,7 @@ func TestSeed_ReconcileNextNodes_oneNode(t *testing.T) {
 		return a.Compare(b)
 	})
 	n := 0
-	seed := NewSeed(WithAssignmentHandler(&AssignmentHandlerHelper{
+	seed := NewController(WithAssignmentHandler(&AssignmentHandlerHelper{
 		T: t,
 		AssignNodeF: func(context.Context) (*shared.NodeID, error) {
 			nodeID := nodeIDs[n]
@@ -418,7 +418,7 @@ func TestSeed_ReconcileNextNodes_twoNodes(t *testing.T) {
 	clients := make([]service.SeedServiceClient, len(nodeIDs))
 
 	n := 0
-	seed := NewSeed(WithAssignmentHandler(&AssignmentHandlerHelper{
+	seed := NewController(WithAssignmentHandler(&AssignmentHandlerHelper{
 		T: t,
 		AssignNodeF: func(context.Context) (*shared.NodeID, error) {
 			nodeID := nodeIDs[n]
@@ -483,7 +483,7 @@ func TestSeed_ReconcileNextNodes_manyNodes(t *testing.T) {
 	clients := make([]service.SeedServiceClient, len(nodeIDs))
 
 	n := 0
-	seed := NewSeed(WithAssignmentHandler(&AssignmentHandlerHelper{
+	seed := NewController(WithAssignmentHandler(&AssignmentHandlerHelper{
 		T: t,
 		AssignNodeF: func(context.Context) (*shared.NodeID, error) {
 			nodeID := nodeIDs[n]
@@ -617,7 +617,7 @@ func TestSeed_ReconcileNextNodes_withMultiSeedHandler(t *testing.T) {
 	var clearDisconnectedTargets []*shared.NodeID
 	var nodeCount uint64
 
-	seed := NewSeed(
+	seed := NewController(
 		WithAssignmentHandler(&AssignmentHandlerHelper{
 			T: t,
 			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
@@ -763,9 +763,9 @@ func TestSeed_ReconcileNextNodes_withMultiSeedHandler(t *testing.T) {
 
 func TestSeed_reportDisconnects_withMultiSeedHandler(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(3)
-	opts := options{
+	opts := controllerOptions{
 		logger: slog.Default(),
-		multiSeedHandler: &MultiSeedHandlerHelper{
+		seedHandler: &MultiSeedHandlerHelper{
 			T: t,
 			ReportDisconnectedF: func(ctx context.Context, target *shared.NodeID, from []*shared.NodeID) error {
 				assert.True(t, target.Equal(nodeIDs[0]))
@@ -776,8 +776,8 @@ func TestSeed_reportDisconnects_withMultiSeedHandler(t *testing.T) {
 			},
 		},
 	}
-	seed := &Seed{
-		options: opts,
+	seed := &Controller{
+		controllerOptions: opts,
 	}
 	err := seed.reportDisconnects(t.Context(), nodeIDs[0],
 		[]*shared.NodeID{nodeIDs[1], nodeIDs[2]})
@@ -786,7 +786,7 @@ func TestSeed_reportDisconnects_withMultiSeedHandler(t *testing.T) {
 
 func TestSeed_reportDisconnects_withoutMultiSeedHandler(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(4)
-	seed := &Seed{
+	seed := &Controller{
 		nodes: make(map[shared.NodeID]*node),
 	}
 	testSeed_setNode(seed, nodeIDs[0], 0, nil)
@@ -811,9 +811,9 @@ func TestSeed_reportDisconnects_withoutMultiSeedHandler(t *testing.T) {
 
 func TestSeed_getNodeReports_withMultiSeedHandler(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(3)
-	opts := options{
+	opts := controllerOptions{
 		logger: slog.Default(),
-		multiSeedHandler: &MultiSeedHandlerHelper{
+		seedHandler: &MultiSeedHandlerHelper{
 			T: t,
 			GetNodeReportsF: func(ctx context.Context, from, to *shared.NodeID) (map[shared.NodeID]*NodeReport, error) {
 				require.True(t, from.Equal(nodeIDs[0]))
@@ -838,8 +838,8 @@ func TestSeed_getNodeReports_withMultiSeedHandler(t *testing.T) {
 			},
 		},
 	}
-	seed := &Seed{
-		options: opts,
+	seed := &Controller{
+		controllerOptions: opts,
 	}
 	reports, err := seed.getNodeReports(t.Context(), nodeIDs[0], nodeIDs[2])
 	require.NoError(t, err)
@@ -855,7 +855,7 @@ func TestSeed_getNodeReports_withoutMultiSeedHandler(t *testing.T) {
 		return a.Compare(b)
 	})
 
-	seed := &Seed{
+	seed := &Controller{
 		nodes: make(map[shared.NodeID]*node),
 	}
 	testSeed_setNode(seed, nodeIDs[0], 0, nil)
@@ -881,13 +881,13 @@ func TestSeed_getNodeReports_withoutMultiSeedHandler(t *testing.T) {
 func TestSeed_cleanup(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(6)
 
-	opts := options{
+	opts := controllerOptions{
 		logger:          slog.Default(),
 		pollingInterval: 10 * time.Minute,
 	}
-	seed := &Seed{
-		options: opts,
-		nodes:   make(map[shared.NodeID]*node),
+	seed := &Controller{
+		controllerOptions: opts,
+		nodes:             make(map[shared.NodeID]*node),
 	}
 
 	// the first node timeout
@@ -1027,7 +1027,7 @@ func Test_nodeIDBetween(t *testing.T) {
 	}
 }
 
-func testSeed_setNode(seed *Seed, nodeID *shared.NodeID, age time.Duration, disconnectedSrc map[shared.NodeID]time.Duration) {
+func testSeed_setNode(seed *Controller, nodeID *shared.NodeID, age time.Duration, disconnectedSrc map[shared.NodeID]time.Duration) {
 	disconnected := make(map[shared.NodeID]time.Time)
 	for nodeID, passed := range disconnectedSrc {
 		disconnected[nodeID] = time.Now().Add(-1 * passed)

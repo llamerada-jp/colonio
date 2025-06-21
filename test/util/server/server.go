@@ -61,7 +61,7 @@ func WithDocumentOverride(pattern, path string) OptionSetter {
 	}
 }
 
-func WithHandlerFunc(pattern string, handlerFunc http.HandlerFunc) OptionSetter {
+func WithHttpHandlerFunc(pattern string, handlerFunc http.HandlerFunc) OptionSetter {
 	return func(o *options) {
 		o.mux.HandleFunc(pattern, handlerFunc)
 	}
@@ -69,12 +69,12 @@ func WithHandlerFunc(pattern string, handlerFunc http.HandlerFunc) OptionSetter 
 
 type Helper struct {
 	options
-	seed   *seed.Seed
+	seed   seed.Seed
 	server *http.Server
 	cancel context.CancelFunc
 }
 
-func NewHelper(seed *seed.Seed, optionsSetters ...OptionSetter) *Helper {
+func NewHelper(seed seed.Seed, optionsSetters ...OptionSetter) *Helper {
 	opts := options{
 		logger: slog.Default(),
 		port:   8000 + uint16(rand.Uint32()%1000),

@@ -72,7 +72,7 @@ func TestSeedAccessor_assignment(t *testing.T) {
 	nodeCount := 0
 
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&seed.AssignmentHandlerHelper{
+		seed.WithGateway(&testServer.GatewayHelper{
 			T: t,
 			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
 				// return nodeID for 1st and 2nd node
@@ -84,7 +84,6 @@ func TestSeedAccessor_assignment(t *testing.T) {
 				// return error when 3rd node is requested
 				return nil, fmt.Errorf("error")
 			},
-			UnassignNodeF: func(nodeID *shared.NodeID) {},
 		}),
 		seed.WithPollingInterval(3*time.Second),
 	)
@@ -163,7 +162,7 @@ func TestSeedAccessor_SignalingKind(t *testing.T) {
 
 	// create seed
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&seed.AssignmentHandlerHelper{
+		seed.WithGateway(&seed.AssignmentHandlerHelper{
 			T: t,
 			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
 				if nodeCount < len(nodeIDs) {
@@ -256,7 +255,7 @@ func TestSeedAccessor_SignalingTarget(t *testing.T) {
 
 	// setup seed
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&seed.AssignmentHandlerHelper{
+		seed.WithGateway(&seed.AssignmentHandlerHelper{
 			T: t,
 			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
 				if nodeCount < len(nodeIDs) {
@@ -345,17 +344,15 @@ func TestSeedAccessor_SignalingTarget(t *testing.T) {
 func TestSeedAccessor_ReconcileNextNode(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(3)
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&seed.AssignmentHandlerHelper{
+		seed.WithGateway(&testServer.GatewayHelper{
 			T: t,
 			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
 				return nodeIDs[0], nil
 			},
-			UnassignNodeF: func(nodeID *shared.NodeID) {
+			UnassignNodeF: func(ctx context.Context, nodeID *shared.NodeID) error {
 				// do nothing
+				return nil
 			},
-		}),
-		seed.WithMultiSeedHandler(&seed.MultiSeedHandlerHelper{
-			T: t,
 			GetNodeReportsF: func(_ context.Context, from, to *shared.NodeID) (map[shared.NodeID]*seed.NodeReport, error) {
 				assert.Equal(t, nodeIDs[1], from)
 				assert.Equal(t, nodeIDs[1], to)
