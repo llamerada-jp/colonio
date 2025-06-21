@@ -84,8 +84,8 @@ var cmd = &cobra.Command{
 			// document override
 			server.WithDocumentOverride("/colonio.js", absJsModulePath),
 			// handles for test
-			server.WithHandlerFunc(NormalPath, normalResponder),
-			server.WithHandlerFunc(ErrorPath, errorResponder),
+			server.WithHttpHandlerFunc(NormalPath, normalResponder),
+			server.WithHttpHandlerFunc(ErrorPath, errorResponder),
 		)
 
 		// start service and seed routine

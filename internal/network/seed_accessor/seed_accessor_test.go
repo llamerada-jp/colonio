@@ -71,23 +71,23 @@ func TestSeedAccessor_assignment(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(2)
 	nodeCount := 0
 
+	gateway := &testUtil.GatewayHelper{
+		AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
+			// return nodeID for 1st and 2nd node
+			if nodeCount < len(nodeIDs) {
+				nodeID := nodeIDs[nodeCount]
+				nodeCount++
+				return nodeID, nil
+			}
+			// return error when 3rd node is requested
+			return nil, fmt.Errorf("error")
+		},
+	}
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&seed.AssignmentHandlerHelper{
-			T: t,
-			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
-				// return nodeID for 1st and 2nd node
-				if nodeCount < len(nodeIDs) {
-					nodeID := nodeIDs[nodeCount]
-					nodeCount++
-					return nodeID, nil
-				}
-				// return error when 3rd node is requested
-				return nil, fmt.Errorf("error")
-			},
-			UnassignNodeF: func(nodeID *shared.NodeID) {},
-		}),
-		seed.WithPollingInterval(3*time.Second),
+		seed.WithGateway(gateway),
+		seed.WithLifespan(10*time.Second, 3*time.Second),
 	)
+	gateway.Seed = seed
 	server := testServer.NewHelper(seed)
 	server.Start(t.Context())
 	defer server.Stop()
@@ -162,20 +162,20 @@ func TestSeedAccessor_SignalingKind(t *testing.T) {
 	nodeCount := 0
 
 	// create seed
+	gateway := &testUtil.GatewayHelper{
+		AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
+			if nodeCount < len(nodeIDs) {
+				nodeID := nodeIDs[nodeCount]
+				nodeCount++
+				return nodeID, nil
+			}
+			return nil, fmt.Errorf("error")
+		},
+	}
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&seed.AssignmentHandlerHelper{
-			T: t,
-			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
-				if nodeCount < len(nodeIDs) {
-					nodeID := nodeIDs[nodeCount]
-					nodeCount++
-					return nodeID, nil
-				}
-				return nil, fmt.Errorf("error")
-			},
-			UnassignNodeF: func(nodeID *shared.NodeID) {},
-		}),
+		seed.WithGateway(gateway),
 	)
+	gateway.Seed = seed
 	server := testServer.NewHelper(seed)
 	server.Start(t.Context())
 	defer server.Stop()
@@ -255,20 +255,20 @@ func TestSeedAccessor_SignalingTarget(t *testing.T) {
 	nodeCount := 0
 
 	// setup seed
+	gateway := &testUtil.GatewayHelper{
+		AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
+			if nodeCount < len(nodeIDs) {
+				nodeID := nodeIDs[nodeCount]
+				nodeCount++
+				return nodeID, nil
+			}
+			return nil, fmt.Errorf("error")
+		},
+	}
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&seed.AssignmentHandlerHelper{
-			T: t,
-			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
-				if nodeCount < len(nodeIDs) {
-					nodeID := nodeIDs[nodeCount]
-					nodeCount++
-					return nodeID, nil
-				}
-				return nil, fmt.Errorf("error")
-			},
-			UnassignNodeF: func(nodeID *shared.NodeID) {},
-		}),
+		seed.WithGateway(gateway),
 	)
+	gateway.Seed = seed
 	server := testServer.NewHelper(seed)
 	server.Start(t.Context())
 	defer server.Stop()
@@ -344,40 +344,28 @@ func TestSeedAccessor_SignalingTarget(t *testing.T) {
 
 func TestSeedAccessor_ReconcileNextNode(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(3)
+
+	gateway := &testUtil.GatewayHelper{
+		AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
+			return nodeIDs[0], nil
+		},
+		GetNodesByRangeF: func(ctx context.Context, backward, frontward *shared.NodeID) ([]*shared.NodeID, error) {
+			assert.Equal(t, 0, backward.Compare(nodeIDs[1]))
+			assert.Equal(t, 0, frontward.Compare(nodeIDs[1]))
+			return []*shared.NodeID{nodeIDs[1], nodeIDs[2]}, nil
+		},
+		SubscribeKeepaliveF: func(ctx context.Context, nodeID *shared.NodeID) error {
+			assert.Equal(t, 0, nodeID.Compare(nodeIDs[2]))
+			return nil
+		},
+		GetNodeCountF: func(ctx context.Context) (uint64, error) {
+			return 2, nil
+		},
+	}
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&seed.AssignmentHandlerHelper{
-			T: t,
-			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
-				return nodeIDs[0], nil
-			},
-			UnassignNodeF: func(nodeID *shared.NodeID) {
-				// do nothing
-			},
-		}),
-		seed.WithMultiSeedHandler(&seed.MultiSeedHandlerHelper{
-			T: t,
-			GetNodeReportsF: func(_ context.Context, from, to *shared.NodeID) (map[shared.NodeID]*seed.NodeReport, error) {
-				assert.Equal(t, nodeIDs[1], from)
-				assert.Equal(t, nodeIDs[1], to)
-				return map[shared.NodeID]*seed.NodeReport{}, nil
-			},
-			ReportDisconnectedF: func(ctx context.Context, from *shared.NodeID, targets []*shared.NodeID) error {
-				assert.Equal(t, nodeIDs[0], from)
-				assert.Len(t, targets, 1)
-				assert.Equal(t, nodeIDs[2], targets[0])
-				return nil
-			},
-			ClearDisconnectedF: func(ctx context.Context, from *shared.NodeID, targets []*shared.NodeID) error {
-				assert.Len(t, targets, 1)
-				assert.Equal(t, nodeIDs[0], from)
-				assert.Equal(t, nodeIDs[1], targets[0])
-				return nil
-			},
-			GetNodeCountF: func(ctx context.Context) (uint64, error) {
-				return 2, nil
-			},
-		}),
+		seed.WithGateway(gateway),
 	)
+	gateway.Seed = seed
 	server := testServer.NewHelper(seed)
 	server.Start(t.Context())
 	defer server.Stop()

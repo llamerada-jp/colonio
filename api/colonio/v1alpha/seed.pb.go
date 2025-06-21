@@ -514,27 +514,26 @@ func (*UnassignNodeResponse) Descriptor() ([]byte, []int) {
 	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{7}
 }
 
-type SendSignalRequest struct {
+type KeepaliveRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Signal        *Signal                `protobuf:"bytes,1,opt,name=signal,proto3" json:"signal,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SendSignalRequest) Reset() {
-	*x = SendSignalRequest{}
+func (x *KeepaliveRequest) Reset() {
+	*x = KeepaliveRequest{}
 	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SendSignalRequest) String() string {
+func (x *KeepaliveRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SendSignalRequest) ProtoMessage() {}
+func (*KeepaliveRequest) ProtoMessage() {}
 
-func (x *SendSignalRequest) ProtoReflect() protoreflect.Message {
+func (x *KeepaliveRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -546,39 +545,32 @@ func (x *SendSignalRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SendSignalRequest.ProtoReflect.Descriptor instead.
-func (*SendSignalRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use KeepaliveRequest.ProtoReflect.Descriptor instead.
+func (*KeepaliveRequest) Descriptor() ([]byte, []int) {
 	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *SendSignalRequest) GetSignal() *Signal {
-	if x != nil {
-		return x.Signal
-	}
-	return nil
-}
-
-type SendSignalResponse struct {
+type KeepaliveResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	IsAlone       bool                   `protobuf:"varint,1,opt,name=is_alone,json=isAlone,proto3" json:"is_alone,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SendSignalResponse) Reset() {
-	*x = SendSignalResponse{}
+func (x *KeepaliveResponse) Reset() {
+	*x = KeepaliveResponse{}
 	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SendSignalResponse) String() string {
+func (x *KeepaliveResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SendSignalResponse) ProtoMessage() {}
+func (*KeepaliveResponse) ProtoMessage() {}
 
-func (x *SendSignalResponse) ProtoReflect() protoreflect.Message {
+func (x *KeepaliveResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -590,96 +582,16 @@ func (x *SendSignalResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SendSignalResponse.ProtoReflect.Descriptor instead.
-func (*SendSignalResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use KeepaliveResponse.ProtoReflect.Descriptor instead.
+func (*KeepaliveResponse) Descriptor() ([]byte, []int) {
 	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *SendSignalResponse) GetIsAlone() bool {
+func (x *KeepaliveResponse) GetIsAlone() bool {
 	if x != nil {
 		return x.IsAlone
 	}
 	return false
-}
-
-type PollSignalRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *PollSignalRequest) Reset() {
-	*x = PollSignalRequest{}
-	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[10]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *PollSignalRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*PollSignalRequest) ProtoMessage() {}
-
-func (x *PollSignalRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[10]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use PollSignalRequest.ProtoReflect.Descriptor instead.
-func (*PollSignalRequest) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{10}
-}
-
-type PollSignalResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Signals       []*Signal              `protobuf:"bytes,1,rep,name=signals,proto3" json:"signals,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *PollSignalResponse) Reset() {
-	*x = PollSignalResponse{}
-	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[11]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *PollSignalResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*PollSignalResponse) ProtoMessage() {}
-
-func (x *PollSignalResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[11]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use PollSignalResponse.ProtoReflect.Descriptor instead.
-func (*PollSignalResponse) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *PollSignalResponse) GetSignals() []*Signal {
-	if x != nil {
-		return x.Signals
-	}
-	return nil
 }
 
 type ReconcileNextNodesRequest struct {
@@ -692,7 +604,7 @@ type ReconcileNextNodesRequest struct {
 
 func (x *ReconcileNextNodesRequest) Reset() {
 	*x = ReconcileNextNodesRequest{}
-	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[12]
+	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -704,7 +616,7 @@ func (x *ReconcileNextNodesRequest) String() string {
 func (*ReconcileNextNodesRequest) ProtoMessage() {}
 
 func (x *ReconcileNextNodesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[12]
+	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -717,7 +629,7 @@ func (x *ReconcileNextNodesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReconcileNextNodesRequest.ProtoReflect.Descriptor instead.
 func (*ReconcileNextNodesRequest) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{12}
+	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ReconcileNextNodesRequest) GetNextNodeIds() []*NodeID {
@@ -743,7 +655,7 @@ type ReconcileNextNodesResponse struct {
 
 func (x *ReconcileNextNodesResponse) Reset() {
 	*x = ReconcileNextNodesResponse{}
-	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[13]
+	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -755,7 +667,7 @@ func (x *ReconcileNextNodesResponse) String() string {
 func (*ReconcileNextNodesResponse) ProtoMessage() {}
 
 func (x *ReconcileNextNodesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[13]
+	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -768,7 +680,7 @@ func (x *ReconcileNextNodesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReconcileNextNodesResponse.ProtoReflect.Descriptor instead.
 func (*ReconcileNextNodesResponse) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{13}
+	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ReconcileNextNodesResponse) GetMatched() bool {
@@ -776,6 +688,166 @@ func (x *ReconcileNextNodesResponse) GetMatched() bool {
 		return x.Matched
 	}
 	return false
+}
+
+type SendSignalRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Signal        *Signal                `protobuf:"bytes,1,opt,name=signal,proto3" json:"signal,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendSignalRequest) Reset() {
+	*x = SendSignalRequest{}
+	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendSignalRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendSignalRequest) ProtoMessage() {}
+
+func (x *SendSignalRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendSignalRequest.ProtoReflect.Descriptor instead.
+func (*SendSignalRequest) Descriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *SendSignalRequest) GetSignal() *Signal {
+	if x != nil {
+		return x.Signal
+	}
+	return nil
+}
+
+type SendSignalResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendSignalResponse) Reset() {
+	*x = SendSignalResponse{}
+	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendSignalResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendSignalResponse) ProtoMessage() {}
+
+func (x *SendSignalResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendSignalResponse.ProtoReflect.Descriptor instead.
+func (*SendSignalResponse) Descriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{13}
+}
+
+type PollSignalRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PollSignalRequest) Reset() {
+	*x = PollSignalRequest{}
+	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PollSignalRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PollSignalRequest) ProtoMessage() {}
+
+func (x *PollSignalRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PollSignalRequest.ProtoReflect.Descriptor instead.
+func (*PollSignalRequest) Descriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{14}
+}
+
+type PollSignalResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Signals       []*Signal              `protobuf:"bytes,1,rep,name=signals,proto3" json:"signals,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PollSignalResponse) Reset() {
+	*x = PollSignalResponse{}
+	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PollSignalResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PollSignalResponse) ProtoMessage() {}
+
+func (x *PollSignalResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PollSignalResponse.ProtoReflect.Descriptor instead.
+func (*PollSignalResponse) Descriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *PollSignalResponse) GetSignals() []*Signal {
+	if x != nil {
+		return x.Signals
+	}
+	return nil
 }
 
 var File_api_colonio_v1alpha_seed_proto protoreflect.FileDescriptor
@@ -806,31 +878,34 @@ const file_api_colonio_v1alpha_seed_proto_rawDesc = "" +
 	"\anode_id\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x06nodeId\x12\x19\n" +
 	"\bis_alone\x18\x02 \x01(\bR\aisAlone\"\x15\n" +
 	"\x13UnassignNodeRequest\"\x16\n" +
-	"\x14UnassignNodeResponse\"H\n" +
-	"\x11SendSignalRequest\x123\n" +
-	"\x06signal\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.SignalR\x06signal\"/\n" +
-	"\x12SendSignalResponse\x12\x19\n" +
-	"\bis_alone\x18\x01 \x01(\bR\aisAlone\"\x13\n" +
-	"\x11PollSignalRequest\"K\n" +
-	"\x12PollSignalResponse\x125\n" +
-	"\asignals\x18\x01 \x03(\v2\x1b.api.colonio.v1alpha.SignalR\asignals\"\xad\x01\n" +
+	"\x14UnassignNodeResponse\"\x12\n" +
+	"\x10KeepaliveRequest\".\n" +
+	"\x11KeepaliveResponse\x12\x19\n" +
+	"\bis_alone\x18\x01 \x01(\bR\aisAlone\"\xad\x01\n" +
 	"\x19ReconcileNextNodesRequest\x12?\n" +
 	"\rnext_node_ids\x18\x01 \x03(\v2\x1b.api.colonio.v1alpha.NodeIDR\vnextNodeIds\x12O\n" +
 	"\x15disconnected_node_ids\x18\x02 \x03(\v2\x1b.api.colonio.v1alpha.NodeIDR\x13disconnectedNodeIds\"6\n" +
 	"\x1aReconcileNextNodesResponse\x12\x18\n" +
-	"\amatched\x18\x01 \x01(\bR\amatched*M\n" +
+	"\amatched\x18\x01 \x01(\bR\amatched\"H\n" +
+	"\x11SendSignalRequest\x123\n" +
+	"\x06signal\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.SignalR\x06signal\"\x14\n" +
+	"\x12SendSignalResponse\"\x13\n" +
+	"\x11PollSignalRequest\"K\n" +
+	"\x12PollSignalResponse\x125\n" +
+	"\asignals\x18\x01 \x03(\v2\x1b.api.colonio.v1alpha.SignalR\asignals*M\n" +
 	"\x0fSignalOfferType\x12\x1e\n" +
 	"\x1aSIGNAL_OFFER_TYPE_EXPLICIT\x10\x00\x12\x1a\n" +
-	"\x16SIGNAL_OFFER_TYPE_NEXT\x10\x012\x92\x04\n" +
+	"\x16SIGNAL_OFFER_TYPE_NEXT\x10\x012\xf0\x04\n" +
 	"\vSeedService\x12_\n" +
 	"\n" +
 	"AssignNode\x12&.api.colonio.v1alpha.AssignNodeRequest\x1a'.api.colonio.v1alpha.AssignNodeResponse\"\x00\x12e\n" +
-	"\fUnassignNode\x12(.api.colonio.v1alpha.UnassignNodeRequest\x1a).api.colonio.v1alpha.UnassignNodeResponse\"\x00\x12_\n" +
+	"\fUnassignNode\x12(.api.colonio.v1alpha.UnassignNodeRequest\x1a).api.colonio.v1alpha.UnassignNodeResponse\"\x00\x12\\\n" +
+	"\tKeepalive\x12%.api.colonio.v1alpha.KeepaliveRequest\x1a&.api.colonio.v1alpha.KeepaliveResponse\"\x00\x12w\n" +
+	"\x12ReconcileNextNodes\x12..api.colonio.v1alpha.ReconcileNextNodesRequest\x1a/.api.colonio.v1alpha.ReconcileNextNodesResponse\"\x00\x12_\n" +
 	"\n" +
 	"SendSignal\x12&.api.colonio.v1alpha.SendSignalRequest\x1a'.api.colonio.v1alpha.SendSignalResponse\"\x00\x12a\n" +
 	"\n" +
-	"PollSignal\x12&.api.colonio.v1alpha.PollSignalRequest\x1a'.api.colonio.v1alpha.PollSignalResponse\"\x000\x01\x12w\n" +
-	"\x12ReconcileNextNodes\x12..api.colonio.v1alpha.ReconcileNextNodesRequest\x1a/.api.colonio.v1alpha.ReconcileNextNodesResponse\"\x00B5Z3github.com/llamerada-jp/colonio/api/colonio/v1alphab\x06proto3"
+	"PollSignal\x12&.api.colonio.v1alpha.PollSignalRequest\x1a'.api.colonio.v1alpha.PollSignalResponse\"\x000\x01B5Z3github.com/llamerada-jp/colonio/api/colonio/v1alphab\x06proto3"
 
 var (
 	file_api_colonio_v1alpha_seed_proto_rawDescOnce sync.Once
@@ -845,7 +920,7 @@ func file_api_colonio_v1alpha_seed_proto_rawDescGZIP() []byte {
 }
 
 var file_api_colonio_v1alpha_seed_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_colonio_v1alpha_seed_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_api_colonio_v1alpha_seed_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_api_colonio_v1alpha_seed_proto_goTypes = []any{
 	(SignalOfferType)(0),               // 0: api.colonio.v1alpha.SignalOfferType
 	(*Signal)(nil),                     // 1: api.colonio.v1alpha.Signal
@@ -856,38 +931,42 @@ var file_api_colonio_v1alpha_seed_proto_goTypes = []any{
 	(*AssignNodeResponse)(nil),         // 6: api.colonio.v1alpha.AssignNodeResponse
 	(*UnassignNodeRequest)(nil),        // 7: api.colonio.v1alpha.UnassignNodeRequest
 	(*UnassignNodeResponse)(nil),       // 8: api.colonio.v1alpha.UnassignNodeResponse
-	(*SendSignalRequest)(nil),          // 9: api.colonio.v1alpha.SendSignalRequest
-	(*SendSignalResponse)(nil),         // 10: api.colonio.v1alpha.SendSignalResponse
-	(*PollSignalRequest)(nil),          // 11: api.colonio.v1alpha.PollSignalRequest
-	(*PollSignalResponse)(nil),         // 12: api.colonio.v1alpha.PollSignalResponse
-	(*ReconcileNextNodesRequest)(nil),  // 13: api.colonio.v1alpha.ReconcileNextNodesRequest
-	(*ReconcileNextNodesResponse)(nil), // 14: api.colonio.v1alpha.ReconcileNextNodesResponse
-	(*NodeID)(nil),                     // 15: api.colonio.v1alpha.NodeID
+	(*KeepaliveRequest)(nil),           // 9: api.colonio.v1alpha.KeepaliveRequest
+	(*KeepaliveResponse)(nil),          // 10: api.colonio.v1alpha.KeepaliveResponse
+	(*ReconcileNextNodesRequest)(nil),  // 11: api.colonio.v1alpha.ReconcileNextNodesRequest
+	(*ReconcileNextNodesResponse)(nil), // 12: api.colonio.v1alpha.ReconcileNextNodesResponse
+	(*SendSignalRequest)(nil),          // 13: api.colonio.v1alpha.SendSignalRequest
+	(*SendSignalResponse)(nil),         // 14: api.colonio.v1alpha.SendSignalResponse
+	(*PollSignalRequest)(nil),          // 15: api.colonio.v1alpha.PollSignalRequest
+	(*PollSignalResponse)(nil),         // 16: api.colonio.v1alpha.PollSignalResponse
+	(*NodeID)(nil),                     // 17: api.colonio.v1alpha.NodeID
 }
 var file_api_colonio_v1alpha_seed_proto_depIdxs = []int32{
-	15, // 0: api.colonio.v1alpha.Signal.dst_node_id:type_name -> api.colonio.v1alpha.NodeID
-	15, // 1: api.colonio.v1alpha.Signal.src_node_id:type_name -> api.colonio.v1alpha.NodeID
+	17, // 0: api.colonio.v1alpha.Signal.dst_node_id:type_name -> api.colonio.v1alpha.NodeID
+	17, // 1: api.colonio.v1alpha.Signal.src_node_id:type_name -> api.colonio.v1alpha.NodeID
 	2,  // 2: api.colonio.v1alpha.Signal.offer:type_name -> api.colonio.v1alpha.SignalOffer
 	3,  // 3: api.colonio.v1alpha.Signal.answer:type_name -> api.colonio.v1alpha.SignalAnswer
 	4,  // 4: api.colonio.v1alpha.Signal.ice:type_name -> api.colonio.v1alpha.SignalICE
 	0,  // 5: api.colonio.v1alpha.SignalOffer.type:type_name -> api.colonio.v1alpha.SignalOfferType
-	15, // 6: api.colonio.v1alpha.AssignNodeResponse.node_id:type_name -> api.colonio.v1alpha.NodeID
-	1,  // 7: api.colonio.v1alpha.SendSignalRequest.signal:type_name -> api.colonio.v1alpha.Signal
-	1,  // 8: api.colonio.v1alpha.PollSignalResponse.signals:type_name -> api.colonio.v1alpha.Signal
-	15, // 9: api.colonio.v1alpha.ReconcileNextNodesRequest.next_node_ids:type_name -> api.colonio.v1alpha.NodeID
-	15, // 10: api.colonio.v1alpha.ReconcileNextNodesRequest.disconnected_node_ids:type_name -> api.colonio.v1alpha.NodeID
+	17, // 6: api.colonio.v1alpha.AssignNodeResponse.node_id:type_name -> api.colonio.v1alpha.NodeID
+	17, // 7: api.colonio.v1alpha.ReconcileNextNodesRequest.next_node_ids:type_name -> api.colonio.v1alpha.NodeID
+	17, // 8: api.colonio.v1alpha.ReconcileNextNodesRequest.disconnected_node_ids:type_name -> api.colonio.v1alpha.NodeID
+	1,  // 9: api.colonio.v1alpha.SendSignalRequest.signal:type_name -> api.colonio.v1alpha.Signal
+	1,  // 10: api.colonio.v1alpha.PollSignalResponse.signals:type_name -> api.colonio.v1alpha.Signal
 	5,  // 11: api.colonio.v1alpha.SeedService.AssignNode:input_type -> api.colonio.v1alpha.AssignNodeRequest
 	7,  // 12: api.colonio.v1alpha.SeedService.UnassignNode:input_type -> api.colonio.v1alpha.UnassignNodeRequest
-	9,  // 13: api.colonio.v1alpha.SeedService.SendSignal:input_type -> api.colonio.v1alpha.SendSignalRequest
-	11, // 14: api.colonio.v1alpha.SeedService.PollSignal:input_type -> api.colonio.v1alpha.PollSignalRequest
-	13, // 15: api.colonio.v1alpha.SeedService.ReconcileNextNodes:input_type -> api.colonio.v1alpha.ReconcileNextNodesRequest
-	6,  // 16: api.colonio.v1alpha.SeedService.AssignNode:output_type -> api.colonio.v1alpha.AssignNodeResponse
-	8,  // 17: api.colonio.v1alpha.SeedService.UnassignNode:output_type -> api.colonio.v1alpha.UnassignNodeResponse
-	10, // 18: api.colonio.v1alpha.SeedService.SendSignal:output_type -> api.colonio.v1alpha.SendSignalResponse
-	12, // 19: api.colonio.v1alpha.SeedService.PollSignal:output_type -> api.colonio.v1alpha.PollSignalResponse
-	14, // 20: api.colonio.v1alpha.SeedService.ReconcileNextNodes:output_type -> api.colonio.v1alpha.ReconcileNextNodesResponse
-	16, // [16:21] is the sub-list for method output_type
-	11, // [11:16] is the sub-list for method input_type
+	9,  // 13: api.colonio.v1alpha.SeedService.Keepalive:input_type -> api.colonio.v1alpha.KeepaliveRequest
+	11, // 14: api.colonio.v1alpha.SeedService.ReconcileNextNodes:input_type -> api.colonio.v1alpha.ReconcileNextNodesRequest
+	13, // 15: api.colonio.v1alpha.SeedService.SendSignal:input_type -> api.colonio.v1alpha.SendSignalRequest
+	15, // 16: api.colonio.v1alpha.SeedService.PollSignal:input_type -> api.colonio.v1alpha.PollSignalRequest
+	6,  // 17: api.colonio.v1alpha.SeedService.AssignNode:output_type -> api.colonio.v1alpha.AssignNodeResponse
+	8,  // 18: api.colonio.v1alpha.SeedService.UnassignNode:output_type -> api.colonio.v1alpha.UnassignNodeResponse
+	10, // 19: api.colonio.v1alpha.SeedService.Keepalive:output_type -> api.colonio.v1alpha.KeepaliveResponse
+	12, // 20: api.colonio.v1alpha.SeedService.ReconcileNextNodes:output_type -> api.colonio.v1alpha.ReconcileNextNodesResponse
+	14, // 21: api.colonio.v1alpha.SeedService.SendSignal:output_type -> api.colonio.v1alpha.SendSignalResponse
+	16, // 22: api.colonio.v1alpha.SeedService.PollSignal:output_type -> api.colonio.v1alpha.PollSignalResponse
+	17, // [17:23] is the sub-list for method output_type
+	11, // [11:17] is the sub-list for method input_type
 	11, // [11:11] is the sub-list for extension type_name
 	11, // [11:11] is the sub-list for extension extendee
 	0,  // [0:11] is the sub-list for field type_name
@@ -910,7 +989,7 @@ func file_api_colonio_v1alpha_seed_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_colonio_v1alpha_seed_proto_rawDesc), len(file_api_colonio_v1alpha_seed_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   14,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

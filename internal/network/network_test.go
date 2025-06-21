@@ -77,20 +77,20 @@ func TestNetwork(t *testing.T) {
 
 	// start seed
 	nodeCount := 0
+	gateway := &testUtil.GatewayHelper{
+		AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
+			if nodeCount >= len(nodeIDs) {
+				t.FailNow()
+			}
+			nodeID := nodeIDs[nodeCount]
+			nodeCount++
+			return nodeID, nil
+		},
+	}
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&seed.AssignmentHandlerHelper{
-			T: t,
-			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
-				if nodeCount >= len(nodeIDs) {
-					t.FailNow()
-				}
-				nodeID := nodeIDs[nodeCount]
-				nodeCount++
-				return nodeID, nil
-			},
-			UnassignNodeF: func(nodeID *shared.NodeID) {},
-		}),
+		seed.WithGateway(gateway),
 	)
+	gateway.Seed = seed
 	server := server.NewHelper(seed)
 	server.Start(t.Context())
 	defer server.Stop()

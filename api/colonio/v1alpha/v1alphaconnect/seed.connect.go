@@ -38,22 +38,25 @@ const (
 	// SeedServiceUnassignNodeProcedure is the fully-qualified name of the SeedService's UnassignNode
 	// RPC.
 	SeedServiceUnassignNodeProcedure = "/api.colonio.v1alpha.SeedService/UnassignNode"
+	// SeedServiceKeepaliveProcedure is the fully-qualified name of the SeedService's Keepalive RPC.
+	SeedServiceKeepaliveProcedure = "/api.colonio.v1alpha.SeedService/Keepalive"
+	// SeedServiceReconcileNextNodesProcedure is the fully-qualified name of the SeedService's
+	// ReconcileNextNodes RPC.
+	SeedServiceReconcileNextNodesProcedure = "/api.colonio.v1alpha.SeedService/ReconcileNextNodes"
 	// SeedServiceSendSignalProcedure is the fully-qualified name of the SeedService's SendSignal RPC.
 	SeedServiceSendSignalProcedure = "/api.colonio.v1alpha.SeedService/SendSignal"
 	// SeedServicePollSignalProcedure is the fully-qualified name of the SeedService's PollSignal RPC.
 	SeedServicePollSignalProcedure = "/api.colonio.v1alpha.SeedService/PollSignal"
-	// SeedServiceReconcileNextNodesProcedure is the fully-qualified name of the SeedService's
-	// ReconcileNextNodes RPC.
-	SeedServiceReconcileNextNodesProcedure = "/api.colonio.v1alpha.SeedService/ReconcileNextNodes"
 )
 
 // SeedServiceClient is a client for the api.colonio.v1alpha.SeedService service.
 type SeedServiceClient interface {
 	AssignNode(context.Context, *connect.Request[v1alpha.AssignNodeRequest]) (*connect.Response[v1alpha.AssignNodeResponse], error)
 	UnassignNode(context.Context, *connect.Request[v1alpha.UnassignNodeRequest]) (*connect.Response[v1alpha.UnassignNodeResponse], error)
+	Keepalive(context.Context, *connect.Request[v1alpha.KeepaliveRequest]) (*connect.Response[v1alpha.KeepaliveResponse], error)
+	ReconcileNextNodes(context.Context, *connect.Request[v1alpha.ReconcileNextNodesRequest]) (*connect.Response[v1alpha.ReconcileNextNodesResponse], error)
 	SendSignal(context.Context, *connect.Request[v1alpha.SendSignalRequest]) (*connect.Response[v1alpha.SendSignalResponse], error)
 	PollSignal(context.Context, *connect.Request[v1alpha.PollSignalRequest]) (*connect.ServerStreamForClient[v1alpha.PollSignalResponse], error)
-	ReconcileNextNodes(context.Context, *connect.Request[v1alpha.ReconcileNextNodesRequest]) (*connect.Response[v1alpha.ReconcileNextNodesResponse], error)
 }
 
 // NewSeedServiceClient constructs a client for the api.colonio.v1alpha.SeedService service. By
@@ -79,6 +82,18 @@ func NewSeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(seedServiceMethods.ByName("UnassignNode")),
 			connect.WithClientOptions(opts...),
 		),
+		keepalive: connect.NewClient[v1alpha.KeepaliveRequest, v1alpha.KeepaliveResponse](
+			httpClient,
+			baseURL+SeedServiceKeepaliveProcedure,
+			connect.WithSchema(seedServiceMethods.ByName("Keepalive")),
+			connect.WithClientOptions(opts...),
+		),
+		reconcileNextNodes: connect.NewClient[v1alpha.ReconcileNextNodesRequest, v1alpha.ReconcileNextNodesResponse](
+			httpClient,
+			baseURL+SeedServiceReconcileNextNodesProcedure,
+			connect.WithSchema(seedServiceMethods.ByName("ReconcileNextNodes")),
+			connect.WithClientOptions(opts...),
+		),
 		sendSignal: connect.NewClient[v1alpha.SendSignalRequest, v1alpha.SendSignalResponse](
 			httpClient,
 			baseURL+SeedServiceSendSignalProcedure,
@@ -91,12 +106,6 @@ func NewSeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(seedServiceMethods.ByName("PollSignal")),
 			connect.WithClientOptions(opts...),
 		),
-		reconcileNextNodes: connect.NewClient[v1alpha.ReconcileNextNodesRequest, v1alpha.ReconcileNextNodesResponse](
-			httpClient,
-			baseURL+SeedServiceReconcileNextNodesProcedure,
-			connect.WithSchema(seedServiceMethods.ByName("ReconcileNextNodes")),
-			connect.WithClientOptions(opts...),
-		),
 	}
 }
 
@@ -104,9 +113,10 @@ func NewSeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 type seedServiceClient struct {
 	assignNode         *connect.Client[v1alpha.AssignNodeRequest, v1alpha.AssignNodeResponse]
 	unassignNode       *connect.Client[v1alpha.UnassignNodeRequest, v1alpha.UnassignNodeResponse]
+	keepalive          *connect.Client[v1alpha.KeepaliveRequest, v1alpha.KeepaliveResponse]
+	reconcileNextNodes *connect.Client[v1alpha.ReconcileNextNodesRequest, v1alpha.ReconcileNextNodesResponse]
 	sendSignal         *connect.Client[v1alpha.SendSignalRequest, v1alpha.SendSignalResponse]
 	pollSignal         *connect.Client[v1alpha.PollSignalRequest, v1alpha.PollSignalResponse]
-	reconcileNextNodes *connect.Client[v1alpha.ReconcileNextNodesRequest, v1alpha.ReconcileNextNodesResponse]
 }
 
 // AssignNode calls api.colonio.v1alpha.SeedService.AssignNode.
@@ -119,6 +129,16 @@ func (c *seedServiceClient) UnassignNode(ctx context.Context, req *connect.Reque
 	return c.unassignNode.CallUnary(ctx, req)
 }
 
+// Keepalive calls api.colonio.v1alpha.SeedService.Keepalive.
+func (c *seedServiceClient) Keepalive(ctx context.Context, req *connect.Request[v1alpha.KeepaliveRequest]) (*connect.Response[v1alpha.KeepaliveResponse], error) {
+	return c.keepalive.CallUnary(ctx, req)
+}
+
+// ReconcileNextNodes calls api.colonio.v1alpha.SeedService.ReconcileNextNodes.
+func (c *seedServiceClient) ReconcileNextNodes(ctx context.Context, req *connect.Request[v1alpha.ReconcileNextNodesRequest]) (*connect.Response[v1alpha.ReconcileNextNodesResponse], error) {
+	return c.reconcileNextNodes.CallUnary(ctx, req)
+}
+
 // SendSignal calls api.colonio.v1alpha.SeedService.SendSignal.
 func (c *seedServiceClient) SendSignal(ctx context.Context, req *connect.Request[v1alpha.SendSignalRequest]) (*connect.Response[v1alpha.SendSignalResponse], error) {
 	return c.sendSignal.CallUnary(ctx, req)
@@ -129,18 +149,14 @@ func (c *seedServiceClient) PollSignal(ctx context.Context, req *connect.Request
 	return c.pollSignal.CallServerStream(ctx, req)
 }
 
-// ReconcileNextNodes calls api.colonio.v1alpha.SeedService.ReconcileNextNodes.
-func (c *seedServiceClient) ReconcileNextNodes(ctx context.Context, req *connect.Request[v1alpha.ReconcileNextNodesRequest]) (*connect.Response[v1alpha.ReconcileNextNodesResponse], error) {
-	return c.reconcileNextNodes.CallUnary(ctx, req)
-}
-
 // SeedServiceHandler is an implementation of the api.colonio.v1alpha.SeedService service.
 type SeedServiceHandler interface {
 	AssignNode(context.Context, *connect.Request[v1alpha.AssignNodeRequest]) (*connect.Response[v1alpha.AssignNodeResponse], error)
 	UnassignNode(context.Context, *connect.Request[v1alpha.UnassignNodeRequest]) (*connect.Response[v1alpha.UnassignNodeResponse], error)
+	Keepalive(context.Context, *connect.Request[v1alpha.KeepaliveRequest]) (*connect.Response[v1alpha.KeepaliveResponse], error)
+	ReconcileNextNodes(context.Context, *connect.Request[v1alpha.ReconcileNextNodesRequest]) (*connect.Response[v1alpha.ReconcileNextNodesResponse], error)
 	SendSignal(context.Context, *connect.Request[v1alpha.SendSignalRequest]) (*connect.Response[v1alpha.SendSignalResponse], error)
 	PollSignal(context.Context, *connect.Request[v1alpha.PollSignalRequest], *connect.ServerStream[v1alpha.PollSignalResponse]) error
-	ReconcileNextNodes(context.Context, *connect.Request[v1alpha.ReconcileNextNodesRequest]) (*connect.Response[v1alpha.ReconcileNextNodesResponse], error)
 }
 
 // NewSeedServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -162,6 +178,18 @@ func NewSeedServiceHandler(svc SeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(seedServiceMethods.ByName("UnassignNode")),
 		connect.WithHandlerOptions(opts...),
 	)
+	seedServiceKeepaliveHandler := connect.NewUnaryHandler(
+		SeedServiceKeepaliveProcedure,
+		svc.Keepalive,
+		connect.WithSchema(seedServiceMethods.ByName("Keepalive")),
+		connect.WithHandlerOptions(opts...),
+	)
+	seedServiceReconcileNextNodesHandler := connect.NewUnaryHandler(
+		SeedServiceReconcileNextNodesProcedure,
+		svc.ReconcileNextNodes,
+		connect.WithSchema(seedServiceMethods.ByName("ReconcileNextNodes")),
+		connect.WithHandlerOptions(opts...),
+	)
 	seedServiceSendSignalHandler := connect.NewUnaryHandler(
 		SeedServiceSendSignalProcedure,
 		svc.SendSignal,
@@ -174,24 +202,20 @@ func NewSeedServiceHandler(svc SeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(seedServiceMethods.ByName("PollSignal")),
 		connect.WithHandlerOptions(opts...),
 	)
-	seedServiceReconcileNextNodesHandler := connect.NewUnaryHandler(
-		SeedServiceReconcileNextNodesProcedure,
-		svc.ReconcileNextNodes,
-		connect.WithSchema(seedServiceMethods.ByName("ReconcileNextNodes")),
-		connect.WithHandlerOptions(opts...),
-	)
 	return "/api.colonio.v1alpha.SeedService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SeedServiceAssignNodeProcedure:
 			seedServiceAssignNodeHandler.ServeHTTP(w, r)
 		case SeedServiceUnassignNodeProcedure:
 			seedServiceUnassignNodeHandler.ServeHTTP(w, r)
+		case SeedServiceKeepaliveProcedure:
+			seedServiceKeepaliveHandler.ServeHTTP(w, r)
+		case SeedServiceReconcileNextNodesProcedure:
+			seedServiceReconcileNextNodesHandler.ServeHTTP(w, r)
 		case SeedServiceSendSignalProcedure:
 			seedServiceSendSignalHandler.ServeHTTP(w, r)
 		case SeedServicePollSignalProcedure:
 			seedServicePollSignalHandler.ServeHTTP(w, r)
-		case SeedServiceReconcileNextNodesProcedure:
-			seedServiceReconcileNextNodesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -209,14 +233,18 @@ func (UnimplementedSeedServiceHandler) UnassignNode(context.Context, *connect.Re
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.colonio.v1alpha.SeedService.UnassignNode is not implemented"))
 }
 
+func (UnimplementedSeedServiceHandler) Keepalive(context.Context, *connect.Request[v1alpha.KeepaliveRequest]) (*connect.Response[v1alpha.KeepaliveResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.colonio.v1alpha.SeedService.Keepalive is not implemented"))
+}
+
+func (UnimplementedSeedServiceHandler) ReconcileNextNodes(context.Context, *connect.Request[v1alpha.ReconcileNextNodesRequest]) (*connect.Response[v1alpha.ReconcileNextNodesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.colonio.v1alpha.SeedService.ReconcileNextNodes is not implemented"))
+}
+
 func (UnimplementedSeedServiceHandler) SendSignal(context.Context, *connect.Request[v1alpha.SendSignalRequest]) (*connect.Response[v1alpha.SendSignalResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.colonio.v1alpha.SeedService.SendSignal is not implemented"))
 }
 
 func (UnimplementedSeedServiceHandler) PollSignal(context.Context, *connect.Request[v1alpha.PollSignalRequest], *connect.ServerStream[v1alpha.PollSignalResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("api.colonio.v1alpha.SeedService.PollSignal is not implemented"))
-}
-
-func (UnimplementedSeedServiceHandler) ReconcileNextNodes(context.Context, *connect.Request[v1alpha.ReconcileNextNodesRequest]) (*connect.Response[v1alpha.ReconcileNextNodesResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.colonio.v1alpha.SeedService.ReconcileNextNodes is not implemented"))
 }
