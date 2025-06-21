@@ -43,6 +43,7 @@ const (
 	CONTEXT_KEY_REQUEST_ID   = ContextKey("requestID")
 	CONTEXT_KEY_SESSION      = ContextKey("session")
 	DEFAULT_POLLING_INTERVAL = 10 * time.Minute
+	REPORT_TIMEOUT           = 30 * time.Second
 )
 
 var (
@@ -74,8 +75,11 @@ type AssignmentHandler interface {
 }
 
 type MultiSeedHandler interface {
-	IsAlone(ctx context.Context, nodeID *shared.NodeID) (bool, error)
+	ReportDisconnected(ctx context.Context, from *shared.NodeID, targets []*shared.NodeID) error
+	GetNodeCount(ctx context.Context) (uint64, error)
 	RelaySignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error
+	KeepaliveStart(ctx context.Context, nodeID *shared.NodeID) error
+	KeepaliveStop(ctx context.Context, nodeID *shared.NodeID) error
 }
 
 type optionSetter func(*options)
@@ -345,7 +349,11 @@ func (s *Seed) AssignNode(ctx context.Context, _ *connect.Request[proto.AssignNo
 
 func (s *Seed) UnassignNode(ctx context.Context, _ *connect.Request[proto.UnassignNodeRequest]) (*connect.Response[proto.UnassignNodeResponse], error) {
 	session := ctx.Value(CONTEXT_KEY_SESSION).(*session)
-	defer session.delete()
+	defer func() {
+		if session != nil {
+			session.delete()
+		}
+	}()
 
 	nodeID := session.getNodeID()
 	if nodeID == nil {
@@ -477,6 +485,89 @@ func (s *Seed) PollSignal(ctx context.Context, _ *connect.Request[proto.PollSign
 	}
 }
 
+func (s *Seed) ReconcileNextNodes(ctx context.Context, request *connect.Request[proto.ReconcileNextNodesRequest]) (*connect.Response[proto.ReconcileNextNodesResponse], error) {
+	session := ctx.Value(CONTEXT_KEY_SESSION).(*session)
+	nodeID := session.getNodeID()
+	if nodeID == nil {
+		s.log(ctx).Warn("session error (node id is not found)")
+		return nil, ErrInternal
+	}
+
+	nextNodeIDs, err := shared.ConvertNodeIDsFromProto(request.Msg.GetNextNodeIds())
+	if err != nil {
+		s.log(ctx).Warn("next_node_ids contains invalid", slog.String("error", err.Error()))
+		return nil, ErrInternal
+	}
+
+	disconnectedIDs, err := shared.ConvertNodeIDsFromProto(request.Msg.GetDisconnectedNodeIds())
+	if err != nil {
+		s.log(ctx).Warn("disconnected_node_ids contains invalid", slog.String("error", err.Error()))
+		return nil, ErrInternal
+	}
+
+	if len(disconnectedIDs) != 0 {
+		if err := s.reportDisconnects(ctx, nodeID, disconnectedIDs); err != nil {
+			s.log(ctx).Warn("failed to report disconnects", slog.String("error", err.Error()))
+			return nil, ErrInternal
+		}
+		if err := s.cleanup(); err != nil {
+			s.log(ctx).Warn("failed to cleanup", slog.String("error", err.Error()))
+			return nil, ErrInternal
+		}
+	}
+
+	if len(nextNodeIDs) == 0 {
+		isAlone, err := s.isAlone(ctx, nodeID)
+		if err != nil {
+			return nil, ErrInternal
+		}
+		return &connect.Response[proto.ReconcileNextNodesResponse]{
+			Msg: &proto.ReconcileNextNodesResponse{
+				Matched: isAlone,
+			},
+		}, nil
+	}
+
+	matched := true
+	for _, nextNodeID := range nextNodeIDs {
+		if _, ok := nodeReports[*nextNodeID]; ok {
+			delete(nodeReports, *nextNodeID)
+		} else {
+			// contains a nodeID that does not exist.
+			matched = false
+			break
+		}
+	}
+
+	// If there is a disconnection report from a node other than the query source, the node may not exist.
+	for _, report := range nodeReports {
+		_, ok := report.Disconnected[*nodeID]
+		if (ok && len(report.Disconnected) > 1) || (!ok && len(report.Disconnected) > 0) {
+			continue
+		}
+		matched = false
+	}
+
+	return &connect.Response[proto.ReconcileNextNodesResponse]{
+		Msg: &proto.ReconcileNextNodesResponse{
+			Matched: matched,
+		},
+	}, nil
+}
+
+func (s *Seed) reportDisconnects(ctx context.Context, nodeID *shared.NodeID, targetIDs []*shared.NodeID) error {
+	if s.multiSeedHandler != nil {
+		if err := s.multiSeedHandler.ReportDisconnected(ctx, nodeID, targetIDs); err != nil {
+			s.log(ctx).Warn("failed to report disconnects", slog.String("error", err.Error()))
+			return err
+		}
+		return nil
+	}
+
+	panic("kick!")
+	return nil
+}
+
 func (s *Seed) log(ctx context.Context) *slog.Logger {
 	requestID := ctx.Value(CONTEXT_KEY_REQUEST_ID)
 	if requestID == nil {
@@ -526,11 +617,19 @@ func (s *Seed) getNextNode(nodeID *shared.NodeID) *node {
 
 func (s *Seed) isAlone(ctx context.Context, nodeID *shared.NodeID) (bool, error) {
 	if s.multiSeedHandler != nil {
-		isAlone, err := s.multiSeedHandler.IsAlone(ctx, nodeID)
+		nodeCount, err := s.multiSeedHandler.GetNodeCount(ctx)
 		if err != nil {
-			s.log(ctx).Warn("failed on check alone", slog.String("err", err.Error()))
+			s.log(ctx).Warn("failed to get node count", slog.String("err", err.Error()))
+			return false, err
 		}
-		return isAlone, err
+		if nodeCount == 0 {
+			return true, nil
+		}
+		if nodeCount != 1 {
+			return false, nil
+		}
+
+		return false, nil
 	}
 
 	s.mutex.Lock()
@@ -542,12 +641,16 @@ func (s *Seed) cleanup() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	for nodeID, node := range s.nodes {
-		node.mutex.Lock()
-		timestamp := node.timestamp
-		node.mutex.Unlock()
+	reportThreshold := len(s.nodes) - 1
+	if reportThreshold < 1 {
+		reportThreshold = 1
+	}
+	if reportThreshold > 3 {
+		reportThreshold = 3
+	}
 
-		if time.Since(timestamp) > s.pollingInterval {
+	for nodeID, node := range s.nodes {
+		if node.isExpired(s.pollingInterval, reportThreshold) {
 			s.logger.Info("node expired", slog.String("nodeID", nodeID.String()))
 			s.unassign(node)
 		}
@@ -564,10 +667,31 @@ func (s *Seed) unassign(node *node) {
 	}
 }
 
+func (n *node) isExpired(pollingInterval time.Duration, reportThreshold int) bool {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
+
+	if time.Since(n.timestamp) > pollingInterval {
+		return true
+	}
+
+	return false
+}
+
 func (n *node) close() {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
 
 	close(n.term)
 	n.signals = nil
+}
+
+func nodeIDBetween(target, from, to *shared.NodeID) bool {
+	if target.Equal(from) || target.Equal(to) {
+		return true
+	}
+	if from.Smaller(to) {
+		return from.Smaller(target) && target.Smaller(to)
+	}
+	return from.Smaller(target) || target.Smaller(to)
 }
