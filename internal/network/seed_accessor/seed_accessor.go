@@ -147,7 +147,7 @@ func (sa *SeedAccessor) SendSignalOffer(dstNodeID *shared.NodeID, offer *signal.
 		return fmt.Errorf("unknown offer type: %d", offer.OfferType)
 	}
 
-	res, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
+	_, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
 		Msg: &proto.SendSignalRequest{
 			Signal: &proto.Signal{
 				DstNodeId: dstNodeID.Proto(),
@@ -167,14 +167,11 @@ func (sa *SeedAccessor) SendSignalOffer(dstNodeID *shared.NodeID, offer *signal.
 		return fmt.Errorf("failed to send signal offer: %w", err)
 	}
 
-	sa.mtx.Lock()
-	sa.isAlone = res.Msg.GetIsAlone()
-	sa.mtx.Unlock()
 	return nil
 }
 
 func (sa *SeedAccessor) SendSignalAnswer(dstNodeID *shared.NodeID, answer *signal.Answer) error {
-	res, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
+	_, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
 		Msg: &proto.SendSignalRequest{
 			Signal: &proto.Signal{
 				DstNodeId: dstNodeID.Proto(),
@@ -194,14 +191,11 @@ func (sa *SeedAccessor) SendSignalAnswer(dstNodeID *shared.NodeID, answer *signa
 		return fmt.Errorf("failed to send signal answer: %w", err)
 	}
 
-	sa.mtx.Lock()
-	sa.isAlone = res.Msg.GetIsAlone()
-	sa.mtx.Unlock()
 	return nil
 }
 
 func (sa *SeedAccessor) SendSignalICE(dstNodeID *shared.NodeID, ices *signal.ICE) error {
-	res, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
+	_, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
 		Msg: &proto.SendSignalRequest{
 			Signal: &proto.Signal{
 				DstNodeId: dstNodeID.Proto(),
@@ -220,10 +214,22 @@ func (sa *SeedAccessor) SendSignalICE(dstNodeID *shared.NodeID, ices *signal.ICE
 		return fmt.Errorf("failed to send signal ICE: %w", err)
 	}
 
-	sa.mtx.Lock()
-	sa.isAlone = res.Msg.GetIsAlone()
-	sa.mtx.Unlock()
 	return nil
+}
+
+func (sa *SeedAccessor) ReconcileNextNodes(nextNodeIDs, disconnectedNodeIDs []*shared.NodeID) (bool, error) {
+	res, err := sa.client.ReconcileNextNodes(sa.ctx, &connect.Request[proto.ReconcileNextNodesRequest]{
+		Msg: &proto.ReconcileNextNodesRequest{
+			NextNodeIds:         shared.ConvertNodeIDsToProto(nextNodeIDs),
+			DisconnectedNodeIds: shared.ConvertNodeIDsToProto(disconnectedNodeIDs),
+		},
+	})
+
+	if err != nil {
+		return false, fmt.Errorf("failed to reconcile next nodes: %w", err)
+	}
+
+	return res.Msg.Matched, nil
 }
 
 func (sa *SeedAccessor) unassign() {

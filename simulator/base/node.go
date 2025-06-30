@@ -184,6 +184,8 @@ func (n *Node) runNode(ctx context.Context) error {
 	n.Write(func() error {
 		r := n.Record.GetRecord()
 		r.State = StateStart
+		r.IsOnline = n.Col.IsOnline()
+		r.IsStable = n.Col.IsStable()
 		return nil
 	})
 
@@ -221,6 +223,8 @@ func (n *Node) runNode(ctx context.Context) error {
 			n.Write(func() error {
 				r := n.Record.GetRecord()
 				r.State = StateNormal
+				r.IsOnline = n.Col.IsOnline()
+				r.IsStable = n.Col.IsStable()
 				return nil
 			})
 		}

@@ -54,6 +54,7 @@ type Colonio interface {
 	Start(ctx context.Context) error
 	Stop()
 	IsOnline() bool
+	IsStable() bool
 	GetLocalNodeID() string
 	UpdateLocalPosition(x, y float64) error
 	// messaging
@@ -275,6 +276,10 @@ func (c *colonioImpl) Stop() {
 
 func (c *colonioImpl) IsOnline() bool {
 	return c.network.IsOnline()
+}
+
+func (c *colonioImpl) IsStable() bool {
+	return c.network.IsStable()
 }
 
 func (c *colonioImpl) GetLocalNodeID() string {
