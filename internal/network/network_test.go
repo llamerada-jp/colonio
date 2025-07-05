@@ -35,6 +35,7 @@ import (
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
+	"github.com/llamerada-jp/colonio/test/util/helper"
 	"github.com/llamerada-jp/colonio/test/util/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -77,20 +78,20 @@ func TestNetwork(t *testing.T) {
 
 	// start seed
 	nodeCount := 0
+	gateway := &helper.Gateway{
+		AssignNodeF: func(ctx context.Context, lifespan time.Time) (*shared.NodeID, error) {
+			if nodeCount >= len(nodeIDs) {
+				t.FailNow()
+			}
+			nodeID := nodeIDs[nodeCount]
+			nodeCount++
+			return nodeID, nil
+		},
+	}
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&testUtil.AssignmentHandlerHelper{
-			T: t,
-			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
-				if nodeCount >= len(nodeIDs) {
-					t.FailNow()
-				}
-				nodeID := nodeIDs[nodeCount]
-				nodeCount++
-				return nodeID, nil
-			},
-			UnassignNodeF: func(nodeID *shared.NodeID) {},
-		}),
+		seed.WithGateway(gateway),
 	)
+	gateway.Seed = seed
 	server := server.NewHelper(seed)
 	server.Start(t.Context())
 	defer server.Stop()
@@ -122,7 +123,7 @@ func TestNetwork(t *testing.T) {
 
 	// can be online only one node
 	require.Eventually(t, func() bool {
-		return networks[0].IsOnline()
+		return networks[0].IsOnline() && networks[0].IsStable()
 	}, 60*time.Second, 1*time.Second)
 
 	// make other nodes online
@@ -150,10 +151,8 @@ func TestNetwork(t *testing.T) {
 
 	// all nodes should be online
 	require.Eventually(t, func() bool {
-		mtx.Lock()
-		defer mtx.Unlock()
 		for _, network := range networks {
-			if !network.IsOnline() {
+			if !network.IsOnline() || !network.IsStable() {
 				return false
 			}
 		}
@@ -170,7 +169,7 @@ func TestNetwork(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// position should be tolled to each node
+	// position should be told to each node
 	assert.Eventually(t, func() bool {
 		mtx.Lock()
 		defer mtx.Unlock()
@@ -214,12 +213,9 @@ func TestNetwork(t *testing.T) {
 
 		for _, network := range networks {
 			assert.True(t, network.IsOnline())
+			assert.True(t, network.IsStable())
 		}
 
 		return len(receivedPackets) == 2
 	}, 60*time.Second, 1*time.Second)
-
-	for _, n := range networks {
-		assert.True(t, n.IsOnline())
-	}
 }

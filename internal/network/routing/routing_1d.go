@@ -17,11 +17,13 @@ package routing
 
 import (
 	"fmt"
+	"log/slog"
 	"slices"
 	"sync"
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
@@ -43,7 +45,9 @@ var levelRanges []*shared.NodeID = []*shared.NodeID{
 var levelRangesCount int = len(levelRanges)
 
 type routing1DConfig struct {
-	localNodeID *shared.NodeID
+	logger             *slog.Logger
+	localNodeID        *shared.NodeID
+	reconcileNextNodes func(nextNodeIDs, disconnectedNodeIDs []*shared.NodeID) (bool, error)
 }
 
 type neighborhoodInfo struct {
@@ -65,8 +69,9 @@ type routeInfo1D struct {
 }
 
 type routing1D struct {
-	config *routing1DConfig
-	mtx    sync.RWMutex
+	config          *routing1DConfig
+	mtx             sync.RWMutex
+	nextNodeMatched bool
 	// there is some overlap between frontward and backward.
 	frontwardNextNodeIDs []*shared.NodeID
 	backwardNextNodeIDs  []*shared.NodeID
@@ -80,6 +85,22 @@ func newRouting1D(config *routing1DConfig) *routing1D {
 		neighborhoodInfos: make(map[shared.NodeID]*neighborhoodInfo),
 		routeInfos:        make([]*routeInfo1D, 0),
 	}
+}
+
+func (r *routing1D) subRoutine() {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	if !r.nextNodeMatched {
+		r.updateNextNodeMatched(nil)
+	}
+}
+
+func (r *routing1D) isStable() bool {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	return r.nextNodeMatched
 }
 
 func (r *routing1D) updateNodeConnections(connections map[shared.NodeID]struct{}) int {
@@ -295,12 +316,8 @@ func (r *routing1D) getConnections() (map[shared.NodeID]struct{}, map[shared.Nod
 				largerNodeIDs = append(largerNodeIDs, &nodeID)
 			}
 		}
-		slices.SortFunc(largerNodeIDs, func(a, b *shared.NodeID) int {
-			return a.Compare(b)
-		})
-		slices.SortFunc(smallerNodeIDs, func(a, b *shared.NodeID) int {
-			return a.Compare(b)
-		})
+		shared.SortNodeIDs(largerNodeIDs)
+		shared.SortNodeIDs(smallerNodeIDs)
 		if largerNodeIDs[0].Equal(r.config.localNodeID) ||
 			smallerNodeIDs[len(smallerNodeIDs)-1].Equal(r.config.localNodeID) {
 			required[neighborhoodNodeID] = struct{}{}
@@ -418,6 +435,9 @@ func (r *routing1D) updateRouteInfos() {
 
 // updateNextNodeIDs updates frontward and backward next node IDs.
 func (r *routing1D) updateNextNodeIDs() {
+	previousNextNodeIDs := append(r.backwardNextNodeIDs, r.frontwardNextNodeIDs...)
+	defer r.updateNextNodeMatched(previousNextNodeIDs)
+
 	// not connected any node
 	if len(r.neighborhoodInfos) == 0 {
 		r.frontwardNextNodeIDs = nil
@@ -450,19 +470,40 @@ func (r *routing1D) updateNextNodeIDs() {
 			largerNodeIDs = append(largerNodeIDs, &nodeID)
 		}
 	}
-	slices.SortFunc(largerNodeIDs, func(a, b *shared.NodeID) int {
-		return a.Compare(b)
-	})
-	slices.SortFunc(smallerNodeIDs, func(a, b *shared.NodeID) int {
-		return a.Compare(b)
-	})
+	shared.SortNodeIDs(largerNodeIDs)
+	shared.SortNodeIDs(smallerNodeIDs)
 
 	nodeIDs := append(largerNodeIDs, smallerNodeIDs...)
-	r.frontwardNextNodeIDs = nodeIDs[0:2]
-	r.backwardNextNodeIDs = []*shared.NodeID{
-		nodeIDs[(len(nodeIDs) - 1)],
-		nodeIDs[(len(nodeIDs) - 2)],
+	if len(nodeIDs) >= constants.ONE_SIDE_NEXT_COUNT*2 {
+		r.frontwardNextNodeIDs = nodeIDs[0:constants.ONE_SIDE_NEXT_COUNT]
+		r.backwardNextNodeIDs = nodeIDs[len(nodeIDs)-constants.ONE_SIDE_NEXT_COUNT:]
+	} else {
+		r.frontwardNextNodeIDs = nodeIDs[0 : len(nodeIDs)/2]
+		r.backwardNextNodeIDs = nodeIDs[len(nodeIDs)/2:]
 	}
+	slices.Reverse(r.backwardNextNodeIDs)
+}
+
+func (r *routing1D) updateNextNodeMatched(previousNextNodeIDs []*shared.NodeID) {
+	nextNodeIDs := slices.Clone(r.backwardNextNodeIDs)
+	slices.Reverse(nextNodeIDs)
+	nextNodeIDs = append(nextNodeIDs, r.frontwardNextNodeIDs...)
+	var disconnectedNodeIDs []*shared.NodeID
+	if len(previousNextNodeIDs) != 0 {
+		disconnectedNodeIDs = make([]*shared.NodeID, 0)
+		for _, oldNodeID := range previousNextNodeIDs {
+			if _, ok := r.neighborhoodInfos[*oldNodeID]; !ok {
+				disconnectedNodeIDs = append(disconnectedNodeIDs, oldNodeID)
+			}
+		}
+	}
+
+	nextNodeMatched, err := r.config.reconcileNextNodes(nextNodeIDs, disconnectedNodeIDs)
+	if err != nil {
+		r.config.logger.Error("failed to reconcile next nodes", "error", err)
+		return
+	}
+	r.nextNodeMatched = nextNodeMatched
 }
 
 // connectedToNextNodes returns true if connected to all next nodes.

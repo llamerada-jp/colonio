@@ -13,31 +13,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package base
+package misc
 
-const (
-	StateStart  = "start"
-	StateNormal = ""
-	StateStop   = "stop"
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"math/rand"
 )
 
-type Record struct {
-	State             string
-	IsOnline          bool
-	IsStable          bool
-	ConnectedNodeIDs  []string
-	RequiredNodeIDs1D []string
-	RequiredNodeIDs2D []string
-	// message post time (uuid string : RFC3339Nano string)
-	Post map[string]string
-	// message receive time (uuid string : RFC3339Nano string)
-	Receive map[string]string
+const (
+	/**
+	 * CONTEXT_KEY_REQUEST_KEY is used to describe the request id for logs.
+	 */
+	CONTEXT_KEY_REQUEST_ID = "requestID"
+)
+
+func NewLoggerContext(ctx context.Context) context.Context {
+	// generate random request ID
+	requestID := fmt.Sprintf("(%016x)", rand.Int63())
+	return context.WithValue(ctx, CONTEXT_KEY_REQUEST_ID, requestID)
 }
 
-type RecordInterface interface {
-	GetRecord() *Record
-}
+func NewLogger(ctx context.Context, logger *slog.Logger) *slog.Logger {
+	requestID := ctx.Value(CONTEXT_KEY_REQUEST_ID)
+	if requestID == nil {
+		return logger
+	}
 
-func (r *Record) GetRecord() *Record {
-	return r
+	return logger.With(slog.String("id", requestID.(string)))
 }

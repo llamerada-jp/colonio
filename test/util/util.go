@@ -19,7 +19,6 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/cookiejar"
-	"slices"
 
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
@@ -70,12 +69,6 @@ func UniqueNodeIDsWithRange(min, max *shared.NodeID, count int) []*shared.NodeID
 	return nodeIDs
 }
 
-func SortNodeIDs(nodeIDs []*shared.NodeID) {
-	slices.SortFunc(nodeIDs, func(a, b *shared.NodeID) int {
-		return a.Compare(b)
-	})
-}
-
 // create client to accept self-signed certificate & cookie
 func NewInsecureHttpClient() *http.Client {
 	jar, err := cookiejar.New(nil)
@@ -91,4 +84,16 @@ func NewInsecureHttpClient() *http.Client {
 		},
 		Jar: jar,
 	}
+}
+
+func CompareNodeIDs(a, b []*shared.NodeID) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Compare(b[i]) != 0 {
+			return false
+		}
+	}
+	return true
 }

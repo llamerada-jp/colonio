@@ -18,7 +18,6 @@ package node_accessor
 import (
 	"fmt"
 	"log/slog"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -358,9 +357,7 @@ func TestNodeAccessorMany(t *testing.T) {
 
 func testNodeAccessorMany(t *testing.T, n int) {
 	nodeIDs := testUtil.UniqueNodeIDs(n)
-	slices.SortFunc(nodeIDs, func(a, b *shared.NodeID) int {
-		return a.Compare(b)
-	})
+	shared.SortNodeIDs(nodeIDs)
 
 	nodeAccessors := make([]*NodeAccessor, 0)
 	mtx := sync.Mutex{}
@@ -600,10 +597,28 @@ func TestNodeAccessorConnectLinks(t *testing.T) {
 
 	// node 1 ~ 3 connect to node 0
 	for i := 1; i < len(nodeIDs); i++ {
+		keepNodeIDs := make(map[shared.NodeID]struct{})
+		for j := 1; j < len(nodeIDs); j++ {
+			if j != i {
+				keepNodeIDs[*nodeIDs[j]] = struct{}{}
+			}
+		}
 		err := nodeAccessors[i].ConnectLinks(
 			map[shared.NodeID]struct{}{
 				*nodeIDs[0]: {},
 			},
+			keepNodeIDs,
+		)
+		require.NoError(t, err)
+	}
+	// wait for connecting
+	time.Sleep(1 * time.Second)
+	for i := 1; i < len(nodeIDs); i++ {
+		err := nodeAccessors[i].ConnectLinks(
+			map[shared.NodeID]struct{}{
+				*nodeIDs[0]: {},
+			},
+			// disconnect from other than node 0.
 			map[shared.NodeID]struct{}{},
 		)
 		require.NoError(t, err)
