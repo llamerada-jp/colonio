@@ -135,7 +135,7 @@ func (u *Controller) HandleSignal(ctx context.Context, signal *proto.Signal, rel
 
 func (u *Controller) AssignNode(ctx context.Context) (*shared.NodeID, bool, error) {
 	logger := misc.NewLogger(ctx, u.logger)
-	nodeID, err := u.gateway.AssignNode(ctx)
+	nodeID, err := u.gateway.AssignNode(ctx, time.Now().Add(u.normalLifespan))
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to assign node: %w", err)
 	}

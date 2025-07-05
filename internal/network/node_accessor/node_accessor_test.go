@@ -18,7 +18,6 @@ package node_accessor
 import (
 	"fmt"
 	"log/slog"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -358,9 +357,7 @@ func TestNodeAccessorMany(t *testing.T) {
 
 func testNodeAccessorMany(t *testing.T, n int) {
 	nodeIDs := testUtil.UniqueNodeIDs(n)
-	slices.SortFunc(nodeIDs, func(a, b *shared.NodeID) int {
-		return a.Compare(b)
-	})
+	shared.SortNodeIDs(nodeIDs)
 
 	nodeAccessors := make([]*NodeAccessor, 0)
 	mtx := sync.Mutex{}

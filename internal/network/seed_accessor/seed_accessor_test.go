@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -31,6 +30,7 @@ import (
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
+	"github.com/llamerada-jp/colonio/test/util/helper"
 	testServer "github.com/llamerada-jp/colonio/test/util/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,8 +71,8 @@ func TestSeedAccessor_assignment(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(2)
 	nodeCount := 0
 
-	gateway := &testUtil.GatewayHelper{
-		AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
+	gateway := &helper.Gateway{
+		AssignNodeF: func(ctx context.Context, lifespan time.Time) (*shared.NodeID, error) {
 			// return nodeID for 1st and 2nd node
 			if nodeCount < len(nodeIDs) {
 				nodeID := nodeIDs[nodeCount]
@@ -162,8 +162,8 @@ func TestSeedAccessor_SignalingKind(t *testing.T) {
 	nodeCount := 0
 
 	// create seed
-	gateway := &testUtil.GatewayHelper{
-		AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
+	gateway := &helper.Gateway{
+		AssignNodeF: func(ctx context.Context, lifespan time.Time) (*shared.NodeID, error) {
 			if nodeCount < len(nodeIDs) {
 				nodeID := nodeIDs[nodeCount]
 				nodeCount++
@@ -249,14 +249,12 @@ func TestSeedAccessor_SignalingKind(t *testing.T) {
 
 func TestSeedAccessor_SignalingTarget(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(3)
-	slices.SortFunc(nodeIDs, func(a, b *shared.NodeID) int {
-		return a.Compare(b)
-	})
+	shared.SortNodeIDs(nodeIDs)
 	nodeCount := 0
 
 	// setup seed
-	gateway := &testUtil.GatewayHelper{
-		AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
+	gateway := &helper.Gateway{
+		AssignNodeF: func(ctx context.Context, lifespan time.Time) (*shared.NodeID, error) {
 			if nodeCount < len(nodeIDs) {
 				nodeID := nodeIDs[nodeCount]
 				nodeCount++
@@ -345,8 +343,8 @@ func TestSeedAccessor_SignalingTarget(t *testing.T) {
 func TestSeedAccessor_ReconcileNextNode(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(3)
 
-	gateway := &testUtil.GatewayHelper{
-		AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
+	gateway := &helper.Gateway{
+		AssignNodeF: func(ctx context.Context, lifespan time.Time) (*shared.NodeID, error) {
 			return nodeIDs[0], nil
 		},
 		GetNodesByRangeF: func(ctx context.Context, backward, frontward *shared.NodeID) ([]*shared.NodeID, error) {

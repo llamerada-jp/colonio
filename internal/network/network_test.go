@@ -35,6 +35,7 @@ import (
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
+	"github.com/llamerada-jp/colonio/test/util/helper"
 	"github.com/llamerada-jp/colonio/test/util/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -77,8 +78,8 @@ func TestNetwork(t *testing.T) {
 
 	// start seed
 	nodeCount := 0
-	gateway := &testUtil.GatewayHelper{
-		AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
+	gateway := &helper.Gateway{
+		AssignNodeF: func(ctx context.Context, lifespan time.Time) (*shared.NodeID, error) {
 			if nodeCount >= len(nodeIDs) {
 				t.FailNow()
 			}

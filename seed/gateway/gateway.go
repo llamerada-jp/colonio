@@ -30,7 +30,7 @@ type Handler interface {
 }
 
 type Gateway interface {
-	AssignNode(ctx context.Context) (*shared.NodeID, error)
+	AssignNode(ctx context.Context, lifespan time.Time) (*shared.NodeID, error)
 	UnassignNode(ctx context.Context, nodeID *shared.NodeID) error
 	GetNodeCount(ctx context.Context) (uint64, error)
 	UpdateNodeLifespan(ctx context.Context, nodeID *shared.NodeID, lifespan time.Time) error

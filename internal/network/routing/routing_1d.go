@@ -316,12 +316,8 @@ func (r *routing1D) getConnections() (map[shared.NodeID]struct{}, map[shared.Nod
 				largerNodeIDs = append(largerNodeIDs, &nodeID)
 			}
 		}
-		slices.SortFunc(largerNodeIDs, func(a, b *shared.NodeID) int {
-			return a.Compare(b)
-		})
-		slices.SortFunc(smallerNodeIDs, func(a, b *shared.NodeID) int {
-			return a.Compare(b)
-		})
+		shared.SortNodeIDs(largerNodeIDs)
+		shared.SortNodeIDs(smallerNodeIDs)
 		if largerNodeIDs[0].Equal(r.config.localNodeID) ||
 			smallerNodeIDs[len(smallerNodeIDs)-1].Equal(r.config.localNodeID) {
 			required[neighborhoodNodeID] = struct{}{}
@@ -474,12 +470,8 @@ func (r *routing1D) updateNextNodeIDs() {
 			largerNodeIDs = append(largerNodeIDs, &nodeID)
 		}
 	}
-	slices.SortFunc(largerNodeIDs, func(a, b *shared.NodeID) int {
-		return a.Compare(b)
-	})
-	slices.SortFunc(smallerNodeIDs, func(a, b *shared.NodeID) int {
-		return a.Compare(b)
-	})
+	shared.SortNodeIDs(largerNodeIDs)
+	shared.SortNodeIDs(smallerNodeIDs)
 
 	nodeIDs := append(largerNodeIDs, smallerNodeIDs...)
 	if len(nodeIDs) >= constants.ONE_SIDE_NEXT_COUNT*2 {

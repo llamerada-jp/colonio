@@ -16,7 +16,6 @@
 package routing
 
 import (
-	"slices"
 	"testing"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
@@ -59,7 +58,7 @@ func TestRouting1D_subRoutine(t *testing.T) {
 
 func TestRouting1D_updateNodeConnections(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(4)
-	testUtil.SortNodeIDs(nodeIDs)
+	shared.SortNodeIDs(nodeIDs)
 	r1d := newRouting1D(&routing1DConfig{
 		localNodeID: nodeIDs[0],
 		reconcileNextNodes: func(_, _ []*shared.NodeID) (bool, error) {
@@ -208,7 +207,7 @@ func TestRouting1D_getNextStep_offline(t *testing.T) {
 
 func TestRouting1D_getNextStep_online(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(8)
-	testUtil.SortNodeIDs(nodeIDs)
+	shared.SortNodeIDs(nodeIDs)
 	localNodeID := nodeIDs[1]
 
 	r1d := newRouting1D(&routing1DConfig{
@@ -317,7 +316,7 @@ func TestRouting1D_getNextStep_online(t *testing.T) {
 
 func TestRouting1D_countRecvPacket(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(3)
-	testUtil.SortNodeIDs(nodeIDs)
+	shared.SortNodeIDs(nodeIDs)
 
 	r1d := newRouting1D(&routing1DConfig{
 		localNodeID: nodeIDs[0],
@@ -352,7 +351,7 @@ func TestRouting1D_countRecvPacket(t *testing.T) {
 
 func TestRouting1D_recvRoutingPacket(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(4)
-	testUtil.SortNodeIDs(nodeIDs)
+	shared.SortNodeIDs(nodeIDs)
 
 	r1d := newRouting1D(&routing1DConfig{
 		localNodeID: nodeIDs[0],
@@ -415,7 +414,7 @@ func TestRouting1D_recvRoutingPacket(t *testing.T) {
 
 func TestRouting1D_setupRoutingPacket(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(4)
-	testUtil.SortNodeIDs(nodeIDs)
+	shared.SortNodeIDs(nodeIDs)
 
 	r1d := newRouting1D(&routing1DConfig{
 		localNodeID: nodeIDs[0],
@@ -478,12 +477,8 @@ func TestRouting1D_getConnections(t *testing.T) {
 			backwardNodeIDs = append(backwardNodeIDs, nodeID)
 		}
 	}
-	slices.SortFunc(largerNodeIDs, func(a, b *shared.NodeID) int {
-		return a.Compare(b)
-	})
-	slices.SortFunc(smallerNodeIDs, func(a, b *shared.NodeID) int {
-		return a.Compare(b)
-	})
+	shared.SortNodeIDs(largerNodeIDs)
+	shared.SortNodeIDs(smallerNodeIDs)
 	sortedNodeIDs := append(largerNodeIDs, smallerNodeIDs...)
 
 	r1d := newRouting1D(&routing1DConfig{
@@ -575,10 +570,10 @@ func TestRouting1D_calcLevel(t *testing.T) {
 
 func TestRouting1D_updateRouteInfos(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(6)
-	testUtil.SortNodeIDs(nodeIDs)
+	shared.SortNodeIDs(nodeIDs)
 	for nodeIDs[3].DistanceFrom(nodeIDs[2]).Smaller(nodeIDs[3].DistanceFrom(nodeIDs[4])) {
 		nodeIDs = testUtil.UniqueNodeIDs(6)
-		testUtil.SortNodeIDs(nodeIDs)
+		shared.SortNodeIDs(nodeIDs)
 	}
 
 	tests := []struct {
@@ -751,7 +746,7 @@ func TestRouting1D_updateRouteInfos(t *testing.T) {
 
 func TestRouting1D_updateNextNodeIDs(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(6)
-	testUtil.SortNodeIDs(nodeIDs)
+	shared.SortNodeIDs(nodeIDs)
 
 	tests := []struct {
 		name                 string
@@ -855,7 +850,7 @@ func TestRouting1D_updateNextNodeIDs(t *testing.T) {
 
 func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(6)
-	testUtil.SortNodeIDs(nodeIDs)
+	shared.SortNodeIDs(nodeIDs)
 
 	tests := []struct {
 		name                  string
@@ -972,7 +967,7 @@ func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 
 func TestRouting1D_connectedToNextNodes(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(6)
-	testUtil.SortNodeIDs(nodeIDs)
+	shared.SortNodeIDs(nodeIDs)
 
 	r1d := newRouting1D(&routing1DConfig{
 		localNodeID: nodeIDs[0],
@@ -1085,7 +1080,7 @@ func TestRouting1D_normalizeScore(t *testing.T) {
 
 func TestRouting1D_isBetween(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(3)
-	testUtil.SortNodeIDs(nodeIDs)
+	shared.SortNodeIDs(nodeIDs)
 
 	tests := []struct {
 		a, b, target *shared.NodeID

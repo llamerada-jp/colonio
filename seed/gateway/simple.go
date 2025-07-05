@@ -39,14 +39,14 @@ func NewSimpleGateway(handler Handler) Gateway {
 	}
 }
 
-func (h *SimpleGateway) AssignNode(_ context.Context) (*shared.NodeID, error) {
+func (h *SimpleGateway) AssignNode(_ context.Context, lifespan time.Time) (*shared.NodeID, error) {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
 	for {
 		nodeID := shared.NewRandomNodeID()
 		if _, exists := h.nodes[*nodeID]; !exists {
-			h.nodes[*nodeID] = time.Now()
+			h.nodes[*nodeID] = lifespan
 			return nodeID, nil
 		}
 	}

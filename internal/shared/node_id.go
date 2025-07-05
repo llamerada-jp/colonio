@@ -18,6 +18,7 @@ package shared
 import (
 	"fmt"
 	"math/rand"
+	"slices"
 	"strconv"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
@@ -277,4 +278,10 @@ func ConvertNodeIDsFromProto(ids []*proto.NodeID) ([]*NodeID, error) {
 		}
 	}
 	return result, nil
+}
+
+func SortNodeIDs(nodeIDs []*NodeID) {
+	slices.SortFunc(nodeIDs, func(a, b *NodeID) int {
+		return a.Compare(b)
+	})
 }
