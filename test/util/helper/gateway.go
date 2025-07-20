@@ -18,6 +18,7 @@ package helper
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
@@ -26,6 +27,7 @@ import (
 )
 
 type Gateway struct {
+	Logger       *slog.Logger
 	Seed         gateway.Handler
 	NodeIDs      []*shared.NodeID
 	superGateway gateway.Gateway
@@ -52,9 +54,9 @@ func (h *Gateway) GetSuper() gateway.Gateway {
 	}
 
 	// If NodeIDs is provided, use it to generate node IDs.
-	var nodeIDGenerator func(exists map[shared.NodeID]time.Time) (*shared.NodeID, error)
+	var nodeIDGenerator func(exists map[shared.NodeID]any) (*shared.NodeID, error)
 	if h.NodeIDs != nil {
-		nodeIDGenerator = func(exists map[shared.NodeID]time.Time) (*shared.NodeID, error) {
+		nodeIDGenerator = func(exists map[shared.NodeID]any) (*shared.NodeID, error) {
 			if len(h.NodeIDs) == len(exists) {
 				return nil, fmt.Errorf("no more node IDs available")
 			}
@@ -63,7 +65,7 @@ func (h *Gateway) GetSuper() gateway.Gateway {
 	}
 
 	if h.superGateway == nil {
-		h.superGateway = gateway.NewSimpleGateway(h.Seed, nodeIDGenerator)
+		h.superGateway = gateway.NewSimpleGateway(h.Logger, h.Seed, nodeIDGenerator)
 	}
 	return h.superGateway
 }

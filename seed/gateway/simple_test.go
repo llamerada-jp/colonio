@@ -17,6 +17,7 @@ package gateway
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -59,21 +60,22 @@ func TestSimpleGateway_AssignNode_UnassignNode(t *testing.T) {
 	var err error
 
 	called := false
-	sg := NewSimpleGateway(&HandlerHelper{
-		t: t,
-		HandleUnassignNodeF: func(ctx context.Context, n *shared.NodeID) error {
-			t.Helper()
-			assert.Equal(t, *nodeID, *n)
-			called = true
-			return nil
-		},
-	}, nil).(*SimpleGateway)
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+			HandleUnassignNodeF: func(ctx context.Context, n *shared.NodeID) error {
+				t.Helper()
+				assert.Equal(t, *nodeID, *n)
+				called = true
+				return nil
+			},
+		}, nil).(*SimpleGateway)
 
 	lifespan := time.Now().Add(10 * time.Minute)
 	nodeID, err = sg.AssignNode(t.Context(), lifespan)
 	require.NoError(t, err)
 	require.NotNil(t, nodeID)
-	assert.Equal(t, lifespan, sg.nodes[*nodeID])
+	assert.Equal(t, lifespan, sg.nodes[*nodeID].lifespan)
 
 	err = sg.UnassignNode(t.Context(), nodeID)
 	require.NoError(t, err)
@@ -82,16 +84,21 @@ func TestSimpleGateway_AssignNode_UnassignNode(t *testing.T) {
 }
 
 func TestSimpleGateway_GetNodesByRange(t *testing.T) {
-	sg := NewSimpleGateway(&HandlerHelper{
-		t: t,
-	}, nil).(*SimpleGateway)
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
 
 	nodeIDs := testUtil.UniqueNodeIDs(8)
 	shared.SortNodeIDs(nodeIDs)
 
 	for i, id := range nodeIDs {
 		if i%2 == 0 {
-			sg.nodes[*id] = time.Now().Add(10 * time.Minute)
+			sg.nodes[*id] = &nodeEntry{
+				lifespan:          time.Now().Add(10 * time.Minute),
+				subscribingSignal: false,
+				waitingSignals:    make([]signalEntry, 0),
+			}
 		}
 	}
 
@@ -143,15 +150,20 @@ func TestSimpleGateway_GetNodesByRange(t *testing.T) {
 }
 
 func TestSimpleGateway_GetNodes(t *testing.T) {
-	sg := NewSimpleGateway(&HandlerHelper{
-		t: t,
-	}, nil).(*SimpleGateway)
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
 
 	nodeIDs := testUtil.UniqueNodeIDs(3)
 
 	life := time.Now().Add(10 * time.Minute)
 	for _, nodeID := range nodeIDs {
-		sg.nodes[*nodeID] = life
+		sg.nodes[*nodeID] = &nodeEntry{
+			lifespan:          life,
+			subscribingSignal: false,
+			waitingSignals:    make([]signalEntry, 0),
+		}
 	}
 
 	get, err := sg.GetNodes(t.Context())
@@ -165,12 +177,17 @@ func TestSimpleGateway_GetNodes(t *testing.T) {
 }
 
 func TestSimpleGateway_SubscribeKeepalive(t *testing.T) {
-	sg := NewSimpleGateway(&HandlerHelper{
-		t: t,
-	}, nil).(*SimpleGateway)
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
 
 	nodeIDs := testUtil.UniqueNodeIDs(2)
-	sg.nodes[*nodeIDs[0]] = time.Now().Add(10 * time.Minute)
+	sg.nodes[*nodeIDs[0]] = &nodeEntry{
+		lifespan:          time.Now().Add(10 * time.Minute),
+		subscribingSignal: false,
+		waitingSignals:    make([]signalEntry, 0),
+	}
 
 	err := sg.SubscribeKeepalive(t.Context(), nodeIDs[0])
 	require.NoError(t, err)
@@ -180,12 +197,17 @@ func TestSimpleGateway_SubscribeKeepalive(t *testing.T) {
 }
 
 func TestSimpleGateway_UnsubscribeKeepalive(t *testing.T) {
-	sg := NewSimpleGateway(&HandlerHelper{
-		t: t,
-	}, nil).(*SimpleGateway)
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
 
 	nodeIDs := testUtil.UniqueNodeIDs(2)
-	sg.nodes[*nodeIDs[0]] = time.Now().Add(10 * time.Minute)
+	sg.nodes[*nodeIDs[0]] = &nodeEntry{
+		lifespan:          time.Now().Add(10 * time.Minute),
+		subscribingSignal: false,
+		waitingSignals:    make([]signalEntry, 0),
+	}
 
 	err := sg.UnsubscribeKeepalive(t.Context(), nodeIDs[0])
 	require.NoError(t, err)
@@ -198,16 +220,21 @@ func TestSimpleGateway_PublishKeepaliveRequest(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(2)
 	called := false
 
-	sg := NewSimpleGateway(&HandlerHelper{
-		t: t,
-		HandleKeepaliveRequestF: func(ctx context.Context, nodeID *shared.NodeID) error {
-			t.Helper()
-			assert.Equal(t, *nodeIDs[0], *nodeID)
-			called = true
-			return nil
-		},
-	}, nil).(*SimpleGateway)
-	sg.nodes[*nodeIDs[0]] = time.Now().Add(10 * time.Minute)
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+			HandleKeepaliveRequestF: func(ctx context.Context, nodeID *shared.NodeID) error {
+				t.Helper()
+				assert.Equal(t, *nodeIDs[0], *nodeID)
+				called = true
+				return nil
+			},
+		}, nil).(*SimpleGateway)
+	sg.nodes[*nodeIDs[0]] = &nodeEntry{
+		lifespan:          time.Now().Add(10 * time.Minute),
+		subscribingSignal: false,
+		waitingSignals:    make([]signalEntry, 0),
+	}
 
 	err := sg.PublishKeepaliveRequest(t.Context(), nodeIDs[0])
 	require.NoError(t, err)
@@ -218,27 +245,89 @@ func TestSimpleGateway_PublishKeepaliveRequest(t *testing.T) {
 }
 
 func TestSimpleGateway_SubscribeSignal(t *testing.T) {
-	sg := NewSimpleGateway(&HandlerHelper{
-		t: t,
-	}, nil).(*SimpleGateway)
+	mtx := &sync.Mutex{}
+	callCount := 0
+
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+			HandleSignalF: func(ctx context.Context, signal *proto.Signal, relayToNext bool) error {
+				mtx.Lock()
+				defer mtx.Unlock()
+				callCount += 1
+
+				assert.Equal(t, uint32(callCount), signal.GetOffer().OfferId)
+				if callCount == 1 {
+					assert.True(t, relayToNext)
+				} else {
+					assert.False(t, relayToNext)
+				}
+
+				return nil
+			},
+		}, nil).(*SimpleGateway)
 
 	nodeIDs := testUtil.UniqueNodeIDs(2)
-	sg.nodes[*nodeIDs[0]] = time.Now().Add(10 * time.Minute)
+	sg.nodes[*nodeIDs[0]] = &nodeEntry{
+		lifespan:          time.Now().Add(10 * time.Minute),
+		subscribingSignal: false,
+		waitingSignals: []signalEntry{
+			{
+				timestamp: time.Now(),
+				signal: &proto.Signal{
+					Content: &proto.Signal_Offer{
+						Offer: &proto.SignalOffer{
+							OfferId: 1,
+						},
+					},
+				},
+				relayToNext: true,
+			},
+			{
+				timestamp: time.Now(),
+				signal: &proto.Signal{
+					Content: &proto.Signal_Offer{
+						Offer: &proto.SignalOffer{
+							OfferId: 2,
+						},
+					},
+				},
+				relayToNext: false,
+			},
+		},
+	}
+
+	mtx.Lock()
+	assert.Equal(t, 0, callCount)
+	mtx.Unlock()
 
 	err := sg.SubscribeSignal(t.Context(), nodeIDs[0])
 	require.NoError(t, err)
+	assert.Eventually(t, func() bool {
+		mtx.Lock()
+		defer mtx.Unlock()
+		return callCount == 2
+	}, 5*time.Second, 100*time.Millisecond)
+	sg.mtx.Lock()
+	assert.Len(t, sg.nodes[*nodeIDs[0]].waitingSignals, 0)
+	sg.mtx.Unlock()
 
 	err = sg.SubscribeSignal(t.Context(), nodeIDs[1])
 	require.Error(t, err)
 }
 
 func TestSimpleGateway_UnsubscribeSignal(t *testing.T) {
-	sg := NewSimpleGateway(&HandlerHelper{
-		t: t,
-	}, nil).(*SimpleGateway)
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
 
 	nodeIDs := testUtil.UniqueNodeIDs(2)
-	sg.nodes[*nodeIDs[0]] = time.Now().Add(10 * time.Minute)
+	sg.nodes[*nodeIDs[0]] = &nodeEntry{
+		lifespan:          time.Now().Add(10 * time.Minute),
+		subscribingSignal: true,
+		waitingSignals:    make([]signalEntry, 0),
+	}
 
 	err := sg.UnsubscribeSignal(t.Context(), nodeIDs[0])
 	require.NoError(t, err)
@@ -249,24 +338,29 @@ func TestSimpleGateway_UnsubscribeSignal(t *testing.T) {
 
 func TestSimpleGateway_PublishSignal(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(2)
-	called := false
+	callCount := 0
 
-	sg := NewSimpleGateway(&HandlerHelper{
-		t: t,
-		HandleSignalF: func(ctx context.Context, signal *proto.Signal, relayToNext bool) error {
-			t.Helper()
-			dstNodeID, err := shared.NewNodeIDFromProto(signal.DstNodeId)
-			require.NoError(t, err)
-			assert.Equal(t, *nodeIDs[1], *dstNodeID)
-			srcNodeID, err := shared.NewNodeIDFromProto(signal.SrcNodeId)
-			require.NoError(t, err)
-			assert.Equal(t, *nodeIDs[0], *srcNodeID)
-			assert.True(t, relayToNext)
-			called = true
-			return nil
-		},
-	}, nil).(*SimpleGateway)
-	sg.nodes[*nodeIDs[0]] = time.Now().Add(10 * time.Minute)
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+			HandleSignalF: func(ctx context.Context, signal *proto.Signal, relayToNext bool) error {
+				callCount += 1
+				t.Helper()
+				dstNodeID, err := shared.NewNodeIDFromProto(signal.DstNodeId)
+				require.NoError(t, err)
+				assert.Equal(t, *nodeIDs[1], *dstNodeID)
+				srcNodeID, err := shared.NewNodeIDFromProto(signal.SrcNodeId)
+				require.NoError(t, err)
+				assert.Equal(t, *nodeIDs[0], *srcNodeID)
+				assert.True(t, relayToNext)
+				return nil
+			},
+		}, nil).(*SimpleGateway)
+	sg.nodes[*nodeIDs[0]] = &nodeEntry{
+		lifespan:          time.Now().Add(10 * time.Minute),
+		subscribingSignal: true,
+		waitingSignals:    make([]signalEntry, 0),
+	}
 
 	err := sg.PublishSignal(t.Context(), &proto.Signal{
 		DstNodeId: nodeIDs[1].Proto(),
@@ -274,7 +368,20 @@ func TestSimpleGateway_PublishSignal(t *testing.T) {
 		Content:   &proto.Signal_Answer{},
 	}, true)
 	require.NoError(t, err)
-	require.True(t, called)
+	assert.Eventually(t, func() bool {
+		return callCount == 1
+	}, 5*time.Second, 100*time.Millisecond)
+	assert.Len(t, sg.nodes[*nodeIDs[0]].waitingSignals, 0)
+
+	sg.nodes[*nodeIDs[0]].subscribingSignal = false
+	err = sg.PublishSignal(t.Context(), &proto.Signal{
+		DstNodeId: nodeIDs[1].Proto(),
+		SrcNodeId: nodeIDs[0].Proto(),
+		Content:   &proto.Signal_Answer{},
+	}, true)
+	require.NoError(t, err)
+	assert.Equal(t, 1, callCount)
+	assert.Len(t, sg.nodes[*nodeIDs[0]].waitingSignals, 1)
 
 	err = sg.PublishSignal(t.Context(), &proto.Signal{
 		DstNodeId: nodeIDs[0].Proto(),

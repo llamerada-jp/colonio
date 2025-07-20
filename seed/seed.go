@@ -97,7 +97,7 @@ func NewSeed(optionSetters ...optionSetter) *Seed {
 	if options.gateway != nil {
 		s.gateway = options.gateway
 	} else {
-		s.gateway = gateway.NewSimpleGateway(s, nil)
+		s.gateway = gateway.NewSimpleGateway(options.logger, s, nil)
 	}
 
 	s.controller = controller.NewController(&controller.Options{
