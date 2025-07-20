@@ -18,6 +18,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -74,6 +75,7 @@ func TestNetwork(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(5)
 	networks := make([]*Network, len(nodeIDs))
 	positionMaps := make([]map[shared.NodeID]*geometry.Coordinate, len(nodeIDs))
+	ctx, cancel := context.WithCancel(t.Context())
 
 	// start seed
 	gateway := &helper.Gateway{
@@ -108,7 +110,7 @@ func TestNetwork(t *testing.T) {
 		receivedPackets = append(receivedPackets, p)
 	})
 
-	nodeID, err := networks[0].Start(t.Context())
+	nodeID, err := networks[0].Start(ctx)
 	require.NoError(t, err)
 	require.True(t, nodeID.Equal(nodeIDs[0]))
 
@@ -135,7 +137,7 @@ func TestNetwork(t *testing.T) {
 			assert.Fail(t, "should not receive packet")
 		})
 
-		nodeID, err = networks[i].Start(t.Context())
+		nodeID, err = networks[i].Start(ctx)
 		require.NoError(t, err)
 		require.True(t, nodeID.Equal(nodeIDs[i]))
 	}
@@ -208,5 +210,17 @@ func TestNetwork(t *testing.T) {
 		}
 
 		return len(receivedPackets) == 2
+	}, 60*time.Second, 1*time.Second)
+
+	cancel()
+
+	assert.Eventually(t, func() bool {
+		for _, network := range networks {
+			if network.IsOnline() {
+				return false
+			}
+		}
+
+		return true
 	}, 60*time.Second, 1*time.Second)
 }
