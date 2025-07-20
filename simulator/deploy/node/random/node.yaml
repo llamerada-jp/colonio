@@ -33,6 +33,10 @@ spec:
             configMapKeyRef:
               name: node
               key: story
+        - name: COLONIO_SIMULATOR_LOGGER_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         ports:
         - containerPort: 8443
           name: https
