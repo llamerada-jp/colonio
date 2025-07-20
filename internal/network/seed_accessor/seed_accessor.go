@@ -92,6 +92,9 @@ func (sa *SeedAccessor) Start(ctx context.Context) (*shared.NodeID, error) {
 
 	res, err := sa.client.AssignNode(sa.ctx, &connect.Request[proto.AssignNodeRequest]{})
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("context is canceled before starting: %w", err)
+		}
 		return nil, fmt.Errorf("failed to assign node ID: %w", err)
 	}
 
@@ -181,6 +184,9 @@ func (sa *SeedAccessor) SendSignalOffer(dstNodeID *shared.NodeID, offer *signal.
 	})
 
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil // context is canceled, just return
+		}
 		return fmt.Errorf("failed to send signal offer: %w", err)
 	}
 
@@ -205,6 +211,9 @@ func (sa *SeedAccessor) SendSignalAnswer(dstNodeID *shared.NodeID, answer *signa
 	})
 
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil // context is canceled, just return
+		}
 		return fmt.Errorf("failed to send signal answer: %w", err)
 	}
 
@@ -228,6 +237,9 @@ func (sa *SeedAccessor) SendSignalICE(dstNodeID *shared.NodeID, ices *signal.ICE
 	})
 
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil // context is canceled, just return
+		}
 		return fmt.Errorf("failed to send signal ICE: %w", err)
 	}
 
@@ -243,6 +255,9 @@ func (sa *SeedAccessor) ReconcileNextNodes(nextNodeIDs, disconnectedNodeIDs []*s
 	})
 
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return false, nil
+		}
 		return false, fmt.Errorf("failed to reconcile next nodes: %w", err)
 	}
 
@@ -253,6 +268,9 @@ func (sa *SeedAccessor) unassign() {
 	// use context.Background() because sa.ctx may be already canceled when call this
 	_, err := sa.client.UnassignNode(context.Background(), &connect.Request[proto.UnassignNodeRequest]{})
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return // context is canceled, just return
+		}
 		sa.logger.Warn("failed to unassign node", slog.String("error", err.Error()))
 	}
 }
@@ -260,6 +278,9 @@ func (sa *SeedAccessor) unassign() {
 func (sa *SeedAccessor) keepalive() error {
 	res, err := sa.client.Keepalive(sa.ctx, &connect.Request[proto.KeepaliveRequest]{})
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil // context is canceled, just return
+		}
 		return err
 	}
 	sa.mtx.Lock()
