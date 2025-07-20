@@ -162,12 +162,12 @@ func TestSeedAccessor_SignalingKind(t *testing.T) {
 	server.Start(t.Context())
 	defer server.Stop()
 
-	// src accessor
+	// src accessor(nodeIDs[0])
 	srcAccessor := newAccessor(server, nil, nil)
 	_, err := srcAccessor.Start(t.Context())
 	require.NoError(t, err)
 
-	// dst accessor
+	// dst accessor(nodeIDs[1])
 	mtx := sync.Mutex{}
 	receivedCounts := make([]int, 3)
 	dstAccessor := newAccessor(server, nil, &seedAccessorHandlerHelper{
@@ -205,21 +205,29 @@ func TestSeedAccessor_SignalingKind(t *testing.T) {
 	_, err = dstAccessor.Start(t.Context())
 	require.NoError(t, err)
 
+	// wait for nodes to be ready
+	time.Sleep(1 * time.Second)
+
 	// send signals
-	srcAccessor.SendSignalOffer(nodeIDs[1], &signal.Offer{
+	err = srcAccessor.SendSignalOffer(nodeIDs[1], &signal.Offer{
 		OfferID:   1,
 		OfferType: signal.OfferTypeExplicit,
 		Sdp:       "offer",
 	})
-	srcAccessor.SendSignalAnswer(nodeIDs[1], &signal.Answer{
+	assert.NoError(t, err)
+
+	err = srcAccessor.SendSignalAnswer(nodeIDs[1], &signal.Answer{
 		OfferID: 2,
 		Status:  signal.AnswerStatus(3),
 		Sdp:     "answer",
 	})
-	srcAccessor.SendSignalICE(nodeIDs[1], &signal.ICE{
+	assert.NoError(t, err)
+
+	err = srcAccessor.SendSignalICE(nodeIDs[1], &signal.ICE{
 		OfferID: 3,
 		Ices:    []string{"ice"},
 	})
+	assert.NoError(t, err)
 
 	// wait for receiving signals
 	assert.Eventually(t, func() bool {

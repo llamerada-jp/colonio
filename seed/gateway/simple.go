@@ -18,7 +18,7 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"maps"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -26,16 +26,29 @@ import (
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
-type SimpleGateway struct {
-	mtx             sync.Mutex
-	handler         Handler
-	nodeIDGenerator func(exists map[shared.NodeID]time.Time) (*shared.NodeID, error)
-	nodes           map[shared.NodeID]time.Time
+type signalEntry struct {
+	timestamp   time.Time
+	signal      *proto.Signal
+	relayToNext bool
 }
 
-func NewSimpleGateway(handler Handler, nodeIDGenerator func(exists map[shared.NodeID]time.Time) (*shared.NodeID, error)) Gateway {
+type nodeEntry struct {
+	lifespan          time.Time
+	subscribingSignal bool
+	waitingSignals    []signalEntry
+}
+
+type SimpleGateway struct {
+	logger          *slog.Logger
+	mtx             sync.Mutex
+	handler         Handler
+	nodeIDGenerator func(exists map[shared.NodeID]any) (*shared.NodeID, error)
+	nodes           map[shared.NodeID]*nodeEntry
+}
+
+func NewSimpleGateway(logger *slog.Logger, handler Handler, nodeIDGenerator func(exists map[shared.NodeID]any) (*shared.NodeID, error)) Gateway {
 	if nodeIDGenerator == nil {
-		nodeIDGenerator = func(exists map[shared.NodeID]time.Time) (*shared.NodeID, error) {
+		nodeIDGenerator = func(exists map[shared.NodeID]any) (*shared.NodeID, error) {
 			for {
 				nodeID := shared.NewRandomNodeID()
 				if _, exists := exists[*nodeID]; !exists {
@@ -46,9 +59,10 @@ func NewSimpleGateway(handler Handler, nodeIDGenerator func(exists map[shared.No
 	}
 
 	return &SimpleGateway{
+		logger:          logger,
 		handler:         handler,
 		nodeIDGenerator: nodeIDGenerator,
-		nodes:           make(map[shared.NodeID]time.Time),
+		nodes:           make(map[shared.NodeID]*nodeEntry),
 	}
 }
 
@@ -56,7 +70,11 @@ func (h *SimpleGateway) AssignNode(_ context.Context, lifespan time.Time) (*shar
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
-	nodeID, err := h.nodeIDGenerator(h.nodes)
+	exists := make(map[shared.NodeID]any, len(h.nodes))
+	for nodeID := range h.nodes {
+		exists[nodeID] = struct{}{}
+	}
+	nodeID, err := h.nodeIDGenerator(exists)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate node ID: %w", err)
 	}
@@ -65,7 +83,11 @@ func (h *SimpleGateway) AssignNode(_ context.Context, lifespan time.Time) (*shar
 		panic(fmt.Sprintf("node ID %s already exists", nodeID.String()))
 	}
 
-	h.nodes[*nodeID] = lifespan
+	h.nodes[*nodeID] = &nodeEntry{
+		lifespan:          lifespan,
+		subscribingSignal: false,
+		waitingSignals:    make([]signalEntry, 0),
+	}
 	return nodeID, nil
 }
 
@@ -92,7 +114,7 @@ func (h *SimpleGateway) UpdateNodeLifespan(_ context.Context, nodeID *shared.Nod
 		return fmt.Errorf("node %s not found", nodeID.String())
 	}
 
-	h.nodes[*nodeID] = lifespan
+	h.nodes[*nodeID].lifespan = lifespan
 	return nil
 }
 
@@ -138,7 +160,11 @@ func (h *SimpleGateway) GetNodes(ctx context.Context) (map[shared.NodeID]time.Ti
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
-	return maps.Clone(h.nodes), nil
+	nodes := make(map[shared.NodeID]time.Time, len(h.nodes))
+	for nodeID, entry := range h.nodes {
+		nodes[nodeID] = entry.lifespan
+	}
+	return nodes, nil
 }
 
 func (h *SimpleGateway) SubscribeKeepalive(_ context.Context, nodeID *shared.NodeID) error {
@@ -185,8 +211,23 @@ func (h *SimpleGateway) SubscribeSignal(_ context.Context, nodeID *shared.NodeID
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
-	if _, exists := h.nodes[*nodeID]; !exists {
+	nodeEntry, exists := h.nodes[*nodeID]
+	if !exists {
 		return fmt.Errorf("node %s not found", nodeID.String())
+	}
+	nodeEntry.subscribingSignal = true
+	if len(nodeEntry.waitingSignals) > 0 {
+		// If there are waiting signals, process them
+		go func() {
+			h.mtx.Lock()
+			defer h.mtx.Unlock()
+			for _, entry := range nodeEntry.waitingSignals {
+				if err := h.handler.HandleSignal(context.Background(), entry.signal, entry.relayToNext); err != nil {
+
+				}
+			}
+			nodeEntry.waitingSignals = make([]signalEntry, 0)
+		}()
 	}
 
 	// Here you would typically set up a subscription mechanism
@@ -198,9 +239,11 @@ func (h *SimpleGateway) UnsubscribeSignal(_ context.Context, nodeID *shared.Node
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
-	if _, exists := h.nodes[*nodeID]; !exists {
+	nodeEntry, exists := h.nodes[*nodeID]
+	if !exists {
 		return fmt.Errorf("node %s not found", nodeID.String())
 	}
+	nodeEntry.subscribingSignal = false
 
 	// Here you would typically remove the subscription
 	// For simplicity, we just return nil
@@ -216,12 +259,22 @@ func (h *SimpleGateway) PublishSignal(ctx context.Context, signal *proto.Signal,
 	}
 
 	h.mtx.Lock()
-	_, exists := h.nodes[*nodeID]
-	h.mtx.Unlock()
-
+	nodeEntry, exists := h.nodes[*nodeID]
 	if !exists {
+		h.mtx.Unlock()
 		return fmt.Errorf("node %s not found", nodeID.String())
 	}
 
-	return h.handler.HandleSignal(ctx, signal, relayToNext)
+	if nodeEntry.subscribingSignal {
+		h.mtx.Unlock()
+		return h.handler.HandleSignal(ctx, signal, relayToNext)
+	}
+
+	nodeEntry.waitingSignals = append(nodeEntry.waitingSignals, signalEntry{
+		timestamp:   time.Now(),
+		signal:      signal,
+		relayToNext: relayToNext,
+	})
+	h.mtx.Unlock()
+	return nil
 }
