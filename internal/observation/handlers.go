@@ -31,18 +31,18 @@ var _ Caller = &Handlers{}
 
 func (h *Handlers) ChangeConnectedNodes(p1 map[string]struct{}) {
 	if h.OnChangeConnectedNodes != nil {
-		h.OnChangeConnectedNodes(p1)
+		go h.OnChangeConnectedNodes(p1)
 	}
 }
 
 func (h *Handlers) UpdateRequiredNodeIDs1D(p1 map[string]struct{}) {
 	if h.OnUpdateRequiredNodeIDs1D != nil {
-		h.OnUpdateRequiredNodeIDs1D(p1)
+		go h.OnUpdateRequiredNodeIDs1D(p1)
 	}
 }
 
 func (h *Handlers) UpdateRequiredNodeIDs2D(p1 map[string]struct{}) {
 	if h.OnUpdateRequiredNodeIDs2D != nil {
-		h.OnUpdateRequiredNodeIDs2D(p1)
+		go h.OnUpdateRequiredNodeIDs2D(p1)
 	}
 }

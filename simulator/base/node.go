@@ -159,6 +159,8 @@ func (n *Node) Write(f func() error) {
 }
 
 func (n *Node) runNode(ctx context.Context) error {
+	mtx := sync.Mutex{}
+
 	if err := n.Col.Start(ctx); err != nil {
 		return err
 	}
@@ -174,6 +176,11 @@ func (n *Node) runNode(ctx context.Context) error {
 		})
 		n.Logger.Info("end", "nodeID", localNodeID)
 		n.Col.Stop()
+
+		// set ctx to nil to tell the stuck checking goroutine that this node is stopped
+		mtx.Lock()
+		defer mtx.Unlock()
+		ctx = nil
 	}()
 
 	n.Position.MoveRandom()
@@ -190,6 +197,15 @@ func (n *Node) runNode(ctx context.Context) error {
 	})
 
 	for {
+		check := false
+		go func() {
+			time.Sleep(5 * time.Second)
+			mtx.Lock()
+			defer mtx.Unlock()
+			if !check && ctx != nil {
+				n.Logger.Warn("might be stacked")
+			}
+		}()
 		timer := time.NewTimer(1 * time.Second)
 
 		// send message randomly
@@ -228,6 +244,9 @@ func (n *Node) runNode(ctx context.Context) error {
 				return nil
 			})
 		}
+		mtx.Lock()
+		check = true
+		mtx.Unlock()
 	}
 }
 

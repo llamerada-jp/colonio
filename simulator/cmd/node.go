@@ -34,6 +34,7 @@ import (
 )
 
 var nodeConfig = struct {
+	loggerID      string
 	seedURL       string
 	story         string
 	latitude      float64
@@ -108,7 +109,13 @@ var nodeCmd = &cobra.Command{
 
 		for i := uint(0); i < nodeConfig.concurrency; i++ {
 			go func() {
-				if err := run(ctx, logger.With(slog.String("no", fmt.Sprintf("#%d", i))), writer); err != nil {
+				logAttr := []any{
+					slog.String("no", fmt.Sprintf("#%d", i)),
+				}
+				if len(nodeConfig.loggerID) > 0 {
+					logAttr = append(logAttr, slog.String("id", nodeConfig.loggerID))
+				}
+				if err := run(ctx, logger.With(logAttr...), writer); err != nil {
 					cancel()
 					slog.Error("error on node", slog.String("error", err.Error()))
 
@@ -155,6 +162,8 @@ func run(ctx context.Context, logger *slog.Logger, writer *datastore.Writer) err
 func init() {
 	flags := nodeCmd.PersistentFlags()
 
+	flags.StringVarP(&nodeConfig.loggerID, "logger-id", "i", valueFromEnvString("LOGGER_ID", ""),
+		"unique ID of the logger.")
 	flags.StringVarP(&nodeConfig.seedURL, "seed-url", "u", valueFromEnvString("SEED_URL", "https://localhost:8443"),
 		"URL of the seed.")
 	flags.StringVarP(&nodeConfig.story, "story", "s", valueFromEnvString("STORY", "sphere"),
