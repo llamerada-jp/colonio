@@ -46,6 +46,7 @@ type Node struct {
 	Position *utils.Position
 	Record   RecordInterface
 
+	seedURL string
 	writer  *datastore.Writer
 	handler *Handler
 	mtx     sync.Mutex
@@ -63,51 +64,11 @@ func NewNode(logger *slog.Logger, seedURL string, writer *datastore.Writer, hand
 		Logger:   logger,
 		Position: utils.NewPosition(region),
 		Record:   record,
+		seedURL:  seedURL,
 		writer:   writer,
 		handler:  handler,
 	}
 
-	col, err := colonio.NewColonio(
-		colonio.WithLogger(logger),
-		colonio.WithHttpClient(util.NewInsecureHttpClient()),
-		colonio.WithSeedURL(seedURL),
-		colonio.WithICEServers([]*config.ICEServer{
-			{
-				URLs: []string{},
-			},
-		}),
-		colonio.WithObservation(&colonio.ObservationHandlers{
-			OnChangeConnectedNodes: func(nodeIDs map[string]struct{}) {
-				n.mtx.Lock()
-				defer n.mtx.Unlock()
-				r.ConnectedNodeIDs = convertMapToSlice(nodeIDs)
-			},
-			OnUpdateRequiredNodeIDs1D: func(nodeIDs map[string]struct{}) {
-				n.mtx.Lock()
-				defer n.mtx.Unlock()
-				r.RequiredNodeIDs1D = convertMapToSlice(nodeIDs)
-			},
-			OnUpdateRequiredNodeIDs2D: func(nodeIDs map[string]struct{}) {
-				n.mtx.Lock()
-				defer n.mtx.Unlock()
-				r.RequiredNodeIDs2D = convertMapToSlice(nodeIDs)
-			},
-		}),
-		colonio.WithSphereGeometry(6378137.0),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	col.MessagingSetHandler(messageKey, func(mr *colonio.MessagingRequest, _ colonio.MessagingResponseWriter) {
-		id := string(mr.Message)
-		n.mtx.Lock()
-		defer n.mtx.Unlock()
-		r := n.Record.GetRecord()
-		r.Receive[id] = time.Now().Format(time.RFC3339Nano)
-	})
-
-	n.Col = col
 	return n, nil
 }
 
@@ -118,6 +79,11 @@ func (n *Node) Start(ctx context.Context) error {
 			return nil
 
 		default:
+			if err := n.renewColonio(); err != nil {
+				n.Logger.Error("failed to renew colonio", "error", err)
+				return err
+			}
+
 			// Randomly generate a duration between 30 seconds and 10 minutes
 			durationSec := rand.Intn(9*60+30) + 30
 			timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(durationSec)*time.Second)
@@ -156,6 +122,53 @@ func (n *Node) Write(f func() error) {
 	r := n.Record.GetRecord()
 	r.Post = make(map[string]string)
 	r.Receive = make(map[string]string)
+}
+
+func (n *Node) renewColonio() error {
+	r := n.Record.GetRecord()
+
+	var err error
+	n.Col, err = colonio.NewColonio(
+		colonio.WithLogger(n.Logger),
+		colonio.WithHttpClient(util.NewInsecureHttpClient()),
+		colonio.WithSeedURL(n.seedURL),
+		colonio.WithICEServers([]*config.ICEServer{
+			{
+				URLs: []string{},
+			},
+		}),
+		colonio.WithObservation(&colonio.ObservationHandlers{
+			OnChangeConnectedNodes: func(nodeIDs map[string]struct{}) {
+				n.mtx.Lock()
+				defer n.mtx.Unlock()
+				r.ConnectedNodeIDs = convertMapToSlice(nodeIDs)
+			},
+			OnUpdateRequiredNodeIDs1D: func(nodeIDs map[string]struct{}) {
+				n.mtx.Lock()
+				defer n.mtx.Unlock()
+				r.RequiredNodeIDs1D = convertMapToSlice(nodeIDs)
+			},
+			OnUpdateRequiredNodeIDs2D: func(nodeIDs map[string]struct{}) {
+				n.mtx.Lock()
+				defer n.mtx.Unlock()
+				r.RequiredNodeIDs2D = convertMapToSlice(nodeIDs)
+			},
+		}),
+		colonio.WithSphereGeometry(6378137.0),
+	)
+	if err != nil {
+		return err
+	}
+
+	n.Col.MessagingSetHandler(messageKey, func(mr *colonio.MessagingRequest, _ colonio.MessagingResponseWriter) {
+		id := string(mr.Message)
+		n.mtx.Lock()
+		defer n.mtx.Unlock()
+		r := n.Record.GetRecord()
+		r.Receive[id] = time.Now().Format(time.RFC3339Nano)
+	})
+
+	return nil
 }
 
 func (n *Node) runNode(ctx context.Context) error {
