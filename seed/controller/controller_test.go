@@ -23,6 +23,7 @@ import (
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/seed/misc"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/test/util/helper"
 	"github.com/stretchr/testify/assert"
@@ -116,7 +117,7 @@ func TestController_AssignNode(t *testing.T) {
 				NormalLifespan: normalLifespan,
 			})
 
-			nodeID, isAlone, err := c.AssignNode(t.Context())
+			nodeID, isAlone, err := c.AssignNode(misc.NewLoggerContext(t.Context(), nil))
 			if tt.expectHasError {
 				assert.Error(t, err)
 
@@ -131,6 +132,7 @@ func TestController_AssignNode(t *testing.T) {
 }
 
 func TestController_UnassignNode(t *testing.T) {
+	ctx := misc.NewLoggerContext(t.Context(), nil)
 	tests := []struct {
 		name            string
 		nodeID          *shared.NodeID
@@ -166,7 +168,7 @@ func TestController_UnassignNode(t *testing.T) {
 				},
 			})
 
-			err := c.UnassignNode(t.Context(), tt.nodeID)
+			err := c.UnassignNode(ctx, tt.nodeID)
 			if tt.expectHasError {
 				assert.Error(t, err)
 			} else {
@@ -178,6 +180,7 @@ func TestController_UnassignNode(t *testing.T) {
 }
 
 func TestController_Keepalive(t *testing.T) {
+	ctx := misc.NewLoggerContext(t.Context(), nil)
 	nodeIDs := testUtil.UniqueNodeIDs(2)
 	normalLifespan := 10 * time.Second
 	shortLifespan := 1 * time.Second
@@ -236,7 +239,7 @@ func TestController_Keepalive(t *testing.T) {
 	})
 
 	go func() {
-		isAlone, err := c.Keepalive(t.Context(), nodeIDs[0])
+		isAlone, err := c.Keepalive(ctx, nodeIDs[0])
 		require.NoError(t, err)
 		assert.False(t, isAlone)
 
@@ -253,14 +256,14 @@ func TestController_Keepalive(t *testing.T) {
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// ignore the keepalive request for the unexpected node
-	err := c.HandleKeepaliveRequest(t.Context(), nodeIDs[1])
+	err := c.HandleKeepaliveRequest(ctx, nodeIDs[1])
 	require.NoError(t, err)
 	mtx.Lock()
 	assert.False(t, finished)
 	mtx.Unlock()
 
 	// send the keepalive request for the expected node then should finish
-	err = c.HandleKeepaliveRequest(t.Context(), nodeIDs[0])
+	err = c.HandleKeepaliveRequest(ctx, nodeIDs[0])
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
 		mtx.Lock()
@@ -272,7 +275,7 @@ func TestController_Keepalive(t *testing.T) {
 	// wait for the keepalive to finish again
 	finished = false
 	go func() {
-		isAlone, err := c.Keepalive(t.Context(), nodeIDs[0])
+		isAlone, err := c.Keepalive(ctx, nodeIDs[0])
 		// occur error because the keepalive channel is closed
 		require.Error(t, err)
 		assert.False(t, isAlone)
@@ -290,14 +293,14 @@ func TestController_Keepalive(t *testing.T) {
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// un assign another node
-	err = c.HandleUnassignNode(t.Context(), nodeIDs[1])
+	err = c.HandleUnassignNode(ctx, nodeIDs[1])
 	require.NoError(t, err)
 	mtx.Lock()
 	assert.False(t, finished)
 	mtx.Unlock()
 
 	// un assign target node then should finish
-	err = c.HandleUnassignNode(t.Context(), nodeIDs[0])
+	err = c.HandleUnassignNode(ctx, nodeIDs[0])
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
 		mtx.Lock()
@@ -311,6 +314,7 @@ func TestController_Keepalive(t *testing.T) {
 }
 
 func TestController_ReconcileNextNodes(t *testing.T) {
+	ctx := misc.NewLoggerContext(t.Context(), nil)
 	nodeIDs := testUtil.UniqueNodeIDs(10)
 
 	tests := []struct {
@@ -422,7 +426,7 @@ func TestController_ReconcileNextNodes(t *testing.T) {
 				},
 			})
 
-			res, err := c.ReconcileNextNodes(t.Context(), tt.nodeID, tt.nextNodeIDs, tt.disconnectedIDs)
+			res, err := c.ReconcileNextNodes(ctx, tt.nodeID, tt.nextNodeIDs, tt.disconnectedIDs)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectResult, res)
 			c.mtx.Lock()
@@ -458,9 +462,10 @@ func TestController_Signal(t *testing.T) {
 		},
 	})
 
-	ctx, cancel := context.WithCancel(t.Context())
+	ctx1 := misc.NewLoggerContext(t.Context(), nil)
+	ctx2, cancel := context.WithCancel(ctx1)
 	go func() {
-		err := c.PollSignal(ctx, nodeIDs[0], func(signal *proto.Signal) error {
+		err := c.PollSignal(ctx2, nodeIDs[0], func(signal *proto.Signal) error {
 			mtx.Lock()
 			defer mtx.Unlock()
 			received = append(received, signal)
@@ -477,7 +482,7 @@ func TestController_Signal(t *testing.T) {
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// ignore the signal for the unexpected node
-	err := c.HandleSignal(t.Context(), &proto.Signal{
+	err := c.HandleSignal(ctx1, &proto.Signal{
 		SrcNodeId: nodeIDs[0].Proto(),
 		DstNodeId: nodeIDs[1].Proto(),
 		Content: &proto.Signal_Ice{
@@ -491,7 +496,7 @@ func TestController_Signal(t *testing.T) {
 	mtx.Unlock()
 
 	// acceptable signal
-	err = c.HandleSignal(t.Context(), &proto.Signal{
+	err = c.HandleSignal(ctx1, &proto.Signal{
 		SrcNodeId: nodeIDs[1].Proto(),
 		DstNodeId: nodeIDs[0].Proto(),
 		Content: &proto.Signal_Ice{
@@ -509,7 +514,7 @@ func TestController_Signal(t *testing.T) {
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// acceptable signal with relayToNext
-	err = c.HandleSignal(t.Context(), &proto.Signal{
+	err = c.HandleSignal(ctx1, &proto.Signal{
 		SrcNodeId: nodeIDs[0].Proto(),
 		DstNodeId: nodeIDs[1].Proto(),
 		Content: &proto.Signal_Offer{
@@ -537,6 +542,7 @@ func TestController_Signal(t *testing.T) {
 }
 
 func TestController_SendSignal(t *testing.T) {
+	ctx := misc.NewLoggerContext(t.Context(), nil)
 	nodeIDs := testUtil.UniqueNodeIDs(2)
 	mtx := sync.Mutex{}
 	callCount := 0
@@ -591,7 +597,7 @@ func TestController_SendSignal(t *testing.T) {
 	})
 
 	// send signal when multiple nodes
-	err := c.SendSignal(t.Context(), nodeIDs[1], &proto.Signal{
+	err := c.SendSignal(ctx, nodeIDs[1], &proto.Signal{
 		SrcNodeId: nodeIDs[1].Proto(),
 		DstNodeId: nodeIDs[0].Proto(),
 		Content: &proto.Signal_Ice{
@@ -601,7 +607,7 @@ func TestController_SendSignal(t *testing.T) {
 	require.NoError(t, err)
 
 	// send offer signal
-	err = c.SendSignal(t.Context(), nodeIDs[1], &proto.Signal{
+	err = c.SendSignal(ctx, nodeIDs[1], &proto.Signal{
 		SrcNodeId: nodeIDs[1].Proto(),
 		DstNodeId: nodeIDs[0].Proto(),
 		Content: &proto.Signal_Offer{
@@ -614,7 +620,7 @@ func TestController_SendSignal(t *testing.T) {
 	require.NoError(t, err)
 
 	// send signal when single node
-	err = c.SendSignal(t.Context(), nodeIDs[1], &proto.Signal{
+	err = c.SendSignal(ctx, nodeIDs[1], &proto.Signal{
 		SrcNodeId: nodeIDs[1].Proto(),
 		DstNodeId: nodeIDs[0].Proto(),
 		Content: &proto.Signal_Ice{

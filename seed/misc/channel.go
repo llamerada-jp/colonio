@@ -23,7 +23,7 @@ import (
 var ErrChannelClosed = fmt.Errorf("channel is closed")
 
 type Channel[T any] struct {
-	mtx sync.Mutex
+	mtx sync.RWMutex
 	c   chan T
 }
 
@@ -34,18 +34,15 @@ func NewChannel[T any](size int) *Channel[T] {
 }
 
 func (c *Channel[T]) C() chan T {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
+	c.mtx.RLock()
+	defer c.mtx.RUnlock()
 
-	if c.c == nil {
-		return nil
-	}
 	return c.c
 }
 
 func (c *Channel[T]) Send(value T) error {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
+	c.mtx.RLock()
+	defer c.mtx.RUnlock()
 
 	if c.c == nil {
 		return ErrChannelClosed
@@ -56,6 +53,7 @@ func (c *Channel[T]) Send(value T) error {
 }
 
 func (c *Channel[T]) SendWhenNotFull(value T) (bool, error) {
+	// this method exclusively locks the channel to check if it is full
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
