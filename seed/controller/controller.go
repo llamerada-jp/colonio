@@ -382,7 +382,7 @@ func (c *Controller) validateSignal(signal *proto.Signal, srcNodeID *shared.Node
 		return fmt.Errorf("failed to parse src node id in signal packet: %w", err)
 	}
 	if !srcNodeID.Equal(signalSrcNodeID) {
-		return fmt.Errorf("src node id is invalid")
+		return fmt.Errorf("src node id is invalid expected:%s, got: %s", srcNodeID.String(), signalSrcNodeID.String())
 	}
 	_, err = shared.NewNodeIDFromProto(signal.GetDstNodeId())
 	if err != nil {
