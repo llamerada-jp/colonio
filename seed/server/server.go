@@ -98,7 +98,8 @@ func (c *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 		return
 	}
 	ctxWithSession := context.WithValue(request.Context(), ContextKeySession, session)
-	ctx := misc.NewLoggerContext(ctxWithSession)
+	nodeID := session.getNodeID()
+	ctx := misc.NewLoggerContext(ctxWithSession, nodeID)
 	logger := misc.NewLogger(ctx, c.logger)
 
 	logger.Info("request",
