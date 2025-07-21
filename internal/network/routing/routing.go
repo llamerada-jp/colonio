@@ -36,6 +36,7 @@ const (
 )
 
 type Handler interface {
+	RoutingReconcileNextNodes(nextNodeIDs, disconnectedNodeIDs []*shared.NodeID) (bool, error)
 	RoutingUpdateConnection(required, keep map[shared.NodeID]struct{})
 	RoutingUpdateNextNodePositions(map[shared.NodeID]*geometry.Coordinate)
 }
@@ -84,7 +85,9 @@ func (r *Routing) Start(ctx context.Context, localNodeID *shared.NodeID) {
 	r.localNodeID = localNodeID
 
 	r.r1d = newRouting1D(&routing1DConfig{
-		localNodeID: localNodeID,
+		logger:             r.logger,
+		localNodeID:        localNodeID,
+		reconcileNextNodes: r.handler.RoutingReconcileNextNodes,
 	})
 
 	if r.coordinateSystem != nil {
@@ -108,6 +111,10 @@ func (r *Routing) Start(ctx context.Context, localNodeID *shared.NodeID) {
 			}
 		}
 	}()
+}
+
+func (r *Routing) IsStable() bool {
+	return r.r1d.isStable()
 }
 
 func (r *Routing) GetNextStep1D(packet *shared.Packet) *shared.NodeID {
@@ -148,6 +155,8 @@ func (r *Routing) CountRecvPacket(from *shared.NodeID, packet *shared.Packet) {
 }
 
 func (r *Routing) subRoutine() {
+	r.r1d.subRoutine()
+
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 

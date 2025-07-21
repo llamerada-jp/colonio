@@ -61,7 +61,7 @@ func WithDocumentOverride(pattern, path string) OptionSetter {
 	}
 }
 
-func WithHandlerFunc(pattern string, handlerFunc http.HandlerFunc) OptionSetter {
+func WithHttpHandlerFunc(pattern string, handlerFunc http.HandlerFunc) OptionSetter {
 	return func(o *options) {
 		o.mux.HandleFunc(pattern, handlerFunc)
 	}

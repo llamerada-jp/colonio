@@ -17,8 +17,6 @@ package node_accessor
 
 import (
 	"fmt"
-	"log/slog"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -134,7 +132,7 @@ func TestNodeAccessorAlone(t *testing.T) {
 	envelopes := make([]*envelope, 0)
 
 	na, err := NewNodeAccessor(&Config{
-		Logger: slog.Default(),
+		Logger: testUtil.Logger(t),
 		Handler: &nodeAccessorHandlerHelper{
 			recvPacket: func(_ *shared.NodeID, _ *shared.Packet) {
 				assert.Fail(t, "unexpected call")
@@ -234,7 +232,7 @@ func TestNodeAccessorPair(t *testing.T) {
 		packets[i] = make([]*shared.Packet, 0)
 
 		na, err := NewNodeAccessor(&Config{
-			Logger: slog.Default(),
+			Logger: testUtil.Logger(t),
 			Handler: &nodeAccessorHandlerHelper{
 				recvPacket: func(n *shared.NodeID, p *shared.Packet) {
 					mtx.Lock()
@@ -358,9 +356,7 @@ func TestNodeAccessorMany(t *testing.T) {
 
 func testNodeAccessorMany(t *testing.T, n int) {
 	nodeIDs := testUtil.UniqueNodeIDs(n)
-	slices.SortFunc(nodeIDs, func(a, b *shared.NodeID) int {
-		return a.Compare(b)
-	})
+	shared.SortNodeIDs(nodeIDs)
 
 	nodeAccessors := make([]*NodeAccessor, 0)
 	mtx := sync.Mutex{}
@@ -372,7 +368,7 @@ func testNodeAccessorMany(t *testing.T, n int) {
 		packets[i] = make([]*shared.Packet, 0)
 
 		na, err := NewNodeAccessor(&Config{
-			Logger: slog.Default(),
+			Logger: testUtil.Logger(t),
 			Handler: &nodeAccessorHandlerHelper{
 				recvPacket: func(n *shared.NodeID, p *shared.Packet) {
 					assert.False(t, srcNodeID.Equal(n))
@@ -544,7 +540,7 @@ func TestNodeAccessorConnectLinks(t *testing.T) {
 		packets[i] = make([]*shared.Packet, 0)
 
 		na, err := NewNodeAccessor(&Config{
-			Logger: slog.Default(),
+			Logger: testUtil.Logger(t),
 			Handler: &nodeAccessorHandlerHelper{
 				recvPacket: func(n *shared.NodeID, p *shared.Packet) {
 					assert.False(t, srcNodeID.Equal(n))
@@ -600,10 +596,28 @@ func TestNodeAccessorConnectLinks(t *testing.T) {
 
 	// node 1 ~ 3 connect to node 0
 	for i := 1; i < len(nodeIDs); i++ {
+		keepNodeIDs := make(map[shared.NodeID]struct{})
+		for j := 1; j < len(nodeIDs); j++ {
+			if j != i {
+				keepNodeIDs[*nodeIDs[j]] = struct{}{}
+			}
+		}
 		err := nodeAccessors[i].ConnectLinks(
 			map[shared.NodeID]struct{}{
 				*nodeIDs[0]: {},
 			},
+			keepNodeIDs,
+		)
+		require.NoError(t, err)
+	}
+	// wait for connecting
+	time.Sleep(1 * time.Second)
+	for i := 1; i < len(nodeIDs); i++ {
+		err := nodeAccessors[i].ConnectLinks(
+			map[shared.NodeID]struct{}{
+				*nodeIDs[0]: {},
+			},
+			// disconnect from other than node 0.
 			map[shared.NodeID]struct{}{},
 		)
 		require.NoError(t, err)

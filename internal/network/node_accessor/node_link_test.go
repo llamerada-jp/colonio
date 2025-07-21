@@ -16,7 +16,6 @@
 package node_accessor
 
 import (
-	"log/slog"
 	"math/rand"
 	"sync"
 	"testing"
@@ -25,6 +24,7 @@ import (
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	proto3 "google.golang.org/protobuf/proto"
@@ -58,7 +58,7 @@ func TestNodeLinkNormal(t *testing.T) {
 	testLabel := "test"
 	config := &NodeLinkConfig{
 		ctx:               t.Context(),
-		logger:            slog.Default(),
+		logger:            testUtil.Logger(t),
 		label:             testLabel,
 		ICEServers:        constants.TestingICEServers,
 		SessionTimeout:    30 * time.Second,
@@ -205,7 +205,7 @@ func TestNodeLinkNormal(t *testing.T) {
 func TestNodeLinkTimeout(t *testing.T) {
 	config := &NodeLinkConfig{
 		ctx:               t.Context(),
-		logger:            slog.Default(),
+		logger:            testUtil.Logger(t),
 		label:             "test",
 		ICEServers:        constants.TestingICEServers,
 		SessionTimeout:    5 * time.Second,
@@ -321,7 +321,7 @@ func TestNodeLinkTimeout(t *testing.T) {
 func TestNodeLinkBufferInterval(t *testing.T) {
 	config1 := &NodeLinkConfig{
 		ctx:               t.Context(),
-		logger:            slog.Default(),
+		logger:            testUtil.Logger(t),
 		label:             "test",
 		ICEServers:        constants.TestingICEServers,
 		SessionTimeout:    30 * time.Second,
@@ -433,7 +433,7 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 func TestNodeLinkPacketBaseBytes(t *testing.T) {
 	config := &NodeLinkConfig{
 		ctx:               t.Context(),
-		logger:            slog.Default(),
+		logger:            testUtil.Logger(t),
 		label:             "test",
 		ICEServers:        constants.TestingICEServers,
 		SessionTimeout:    30 * time.Second,
@@ -493,19 +493,19 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond)
 
 	testCases := []struct {
-		title   string
+		name    string
 		packets []*shared.Packet
 	}{
 		{
-			title:   "send a medium packet",
+			name:    "send a medium packet",
 			packets: []*shared.Packet{genRandomPacket(1024 + 512)},
 		},
 		{
-			title:   "send a large packet",
+			name:    "send a large packet",
 			packets: []*shared.Packet{genRandomPacket(10 * 1024)},
 		},
 		{
-			title: "send some small packets and a medium packet, sum of packet size is larger than packetBaseBytes",
+			name: "send some small packets and a medium packet, sum of packet size is larger than packetBaseBytes",
 			packets: []*shared.Packet{
 				genRandomPacket(3),
 				genRandomPacket(3),
@@ -516,7 +516,7 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.title, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			mtx.Lock()
 			received = []*shared.Packet{}
 			mtx.Unlock()

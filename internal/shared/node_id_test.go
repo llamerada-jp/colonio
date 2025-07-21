@@ -17,6 +17,7 @@ package shared
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
@@ -412,6 +413,66 @@ func TestNodeID_ConvertNodeIDSetToStringMap(t *testing.T) {
 	assert.Len(t, dst, 2)
 	assert.Contains(t, dst, "00000000000000010000000000000002")
 	assert.Contains(t, dst, "00000000000000030000000000000004")
+}
+
+func TestNodeID_ConvertNodeIDsToProto(t *testing.T) {
+	dst := ConvertNodeIDsToProto(nil)
+	assert.Len(t, dst, 0)
+
+	src := []*NodeID{
+		NewNormalNodeID(1, 2),
+		NewNormalNodeID(3, 4),
+	}
+
+	dst = ConvertNodeIDsToProto(src)
+	assert.Len(t, dst, 2)
+	assert.Equal(t, uint64(1), dst[0].Id0)
+	assert.Equal(t, uint64(2), dst[0].Id1)
+	assert.Equal(t, uint64(3), dst[1].Id0)
+	assert.Equal(t, uint64(4), dst[1].Id1)
+}
+
+func TestNodeID_ConvertNodeIDsFromProto(t *testing.T) {
+	nodeIDs := []*NodeID{
+		NewRandomNodeID(),
+		NewRandomNodeID(),
+		NewRandomNodeID(),
+	}
+
+	nodeIDProtos := make([]*proto.NodeID, len(nodeIDs))
+	for i, nodeID := range nodeIDs {
+		nodeIDProtos[i] = nodeID.Proto()
+	}
+	convertedNodeIDs, err := ConvertNodeIDsFromProto(nodeIDProtos)
+	require.NoError(t, err)
+	assert.Len(t, convertedNodeIDs, len(nodeIDs))
+	for i, nodeID := range convertedNodeIDs {
+		assert.True(t, nodeID.Equal(nodeIDs[i]))
+	}
+}
+
+func TestNodeID_SortNodeIDs(t *testing.T) {
+	nodeIDs := make([]*NodeID, 10)
+	for i := range nodeIDs {
+		nodeIDs[i] = NewRandomNodeID()
+	}
+	original := slices.Clone(nodeIDs)
+
+	SortNodeIDs(nodeIDs)
+	assert.Len(t, nodeIDs, 10)
+	for i := 1; i < len(nodeIDs); i++ {
+		assert.True(t, nodeIDs[i-1].Smaller(nodeIDs[i]))
+	}
+	for _, nodeID := range nodeIDs {
+		exists := false
+		for _, originalNodeID := range original {
+			if nodeID.Equal(originalNodeID) {
+				exists = true
+				break
+			}
+		}
+		assert.True(t, exists)
+	}
 }
 
 func TestNodeID_MapKey(t *testing.T) {
