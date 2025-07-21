@@ -23,6 +23,19 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestChannel_C(t *testing.T) {
+	ch := NewChannel[int](2)
+
+	// initially, the channel should not be nil
+	assert.NotNil(t, ch.C())
+
+	// close the channel
+	ch.Close()
+
+	// after closing, the channel should return nil
+	assert.Nil(t, ch.C())
+}
+
 func TestChannel_Send(t *testing.T) {
 	ch := NewChannel[int](2)
 	sent := 0
@@ -44,7 +57,7 @@ func TestChannel_Send(t *testing.T) {
 		return sent == 2
 	}, 100*time.Millisecond, 10*time.Millisecond)
 
-	v := <-ch.c
+	v := <-ch.C()
 	assert.Equal(t, 0, v)
 
 	assert.Eventually(t, func() bool {
@@ -64,20 +77,30 @@ func TestChannel_Send(t *testing.T) {
 func TestChannel_SendWithNotFull(t *testing.T) {
 	ch := NewChannel[int](2)
 
+	// the channel will be full
 	for i := 0; i < 2; i++ {
 		ok, err := ch.SendWhenNotFull(i)
 		assert.NoError(t, err)
 		assert.True(t, ok)
 	}
 
+	// the channel is full, so it will return false
 	ok, err := ch.SendWhenNotFull(2)
 	assert.NoError(t, err)
 	assert.False(t, ok)
 
-	v := <-ch.c
+	// get the first value
+	v := <-ch.C()
 	assert.Equal(t, 0, v)
 
+	// now we can send a value again
 	ok, err = ch.SendWhenNotFull(3)
 	assert.NoError(t, err)
 	assert.True(t, ok)
+
+	// close the channel
+	ch.Close()
+	ok, err = ch.SendWhenNotFull(4)
+	assert.ErrorIs(t, err, ErrChannelClosed)
+	assert.False(t, ok)
 }

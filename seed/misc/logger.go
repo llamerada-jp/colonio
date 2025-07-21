@@ -41,9 +41,10 @@ func NewLoggerContext(ctx context.Context, nodeID *shared.NodeID) context.Contex
 
 func NewLogger(ctx context.Context, logger *slog.Logger) *slog.Logger {
 	requestID, ok := ctx.Value(contextKeyRequestID).(string)
-	if ok && len(requestID) != 0 {
-		logger = logger.With(slog.String("reqID", requestID))
+	if !ok || len(requestID) == 0 {
+		panic("context should contain a request ID")
 	}
+	logger = logger.With(slog.String("reqID", requestID))
 
 	nodeID, ok := ctx.Value(contextKeyNodeID).(*shared.NodeID)
 	if ok && nodeID != nil {
