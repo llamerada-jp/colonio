@@ -65,8 +65,14 @@ func drawer(framework *base.RenderFramework, canvas *canvas.Canvas, sec int) {
 			framework.PacketLossRate*100.0,
 		))
 
-	canvas.SetColor(0, 63, 255)
-	for n := range framework.AliveNodes {
+	for n, info := range framework.AliveNodes {
+		if !info.Record.GetRecord().IsOnline {
+			canvas.SetColor(255, 63, 0)
+		} else if !info.Record.GetRecord().IsStable {
+			canvas.SetColor(0, 255, 63)
+		} else {
+			canvas.SetColor(0, 0, 255)
+		}
 		drawNode(canvas, n)
 	}
 

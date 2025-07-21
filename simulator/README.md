@@ -34,15 +34,18 @@ curl -sSL https://mirrors.chaos-mesh.org/v2.7.1/install.sh | bash -s -- --k3s
 ### Deploy the simulator
 
 ```sh
-make apply-random
+make simulate-random
 # If you do not use k3s, please set KUBECTL variable.
-# KUBECTL=kubectl make apply
+# KUBECTL=kubectl make simulate-random
 
 # Specify simulation story
 # STORY=(circle|sphere)
 
 # Specify the number of node pods
 # NODES=3
+
+# The command to simulate with a number of nodes proportional to the population in major cities and including delays based on real data is as follows
+make STORY=sphere simulate-geo delay
 ```
 
 ### Export the logs
