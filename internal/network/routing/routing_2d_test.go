@@ -16,7 +16,6 @@
 package routing
 
 import (
-	"log/slog"
 	"math/rand"
 	"testing"
 
@@ -87,7 +86,7 @@ func TestRouting2D_updateNodeConnections(t *testing.T) {
 	}
 
 	r := newRouting2D(&routing2DConfig{
-		logger:      slog.Default(),
+		logger:      testUtil.Logger(t),
 		localNodeID: shared.NewRandomNodeID(),
 		geometry:    geometry.NewPlaneCoordinateSystem(-100, 100, -100, 100),
 	})
@@ -177,7 +176,7 @@ func TestRouting2D_getNextStep(t *testing.T) {
 	}
 
 	r := newRouting2D(&routing2DConfig{
-		logger:      slog.Default(),
+		logger:      testUtil.Logger(t),
 		localNodeID: shared.NewRandomNodeID(),
 		geometry:    geometry.NewPlaneCoordinateSystem(-100, 100, -100, 100),
 	})
@@ -329,7 +328,7 @@ func TestRouting2D_recvRoutingPacket(t *testing.T) {
 	}
 
 	r := newRouting2D(&routing2DConfig{
-		logger:      slog.Default(),
+		logger:      testUtil.Logger(t),
 		localNodeID: nodeIDs[0],
 		geometry:    planeGeometry,
 	})
@@ -356,7 +355,7 @@ func TestRouting2D_setupRoutingPacket(t *testing.T) {
 	positions := getUniquePositions(5, planeGeometry)
 
 	r := newRouting2D(&routing2DConfig{
-		logger:      slog.Default(),
+		logger:      testUtil.Logger(t),
 		localNodeID: nodeIDs[3],
 		geometry:    planeGeometry,
 	})
@@ -431,7 +430,7 @@ func TestRouting2D_neighborNodeIDChanged(t *testing.T) {
 	}
 
 	r := newRouting2D(&routing2DConfig{
-		logger:      slog.Default(),
+		logger:      testUtil.Logger(t),
 		localNodeID: nodeIDs[0],
 		geometry:    planeGeometry,
 	})

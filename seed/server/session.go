@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package seed
+package server
 
 import (
 	"fmt"
@@ -38,10 +38,7 @@ type session struct {
 func newSession(sessionStore sessions.Store, request *http.Request, response http.ResponseWriter) (*session, error) {
 	s, err := sessionStore.Get(request, COOKIE_NAME_SESSION)
 	if err != nil {
-		s, err = sessionStore.New(request, COOKIE_NAME_SESSION)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create session: %w", err)
-		}
+		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
 
 	return &session{
@@ -53,10 +50,6 @@ func newSession(sessionStore sessions.Store, request *http.Request, response htt
 }
 
 func (s *session) getNodeID() *shared.NodeID {
-	if s == nil {
-		return nil
-	}
-
 	value, ok := s.session.Values[SESSION_KEY_NODE_ID].(string)
 	if !ok {
 		return nil
@@ -71,10 +64,6 @@ func (s *session) getNodeID() *shared.NodeID {
 }
 
 func (s *session) setNodeID(nodeID *shared.NodeID) {
-	if s == nil {
-		return
-	}
-
 	s.session.Values[SESSION_KEY_NODE_ID] = nodeID.String()
 }
 
@@ -83,10 +72,6 @@ func (s *session) write() error {
 }
 
 func (s *session) delete() error {
-	if s == nil {
-		return nil
-	}
-
 	s.session.Options.MaxAge = -1
 	return s.sessionStore.Save(s.request, s.response, s.session)
 }

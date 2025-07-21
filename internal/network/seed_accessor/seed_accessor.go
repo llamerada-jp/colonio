@@ -114,14 +114,31 @@ func (sa *SeedAccessor) Start(ctx context.Context) (*shared.NodeID, error) {
 				return
 
 			default:
-				err := sa.poll()
-				if err != nil {
+				if err := sa.poll(); err != nil {
 					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 						return
 					}
 					sa.logger.Warn("failed to poll", slog.String("error", err.Error()))
 					time.Sleep(10 * time.Second)
 				}
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-sa.ctx.Done():
+				return
+
+			default:
+				if err := sa.keepalive(); err != nil {
+					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+						return
+					}
+					sa.logger.Warn("failed to keepalive", slog.String("error", err.Error()))
+				}
+				time.Sleep(10 * time.Second)
 			}
 		}
 	}()
@@ -147,7 +164,7 @@ func (sa *SeedAccessor) SendSignalOffer(dstNodeID *shared.NodeID, offer *signal.
 		return fmt.Errorf("unknown offer type: %d", offer.OfferType)
 	}
 
-	res, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
+	_, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
 		Msg: &proto.SendSignalRequest{
 			Signal: &proto.Signal{
 				DstNodeId: dstNodeID.Proto(),
@@ -167,14 +184,11 @@ func (sa *SeedAccessor) SendSignalOffer(dstNodeID *shared.NodeID, offer *signal.
 		return fmt.Errorf("failed to send signal offer: %w", err)
 	}
 
-	sa.mtx.Lock()
-	sa.isAlone = res.Msg.GetIsAlone()
-	sa.mtx.Unlock()
 	return nil
 }
 
 func (sa *SeedAccessor) SendSignalAnswer(dstNodeID *shared.NodeID, answer *signal.Answer) error {
-	res, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
+	_, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
 		Msg: &proto.SendSignalRequest{
 			Signal: &proto.Signal{
 				DstNodeId: dstNodeID.Proto(),
@@ -194,14 +208,11 @@ func (sa *SeedAccessor) SendSignalAnswer(dstNodeID *shared.NodeID, answer *signa
 		return fmt.Errorf("failed to send signal answer: %w", err)
 	}
 
-	sa.mtx.Lock()
-	sa.isAlone = res.Msg.GetIsAlone()
-	sa.mtx.Unlock()
 	return nil
 }
 
 func (sa *SeedAccessor) SendSignalICE(dstNodeID *shared.NodeID, ices *signal.ICE) error {
-	res, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
+	_, err := sa.client.SendSignal(sa.ctx, &connect.Request[proto.SendSignalRequest]{
 		Msg: &proto.SendSignalRequest{
 			Signal: &proto.Signal{
 				DstNodeId: dstNodeID.Proto(),
@@ -220,10 +231,22 @@ func (sa *SeedAccessor) SendSignalICE(dstNodeID *shared.NodeID, ices *signal.ICE
 		return fmt.Errorf("failed to send signal ICE: %w", err)
 	}
 
-	sa.mtx.Lock()
-	sa.isAlone = res.Msg.GetIsAlone()
-	sa.mtx.Unlock()
 	return nil
+}
+
+func (sa *SeedAccessor) ReconcileNextNodes(nextNodeIDs, disconnectedNodeIDs []*shared.NodeID) (bool, error) {
+	res, err := sa.client.ReconcileNextNodes(sa.ctx, &connect.Request[proto.ReconcileNextNodesRequest]{
+		Msg: &proto.ReconcileNextNodesRequest{
+			NextNodeIds:         shared.ConvertNodeIDsToProto(nextNodeIDs),
+			DisconnectedNodeIds: shared.ConvertNodeIDsToProto(disconnectedNodeIDs),
+		},
+	})
+
+	if err != nil {
+		return false, fmt.Errorf("failed to reconcile next nodes: %w", err)
+	}
+
+	return res.Msg.Matched, nil
 }
 
 func (sa *SeedAccessor) unassign() {
@@ -232,6 +255,17 @@ func (sa *SeedAccessor) unassign() {
 	if err != nil {
 		sa.logger.Warn("failed to unassign node", slog.String("error", err.Error()))
 	}
+}
+
+func (sa *SeedAccessor) keepalive() error {
+	res, err := sa.client.Keepalive(sa.ctx, &connect.Request[proto.KeepaliveRequest]{})
+	if err != nil {
+		return err
+	}
+	sa.mtx.Lock()
+	defer sa.mtx.Unlock()
+	sa.isAlone = res.Msg.GetIsAlone()
+	return nil
 }
 
 func (sa *SeedAccessor) poll() error {

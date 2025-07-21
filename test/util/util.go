@@ -17,9 +17,12 @@ package util
 
 import (
 	"crypto/tls"
+	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"slices"
+	"testing"
+	"time"
 
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
@@ -70,12 +73,6 @@ func UniqueNodeIDsWithRange(min, max *shared.NodeID, count int) []*shared.NodeID
 	return nodeIDs
 }
 
-func SortNodeIDs(nodeIDs []*shared.NodeID) {
-	slices.SortFunc(nodeIDs, func(a, b *shared.NodeID) int {
-		return a.Compare(b)
-	})
-}
-
 // create client to accept self-signed certificate & cookie
 func NewInsecureHttpClient() *http.Client {
 	jar, err := cookiejar.New(nil)
@@ -91,4 +88,53 @@ func NewInsecureHttpClient() *http.Client {
 		},
 		Jar: jar,
 	}
+}
+
+func NearTime(base, actual time.Time) bool {
+	// Allow a 3-second margin for time differences
+	margin := 3 * time.Second
+	return actual.After(base.Add(-margin)) && actual.Before(base.Add(margin))
+}
+
+func CompareNodeIDsOrdered(a, b []*shared.NodeID) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !a[i].Equal(b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func CompareNodeIDsUnordered(a, b []*shared.NodeID) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	c := slices.Clone(b)
+	for _, idA := range a {
+		for i, idC := range c {
+			if idA.Equal(idC) {
+				c = append(c[:i], c[i+1:]...) // remove matched idC
+				break
+			}
+		}
+	}
+	return len(c) == 0
+}
+
+type testingLogWriter struct {
+	t *testing.T
+}
+
+func (w *testingLogWriter) Write(p []byte) (n int, err error) {
+	w.t.Log(string(p))
+	return len(p), nil
+}
+
+func Logger(t *testing.T) *slog.Logger {
+	return slog.New(slog.NewTextHandler(&testingLogWriter{
+		t: t,
+	}, &slog.HandlerOptions{}))
 }

@@ -18,7 +18,6 @@
 package network
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -35,6 +34,7 @@ import (
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
+	"github.com/llamerada-jp/colonio/test/util/helper"
 	"github.com/llamerada-jp/colonio/test/util/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -50,9 +50,9 @@ func (h *networkHandlerHelper) NetworkUpdateNextNodePosition(p map[shared.NodeID
 	}
 }
 
-func newTestConfigBase(seedURL string, i int) *Config {
+func newTestConfigBase(t *testing.T, seedURL string, i int) *Config {
 	return &Config{
-		Logger:           slog.Default().With(slog.String("node", fmt.Sprintf("#%d", i))),
+		Logger:           testUtil.Logger(t).With(slog.String("node", fmt.Sprintf("#%d", i))),
 		Handler:          &networkHandlerHelper{},
 		Observation:      &observation.Handlers{},
 		CoordinateSystem: geometry.NewPlaneCoordinateSystem(-1.0, 1.0, -1.0, 1.0),
@@ -76,27 +76,19 @@ func TestNetwork(t *testing.T) {
 	positionMaps := make([]map[shared.NodeID]*geometry.Coordinate, len(nodeIDs))
 
 	// start seed
-	nodeCount := 0
+	gateway := &helper.Gateway{
+		NodeIDs: nodeIDs,
+	}
 	seed := seed.NewSeed(
-		seed.WithAssignmentHandler(&testUtil.AssignmentHandlerHelper{
-			T: t,
-			AssignNodeF: func(ctx context.Context) (*shared.NodeID, error) {
-				if nodeCount >= len(nodeIDs) {
-					t.FailNow()
-				}
-				nodeID := nodeIDs[nodeCount]
-				nodeCount++
-				return nodeID, nil
-			},
-			UnassignNodeF: func(nodeID *shared.NodeID) {},
-		}),
+		seed.WithGateway(gateway),
 	)
+	gateway.Seed = seed
 	server := server.NewHelper(seed)
 	server.Start(t.Context())
 	defer server.Stop()
 
 	// make the first node
-	config := newTestConfigBase(server.URL(), 0)
+	config := newTestConfigBase(t, server.URL(), 0)
 	config.Handler = &networkHandlerHelper{
 		updateNextNodePosition: func(m map[shared.NodeID]*geometry.Coordinate) {
 			mtx.Lock()
@@ -122,13 +114,13 @@ func TestNetwork(t *testing.T) {
 
 	// can be online only one node
 	require.Eventually(t, func() bool {
-		return networks[0].IsOnline()
+		return networks[0].IsOnline() && networks[0].IsStable()
 	}, 60*time.Second, 1*time.Second)
 
 	// make other nodes online
 	for i := 1; i < len(nodeIDs); i++ {
 		i := i
-		config := newTestConfigBase(server.URL(), i)
+		config := newTestConfigBase(t, server.URL(), i)
 		config.Handler = &networkHandlerHelper{
 			updateNextNodePosition: func(m map[shared.NodeID]*geometry.Coordinate) {
 				mtx.Lock()
@@ -150,10 +142,8 @@ func TestNetwork(t *testing.T) {
 
 	// all nodes should be online
 	require.Eventually(t, func() bool {
-		mtx.Lock()
-		defer mtx.Unlock()
 		for _, network := range networks {
-			if !network.IsOnline() {
+			if !network.IsOnline() || !network.IsStable() {
 				return false
 			}
 		}
@@ -170,7 +160,7 @@ func TestNetwork(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// position should be tolled to each node
+	// position should be told to each node
 	assert.Eventually(t, func() bool {
 		mtx.Lock()
 		defer mtx.Unlock()
@@ -214,12 +204,9 @@ func TestNetwork(t *testing.T) {
 
 		for _, network := range networks {
 			assert.True(t, network.IsOnline())
+			assert.True(t, network.IsStable())
 		}
 
 		return len(receivedPackets) == 2
 	}, 60*time.Second, 1*time.Second)
-
-	for _, n := range networks {
-		assert.True(t, n.IsOnline())
-	}
 }

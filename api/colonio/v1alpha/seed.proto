@@ -9,6 +9,8 @@ option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
 service SeedService {
   rpc AssignNode (AssignNodeRequest) returns (AssignNodeResponse) {}
   rpc UnassignNode (UnassignNodeRequest) returns (UnassignNodeResponse) {}
+  rpc Keepalive (KeepaliveRequest) returns (KeepaliveResponse) {}
+  rpc ReconcileNextNodes (ReconcileNextNodesRequest) returns (ReconcileNextNodesResponse) {}
   rpc SendSignal (SendSignalRequest) returns (SendSignalResponse) {}
   rpc PollSignal (PollSignalRequest) returns (stream PollSignalResponse) {}
 }
@@ -60,12 +62,27 @@ message UnassignNodeRequest {
 message UnassignNodeResponse {
 }
 
+message KeepaliveRequest {
+}
+
+message KeepaliveResponse {
+  bool is_alone = 1;
+}
+
+message ReconcileNextNodesRequest {
+  repeated colonio.v1alpha.NodeID next_node_ids = 1;
+  repeated colonio.v1alpha.NodeID disconnected_node_ids = 2;
+}
+
+message ReconcileNextNodesResponse {
+  bool matched = 1;
+}
+
 message SendSignalRequest {
   Signal signal = 1;
 }
 
 message SendSignalResponse {
-  bool is_alone = 1;
 }
 
 message PollSignalRequest {

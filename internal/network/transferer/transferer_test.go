@@ -16,7 +16,6 @@
 package transferer
 
 import (
-	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -24,6 +23,7 @@ import (
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -70,7 +70,7 @@ func TestRequestHandler(t *testing.T) {
 	handlerCount := 0
 
 	transferer := NewTransferer(&Config{
-		Logger:  slog.Default(),
+		Logger:  testUtil.Logger(t),
 		Handler: nil,
 	})
 	transferer.Start(t.Context(), nil)
@@ -114,7 +114,7 @@ func TestRelay(t *testing.T) {
 	packet := &shared.Packet{}
 
 	transferer := NewTransferer(&Config{
-		Logger: slog.Default(),
+		Logger: testUtil.Logger(t),
 		Handler: &transfererHandlerHelper{
 			sendPacket: func(p *shared.Packet) {
 				assert.Fail(t, "unexpected call")
@@ -142,7 +142,7 @@ func TestRequestAndResponse(t *testing.T) {
 	dstNodeID := shared.NewRandomNodeID()
 
 	transferer := NewTransferer(&Config{
-		Logger: slog.Default(),
+		Logger: testUtil.Logger(t),
 		Handler: &transfererHandlerHelper{
 			sendPacket: func(p *shared.Packet) {
 				mtx.Lock()
@@ -241,7 +241,7 @@ func TestRequestOneWay(t *testing.T) {
 	dstNodeID := shared.NewRandomNodeID()
 
 	transferer := NewTransferer(&Config{
-		Logger: slog.Default(),
+		Logger: testUtil.Logger(t),
 		Handler: &transfererHandlerHelper{
 			sendPacket: func(p *shared.Packet) {
 				mtx.Lock()
@@ -287,7 +287,7 @@ func TestTimeout(t *testing.T) {
 	dstNodeID := shared.NewRandomNodeID()
 
 	transferer := NewTransferer(&Config{
-		Logger: slog.Default(),
+		Logger: testUtil.Logger(t),
 		Handler: &transfererHandlerHelper{
 			sendPacket: func(p *shared.Packet) {
 				mtx.Lock()

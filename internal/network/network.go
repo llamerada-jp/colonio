@@ -140,6 +140,10 @@ func (n *Network) IsOnline() bool {
 	return n.seedAccessor.IsAlone() || n.nodeAccessor.IsOnline()
 }
 
+func (n *Network) IsStable() bool {
+	return n.routing.IsStable()
+}
+
 func (n *Network) GetTransferer() *transferer.Transferer {
 	return n.transferer
 }
@@ -213,6 +217,10 @@ func (n *Network) TransfererRelayPacket(dstNodeID *shared.NodeID, packet *shared
 }
 
 // implements for routing.Handler
+func (n *Network) RoutingReconcileNextNodes(nextNodeIDs, disconnectedNodeIDs []*shared.NodeID) (bool, error) {
+	return n.seedAccessor.ReconcileNextNodes(nextNodeIDs, disconnectedNodeIDs)
+}
+
 func (n *Network) RoutingUpdateConnection(required, keep map[shared.NodeID]struct{}) {
 	n.nodeAccessor.ConnectLinks(required, keep)
 }
