@@ -20,26 +20,35 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+
+	"github.com/llamerada-jp/colonio/internal/shared"
 )
+
+type contextKey int
 
 const (
-	/**
-	 * CONTEXT_KEY_REQUEST_KEY is used to describe the request id for logs.
-	 */
-	CONTEXT_KEY_REQUEST_ID = "requestID"
+	contextKeyRequestID contextKey = iota
+	contextKeyNodeID
 )
 
-func NewLoggerContext(ctx context.Context) context.Context {
+func NewLoggerContext(ctx context.Context, nodeID *shared.NodeID) context.Context {
 	// generate random request ID
-	requestID := fmt.Sprintf("(%016x)", rand.Int63())
-	return context.WithValue(ctx, CONTEXT_KEY_REQUEST_ID, requestID)
+	requestID := fmt.Sprintf("%016x", rand.Int63())
+	ctx = context.WithValue(ctx, contextKeyRequestID, requestID)
+	ctx = context.WithValue(ctx, contextKeyNodeID, nodeID)
+	return ctx
 }
 
 func NewLogger(ctx context.Context, logger *slog.Logger) *slog.Logger {
-	requestID := ctx.Value(CONTEXT_KEY_REQUEST_ID)
-	if requestID == nil {
-		return logger
+	requestID, ok := ctx.Value(contextKeyRequestID).(string)
+	if ok && len(requestID) != 0 {
+		logger = logger.With(slog.String("reqID", requestID))
 	}
 
-	return logger.With(slog.String("id", requestID.(string)))
+	nodeID, ok := ctx.Value(contextKeyNodeID).(*shared.NodeID)
+	if ok && nodeID != nil {
+		logger = logger.With(slog.String("reqNodeID", nodeID.String()))
+	}
+
+	return logger
 }
