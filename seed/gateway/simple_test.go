@@ -340,55 +340,87 @@ func TestSimpleGateway_UnsubscribeSignal(t *testing.T) {
 
 func TestSimpleGateway_PublishSignal(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(2)
-	callCount := 0
+	shared.SortNodeIDs(nodeIDs)
 
-	sg := NewSimpleGateway(testUtil.Logger(t),
-		&HandlerHelper{
-			t: t,
-			HandleSignalF: func(ctx context.Context, signal *proto.Signal, relayToNext bool) error {
-				callCount += 1
-				t.Helper()
-				dstNodeID, err := shared.NewNodeIDFromProto(signal.DstNodeId)
-				require.NoError(t, err)
-				assert.Equal(t, *nodeIDs[1], *dstNodeID)
-				srcNodeID, err := shared.NewNodeIDFromProto(signal.SrcNodeId)
-				require.NoError(t, err)
-				assert.Equal(t, *nodeIDs[0], *srcNodeID)
-				assert.True(t, relayToNext)
-				return nil
-			},
-		}, nil).(*SimpleGateway)
-	sg.nodes[*nodeIDs[0]] = &nodeEntry{
-		lifespan:          time.Now().Add(10 * time.Minute),
-		subscribingSignal: true,
-		waitingSignals:    make([]signalEntry, 0),
+	tests := []struct {
+		name              string
+		dstNodeID         *shared.NodeID
+		relayToNext       bool
+		expectedCallCount int
+		expectedWaiting   []int
+	}{
+		{
+			name:              "to subscribing node without relayToNext",
+			dstNodeID:         nodeIDs[0],
+			relayToNext:       false,
+			expectedCallCount: 1,
+			expectedWaiting:   []int{0, 0},
+		},
+		{
+			name:              "to subscribing node with relayToNext",
+			dstNodeID:         nodeIDs[0],
+			relayToNext:       true,
+			expectedCallCount: 0,
+			expectedWaiting:   []int{0, 1},
+		},
+		{
+			name:              "to non-subscribing node without relayToNext",
+			dstNodeID:         nodeIDs[1],
+			relayToNext:       false,
+			expectedCallCount: 0,
+			expectedWaiting:   []int{0, 1},
+		},
+		{
+			name:              "to non-subscribing node with relayToNext",
+			dstNodeID:         nodeIDs[1],
+			relayToNext:       true,
+			expectedCallCount: 1,
+			expectedWaiting:   []int{0, 0},
+		},
 	}
 
-	err := sg.PublishSignal(t.Context(), &proto.Signal{
-		DstNodeId: nodeIDs[1].Proto(),
-		SrcNodeId: nodeIDs[0].Proto(),
-		Content:   &proto.Signal_Answer{},
-	}, true)
-	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
-		return callCount == 1
-	}, 5*time.Second, 100*time.Millisecond)
-	assert.Len(t, sg.nodes[*nodeIDs[0]].waitingSignals, 0)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			callCount := 0
+			sg := NewSimpleGateway(testUtil.Logger(t),
+				&HandlerHelper{
+					t: t,
+					HandleSignalF: func(ctx context.Context, signal *proto.Signal, relayToNext bool) error {
+						t.Helper()
+						callCount += 1
+						dstNodeID, err := shared.NewNodeIDFromProto(signal.GetDstNodeId())
+						require.NoError(t, err)
+						assert.Equal(t, tt.dstNodeID, dstNodeID)
+						assert.Equal(t, tt.relayToNext, relayToNext)
+						return nil
+					},
+				}, nil).(*SimpleGateway)
 
-	sg.nodes[*nodeIDs[0]].subscribingSignal = false
-	err = sg.PublishSignal(t.Context(), &proto.Signal{
-		DstNodeId: nodeIDs[1].Proto(),
-		SrcNodeId: nodeIDs[0].Proto(),
-		Content:   &proto.Signal_Answer{},
-	}, true)
-	require.NoError(t, err)
-	assert.Equal(t, 1, callCount)
-	assert.Len(t, sg.nodes[*nodeIDs[0]].waitingSignals, 1)
+			sg.nodes[*nodeIDs[0]] = &nodeEntry{
+				lifespan:          time.Now().Add(10 * time.Minute),
+				subscribingSignal: true, // node[0] is subscribing
+				waitingSignals:    make([]signalEntry, 0),
+			}
+			sg.nodes[*nodeIDs[1]] = &nodeEntry{
+				lifespan:          time.Now().Add(10 * time.Minute),
+				subscribingSignal: false, // node[1] is not subscribing
+				waitingSignals:    make([]signalEntry, 0),
+			}
 
-	err = sg.PublishSignal(t.Context(), &proto.Signal{
-		DstNodeId: nodeIDs[0].Proto(),
-		SrcNodeId: nodeIDs[1].Proto(),
-		Content:   &proto.Signal_Answer{},
-	}, false)
-	require.Error(t, err)
+			err := sg.PublishSignal(t.Context(), &proto.Signal{
+				DstNodeId: tt.dstNodeID.Proto(),
+				SrcNodeId: shared.NewRandomNodeID().Proto(),
+				Content:   &proto.Signal_Answer{},
+			}, tt.relayToNext)
+			require.NoError(t, err)
+			waiting := make([]int, len(nodeIDs))
+			for i, nodeID := range nodeIDs {
+				if entry, exists := sg.nodes[*nodeID]; exists {
+					waiting[i] = len(entry.waitingSignals)
+				}
+			}
+			assert.Equal(t, tt.expectedCallCount, callCount)
+			assert.Equal(t, tt.expectedWaiting, waiting)
+		})
+	}
 }
