@@ -42,14 +42,22 @@ func recordReader(reader *datastore.Reader) (*time.Time, string, base.RecordInte
 }
 
 func drawer(framework *base.RenderFramework, canvas *canvas.Canvas, sec int) {
+	offline := 0
+	unstable := 0
+	for _, info := range framework.AliveNodes {
+		if !info.Record.GetRecord().IsOnline {
+			offline++
+		} else if !info.Record.GetRecord().IsStable {
+			unstable++
+		}
+	}
 	canvas.SetColor(0, 0, 0)
 	canvas.DrawText(
 		canvas.XFromPixel(8),
 		canvas.YFromPixel(canvas.GetCanvasHeighPixel()-96),
 		fmt.Sprintf(
-			"time: %d s\nnodes: %d\nlost nodes: %d\nconnections: %d, avg:%.1f",
-			sec,
-			len(framework.AliveNodes), len(framework.SilentNodes), len(framework.ConnectEdges),
+			"time: %d s\nnodes: %d\nlost: %d, offline: %d, unstable: %d\nconnections: %d, avg:%.1f",
+			sec, len(framework.AliveNodes), len(framework.SilentNodes), offline, unstable, len(framework.ConnectEdges),
 			// one connection is connected two nodes
 			float64(len(framework.ConnectEdges))/float64(len(framework.AliveNodes))*2.0,
 		))
