@@ -257,6 +257,9 @@ func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 }
 
 func (c *colonioImpl) Start(ctx context.Context) error {
+	if c.ctx != nil {
+		return fmt.Errorf("cannot call Start() twice")
+	}
 	c.ctx, c.cancel = context.WithCancel(ctx)
 
 	var err error
