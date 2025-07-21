@@ -24,6 +24,7 @@ import (
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/seed/misc"
 )
 
 type signalEntry struct {
@@ -252,7 +253,7 @@ func (h *SimpleGateway) UnsubscribeSignal(_ context.Context, nodeID *shared.Node
 }
 
 func (h *SimpleGateway) PublishSignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error {
-	nodeIDProto := signal.GetSrcNodeId()
+	nodeIDProto := signal.GetDstNodeId()
 	nodeID, err := shared.NewNodeIDFromProto(nodeIDProto)
 	if err != nil {
 		// the signal is already checked the node ID before here
@@ -260,10 +261,17 @@ func (h *SimpleGateway) PublishSignal(ctx context.Context, signal *proto.Signal,
 	}
 
 	h.mtx.Lock()
-	nodeEntry, exists := h.nodes[*nodeID]
-	if !exists {
+	var nodeEntry *nodeEntry
+	if relayToNext {
+		_, nodeEntry = misc.GetNextByMap(nodeID, h.nodes, nil)
+	} else {
+		nodeEntry = h.nodes[*nodeID]
+	}
+
+	// If the node does node exist, no meaningful signal can be sent
+	if nodeEntry == nil {
 		h.mtx.Unlock()
-		return fmt.Errorf("node %s not found", nodeID.String())
+		return nil
 	}
 
 	if nodeEntry.subscribingSignal {
