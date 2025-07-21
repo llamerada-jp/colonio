@@ -218,15 +218,15 @@ func TestSimpleGateway_UnsubscribeKeepalive(t *testing.T) {
 
 func TestSimpleGateway_PublishKeepaliveRequest(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(2)
-	called := false
+	callCount := 0
 
 	sg := NewSimpleGateway(testUtil.Logger(t),
 		&HandlerHelper{
 			t: t,
 			HandleKeepaliveRequestF: func(ctx context.Context, nodeID *shared.NodeID) error {
 				t.Helper()
+				callCount += 1
 				assert.Equal(t, *nodeIDs[0], *nodeID)
-				called = true
 				return nil
 			},
 		}, nil).(*SimpleGateway)
@@ -238,10 +238,12 @@ func TestSimpleGateway_PublishKeepaliveRequest(t *testing.T) {
 
 	err := sg.PublishKeepaliveRequest(t.Context(), nodeIDs[0])
 	require.NoError(t, err)
-	require.True(t, called)
+	assert.Equal(t, 1, callCount)
 
+	// Will not call handler if node does not exist without error
 	err = sg.PublishKeepaliveRequest(t.Context(), nodeIDs[1])
-	require.Error(t, err)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, callCount)
 }
 
 func TestSimpleGateway_SubscribeSignal(t *testing.T) {

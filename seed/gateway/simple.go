@@ -198,8 +198,9 @@ func (h *SimpleGateway) PublishKeepaliveRequest(ctx context.Context, nodeID *sha
 	_, exists := h.nodes[*nodeID]
 	h.mtx.Unlock()
 
+	// If the node does node exist, no meaningful keepalive can be sent
 	if !exists {
-		return fmt.Errorf("node %s not found", nodeID.String())
+		return nil
 	}
 
 	// Here you would typically publish a keepalive request
