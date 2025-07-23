@@ -209,7 +209,7 @@ func (h *SimpleGateway) PublishKeepaliveRequest(ctx context.Context, nodeID *sha
 	return h.handler.HandleKeepaliveRequest(ctx, nodeID)
 }
 
-func (h *SimpleGateway) SubscribeSignal(_ context.Context, nodeID *shared.NodeID) error {
+func (h *SimpleGateway) SubscribeSignal(ctx context.Context, nodeID *shared.NodeID) error {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
@@ -221,11 +221,12 @@ func (h *SimpleGateway) SubscribeSignal(_ context.Context, nodeID *shared.NodeID
 	if len(nodeEntry.waitingSignals) > 0 {
 		// If there are waiting signals, process them
 		go func() {
+			logger := misc.NewLogger(ctx, h.logger)
 			h.mtx.Lock()
 			defer h.mtx.Unlock()
 			for _, entry := range nodeEntry.waitingSignals {
 				if err := h.handler.HandleSignal(context.Background(), entry.signal, entry.relayToNext); err != nil {
-
+					logger.Warn("failed to handle waiting signal", "nodeID", nodeID.String(), "error", err)
 				}
 			}
 			nodeEntry.waitingSignals = make([]signalEntry, 0)
