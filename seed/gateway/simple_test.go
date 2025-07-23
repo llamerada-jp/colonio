@@ -23,6 +23,7 @@ import (
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/seed/misc"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,7 +57,7 @@ func (h *HandlerHelper) HandleSignal(ctx context.Context, signal *proto.Signal, 
 }
 
 func TestSimpleGateway_AssignNode_UnassignNode(t *testing.T) {
-	var nodeID *shared.NodeID
+	nodeIDs := make([]*shared.NodeID, 2)
 	var err error
 
 	called := false
@@ -65,22 +66,79 @@ func TestSimpleGateway_AssignNode_UnassignNode(t *testing.T) {
 			t: t,
 			HandleUnassignNodeF: func(ctx context.Context, n *shared.NodeID) error {
 				t.Helper()
-				assert.Equal(t, *nodeID, *n)
+				assert.Equal(t, *nodeIDs[0], *n)
 				called = true
 				return nil
 			},
 		}, nil).(*SimpleGateway)
 
 	lifespan := time.Now().Add(10 * time.Minute)
-	nodeID, err = sg.AssignNode(t.Context(), lifespan)
-	require.NoError(t, err)
-	require.NotNil(t, nodeID)
-	assert.Equal(t, lifespan, sg.nodes[*nodeID].lifespan)
+	for i := 0; i < len(nodeIDs); i++ {
+		nodeIDs[i], err = sg.AssignNode(t.Context(), lifespan)
+		require.NoError(t, err)
+		require.NotNil(t, nodeIDs[i])
+		assert.Equal(t, lifespan, sg.nodes[*nodeIDs[i]].lifespan)
+	}
 
-	err = sg.UnassignNode(t.Context(), nodeID)
+	assert.NotEqual(t, nodeIDs[0], nodeIDs[1])
+
+	err = sg.UnassignNode(t.Context(), nodeIDs[0])
 	require.NoError(t, err)
-	assert.NotContains(t, sg.nodes, *nodeID)
-	require.True(t, called)
+	assert.NotContains(t, sg.nodes, *nodeIDs[0])
+	assert.Len(t, sg.nodes, len(nodeIDs)-1)
+	assert.True(t, called)
+}
+
+func TestSimpleGateway_GetNodeCount(t *testing.T) {
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
+
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+
+	life := time.Now().Add(10 * time.Minute)
+	for _, nodeID := range nodeIDs {
+		sg.nodes[*nodeID] = &nodeEntry{
+			lifespan:          life,
+			subscribingSignal: false,
+			waitingSignals:    make([]signalEntry, 0),
+		}
+	}
+
+	count, err := sg.GetNodeCount(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(len(nodeIDs)), count)
+}
+
+func TestSimpleGateway_UpdateNodeLifespan(t *testing.T) {
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
+
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+
+	life := time.Now().Add(10 * time.Minute)
+	for i := 1; i < len(nodeIDs); i++ {
+		sg.nodes[*nodeIDs[i]] = &nodeEntry{
+			lifespan:          life,
+			subscribingSignal: false,
+			waitingSignals:    make([]signalEntry, 0),
+		}
+	}
+
+	err := sg.UpdateNodeLifespan(t.Context(), nodeIDs[1], life.Add(5*time.Minute))
+	require.NoError(t, err)
+	err = sg.UpdateNodeLifespan(t.Context(), nodeIDs[0], life.Add(5*time.Minute))
+	assert.Error(t, err)
+
+	count, err := sg.GetNodeCount(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(len(nodeIDs)-1), count)
+
+	assert.Equal(t, life.Add(5*time.Minute), sg.nodes[*nodeIDs[1]].lifespan)
+	assert.Equal(t, life, sg.nodes[*nodeIDs[2]].lifespan)
 }
 
 func TestSimpleGateway_GetNodesByRange(t *testing.T) {
@@ -103,10 +161,11 @@ func TestSimpleGateway_GetNodesByRange(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		backward  *shared.NodeID
-		frontward *shared.NodeID
-		expected  []*shared.NodeID
+		name        string
+		backward    *shared.NodeID
+		frontward   *shared.NodeID
+		expectError bool
+		expected    []*shared.NodeID
 	}{
 		{
 			name:      "normal 1",
@@ -138,11 +197,29 @@ func TestSimpleGateway_GetNodesByRange(t *testing.T) {
 			frontward: nodeIDs[3],
 			expected:  []*shared.NodeID{},
 		},
+		{
+			name:     "all nodes",
+			expected: []*shared.NodeID{nodeIDs[0], nodeIDs[2], nodeIDs[4], nodeIDs[6]},
+		},
+		{
+			name:        "invalid range 1",
+			backward:    nodeIDs[4],
+			expectError: true,
+		},
+		{
+			name:        "invalid range 2",
+			backward:    nodeIDs[4],
+			expectError: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nodes, err := sg.GetNodesByRange(t.Context(), tt.backward, tt.frontward)
+			if tt.expectError {
+				require.Error(t, err)
+				return
+			}
 			require.NoError(t, err)
 			assert.True(t, testUtil.CompareNodeIDsUnordered(tt.expected, nodes))
 		})
@@ -247,6 +324,7 @@ func TestSimpleGateway_PublishKeepaliveRequest(t *testing.T) {
 }
 
 func TestSimpleGateway_SubscribeSignal(t *testing.T) {
+	ctx := misc.NewLoggerContext(context.Background(), nil)
 	mtx := &sync.Mutex{}
 	callCount := 0
 
@@ -303,7 +381,7 @@ func TestSimpleGateway_SubscribeSignal(t *testing.T) {
 	assert.Equal(t, 0, callCount)
 	mtx.Unlock()
 
-	err := sg.SubscribeSignal(t.Context(), nodeIDs[0])
+	err := sg.SubscribeSignal(ctx, nodeIDs[0])
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
 		mtx.Lock()
@@ -314,7 +392,7 @@ func TestSimpleGateway_SubscribeSignal(t *testing.T) {
 	assert.Len(t, sg.nodes[*nodeIDs[0]].waitingSignals, 0)
 	sg.mtx.Unlock()
 
-	err = sg.SubscribeSignal(t.Context(), nodeIDs[1])
+	err = sg.SubscribeSignal(ctx, nodeIDs[1])
 	require.Error(t, err)
 }
 
