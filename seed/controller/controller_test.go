@@ -182,7 +182,7 @@ func TestController_UnassignNode(t *testing.T) {
 func TestController_Keepalive(t *testing.T) {
 	ctx := misc.NewLoggerContext(t.Context(), nil)
 	nodeIDs := testUtil.UniqueNodeIDs(2)
-	normalLifespan := 10 * time.Second
+	normalLifespan := 3 * time.Second
 	shortLifespan := 1 * time.Second
 	mtx := sync.Mutex{}
 	finished := false
@@ -213,6 +213,8 @@ func TestController_Keepalive(t *testing.T) {
 					assert.Equal(t, *nodeIDs[0], *nodeID)
 					assert.True(t, testUtil.NearTime(lifespan, time.Now().Add(shortLifespan)))
 				case 7:
+					assert.Equal(t, *nodeIDs[0], *nodeID)
+				case 10:
 					assert.Equal(t, *nodeIDs[0], *nodeID)
 				default:
 					require.FailNow(t, "Unexpected call count", "callCount", callCount)
@@ -255,8 +257,12 @@ func TestController_Keepalive(t *testing.T) {
 		return c.keepaliveChannels[*nodeIDs[0]] != nil
 	}, 3*time.Second, 100*time.Millisecond)
 
+	// If you request keepalive for the same node at the same time, an error will be returned.
+	_, err := c.Keepalive(ctx, nodeIDs[0])
+	assert.Error(t, err)
+
 	// ignore the keepalive request for the unexpected node
-	err := c.HandleKeepaliveRequest(ctx, nodeIDs[1])
+	err = c.HandleKeepaliveRequest(ctx, nodeIDs[1])
 	require.NoError(t, err)
 	mtx.Lock()
 	assert.False(t, finished)
@@ -308,9 +314,30 @@ func TestController_Keepalive(t *testing.T) {
 		return finished
 	}, 3*time.Second, 100*time.Millisecond)
 	assert.NotContains(t, c.keepaliveChannels, *nodeIDs[0])
+
+	// keepalive has a timeout
+	finished = false
+	go func() {
+		_, err := c.Keepalive(ctx, nodeIDs[0])
+		assert.NoError(t, err)
+
+		mtx.Lock()
+		defer mtx.Unlock()
+		finished = true
+	}()
+	assert.Eventually(t, func() bool {
+		c.mtx.Lock()
+		mtx.Lock()
+		defer func() {
+			c.mtx.Unlock()
+			mtx.Unlock()
+		}()
+		return finished && len(c.keepaliveChannels) == 0
+	}, 5*time.Second, 100*time.Millisecond)
+
 	mtx.Lock()
 	defer mtx.Unlock()
-	assert.Equal(t, 9, callCount)
+	assert.Equal(t, 13, callCount)
 }
 
 func TestController_ReconcileNextNodes(t *testing.T) {
@@ -481,8 +508,15 @@ func TestController_Signal(t *testing.T) {
 		return c.signalChannels[*nodeIDs[0]] != nil
 	}, 3*time.Second, 100*time.Millisecond)
 
+	// If you poll signal for the same node at the same time, an error will be returned.
+	err := c.PollSignal(ctx1, nodeIDs[0], func(signal *proto.Signal) error {
+		assert.FailNow(t, "Should not be called", "signal", signal)
+		return nil
+	})
+	assert.Error(t, err)
+
 	// ignore the signal for the unexpected node
-	err := c.HandleSignal(ctx1, &proto.Signal{
+	err = c.HandleSignal(ctx1, &proto.Signal{
 		SrcNodeId: nodeIDs[0].Proto(),
 		DstNodeId: nodeIDs[1].Proto(),
 		Content: &proto.Signal_Ice{
