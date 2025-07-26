@@ -69,7 +69,7 @@ func WithLifespan(normal, short time.Duration) optionSetter {
 type Seed struct {
 	options
 	server     *server.Server
-	controller *controller.Controller
+	controller *controller.ControllerImpl
 }
 
 func NewSeed(optionSetters ...optionSetter) *Seed {

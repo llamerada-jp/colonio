@@ -17,7 +17,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 
@@ -36,21 +35,16 @@ const (
 	ContextKeySession ContextKey = iota
 )
 
-var (
-	ErrSession  = errors.New("session error")
-	ErrInternal = errors.New("internal error")
-)
-
 type Options struct {
 	Logger       *slog.Logger
 	SessionStore sessions.Store
-	Controller   *controller.Controller
+	Controller   controller.Controller
 }
 
 type Server struct {
 	logger         *slog.Logger
 	sessionStore   sessions.Store
-	controller     *controller.Controller
+	controller     controller.Controller
 	connectHandler http.Handler
 	service.UnimplementedSeedServiceHandler
 }
@@ -131,7 +125,7 @@ func (c *Server) AssignNode(ctx context.Context, _ *connect.Request[proto.Assign
 	if nodeID := session.getNodeID(); nodeID != nil {
 		if err := c.controller.UnassignNode(ctx, nodeID); err != nil {
 			logger.Warn("failed to unassign node", slog.String("error", err.Error()))
-			return nil, ErrInternal
+			return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 		}
 	}
 
@@ -139,13 +133,13 @@ func (c *Server) AssignNode(ctx context.Context, _ *connect.Request[proto.Assign
 	nodeID, isAlone, err := c.controller.AssignNode(ctx)
 	if err != nil {
 		logger.Warn("failed to assign node", slog.String("error", err.Error()))
-		return nil, ErrInternal
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 	}
 
 	session.setNodeID(nodeID)
 	if err = session.write(); err != nil {
 		logger.Warn("failed to write session", slog.String("error", err.Error()))
-		return nil, ErrInternal
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 	}
 
 	return &connect.Response[proto.AssignNodeResponse]{
@@ -172,7 +166,7 @@ func (c *Server) UnassignNode(ctx context.Context, _ *connect.Request[proto.Unas
 
 	if err := c.controller.UnassignNode(ctx, nodeID); err != nil {
 		logger.Warn("failed to unassign node", slog.String("error", err.Error()))
-		return nil, ErrInternal
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 	}
 
 	return &connect.Response[proto.UnassignNodeResponse]{}, nil
@@ -184,23 +178,58 @@ func (c *Server) Keepalive(ctx context.Context, _ *connect.Request[proto.Keepali
 	nodeID := session.getNodeID()
 	if nodeID == nil {
 		logger.Warn("session error (node id is not found)")
-		return nil, ErrInternal
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 	}
 
 	isAlone, err := c.controller.Keepalive(ctx, nodeID)
 	if err != nil {
 		logger.Warn("failed to keepalive", slog.String("error", err.Error()))
-		return nil, ErrInternal
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 	}
 
+	// update session lifetime
 	if err = session.write(); err != nil {
 		logger.Warn("failed to write session", slog.String("error", err.Error()))
-		return nil, ErrInternal
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 	}
 
 	return &connect.Response[proto.KeepaliveResponse]{
 		Msg: &proto.KeepaliveResponse{
 			IsAlone: isAlone,
+		},
+	}, nil
+}
+
+func (c *Server) ReconcileNextNodes(ctx context.Context, request *connect.Request[proto.ReconcileNextNodesRequest]) (*connect.Response[proto.ReconcileNextNodesResponse], error) {
+	logger := misc.NewLogger(ctx, c.logger)
+	session := ctx.Value(ContextKeySession).(*session)
+	nodeID := session.getNodeID()
+	if nodeID == nil {
+		logger.Warn("session error (node id is not found)")
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
+	}
+
+	nextNodeIDs, err := shared.ConvertNodeIDsFromProto(request.Msg.GetNextNodeIds())
+	if err != nil {
+		logger.Warn("next_node_ids contains invalid", slog.String("error", err.Error()))
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
+	}
+
+	disconnectedIDs, err := shared.ConvertNodeIDsFromProto(request.Msg.GetDisconnectedNodeIds())
+	if err != nil {
+		logger.Warn("disconnected_node_ids contains invalid", slog.String("error", err.Error()))
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
+	}
+
+	matched, err := c.controller.ReconcileNextNodes(ctx, nodeID, nextNodeIDs, disconnectedIDs)
+	if err != nil {
+		logger.Warn("failed to reconcile next nodes", slog.String("error", err.Error()))
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
+	}
+
+	return &connect.Response[proto.ReconcileNextNodesResponse]{
+		Msg: &proto.ReconcileNextNodesResponse{
+			Matched: matched,
 		},
 	}, nil
 }
@@ -212,17 +241,12 @@ func (c *Server) SendSignal(ctx context.Context, request *connect.Request[proto.
 	nodeID := session.getNodeID()
 	if nodeID == nil {
 		logger.Warn("session error (node id is not found)")
-		return nil, ErrInternal
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 	}
 
 	if err := c.controller.SendSignal(ctx, nodeID, request.Msg.GetSignal()); err != nil {
 		logger.Warn("failed to send signal", slog.String("error", err.Error()))
-		return nil, ErrInternal
-	}
-
-	if err := session.write(); err != nil {
-		logger.Warn("failed to write session", slog.String("error", err.Error()))
-		return nil, ErrInternal
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 	}
 
 	return &connect.Response[proto.SendSignalResponse]{
@@ -236,7 +260,7 @@ func (c *Server) PollSignal(ctx context.Context, _ *connect.Request[proto.PollSi
 	nodeID := session.getNodeID()
 	if nodeID == nil {
 		logger.Warn("session error (node id is not found)")
-		return ErrInternal
+		return connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 	}
 
 	// send the first packet immediately to notify the connection
@@ -244,7 +268,7 @@ func (c *Server) PollSignal(ctx context.Context, _ *connect.Request[proto.PollSi
 		Signals: []*proto.Signal{},
 	}); err != nil {
 		logger.Warn("failed to send initial response", slog.String("error", err.Error()))
-		return ErrInternal
+		return connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 	}
 
 	if err := c.controller.PollSignal(ctx, nodeID, func(s *proto.Signal) error {
@@ -253,47 +277,8 @@ func (c *Server) PollSignal(ctx context.Context, _ *connect.Request[proto.PollSi
 		})
 	}); err != nil {
 		logger.Warn("failed to poll signal", slog.String("error", err.Error()))
-		return ErrInternal
+		return connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 	}
 
 	return nil
-}
-
-func (c *Server) ReconcileNextNodes(ctx context.Context, request *connect.Request[proto.ReconcileNextNodesRequest]) (*connect.Response[proto.ReconcileNextNodesResponse], error) {
-	logger := misc.NewLogger(ctx, c.logger)
-	session := ctx.Value(ContextKeySession).(*session)
-	nodeID := session.getNodeID()
-	if nodeID == nil {
-		logger.Warn("session error (node id is not found)")
-		return nil, ErrInternal
-	}
-
-	nextNodeIDs, err := shared.ConvertNodeIDsFromProto(request.Msg.GetNextNodeIds())
-	if err != nil {
-		logger.Warn("next_node_ids contains invalid", slog.String("error", err.Error()))
-		return nil, ErrInternal
-	}
-
-	disconnectedIDs, err := shared.ConvertNodeIDsFromProto(request.Msg.GetDisconnectedNodeIds())
-	if err != nil {
-		logger.Warn("disconnected_node_ids contains invalid", slog.String("error", err.Error()))
-		return nil, ErrInternal
-	}
-
-	matched, err := c.controller.ReconcileNextNodes(ctx, nodeID, nextNodeIDs, disconnectedIDs)
-	if err != nil {
-		logger.Warn("failed to reconcile next nodes", slog.String("error", err.Error()))
-		return nil, ErrInternal
-	}
-
-	if err := session.write(); err != nil {
-		logger.Warn("failed to write session", slog.String("error", err.Error()))
-		return nil, ErrInternal
-	}
-
-	return &connect.Response[proto.ReconcileNextNodesResponse]{
-		Msg: &proto.ReconcileNextNodesResponse{
-			Matched: matched,
-		},
-	}, nil
 }
