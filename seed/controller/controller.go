@@ -294,13 +294,13 @@ func (c *Controller) SendSignal(ctx context.Context, nodeID *shared.NodeID, sign
 func (c *Controller) PollSignal(ctx context.Context, nodeID *shared.NodeID, send func(*proto.Signal) error) error {
 	logger := misc.NewLogger(ctx, c.logger)
 
-	if err := c.gateway.SubscribeSignal(ctx, nodeID); err != nil {
-		return fmt.Errorf("failed to subscribe to signal: %w", err)
-	}
 	c.mtx.Lock()
 	if _, exists := c.signalChannels[*nodeID]; exists {
 		c.mtx.Unlock()
 		return fmt.Errorf("node %s already subscribed to signal", nodeID.String())
+	}
+	if err := c.gateway.SubscribeSignal(ctx, nodeID); err != nil {
+		return fmt.Errorf("failed to subscribe to signal: %w", err)
 	}
 	ch := misc.NewChannel[*proto.Signal](100)
 	c.signalChannels[*nodeID] = ch
