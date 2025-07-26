@@ -53,3 +53,11 @@ func NewLogger(ctx context.Context, logger *slog.Logger) *slog.Logger {
 
 	return logger
 }
+
+func ErrorByContext(ctx context.Context) error {
+	requestID, ok := ctx.Value(contextKeyRequestID).(string)
+	if !ok || len(requestID) == 0 {
+		panic("context should contain a request ID")
+	}
+	return fmt.Errorf("reqID: %s", requestID)
+}
