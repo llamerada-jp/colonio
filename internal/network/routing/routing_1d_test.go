@@ -874,6 +874,7 @@ func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 		reconcileResult       bool
 		previousNextNodeIDs   []*shared.NodeID
 		expectIsStable        bool
+		expectNextNodeIDs     []*shared.NodeID
 	}{
 		{
 			name:                  "no next nodes",
@@ -885,6 +886,7 @@ func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 			reconcileResult:       true,
 			previousNextNodeIDs:   []*shared.NodeID{},
 			expectIsStable:        true,
+			expectNextNodeIDs:     []*shared.NodeID{},
 		},
 		{
 			name:                 "having next nodes",
@@ -902,6 +904,7 @@ func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 			reconcileResult:       true,
 			previousNextNodeIDs:   nil,
 			expectIsStable:        true,
+			expectNextNodeIDs:     []*shared.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
 		},
 		{
 			name:                 "having next nodes, having previous nodes and no disconnected nodes",
@@ -919,6 +922,7 @@ func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 			reconcileResult:       true,
 			previousNextNodeIDs:   []*shared.NodeID{nodeIDs[1], nodeIDs[2], nodeIDs[3], nodeIDs[4]},
 			expectIsStable:        true,
+			expectNextNodeIDs:     []*shared.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
 		},
 		{
 			name:                 "having next nodes, having previous nodes and disconnected nodes",
@@ -935,6 +939,7 @@ func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 			reconcileResult:       true,
 			previousNextNodeIDs:   []*shared.NodeID{nodeIDs[1], nodeIDs[2], nodeIDs[3], nodeIDs[4]},
 			expectIsStable:        true,
+			expectNextNodeIDs:     []*shared.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
 		},
 		{
 			name:                 "should not be stable",
@@ -952,6 +957,7 @@ func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 			reconcileResult:       false,
 			previousNextNodeIDs:   nil,
 			expectIsStable:        false,
+			expectNextNodeIDs:     []*shared.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
 		},
 	}
 
@@ -974,7 +980,9 @@ func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 
 		r1d.updateNextNodeMatched(tt.previousNextNodeIDs)
 
-		assert.Equal(t, tt.expectIsStable, r1d.isStable())
+		isStable, nextNodeIDs := r1d.getStability()
+		assert.Equal(t, tt.expectIsStable, isStable)
+		assert.Equal(t, tt.expectNextNodeIDs, nextNodeIDs)
 	}
 }
 
