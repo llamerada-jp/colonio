@@ -156,6 +156,10 @@ func (n *Network) GetNextStep2D(dst *geometry.Coordinate) *shared.NodeID {
 	return n.routing.GetNextStep2D(dst)
 }
 
+func (n *Network) StateKvs(state constants.KvsState) (constants.KvsState, error) {
+	return n.seedAccessor.StateKvs(state)
+}
+
 // implements for seed_accessor.Handler
 func (n *Network) SeedRecvSignalOffer(srcNodeID *shared.NodeID, offer *signal.Offer) {
 	n.nodeAccessor.SignalingOffer(srcNodeID, offer)
@@ -212,8 +216,7 @@ func (n *Network) TransfererRelayPacket(dstNodeID *shared.NodeID, packet *shared
 		return
 	}
 
-	err := n.nodeAccessor.RelayPacket(dstNodeID, packet)
-	if err != nil {
+	if err := n.nodeAccessor.RelayPacket(dstNodeID, packet); err != nil {
 		n.logger.Debug("failed to relay packet", slog.String("error", err.Error()))
 	}
 }

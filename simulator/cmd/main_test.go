@@ -13,12 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package sphere
+package main
 
-import "github.com/llamerada-jp/colonio/simulator/base"
+import (
+	"fmt"
+	"os"
+	"testing"
+)
 
-type Record struct {
-	base.Record
-	X float64 `json:"x"`
-	Y float64 `json:"y"`
+func TestMain(t *testing.T) {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }

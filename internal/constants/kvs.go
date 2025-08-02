@@ -13,33 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package canvas
+package constants
 
 import (
-	"github.com/veandco/go-sdl2/sdl"
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 )
 
-var _ objectRenderer = &box2{}
+type KvsState int
 
-type box2 struct {
-	x, y  float64
-	width float64
-	color *sdl.Color
-}
-
-func (b *box2) getZIndex() float64 {
-	return 80
-}
-
-func (b *box2) render(context *context) {
-	context.renderer.SetDrawColor(b.color.R, b.color.G, b.color.B, b.color.A)
-
-	x, y := context.getCanvasPosition(b.x, b.y)
-	rect := sdl.Rect{
-		X: x - int32(b.width/2.0),
-		Y: y - int32(b.width/2.0),
-		W: int32(b.width),
-		H: int32(b.width),
-	}
-	context.renderer.FillRect(&rect)
-}
+const (
+	KvsStateUnknown  = KvsState(proto.KvsState_KVS_STATE_UNKNOWN)
+	KvsStateActive   = KvsState(proto.KvsState_KVS_STATE_ACTIVE)
+	KvsStateInactive = KvsState(proto.KvsState_KVS_STATE_INACTIVE)
+)
