@@ -46,13 +46,16 @@ message PacketContent {
     Messaging messaging = 20;
     MessagingResponse messaging_response = 21;
 
+    RaftConfig raft_config = 30;
+    RaftConfigResponse raft_config_response = 31;
+
     Spread spread = 50;
     SpreadKnock spread_knock = 51;
     SpreadKnockResponse spread_knock_response = 52;
     SpreadRelay spread_relay = 53;
     SpreadRelayResponse spread_relay_response = 54;
   }
-}
+} 
 
 message Error {
   uint32 code = 1;
@@ -79,6 +82,24 @@ message Messaging {
 
 message MessagingResponse { 
   bytes response = 1;
+}
+
+enum RaftConfigCommand {
+  RAFT_CONFIG_COMMAND_CREATE = 0;
+  RAFT_CONFIG_COMMAND_APPEND = 1;
+}
+
+// for raft
+message RaftConfig {
+  string cluster_id = 1; // UUID of the cluster
+  RaftConfigCommand command = 2;
+  uint64 sequence = 3;
+  map<uint64, NodeID> members = 5;  
+}
+
+message RaftConfigResponse {
+  string cluster_id = 1;
+  uint64 sequence = 2;
 }
 
 // for spread module
