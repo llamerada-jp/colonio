@@ -46,18 +46,6 @@ message PacketContent {
     Messaging messaging = 20;
     MessagingResponse messaging_response = 21;
 
-    KvsAccept kvs_accept = 30;
-    KvsAcceptResponse kvs_accept_response = 31;
-    KvsBalanceAcceptor kvs_balance_acceptor = 32;
-    KvsBalanceProposer kvs_balance_proposer = 33;
-    KvsGet kvs_get = 34;
-    KvsGetResponse kvs_get_response = 35;
-    KvsHint kvs_hint = 36;
-    KvsPrepare kvs_prepare = 37;
-    KvsPrepareResponse kvs_prepare_response = 38;
-    KvsSet kvs_set = 39;
-    KvsSetResponse kvs_set_response = 40;
-
     Spread spread = 50;
     SpreadKnock spread_knock = 51;
     SpreadKnockResponse spread_knock_response = 52;
@@ -91,84 +79,6 @@ message Messaging {
 
 message MessagingResponse { 
   bytes response = 1;
-}
-
-// for kvs module
-message KvsAccept {
-  uint32 opt = 1;
-  uint32 n = 2;
-  uint32 i = 3;
-  uint32 member_idx = 4;
-  string key = 5;
-  bytes value = 6;
-}
-
-message KvsAcceptResponse {
-  bool success = 1;
-  uint32 n = 2;
-  uint32 i = 3;
-}
-
-message KvsBalanceAcceptor {
-  uint32 na = 1;
-  uint32 np = 2;
-  uint32 ia = 3;
-  uint32 member_idx = 4;
-  string key = 5;
-  bytes value = 6;
-}
-
-message KvsBalanceProposer {
-  uint32 np = 1;
-  uint32 ip = 2;
-  string key = 3;
-  bytes value = 4;
-}
-
-message KvsGet {
-  uint32 member_idx = 1;
-  string key = 2;
-}
-
-message KvsGetResponse {
-  bool success = 1;
-  // The values below are used only success response.
-  uint32 n = 2;
-  uint32 i = 3;
-  bytes value = 4;
-}
-
-message KvsHint {
-  uint32 n = 1;
-  uint32 i = 2;
-  string key = 3;
-  bytes value = 4;
-}
-
-message KvsPrepare {
-  uint32 opt = 1;
-  uint32 n = 2;
-  uint32 member_idx = 3;
-  string key = 4;
-}
-
-message KvsPrepareResponse {
-  bool success = 1;
-  uint32 n = 2;
-  // `i` is set only success response.
-  uint32 i = 3;
-}
-
-message KvsSet {
-  uint32 opt = 1;
-  string key = 2;
-  bytes value = 3;
-}
-
-message KvsSetResponse {
-  bool success = 1;
-  //  `reason` are set when failed response.
-  uint32 reason = 2;
 }
 
 // for spread module
