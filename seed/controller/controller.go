@@ -23,6 +23,7 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed/gateway"
 	"github.com/llamerada-jp/colonio/seed/misc"
@@ -43,6 +44,7 @@ type Controller interface {
 	ReconcileNextNodes(ctx context.Context, nodeID *shared.NodeID, nextNodeIDs, disconnectedIDs []*shared.NodeID) (bool, error)
 	SendSignal(ctx context.Context, nodeID *shared.NodeID, signal *proto.Signal) error
 	PollSignal(ctx context.Context, nodeID *shared.NodeID, send func(*proto.Signal) error) error
+	StateKvs(ctx context.Context, nodeID *shared.NodeID, active bool) (constants.KvsState, error)
 }
 
 type ControllerImpl struct {
@@ -350,6 +352,31 @@ func (c *ControllerImpl) PollSignal(ctx context.Context, nodeID *shared.NodeID, 
 			}
 		}
 	}
+}
+
+func (c *ControllerImpl) StateKvs(ctx context.Context, nodeID *shared.NodeID, active bool) (constants.KvsState, error) {
+	if active {
+		_ = c.gateway.UnsetKvsFirstActiveCandidate(ctx)
+	}
+
+	if err := c.gateway.SetKvsState(ctx, nodeID, active); err != nil {
+		return constants.KvsStateUnknown, fmt.Errorf("failed to set KVS state: %w", err)
+	}
+
+	active, err := c.gateway.ExistsKvsActiveNode(ctx)
+	if err != nil {
+		return constants.KvsStateUnknown, fmt.Errorf("failed to check if KVS active node exists: %w", err)
+	}
+	if active {
+		return constants.KvsStateActive, nil
+	}
+
+	err = c.gateway.SetKvsFirstActiveCandidate(ctx, nodeID)
+	if err != nil {
+		return constants.KvsStateUnknown, nil
+	}
+
+	return constants.KvsStateInactive, nil
 }
 
 func (c *ControllerImpl) cleanup(ctx context.Context) error {
