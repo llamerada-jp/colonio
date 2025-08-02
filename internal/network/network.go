@@ -141,7 +141,8 @@ func (n *Network) IsOnline() bool {
 }
 
 func (n *Network) IsStable() bool {
-	return n.routing.IsStable()
+	isStable, _ := n.routing.GetStability()
+	return isStable
 }
 
 func (n *Network) GetTransferer() *transferer.Transferer {

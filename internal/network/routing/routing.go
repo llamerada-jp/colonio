@@ -113,8 +113,8 @@ func (r *Routing) Start(ctx context.Context, localNodeID *shared.NodeID) {
 	}()
 }
 
-func (r *Routing) IsStable() bool {
-	return r.r1d.isStable()
+func (r *Routing) GetStability() (bool, []*shared.NodeID) {
+	return r.r1d.getStability()
 }
 
 func (r *Routing) GetNextStep1D(packet *shared.Packet) *shared.NodeID {
