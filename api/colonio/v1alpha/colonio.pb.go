@@ -319,17 +319,6 @@ type PacketContent struct {
 	//	*PacketContent_Routing
 	//	*PacketContent_Messaging
 	//	*PacketContent_MessagingResponse
-	//	*PacketContent_KvsAccept
-	//	*PacketContent_KvsAcceptResponse
-	//	*PacketContent_KvsBalanceAcceptor
-	//	*PacketContent_KvsBalanceProposer
-	//	*PacketContent_KvsGet
-	//	*PacketContent_KvsGetResponse
-	//	*PacketContent_KvsHint
-	//	*PacketContent_KvsPrepare
-	//	*PacketContent_KvsPrepareResponse
-	//	*PacketContent_KvsSet
-	//	*PacketContent_KvsSetResponse
 	//	*PacketContent_Spread
 	//	*PacketContent_SpreadKnock
 	//	*PacketContent_SpreadKnockResponse
@@ -413,105 +402,6 @@ func (x *PacketContent) GetMessagingResponse() *MessagingResponse {
 	return nil
 }
 
-func (x *PacketContent) GetKvsAccept() *KvsAccept {
-	if x != nil {
-		if x, ok := x.Content.(*PacketContent_KvsAccept); ok {
-			return x.KvsAccept
-		}
-	}
-	return nil
-}
-
-func (x *PacketContent) GetKvsAcceptResponse() *KvsAcceptResponse {
-	if x != nil {
-		if x, ok := x.Content.(*PacketContent_KvsAcceptResponse); ok {
-			return x.KvsAcceptResponse
-		}
-	}
-	return nil
-}
-
-func (x *PacketContent) GetKvsBalanceAcceptor() *KvsBalanceAcceptor {
-	if x != nil {
-		if x, ok := x.Content.(*PacketContent_KvsBalanceAcceptor); ok {
-			return x.KvsBalanceAcceptor
-		}
-	}
-	return nil
-}
-
-func (x *PacketContent) GetKvsBalanceProposer() *KvsBalanceProposer {
-	if x != nil {
-		if x, ok := x.Content.(*PacketContent_KvsBalanceProposer); ok {
-			return x.KvsBalanceProposer
-		}
-	}
-	return nil
-}
-
-func (x *PacketContent) GetKvsGet() *KvsGet {
-	if x != nil {
-		if x, ok := x.Content.(*PacketContent_KvsGet); ok {
-			return x.KvsGet
-		}
-	}
-	return nil
-}
-
-func (x *PacketContent) GetKvsGetResponse() *KvsGetResponse {
-	if x != nil {
-		if x, ok := x.Content.(*PacketContent_KvsGetResponse); ok {
-			return x.KvsGetResponse
-		}
-	}
-	return nil
-}
-
-func (x *PacketContent) GetKvsHint() *KvsHint {
-	if x != nil {
-		if x, ok := x.Content.(*PacketContent_KvsHint); ok {
-			return x.KvsHint
-		}
-	}
-	return nil
-}
-
-func (x *PacketContent) GetKvsPrepare() *KvsPrepare {
-	if x != nil {
-		if x, ok := x.Content.(*PacketContent_KvsPrepare); ok {
-			return x.KvsPrepare
-		}
-	}
-	return nil
-}
-
-func (x *PacketContent) GetKvsPrepareResponse() *KvsPrepareResponse {
-	if x != nil {
-		if x, ok := x.Content.(*PacketContent_KvsPrepareResponse); ok {
-			return x.KvsPrepareResponse
-		}
-	}
-	return nil
-}
-
-func (x *PacketContent) GetKvsSet() *KvsSet {
-	if x != nil {
-		if x, ok := x.Content.(*PacketContent_KvsSet); ok {
-			return x.KvsSet
-		}
-	}
-	return nil
-}
-
-func (x *PacketContent) GetKvsSetResponse() *KvsSetResponse {
-	if x != nil {
-		if x, ok := x.Content.(*PacketContent_KvsSetResponse); ok {
-			return x.KvsSetResponse
-		}
-	}
-	return nil
-}
-
 func (x *PacketContent) GetSpread() *Spread {
 	if x != nil {
 		if x, ok := x.Content.(*PacketContent_Spread); ok {
@@ -577,50 +467,6 @@ type PacketContent_MessagingResponse struct {
 	MessagingResponse *MessagingResponse `protobuf:"bytes,21,opt,name=messaging_response,json=messagingResponse,proto3,oneof"`
 }
 
-type PacketContent_KvsAccept struct {
-	KvsAccept *KvsAccept `protobuf:"bytes,30,opt,name=kvs_accept,json=kvsAccept,proto3,oneof"`
-}
-
-type PacketContent_KvsAcceptResponse struct {
-	KvsAcceptResponse *KvsAcceptResponse `protobuf:"bytes,31,opt,name=kvs_accept_response,json=kvsAcceptResponse,proto3,oneof"`
-}
-
-type PacketContent_KvsBalanceAcceptor struct {
-	KvsBalanceAcceptor *KvsBalanceAcceptor `protobuf:"bytes,32,opt,name=kvs_balance_acceptor,json=kvsBalanceAcceptor,proto3,oneof"`
-}
-
-type PacketContent_KvsBalanceProposer struct {
-	KvsBalanceProposer *KvsBalanceProposer `protobuf:"bytes,33,opt,name=kvs_balance_proposer,json=kvsBalanceProposer,proto3,oneof"`
-}
-
-type PacketContent_KvsGet struct {
-	KvsGet *KvsGet `protobuf:"bytes,34,opt,name=kvs_get,json=kvsGet,proto3,oneof"`
-}
-
-type PacketContent_KvsGetResponse struct {
-	KvsGetResponse *KvsGetResponse `protobuf:"bytes,35,opt,name=kvs_get_response,json=kvsGetResponse,proto3,oneof"`
-}
-
-type PacketContent_KvsHint struct {
-	KvsHint *KvsHint `protobuf:"bytes,36,opt,name=kvs_hint,json=kvsHint,proto3,oneof"`
-}
-
-type PacketContent_KvsPrepare struct {
-	KvsPrepare *KvsPrepare `protobuf:"bytes,37,opt,name=kvs_prepare,json=kvsPrepare,proto3,oneof"`
-}
-
-type PacketContent_KvsPrepareResponse struct {
-	KvsPrepareResponse *KvsPrepareResponse `protobuf:"bytes,38,opt,name=kvs_prepare_response,json=kvsPrepareResponse,proto3,oneof"`
-}
-
-type PacketContent_KvsSet struct {
-	KvsSet *KvsSet `protobuf:"bytes,39,opt,name=kvs_set,json=kvsSet,proto3,oneof"`
-}
-
-type PacketContent_KvsSetResponse struct {
-	KvsSetResponse *KvsSetResponse `protobuf:"bytes,40,opt,name=kvs_set_response,json=kvsSetResponse,proto3,oneof"`
-}
-
 type PacketContent_Spread struct {
 	Spread *Spread `protobuf:"bytes,50,opt,name=spread,proto3,oneof"`
 }
@@ -648,28 +494,6 @@ func (*PacketContent_Routing) isPacketContent_Content() {}
 func (*PacketContent_Messaging) isPacketContent_Content() {}
 
 func (*PacketContent_MessagingResponse) isPacketContent_Content() {}
-
-func (*PacketContent_KvsAccept) isPacketContent_Content() {}
-
-func (*PacketContent_KvsAcceptResponse) isPacketContent_Content() {}
-
-func (*PacketContent_KvsBalanceAcceptor) isPacketContent_Content() {}
-
-func (*PacketContent_KvsBalanceProposer) isPacketContent_Content() {}
-
-func (*PacketContent_KvsGet) isPacketContent_Content() {}
-
-func (*PacketContent_KvsGetResponse) isPacketContent_Content() {}
-
-func (*PacketContent_KvsHint) isPacketContent_Content() {}
-
-func (*PacketContent_KvsPrepare) isPacketContent_Content() {}
-
-func (*PacketContent_KvsPrepareResponse) isPacketContent_Content() {}
-
-func (*PacketContent_KvsSet) isPacketContent_Content() {}
-
-func (*PacketContent_KvsSetResponse) isPacketContent_Content() {}
 
 func (*PacketContent_Spread) isPacketContent_Content() {}
 
@@ -936,734 +760,6 @@ func (x *MessagingResponse) GetResponse() []byte {
 	return nil
 }
 
-// for kvs module
-type KvsAccept struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Opt           uint32                 `protobuf:"varint,1,opt,name=opt,proto3" json:"opt,omitempty"`
-	N             uint32                 `protobuf:"varint,2,opt,name=n,proto3" json:"n,omitempty"`
-	I             uint32                 `protobuf:"varint,3,opt,name=i,proto3" json:"i,omitempty"`
-	MemberIdx     uint32                 `protobuf:"varint,4,opt,name=member_idx,json=memberIdx,proto3" json:"member_idx,omitempty"`
-	Key           string                 `protobuf:"bytes,5,opt,name=key,proto3" json:"key,omitempty"`
-	Value         []byte                 `protobuf:"bytes,6,opt,name=value,proto3" json:"value,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KvsAccept) Reset() {
-	*x = KvsAccept{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[11]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KvsAccept) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KvsAccept) ProtoMessage() {}
-
-func (x *KvsAccept) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[11]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KvsAccept.ProtoReflect.Descriptor instead.
-func (*KvsAccept) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *KvsAccept) GetOpt() uint32 {
-	if x != nil {
-		return x.Opt
-	}
-	return 0
-}
-
-func (x *KvsAccept) GetN() uint32 {
-	if x != nil {
-		return x.N
-	}
-	return 0
-}
-
-func (x *KvsAccept) GetI() uint32 {
-	if x != nil {
-		return x.I
-	}
-	return 0
-}
-
-func (x *KvsAccept) GetMemberIdx() uint32 {
-	if x != nil {
-		return x.MemberIdx
-	}
-	return 0
-}
-
-func (x *KvsAccept) GetKey() string {
-	if x != nil {
-		return x.Key
-	}
-	return ""
-}
-
-func (x *KvsAccept) GetValue() []byte {
-	if x != nil {
-		return x.Value
-	}
-	return nil
-}
-
-type KvsAcceptResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	N             uint32                 `protobuf:"varint,2,opt,name=n,proto3" json:"n,omitempty"`
-	I             uint32                 `protobuf:"varint,3,opt,name=i,proto3" json:"i,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KvsAcceptResponse) Reset() {
-	*x = KvsAcceptResponse{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[12]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KvsAcceptResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KvsAcceptResponse) ProtoMessage() {}
-
-func (x *KvsAcceptResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[12]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KvsAcceptResponse.ProtoReflect.Descriptor instead.
-func (*KvsAcceptResponse) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{12}
-}
-
-func (x *KvsAcceptResponse) GetSuccess() bool {
-	if x != nil {
-		return x.Success
-	}
-	return false
-}
-
-func (x *KvsAcceptResponse) GetN() uint32 {
-	if x != nil {
-		return x.N
-	}
-	return 0
-}
-
-func (x *KvsAcceptResponse) GetI() uint32 {
-	if x != nil {
-		return x.I
-	}
-	return 0
-}
-
-type KvsBalanceAcceptor struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Na            uint32                 `protobuf:"varint,1,opt,name=na,proto3" json:"na,omitempty"`
-	Np            uint32                 `protobuf:"varint,2,opt,name=np,proto3" json:"np,omitempty"`
-	Ia            uint32                 `protobuf:"varint,3,opt,name=ia,proto3" json:"ia,omitempty"`
-	MemberIdx     uint32                 `protobuf:"varint,4,opt,name=member_idx,json=memberIdx,proto3" json:"member_idx,omitempty"`
-	Key           string                 `protobuf:"bytes,5,opt,name=key,proto3" json:"key,omitempty"`
-	Value         []byte                 `protobuf:"bytes,6,opt,name=value,proto3" json:"value,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KvsBalanceAcceptor) Reset() {
-	*x = KvsBalanceAcceptor{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[13]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KvsBalanceAcceptor) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KvsBalanceAcceptor) ProtoMessage() {}
-
-func (x *KvsBalanceAcceptor) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[13]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KvsBalanceAcceptor.ProtoReflect.Descriptor instead.
-func (*KvsBalanceAcceptor) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{13}
-}
-
-func (x *KvsBalanceAcceptor) GetNa() uint32 {
-	if x != nil {
-		return x.Na
-	}
-	return 0
-}
-
-func (x *KvsBalanceAcceptor) GetNp() uint32 {
-	if x != nil {
-		return x.Np
-	}
-	return 0
-}
-
-func (x *KvsBalanceAcceptor) GetIa() uint32 {
-	if x != nil {
-		return x.Ia
-	}
-	return 0
-}
-
-func (x *KvsBalanceAcceptor) GetMemberIdx() uint32 {
-	if x != nil {
-		return x.MemberIdx
-	}
-	return 0
-}
-
-func (x *KvsBalanceAcceptor) GetKey() string {
-	if x != nil {
-		return x.Key
-	}
-	return ""
-}
-
-func (x *KvsBalanceAcceptor) GetValue() []byte {
-	if x != nil {
-		return x.Value
-	}
-	return nil
-}
-
-type KvsBalanceProposer struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Np            uint32                 `protobuf:"varint,1,opt,name=np,proto3" json:"np,omitempty"`
-	Ip            uint32                 `protobuf:"varint,2,opt,name=ip,proto3" json:"ip,omitempty"`
-	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
-	Value         []byte                 `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KvsBalanceProposer) Reset() {
-	*x = KvsBalanceProposer{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[14]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KvsBalanceProposer) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KvsBalanceProposer) ProtoMessage() {}
-
-func (x *KvsBalanceProposer) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[14]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KvsBalanceProposer.ProtoReflect.Descriptor instead.
-func (*KvsBalanceProposer) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{14}
-}
-
-func (x *KvsBalanceProposer) GetNp() uint32 {
-	if x != nil {
-		return x.Np
-	}
-	return 0
-}
-
-func (x *KvsBalanceProposer) GetIp() uint32 {
-	if x != nil {
-		return x.Ip
-	}
-	return 0
-}
-
-func (x *KvsBalanceProposer) GetKey() string {
-	if x != nil {
-		return x.Key
-	}
-	return ""
-}
-
-func (x *KvsBalanceProposer) GetValue() []byte {
-	if x != nil {
-		return x.Value
-	}
-	return nil
-}
-
-type KvsGet struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MemberIdx     uint32                 `protobuf:"varint,1,opt,name=member_idx,json=memberIdx,proto3" json:"member_idx,omitempty"`
-	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KvsGet) Reset() {
-	*x = KvsGet{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[15]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KvsGet) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KvsGet) ProtoMessage() {}
-
-func (x *KvsGet) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[15]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KvsGet.ProtoReflect.Descriptor instead.
-func (*KvsGet) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{15}
-}
-
-func (x *KvsGet) GetMemberIdx() uint32 {
-	if x != nil {
-		return x.MemberIdx
-	}
-	return 0
-}
-
-func (x *KvsGet) GetKey() string {
-	if x != nil {
-		return x.Key
-	}
-	return ""
-}
-
-type KvsGetResponse struct {
-	state   protoimpl.MessageState `protogen:"open.v1"`
-	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	// The values below are used only success response.
-	N             uint32 `protobuf:"varint,2,opt,name=n,proto3" json:"n,omitempty"`
-	I             uint32 `protobuf:"varint,3,opt,name=i,proto3" json:"i,omitempty"`
-	Value         []byte `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KvsGetResponse) Reset() {
-	*x = KvsGetResponse{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[16]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KvsGetResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KvsGetResponse) ProtoMessage() {}
-
-func (x *KvsGetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[16]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KvsGetResponse.ProtoReflect.Descriptor instead.
-func (*KvsGetResponse) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{16}
-}
-
-func (x *KvsGetResponse) GetSuccess() bool {
-	if x != nil {
-		return x.Success
-	}
-	return false
-}
-
-func (x *KvsGetResponse) GetN() uint32 {
-	if x != nil {
-		return x.N
-	}
-	return 0
-}
-
-func (x *KvsGetResponse) GetI() uint32 {
-	if x != nil {
-		return x.I
-	}
-	return 0
-}
-
-func (x *KvsGetResponse) GetValue() []byte {
-	if x != nil {
-		return x.Value
-	}
-	return nil
-}
-
-type KvsHint struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	N             uint32                 `protobuf:"varint,1,opt,name=n,proto3" json:"n,omitempty"`
-	I             uint32                 `protobuf:"varint,2,opt,name=i,proto3" json:"i,omitempty"`
-	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
-	Value         []byte                 `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KvsHint) Reset() {
-	*x = KvsHint{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[17]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KvsHint) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KvsHint) ProtoMessage() {}
-
-func (x *KvsHint) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[17]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KvsHint.ProtoReflect.Descriptor instead.
-func (*KvsHint) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{17}
-}
-
-func (x *KvsHint) GetN() uint32 {
-	if x != nil {
-		return x.N
-	}
-	return 0
-}
-
-func (x *KvsHint) GetI() uint32 {
-	if x != nil {
-		return x.I
-	}
-	return 0
-}
-
-func (x *KvsHint) GetKey() string {
-	if x != nil {
-		return x.Key
-	}
-	return ""
-}
-
-func (x *KvsHint) GetValue() []byte {
-	if x != nil {
-		return x.Value
-	}
-	return nil
-}
-
-type KvsPrepare struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Opt           uint32                 `protobuf:"varint,1,opt,name=opt,proto3" json:"opt,omitempty"`
-	N             uint32                 `protobuf:"varint,2,opt,name=n,proto3" json:"n,omitempty"`
-	MemberIdx     uint32                 `protobuf:"varint,3,opt,name=member_idx,json=memberIdx,proto3" json:"member_idx,omitempty"`
-	Key           string                 `protobuf:"bytes,4,opt,name=key,proto3" json:"key,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KvsPrepare) Reset() {
-	*x = KvsPrepare{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[18]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KvsPrepare) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KvsPrepare) ProtoMessage() {}
-
-func (x *KvsPrepare) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[18]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KvsPrepare.ProtoReflect.Descriptor instead.
-func (*KvsPrepare) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{18}
-}
-
-func (x *KvsPrepare) GetOpt() uint32 {
-	if x != nil {
-		return x.Opt
-	}
-	return 0
-}
-
-func (x *KvsPrepare) GetN() uint32 {
-	if x != nil {
-		return x.N
-	}
-	return 0
-}
-
-func (x *KvsPrepare) GetMemberIdx() uint32 {
-	if x != nil {
-		return x.MemberIdx
-	}
-	return 0
-}
-
-func (x *KvsPrepare) GetKey() string {
-	if x != nil {
-		return x.Key
-	}
-	return ""
-}
-
-type KvsPrepareResponse struct {
-	state   protoimpl.MessageState `protogen:"open.v1"`
-	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	N       uint32                 `protobuf:"varint,2,opt,name=n,proto3" json:"n,omitempty"`
-	// `i` is set only success response.
-	I             uint32 `protobuf:"varint,3,opt,name=i,proto3" json:"i,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KvsPrepareResponse) Reset() {
-	*x = KvsPrepareResponse{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[19]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KvsPrepareResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KvsPrepareResponse) ProtoMessage() {}
-
-func (x *KvsPrepareResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[19]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KvsPrepareResponse.ProtoReflect.Descriptor instead.
-func (*KvsPrepareResponse) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{19}
-}
-
-func (x *KvsPrepareResponse) GetSuccess() bool {
-	if x != nil {
-		return x.Success
-	}
-	return false
-}
-
-func (x *KvsPrepareResponse) GetN() uint32 {
-	if x != nil {
-		return x.N
-	}
-	return 0
-}
-
-func (x *KvsPrepareResponse) GetI() uint32 {
-	if x != nil {
-		return x.I
-	}
-	return 0
-}
-
-type KvsSet struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Opt           uint32                 `protobuf:"varint,1,opt,name=opt,proto3" json:"opt,omitempty"`
-	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	Value         []byte                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KvsSet) Reset() {
-	*x = KvsSet{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[20]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KvsSet) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KvsSet) ProtoMessage() {}
-
-func (x *KvsSet) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[20]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KvsSet.ProtoReflect.Descriptor instead.
-func (*KvsSet) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{20}
-}
-
-func (x *KvsSet) GetOpt() uint32 {
-	if x != nil {
-		return x.Opt
-	}
-	return 0
-}
-
-func (x *KvsSet) GetKey() string {
-	if x != nil {
-		return x.Key
-	}
-	return ""
-}
-
-func (x *KvsSet) GetValue() []byte {
-	if x != nil {
-		return x.Value
-	}
-	return nil
-}
-
-type KvsSetResponse struct {
-	state   protoimpl.MessageState `protogen:"open.v1"`
-	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	// `reason` are set when failed response.
-	Reason        uint32 `protobuf:"varint,2,opt,name=reason,proto3" json:"reason,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KvsSetResponse) Reset() {
-	*x = KvsSetResponse{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[21]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KvsSetResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KvsSetResponse) ProtoMessage() {}
-
-func (x *KvsSetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[21]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KvsSetResponse.ProtoReflect.Descriptor instead.
-func (*KvsSetResponse) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{21}
-}
-
-func (x *KvsSetResponse) GetSuccess() bool {
-	if x != nil {
-		return x.Success
-	}
-	return false
-}
-
-func (x *KvsSetResponse) GetReason() uint32 {
-	if x != nil {
-		return x.Reason
-	}
-	return 0
-}
-
 // for spread module
 type Spread struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1680,7 +776,7 @@ type Spread struct {
 
 func (x *Spread) Reset() {
 	*x = Spread{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[22]
+	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1692,7 +788,7 @@ func (x *Spread) String() string {
 func (*Spread) ProtoMessage() {}
 
 func (x *Spread) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[22]
+	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1705,7 +801,7 @@ func (x *Spread) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Spread.ProtoReflect.Descriptor instead.
 func (*Spread) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{22}
+	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Spread) GetSource() *NodeID {
@@ -1768,7 +864,7 @@ type SpreadKnock struct {
 
 func (x *SpreadKnock) Reset() {
 	*x = SpreadKnock{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[23]
+	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1780,7 +876,7 @@ func (x *SpreadKnock) String() string {
 func (*SpreadKnock) ProtoMessage() {}
 
 func (x *SpreadKnock) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[23]
+	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1793,7 +889,7 @@ func (x *SpreadKnock) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpreadKnock.ProtoReflect.Descriptor instead.
 func (*SpreadKnock) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{23}
+	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SpreadKnock) GetCenter() *Coordinate {
@@ -1826,7 +922,7 @@ type SpreadKnockResponse struct {
 
 func (x *SpreadKnockResponse) Reset() {
 	*x = SpreadKnockResponse{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[24]
+	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1838,7 +934,7 @@ func (x *SpreadKnockResponse) String() string {
 func (*SpreadKnockResponse) ProtoMessage() {}
 
 func (x *SpreadKnockResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[24]
+	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1851,7 +947,7 @@ func (x *SpreadKnockResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpreadKnockResponse.ProtoReflect.Descriptor instead.
 func (*SpreadKnockResponse) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{24}
+	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *SpreadKnockResponse) GetAccept() bool {
@@ -1876,7 +972,7 @@ type SpreadRelay struct {
 
 func (x *SpreadRelay) Reset() {
 	*x = SpreadRelay{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[25]
+	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1888,7 +984,7 @@ func (x *SpreadRelay) String() string {
 func (*SpreadRelay) ProtoMessage() {}
 
 func (x *SpreadRelay) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[25]
+	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1901,7 +997,7 @@ func (x *SpreadRelay) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpreadRelay.ProtoReflect.Descriptor instead.
 func (*SpreadRelay) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{25}
+	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SpreadRelay) GetSource() *NodeID {
@@ -1962,7 +1058,7 @@ type SpreadRelayResponse struct {
 
 func (x *SpreadRelayResponse) Reset() {
 	*x = SpreadRelayResponse{}
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[26]
+	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1974,7 +1070,7 @@ func (x *SpreadRelayResponse) String() string {
 func (*SpreadRelayResponse) ProtoMessage() {}
 
 func (x *SpreadRelayResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[26]
+	mi := &file_api_colonio_v1alpha_colonio_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1987,7 +1083,7 @@ func (x *SpreadRelayResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpreadRelayResponse.ProtoReflect.Descriptor instead.
 func (*SpreadRelayResponse) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{26}
+	return file_api_colonio_v1alpha_colonio_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *SpreadRelayResponse) GetSuccess() bool {
@@ -2021,26 +1117,13 @@ const file_api_colonio_v1alpha_colonio_proto_rawDesc = "" +
 	"\x04head\x18\x01 \x01(\v2#.api.colonio.v1alpha.NodePacketHeadR\x04head\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\rR\x02id\x12\x14\n" +
 	"\x05index\x18\x03 \x01(\rR\x05index\x12\x18\n" +
-	"\acontent\x18\x04 \x01(\fR\acontent\"\xe9\v\n" +
+	"\acontent\x18\x04 \x01(\fR\acontent\"\xa6\x05\n" +
 	"\rPacketContent\x122\n" +
 	"\x05error\x18\x01 \x01(\v2\x1a.api.colonio.v1alpha.ErrorH\x00R\x05error\x128\n" +
 	"\arouting\x18\n" +
 	" \x01(\v2\x1c.api.colonio.v1alpha.RoutingH\x00R\arouting\x12>\n" +
 	"\tmessaging\x18\x14 \x01(\v2\x1e.api.colonio.v1alpha.MessagingH\x00R\tmessaging\x12W\n" +
-	"\x12messaging_response\x18\x15 \x01(\v2&.api.colonio.v1alpha.MessagingResponseH\x00R\x11messagingResponse\x12?\n" +
-	"\n" +
-	"kvs_accept\x18\x1e \x01(\v2\x1e.api.colonio.v1alpha.KvsAcceptH\x00R\tkvsAccept\x12X\n" +
-	"\x13kvs_accept_response\x18\x1f \x01(\v2&.api.colonio.v1alpha.KvsAcceptResponseH\x00R\x11kvsAcceptResponse\x12[\n" +
-	"\x14kvs_balance_acceptor\x18  \x01(\v2'.api.colonio.v1alpha.KvsBalanceAcceptorH\x00R\x12kvsBalanceAcceptor\x12[\n" +
-	"\x14kvs_balance_proposer\x18! \x01(\v2'.api.colonio.v1alpha.KvsBalanceProposerH\x00R\x12kvsBalanceProposer\x126\n" +
-	"\akvs_get\x18\" \x01(\v2\x1b.api.colonio.v1alpha.KvsGetH\x00R\x06kvsGet\x12O\n" +
-	"\x10kvs_get_response\x18# \x01(\v2#.api.colonio.v1alpha.KvsGetResponseH\x00R\x0ekvsGetResponse\x129\n" +
-	"\bkvs_hint\x18$ \x01(\v2\x1c.api.colonio.v1alpha.KvsHintH\x00R\akvsHint\x12B\n" +
-	"\vkvs_prepare\x18% \x01(\v2\x1f.api.colonio.v1alpha.KvsPrepareH\x00R\n" +
-	"kvsPrepare\x12[\n" +
-	"\x14kvs_prepare_response\x18& \x01(\v2'.api.colonio.v1alpha.KvsPrepareResponseH\x00R\x12kvsPrepareResponse\x126\n" +
-	"\akvs_set\x18' \x01(\v2\x1b.api.colonio.v1alpha.KvsSetH\x00R\x06kvsSet\x12O\n" +
-	"\x10kvs_set_response\x18( \x01(\v2#.api.colonio.v1alpha.KvsSetResponseH\x00R\x0ekvsSetResponse\x125\n" +
+	"\x12messaging_response\x18\x15 \x01(\v2&.api.colonio.v1alpha.MessagingResponseH\x00R\x11messagingResponse\x125\n" +
 	"\x06spread\x182 \x01(\v2\x1b.api.colonio.v1alpha.SpreadH\x00R\x06spread\x12E\n" +
 	"\fspread_knock\x183 \x01(\v2 .api.colonio.v1alpha.SpreadKnockH\x00R\vspreadKnock\x12^\n" +
 	"\x15spread_knock_response\x184 \x01(\v2(.api.colonio.v1alpha.SpreadKnockResponseH\x00R\x13spreadKnockResponse\x12E\n" +
@@ -2063,64 +1146,7 @@ const file_api_colonio_v1alpha_colonio_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\fR\amessage\"/\n" +
 	"\x11MessagingResponse\x12\x1a\n" +
-	"\bresponse\x18\x01 \x01(\fR\bresponse\"\x80\x01\n" +
-	"\tKvsAccept\x12\x10\n" +
-	"\x03opt\x18\x01 \x01(\rR\x03opt\x12\f\n" +
-	"\x01n\x18\x02 \x01(\rR\x01n\x12\f\n" +
-	"\x01i\x18\x03 \x01(\rR\x01i\x12\x1d\n" +
-	"\n" +
-	"member_idx\x18\x04 \x01(\rR\tmemberIdx\x12\x10\n" +
-	"\x03key\x18\x05 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x06 \x01(\fR\x05value\"I\n" +
-	"\x11KvsAcceptResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\f\n" +
-	"\x01n\x18\x02 \x01(\rR\x01n\x12\f\n" +
-	"\x01i\x18\x03 \x01(\rR\x01i\"\x8b\x01\n" +
-	"\x12KvsBalanceAcceptor\x12\x0e\n" +
-	"\x02na\x18\x01 \x01(\rR\x02na\x12\x0e\n" +
-	"\x02np\x18\x02 \x01(\rR\x02np\x12\x0e\n" +
-	"\x02ia\x18\x03 \x01(\rR\x02ia\x12\x1d\n" +
-	"\n" +
-	"member_idx\x18\x04 \x01(\rR\tmemberIdx\x12\x10\n" +
-	"\x03key\x18\x05 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x06 \x01(\fR\x05value\"\\\n" +
-	"\x12KvsBalanceProposer\x12\x0e\n" +
-	"\x02np\x18\x01 \x01(\rR\x02np\x12\x0e\n" +
-	"\x02ip\x18\x02 \x01(\rR\x02ip\x12\x10\n" +
-	"\x03key\x18\x03 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x04 \x01(\fR\x05value\"9\n" +
-	"\x06KvsGet\x12\x1d\n" +
-	"\n" +
-	"member_idx\x18\x01 \x01(\rR\tmemberIdx\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\\\n" +
-	"\x0eKvsGetResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\f\n" +
-	"\x01n\x18\x02 \x01(\rR\x01n\x12\f\n" +
-	"\x01i\x18\x03 \x01(\rR\x01i\x12\x14\n" +
-	"\x05value\x18\x04 \x01(\fR\x05value\"M\n" +
-	"\aKvsHint\x12\f\n" +
-	"\x01n\x18\x01 \x01(\rR\x01n\x12\f\n" +
-	"\x01i\x18\x02 \x01(\rR\x01i\x12\x10\n" +
-	"\x03key\x18\x03 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x04 \x01(\fR\x05value\"]\n" +
-	"\n" +
-	"KvsPrepare\x12\x10\n" +
-	"\x03opt\x18\x01 \x01(\rR\x03opt\x12\f\n" +
-	"\x01n\x18\x02 \x01(\rR\x01n\x12\x1d\n" +
-	"\n" +
-	"member_idx\x18\x03 \x01(\rR\tmemberIdx\x12\x10\n" +
-	"\x03key\x18\x04 \x01(\tR\x03key\"J\n" +
-	"\x12KvsPrepareResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\f\n" +
-	"\x01n\x18\x02 \x01(\rR\x01n\x12\f\n" +
-	"\x01i\x18\x03 \x01(\rR\x01i\"B\n" +
-	"\x06KvsSet\x12\x10\n" +
-	"\x03opt\x18\x01 \x01(\rR\x03opt\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x03 \x01(\fR\x05value\"B\n" +
-	"\x0eKvsSetResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\rR\x06reason\"\xd6\x01\n" +
+	"\bresponse\x18\x01 \x01(\fR\bresponse\"\xd6\x01\n" +
 	"\x06Spread\x123\n" +
 	"\x06source\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x06source\x127\n" +
 	"\x06center\x18\x02 \x01(\v2\x1f.api.colonio.v1alpha.CoordinateR\x06center\x12\f\n" +
@@ -2158,7 +1184,7 @@ func file_api_colonio_v1alpha_colonio_proto_rawDescGZIP() []byte {
 	return file_api_colonio_v1alpha_colonio_proto_rawDescData
 }
 
-var file_api_colonio_v1alpha_colonio_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_api_colonio_v1alpha_colonio_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_api_colonio_v1alpha_colonio_proto_goTypes = []any{
 	(*Coordinate)(nil),          // 0: api.colonio.v1alpha.Coordinate
 	(*NodeID)(nil),              // 1: api.colonio.v1alpha.NodeID
@@ -2171,23 +1197,12 @@ var file_api_colonio_v1alpha_colonio_proto_goTypes = []any{
 	(*Routing)(nil),             // 8: api.colonio.v1alpha.Routing
 	(*Messaging)(nil),           // 9: api.colonio.v1alpha.Messaging
 	(*MessagingResponse)(nil),   // 10: api.colonio.v1alpha.MessagingResponse
-	(*KvsAccept)(nil),           // 11: api.colonio.v1alpha.KvsAccept
-	(*KvsAcceptResponse)(nil),   // 12: api.colonio.v1alpha.KvsAcceptResponse
-	(*KvsBalanceAcceptor)(nil),  // 13: api.colonio.v1alpha.KvsBalanceAcceptor
-	(*KvsBalanceProposer)(nil),  // 14: api.colonio.v1alpha.KvsBalanceProposer
-	(*KvsGet)(nil),              // 15: api.colonio.v1alpha.KvsGet
-	(*KvsGetResponse)(nil),      // 16: api.colonio.v1alpha.KvsGetResponse
-	(*KvsHint)(nil),             // 17: api.colonio.v1alpha.KvsHint
-	(*KvsPrepare)(nil),          // 18: api.colonio.v1alpha.KvsPrepare
-	(*KvsPrepareResponse)(nil),  // 19: api.colonio.v1alpha.KvsPrepareResponse
-	(*KvsSet)(nil),              // 20: api.colonio.v1alpha.KvsSet
-	(*KvsSetResponse)(nil),      // 21: api.colonio.v1alpha.KvsSetResponse
-	(*Spread)(nil),              // 22: api.colonio.v1alpha.Spread
-	(*SpreadKnock)(nil),         // 23: api.colonio.v1alpha.SpreadKnock
-	(*SpreadKnockResponse)(nil), // 24: api.colonio.v1alpha.SpreadKnockResponse
-	(*SpreadRelay)(nil),         // 25: api.colonio.v1alpha.SpreadRelay
-	(*SpreadRelayResponse)(nil), // 26: api.colonio.v1alpha.SpreadRelayResponse
-	nil,                         // 27: api.colonio.v1alpha.Routing.NodeRecordsEntry
+	(*Spread)(nil),              // 11: api.colonio.v1alpha.Spread
+	(*SpreadKnock)(nil),         // 12: api.colonio.v1alpha.SpreadKnock
+	(*SpreadKnockResponse)(nil), // 13: api.colonio.v1alpha.SpreadKnockResponse
+	(*SpreadRelay)(nil),         // 14: api.colonio.v1alpha.SpreadRelay
+	(*SpreadRelayResponse)(nil), // 15: api.colonio.v1alpha.SpreadRelayResponse
+	nil,                         // 16: api.colonio.v1alpha.Routing.NodeRecordsEntry
 }
 var file_api_colonio_v1alpha_colonio_proto_depIdxs = []int32{
 	4,  // 0: api.colonio.v1alpha.NodePackets.packets:type_name -> api.colonio.v1alpha.NodePacket
@@ -2198,36 +1213,25 @@ var file_api_colonio_v1alpha_colonio_proto_depIdxs = []int32{
 	8,  // 5: api.colonio.v1alpha.PacketContent.routing:type_name -> api.colonio.v1alpha.Routing
 	9,  // 6: api.colonio.v1alpha.PacketContent.messaging:type_name -> api.colonio.v1alpha.Messaging
 	10, // 7: api.colonio.v1alpha.PacketContent.messaging_response:type_name -> api.colonio.v1alpha.MessagingResponse
-	11, // 8: api.colonio.v1alpha.PacketContent.kvs_accept:type_name -> api.colonio.v1alpha.KvsAccept
-	12, // 9: api.colonio.v1alpha.PacketContent.kvs_accept_response:type_name -> api.colonio.v1alpha.KvsAcceptResponse
-	13, // 10: api.colonio.v1alpha.PacketContent.kvs_balance_acceptor:type_name -> api.colonio.v1alpha.KvsBalanceAcceptor
-	14, // 11: api.colonio.v1alpha.PacketContent.kvs_balance_proposer:type_name -> api.colonio.v1alpha.KvsBalanceProposer
-	15, // 12: api.colonio.v1alpha.PacketContent.kvs_get:type_name -> api.colonio.v1alpha.KvsGet
-	16, // 13: api.colonio.v1alpha.PacketContent.kvs_get_response:type_name -> api.colonio.v1alpha.KvsGetResponse
-	17, // 14: api.colonio.v1alpha.PacketContent.kvs_hint:type_name -> api.colonio.v1alpha.KvsHint
-	18, // 15: api.colonio.v1alpha.PacketContent.kvs_prepare:type_name -> api.colonio.v1alpha.KvsPrepare
-	19, // 16: api.colonio.v1alpha.PacketContent.kvs_prepare_response:type_name -> api.colonio.v1alpha.KvsPrepareResponse
-	20, // 17: api.colonio.v1alpha.PacketContent.kvs_set:type_name -> api.colonio.v1alpha.KvsSet
-	21, // 18: api.colonio.v1alpha.PacketContent.kvs_set_response:type_name -> api.colonio.v1alpha.KvsSetResponse
-	22, // 19: api.colonio.v1alpha.PacketContent.spread:type_name -> api.colonio.v1alpha.Spread
-	23, // 20: api.colonio.v1alpha.PacketContent.spread_knock:type_name -> api.colonio.v1alpha.SpreadKnock
-	24, // 21: api.colonio.v1alpha.PacketContent.spread_knock_response:type_name -> api.colonio.v1alpha.SpreadKnockResponse
-	25, // 22: api.colonio.v1alpha.PacketContent.spread_relay:type_name -> api.colonio.v1alpha.SpreadRelay
-	26, // 23: api.colonio.v1alpha.PacketContent.spread_relay_response:type_name -> api.colonio.v1alpha.SpreadRelayResponse
-	0,  // 24: api.colonio.v1alpha.RoutingNodeRecord.r2d_position:type_name -> api.colonio.v1alpha.Coordinate
-	0,  // 25: api.colonio.v1alpha.Routing.r2d_position:type_name -> api.colonio.v1alpha.Coordinate
-	27, // 26: api.colonio.v1alpha.Routing.node_records:type_name -> api.colonio.v1alpha.Routing.NodeRecordsEntry
-	1,  // 27: api.colonio.v1alpha.Spread.source:type_name -> api.colonio.v1alpha.NodeID
-	0,  // 28: api.colonio.v1alpha.Spread.center:type_name -> api.colonio.v1alpha.Coordinate
-	0,  // 29: api.colonio.v1alpha.SpreadKnock.center:type_name -> api.colonio.v1alpha.Coordinate
-	1,  // 30: api.colonio.v1alpha.SpreadRelay.source:type_name -> api.colonio.v1alpha.NodeID
-	0,  // 31: api.colonio.v1alpha.SpreadRelay.center:type_name -> api.colonio.v1alpha.Coordinate
-	7,  // 32: api.colonio.v1alpha.Routing.NodeRecordsEntry.value:type_name -> api.colonio.v1alpha.RoutingNodeRecord
-	33, // [33:33] is the sub-list for method output_type
-	33, // [33:33] is the sub-list for method input_type
-	33, // [33:33] is the sub-list for extension type_name
-	33, // [33:33] is the sub-list for extension extendee
-	0,  // [0:33] is the sub-list for field type_name
+	11, // 8: api.colonio.v1alpha.PacketContent.spread:type_name -> api.colonio.v1alpha.Spread
+	12, // 9: api.colonio.v1alpha.PacketContent.spread_knock:type_name -> api.colonio.v1alpha.SpreadKnock
+	13, // 10: api.colonio.v1alpha.PacketContent.spread_knock_response:type_name -> api.colonio.v1alpha.SpreadKnockResponse
+	14, // 11: api.colonio.v1alpha.PacketContent.spread_relay:type_name -> api.colonio.v1alpha.SpreadRelay
+	15, // 12: api.colonio.v1alpha.PacketContent.spread_relay_response:type_name -> api.colonio.v1alpha.SpreadRelayResponse
+	0,  // 13: api.colonio.v1alpha.RoutingNodeRecord.r2d_position:type_name -> api.colonio.v1alpha.Coordinate
+	0,  // 14: api.colonio.v1alpha.Routing.r2d_position:type_name -> api.colonio.v1alpha.Coordinate
+	16, // 15: api.colonio.v1alpha.Routing.node_records:type_name -> api.colonio.v1alpha.Routing.NodeRecordsEntry
+	1,  // 16: api.colonio.v1alpha.Spread.source:type_name -> api.colonio.v1alpha.NodeID
+	0,  // 17: api.colonio.v1alpha.Spread.center:type_name -> api.colonio.v1alpha.Coordinate
+	0,  // 18: api.colonio.v1alpha.SpreadKnock.center:type_name -> api.colonio.v1alpha.Coordinate
+	1,  // 19: api.colonio.v1alpha.SpreadRelay.source:type_name -> api.colonio.v1alpha.NodeID
+	0,  // 20: api.colonio.v1alpha.SpreadRelay.center:type_name -> api.colonio.v1alpha.Coordinate
+	7,  // 21: api.colonio.v1alpha.Routing.NodeRecordsEntry.value:type_name -> api.colonio.v1alpha.RoutingNodeRecord
+	22, // [22:22] is the sub-list for method output_type
+	22, // [22:22] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_api_colonio_v1alpha_colonio_proto_init() }
@@ -2240,17 +1244,6 @@ func file_api_colonio_v1alpha_colonio_proto_init() {
 		(*PacketContent_Routing)(nil),
 		(*PacketContent_Messaging)(nil),
 		(*PacketContent_MessagingResponse)(nil),
-		(*PacketContent_KvsAccept)(nil),
-		(*PacketContent_KvsAcceptResponse)(nil),
-		(*PacketContent_KvsBalanceAcceptor)(nil),
-		(*PacketContent_KvsBalanceProposer)(nil),
-		(*PacketContent_KvsGet)(nil),
-		(*PacketContent_KvsGetResponse)(nil),
-		(*PacketContent_KvsHint)(nil),
-		(*PacketContent_KvsPrepare)(nil),
-		(*PacketContent_KvsPrepareResponse)(nil),
-		(*PacketContent_KvsSet)(nil),
-		(*PacketContent_KvsSetResponse)(nil),
 		(*PacketContent_Spread)(nil),
 		(*PacketContent_SpreadKnock)(nil),
 		(*PacketContent_SpreadKnockResponse)(nil),
@@ -2263,7 +1256,7 @@ func file_api_colonio_v1alpha_colonio_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_colonio_v1alpha_colonio_proto_rawDesc), len(file_api_colonio_v1alpha_colonio_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   28,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
