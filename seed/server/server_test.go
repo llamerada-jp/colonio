@@ -44,6 +44,7 @@ type controllerMock struct {
 	reconcileNextNodesF func(ctx context.Context, nodeID *shared.NodeID, nextNodeIDs, disconnectedIDs []*shared.NodeID) (bool, error)
 	sendSignalF         func(ctx context.Context, nodeID *shared.NodeID, signal *proto.Signal) error
 	pollSignalF         func(ctx context.Context, nodeID *shared.NodeID, send func(*proto.Signal) error) error
+	stateKvsF           func(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error)
 }
 
 var _ controller.Controller = &controllerMock{}
@@ -82,6 +83,12 @@ func (c *controllerMock) PollSignal(ctx context.Context, nodeID *shared.NodeID, 
 	c.t.Helper()
 	require.NotNil(c.t, c.pollSignalF, "PollSignalF must not be nil")
 	return c.pollSignalF(ctx, nodeID, send)
+}
+
+func (c *controllerMock) StateKVS(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error) {
+	c.t.Helper()
+	require.NotNil(c.t, c.stateKvsF, "StateKVSF must not be nil")
+	return c.stateKvsF(ctx, nodeID, active)
 }
 
 func runTestServer(t *testing.T, controller *controllerMock) uint16 {
@@ -379,4 +386,47 @@ func TestServer_PollSignal(t *testing.T) {
 	assert.Equal(t, nodeIDs[2].Proto(), signals[1].DstNodeId)
 	assert.Equal(t, nodeIDs[1].Proto(), signals[1].SrcNodeId)
 	assert.Equal(t, uint32(2), signals[1].GetIce().OfferId)
+}
+
+func TestServer_StateKVS(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(1)
+	called := false
+	port := runTestServer(t, &controllerMock{
+		t: t,
+		assignNodeF: func(ctx context.Context) (*shared.NodeID, bool, error) {
+			return nodeIDs[0], true, nil
+		},
+		stateKvsF: func(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error) {
+			called = true
+			assert.Equal(t, nodeID, nodeIDs[0])
+			assert.True(t, active)
+			return true, nil
+		},
+	})
+	client := createTestClient(t, port)
+
+	// StateKVS without assigning first should return an error
+	_, err := client.StateKVS(t.Context(), &connect.Request[proto.StateKVSRequest]{
+		Msg: &proto.StateKVSRequest{
+			Active: true,
+		},
+	})
+	ce := &connect.Error{}
+	assert.ErrorAs(t, err, &ce)
+	assert.ErrorContains(t, err, "reqID")
+
+	// Assign a node and then StateKVS
+	_, err = client.AssignNode(t.Context(), &connect.Request[proto.AssignNodeRequest]{
+		Msg: &proto.AssignNodeRequest{},
+	})
+	require.NoError(t, err)
+	_, err = client.StateKVS(t.Context(), &connect.Request[proto.StateKVSRequest]{
+		Msg: &proto.StateKVSRequest{
+			Active: true,
+		},
+	})
+	require.NoError(t, err)
+	assert.True(t, called)
+
+	assert.True(t, called)
 }

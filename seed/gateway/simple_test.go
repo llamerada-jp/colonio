@@ -502,3 +502,67 @@ func TestSimpleGateway_PublishSignal(t *testing.T) {
 		})
 	}
 }
+
+func TestSimpleGateway_SetKVSState(t *testing.T) {
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
+
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	sg.nodes[*nodeIDs[0]] = &nodeEntry{
+		lifespan:          time.Now().Add(10 * time.Minute),
+		subscribingSignal: false,
+		waitingSignals:    make([]signalEntry, 0),
+	}
+
+	err := sg.SetKVSState(t.Context(), nodeIDs[0], true)
+	require.NoError(t, err)
+	assert.True(t, sg.nodes[*nodeIDs[0]].kvsActive)
+
+	err = sg.SetKVSState(t.Context(), nodeIDs[0], false)
+	require.NoError(t, err)
+	assert.False(t, sg.nodes[*nodeIDs[0]].kvsActive)
+
+	err = sg.SetKVSState(t.Context(), nodeIDs[1], true)
+	require.Error(t, err)
+}
+
+func TestSimpleGateway_ExistsKVSActiveNode(t *testing.T) {
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
+
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+	sg.nodes[*nodeIDs[0]] = &nodeEntry{
+		lifespan:          time.Now().Add(10 * time.Minute),
+		subscribingSignal: false,
+		waitingSignals:    make([]signalEntry, 0),
+		kvsActive:         false,
+	}
+	sg.nodes[*nodeIDs[1]] = &nodeEntry{
+		lifespan:          time.Now().Add(10 * time.Minute),
+		subscribingSignal: false,
+		waitingSignals:    make([]signalEntry, 0),
+		kvsActive:         true,
+	}
+	sg.nodes[*nodeIDs[2]] = &nodeEntry{
+		lifespan:          time.Now().Add(10 * time.Minute),
+		subscribingSignal: false,
+		waitingSignals:    make([]signalEntry, 0),
+		kvsActive:         false,
+	}
+
+	exists, err := sg.ExistsKVSActiveNode(t.Context())
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	// Set all nodes to inactive
+	err = sg.SetKVSState(t.Context(), nodeIDs[1], false)
+	require.NoError(t, err)
+
+	exists, err = sg.ExistsKVSActiveNode(t.Context())
+	require.NoError(t, err)
+	assert.False(t, exists)
+}

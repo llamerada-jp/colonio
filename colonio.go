@@ -25,6 +25,7 @@ import (
 
 	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/geometry"
+	"github.com/llamerada-jp/colonio/internal/kvs"
 	"github.com/llamerada-jp/colonio/internal/messaging"
 	"github.com/llamerada-jp/colonio/internal/network"
 	"github.com/llamerada-jp/colonio/internal/network/node_accessor"
@@ -84,6 +85,9 @@ type Config struct {
 	// If you set 0, the default value of 64 will be set.
 	PacketHopLimit uint
 
+	// KVSStore is an actual data store for KVS.
+	KVSStore config.KVSStore
+
 	// CacheLifetime is the lifetime of the cache. The spread algorithm is
 	// so simple that the same packet may be received multiple times;
 	// if the same packet is received within the cache lifetime, it can be suppressed
@@ -139,6 +143,12 @@ func WithPlaneGeometry(xMin, xMax, yMin, yMax float64) ConfigSetter {
 	}
 }
 
+func WithKVSStore(store config.KVSStore) ConfigSetter {
+	return func(c *Config) {
+		c.KVSStore = store
+	}
+}
+
 // Sphere is a configuration for the sphere geometry.
 // If this configuration is set, the 2D position based network will be setup as a sphere space.
 func WithSphereGeometry(radius float64) ConfigSetter {
@@ -153,6 +163,7 @@ type colonioImpl struct {
 	cancel      context.CancelFunc
 	localNodeID *shared.NodeID
 	network     *network.Network
+	kvs         *kvs.KVS
 	messaging   *messaging.Messaging
 	spread      *spread.Spread
 }
@@ -191,6 +202,10 @@ func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 		config.HttpClient = &http.Client{
 			Jar: jar,
 		}
+	}
+
+	if config.KVSStore == nil {
+		config.KVSStore = kvs.NewSimpleKVSStore()
 	}
 
 	impl := &colonioImpl{
@@ -239,6 +254,13 @@ func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 	}
 	impl.network = net
 
+	impl.kvs = kvs.NewKVS(&kvs.Config{
+		Logger:     config.Logger,
+		Handler:    impl,
+		Store:      config.KVSStore,
+		Transferer: net.GetTransferer(),
+	})
+
 	impl.messaging = messaging.NewMessaging(&messaging.Config{
 		Logger:     config.Logger,
 		Transferer: net.GetTransferer(),
@@ -282,7 +304,8 @@ func (c *colonioImpl) IsOnline() bool {
 }
 
 func (c *colonioImpl) IsStable() bool {
-	return c.network.IsStable()
+	s, _ := c.network.GetStability()
+	return s
 }
 
 func (c *colonioImpl) GetLocalNodeID() string {
@@ -307,6 +330,10 @@ func MessagingWithIgnoreResponse() MessagingOptionSetter {
 	return func(o *MessagingOptions) {
 		o.IgnoreResponse = true
 	}
+}
+
+func (c *colonioImpl) KVSGetStability() (bool, []*shared.NodeID) {
+	return c.network.GetStability()
 }
 
 func (c *colonioImpl) MessagingPost(dst, name string, val []byte, setters ...MessagingOptionSetter) ([]byte, error) {

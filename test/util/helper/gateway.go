@@ -44,6 +44,8 @@ type Gateway struct {
 	SubscribeSignalF         func(ctx context.Context, nodeID *shared.NodeID) error
 	UnsubscribeSignalF       func(ctx context.Context, nodeID *shared.NodeID) error
 	PublishSignalF           func(ctx context.Context, signal *proto.Signal, relayToNext bool) error
+	SetKVSStateF             func(ctx context.Context, nodeID *shared.NodeID, active bool) error
+	ExistsKVSActiveNodeF     func(ctx context.Context) (bool, error)
 }
 
 var _ gateway.Gateway = (*Gateway)(nil)
@@ -152,4 +154,18 @@ func (h *Gateway) PublishSignal(ctx context.Context, signal *proto.Signal, relay
 		return h.PublishSignalF(ctx, signal, relayToNext)
 	}
 	return h.GetSuper().PublishSignal(ctx, signal, relayToNext)
+}
+
+func (h *Gateway) SetKVSState(ctx context.Context, nodeID *shared.NodeID, active bool) error {
+	if h.SetKVSStateF != nil {
+		return h.SetKVSStateF(ctx, nodeID, active)
+	}
+	return h.GetSuper().SetKVSState(ctx, nodeID, active)
+}
+
+func (h *Gateway) ExistsKVSActiveNode(ctx context.Context) (bool, error) {
+	if h.ExistsKVSActiveNodeF != nil {
+		return h.ExistsKVSActiveNodeF(ctx)
+	}
+	return h.GetSuper().ExistsKVSActiveNode(ctx)
 }

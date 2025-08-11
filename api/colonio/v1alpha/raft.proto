@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package api.colonio.v1alpha;
+
+option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
+
+message RaftProposal {
+  oneof content {
+    RaftProposalManagement management = 1;
+    RaftProposalStore store           = 2;
+  }
+}
+
+message RaftProposalManagement {
+}
+
+enum RaftProposalStoreCommand {
+  IMPORT = 0;
+  GET    = 1;
+  SET    = 2;
+  PATCH  = 3;
+  DELETE = 4;
+}
+
+message RaftProposalStore {
+  RaftProposalStoreCommand command = 1;
+  uint32 proposalID                = 2;
+  string key                       = 3;
+  bytes value                      = 4;
+}
+
+message RaftStoreSnapshot {
+  RaftStoreRecords records = 1;
+}
+
+message RaftStoreRecords {
+  map<string, bytes> records = 1;
+}

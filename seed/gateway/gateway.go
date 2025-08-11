@@ -42,4 +42,6 @@ type Gateway interface {
 	SubscribeSignal(ctx context.Context, nodeID *shared.NodeID) error
 	UnsubscribeSignal(ctx context.Context, nodeID *shared.NodeID) error
 	PublishSignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error
+	SetKVSState(ctx context.Context, nodeID *shared.NodeID, active bool) error
+	ExistsKVSActiveNode(ctx context.Context) (bool, error)
 }

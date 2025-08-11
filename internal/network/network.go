@@ -140,9 +140,8 @@ func (n *Network) IsOnline() bool {
 	return n.seedAccessor.IsAlone() || n.nodeAccessor.IsOnline()
 }
 
-func (n *Network) IsStable() bool {
-	isStable, _ := n.routing.GetStability()
-	return isStable
+func (n *Network) GetStability() (bool, []*shared.NodeID) {
+	return n.routing.GetStability()
 }
 
 func (n *Network) GetTransferer() *transferer.Transferer {

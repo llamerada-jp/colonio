@@ -15,6 +15,7 @@ require (
 	github.com/spf13/pflag v1.0.7
 	github.com/stretchr/testify v1.10.0
 	github.com/veandco/go-sdl2 v0.4.40
+	go.etcd.io/raft/v3 v3.6.0
 	go.mongodb.org/mongo-driver v1.17.4
 	golang.org/x/exp v0.0.0-20250718183923-645b1fa84792
 	google.golang.org/protobuf v1.36.6
@@ -31,6 +32,7 @@ require (
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

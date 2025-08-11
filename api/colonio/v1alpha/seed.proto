@@ -13,6 +13,7 @@ service SeedService {
   rpc ReconcileNextNodes (ReconcileNextNodesRequest) returns (ReconcileNextNodesResponse) {}
   rpc SendSignal (SendSignalRequest) returns (SendSignalResponse) {}
   rpc PollSignal (PollSignalRequest) returns (stream PollSignalResponse) {}
+  rpc StateKVS (StateKVSRequest) returns (StateKVSResponse) {}
 }
 
 message Signal {
@@ -90,4 +91,12 @@ message PollSignalRequest {
 
 message PollSignalResponse {
   repeated Signal signals = 1;
+}
+
+message StateKVSRequest {
+  bool active = 1;
+}
+
+message StateKVSResponse {
+  bool exists_active_node = 1;
 }

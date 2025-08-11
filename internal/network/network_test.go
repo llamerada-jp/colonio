@@ -116,7 +116,8 @@ func TestNetwork(t *testing.T) {
 
 	// can be online only one node
 	require.Eventually(t, func() bool {
-		return networks[0].IsOnline() && networks[0].IsStable()
+		st, _ := networks[0].GetStability()
+		return networks[0].IsOnline() && st
 	}, 60*time.Second, 1*time.Second)
 
 	// make other nodes online
@@ -145,7 +146,8 @@ func TestNetwork(t *testing.T) {
 	// all nodes should be online
 	require.Eventually(t, func() bool {
 		for _, network := range networks {
-			if !network.IsOnline() || !network.IsStable() {
+			st, _ := network.GetStability()
+			if !network.IsOnline() || !st {
 				return false
 			}
 		}
@@ -206,7 +208,8 @@ func TestNetwork(t *testing.T) {
 
 		for _, network := range networks {
 			assert.True(t, network.IsOnline())
-			assert.True(t, network.IsStable())
+			st, _ := network.GetStability()
+			assert.True(t, st)
 		}
 
 		return len(receivedPackets) == 2

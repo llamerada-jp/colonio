@@ -43,6 +43,7 @@ type Controller interface {
 	ReconcileNextNodes(ctx context.Context, nodeID *shared.NodeID, nextNodeIDs, disconnectedIDs []*shared.NodeID) (bool, error)
 	SendSignal(ctx context.Context, nodeID *shared.NodeID, signal *proto.Signal) error
 	PollSignal(ctx context.Context, nodeID *shared.NodeID, send func(*proto.Signal) error) error
+	StateKVS(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error)
 }
 
 type ControllerImpl struct {
@@ -343,6 +344,19 @@ func (c *ControllerImpl) PollSignal(ctx context.Context, nodeID *shared.NodeID, 
 			}
 		}
 	}
+}
+
+func (c *ControllerImpl) StateKVS(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error) {
+	if err := c.gateway.SetKVSState(ctx, nodeID, active); err != nil {
+		return false, fmt.Errorf("failed to set KVS state: %w", err)
+	}
+
+	exists, err := c.gateway.ExistsKVSActiveNode(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if KVS active node exists: %w", err)
+	}
+
+	return exists, nil
 }
 
 func (c *ControllerImpl) cleanup(ctx context.Context) error {

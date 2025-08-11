@@ -15,6 +15,8 @@
  */
 package config
 
+import "github.com/google/uuid"
+
 // ICEServer is a configuration for ICE server. It is used to establish a WebRTC connection.
 type ICEServer struct {
 	// URLs is a list of URLs of the ICE server.
@@ -23,4 +25,19 @@ type ICEServer struct {
 	Username string `json:"username,omitempty"`
 	// Credential is a credential for the ICE server.
 	Credential string `json:"credential,omitempty"`
+}
+
+type KVSNodeKey struct {
+	ClusterID uuid.UUID
+	Sequence  uint64
+}
+
+type KVSStore interface {
+	NewCluster(nodeKey *KVSNodeKey) error
+	DeleteCluster(nodeKey *KVSNodeKey) error
+
+	Get(nodeKey *KVSNodeKey, key string) ([]byte, error)
+	Set(nodeKey *KVSNodeKey, key string, value []byte) error
+	Patch(nodeKey *KVSNodeKey, key string, value []byte) error
+	Delete(nodeKey *KVSNodeKey, key string) error
 }

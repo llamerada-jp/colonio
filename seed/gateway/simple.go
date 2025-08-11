@@ -37,6 +37,7 @@ type nodeEntry struct {
 	lifespan          time.Time
 	subscribingSignal bool
 	waitingSignals    []signalEntry
+	kvsActive         bool
 }
 
 type SimpleGateway struct {
@@ -287,4 +288,30 @@ func (h *SimpleGateway) PublishSignal(ctx context.Context, signal *proto.Signal,
 	})
 	h.mtx.Unlock()
 	return nil
+}
+
+func (h *SimpleGateway) SetKVSState(ctx context.Context, nodeID *shared.NodeID, active bool) error {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+
+	node, exists := h.nodes[*nodeID]
+	if !exists {
+		return fmt.Errorf("node %s not found", nodeID.String())
+	}
+
+	node.kvsActive = active
+	return nil
+}
+
+func (h *SimpleGateway) ExistsKVSActiveNode(ctx context.Context) (bool, error) {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+
+	for _, node := range h.nodes {
+		if node.kvsActive {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }

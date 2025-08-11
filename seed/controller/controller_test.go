@@ -666,6 +666,66 @@ func TestController_SendSignal(t *testing.T) {
 	assert.Equal(t, 6, callCount)
 }
 
+func TestController_StateKVS(t *testing.T) {
+	ctx := misc.NewLoggerContext(t.Context(), nil)
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	mtx := sync.Mutex{}
+	activeStates := make(map[string]bool)
+	callCount := 0
+
+	c := NewController(&Options{
+		Logger: testUtil.Logger(t),
+		Gateway: &helper.Gateway{
+			SetKVSStateF: func(_ context.Context, nodeID *shared.NodeID, active bool) error {
+				mtx.Lock()
+				defer mtx.Unlock()
+				callCount++
+				activeStates[nodeID.String()] = active
+				return nil
+			},
+			ExistsKVSActiveNodeF: func(_ context.Context) (bool, error) {
+				mtx.Lock()
+				defer mtx.Unlock()
+				callCount++
+				for _, v := range activeStates {
+					if v {
+						return true, nil
+					}
+				}
+				return false, nil
+			},
+		},
+	})
+
+	// set active state for node 0
+	exists, err := c.StateKVS(ctx, nodeIDs[0], false)
+	require.NoError(t, err)
+	assert.False(t, exists)
+
+	// check exists active node
+	exists, err = c.StateKVS(ctx, nodeIDs[1], true)
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	// set inactive state for node 0
+	exists, err = c.StateKVS(ctx, nodeIDs[0], false)
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	// set inactive state for node 1
+	exists, err = c.StateKVS(ctx, nodeIDs[1], false)
+	require.NoError(t, err)
+	assert.False(t, exists)
+
+	mtx.Lock()
+	defer mtx.Unlock()
+	assert.Equal(t, 8, callCount)
+	assert.Equal(t, map[string]bool{
+		nodeIDs[0].String(): false,
+		nodeIDs[1].String(): false,
+	}, activeStates)
+}
+
 func TestController_cleanup(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(2)
 	mtx := sync.Mutex{}
