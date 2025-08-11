@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package api.colonio.v1alpha;
+
+option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
+
+message Coordinate {
+  double x = 1;
+  double y = 2;
+}
+
+message NodeID {
+  uint64 id0 = 1;
+  uint64 id1 = 2;
+}

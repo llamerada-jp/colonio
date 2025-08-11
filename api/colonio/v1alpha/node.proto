@@ -2,18 +2,9 @@ syntax = "proto3";
 
 package api.colonio.v1alpha;
 
+import "api/colonio/v1alpha/core.proto";
+
 option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
-
-// basic types
-message Coordinate {
-  double x = 1;
-  double y = 2;
-}
-
-message NodeID {
-  uint64 id0 = 1;
-  uint64 id1 = 2;
-}
 
 // node-node packet container
 // Or use an empty message as a ping to cancel the timeout.

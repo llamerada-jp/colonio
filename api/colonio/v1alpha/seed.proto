@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package api.colonio.v1alpha;
 
-import "api/colonio/v1alpha/colonio.proto";
+import "api/colonio/v1alpha/core.proto";
 
 option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
 
