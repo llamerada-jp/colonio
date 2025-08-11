@@ -854,7 +854,7 @@ var File_api_colonio_v1alpha_seed_proto protoreflect.FileDescriptor
 
 const file_api_colonio_v1alpha_seed_proto_rawDesc = "" +
 	"\n" +
-	"\x1eapi/colonio/v1alpha/seed.proto\x12\x13api.colonio.v1alpha\x1a!api/colonio/v1alpha/colonio.proto\"\xb8\x02\n" +
+	"\x1eapi/colonio/v1alpha/seed.proto\x12\x13api.colonio.v1alpha\x1a\x1eapi/colonio/v1alpha/core.proto\"\xb8\x02\n" +
 	"\x06Signal\x12;\n" +
 	"\vdst_node_id\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\tdstNodeId\x12;\n" +
 	"\vsrc_node_id\x18\x02 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\tsrcNodeId\x128\n" +
@@ -977,7 +977,7 @@ func file_api_colonio_v1alpha_seed_proto_init() {
 	if File_api_colonio_v1alpha_seed_proto != nil {
 		return
 	}
-	file_api_colonio_v1alpha_colonio_proto_init()
+	file_api_colonio_v1alpha_core_proto_init()
 	file_api_colonio_v1alpha_seed_proto_msgTypes[0].OneofWrappers = []any{
 		(*Signal_Offer)(nil),
 		(*Signal_Answer)(nil),
