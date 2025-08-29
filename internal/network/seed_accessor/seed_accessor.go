@@ -264,6 +264,23 @@ func (sa *SeedAccessor) ReconcileNextNodes(nextNodeIDs, disconnectedNodeIDs []*s
 	return res.Msg.Matched, nil
 }
 
+func (sa *SeedAccessor) StateKVS(active bool) (bool, error) {
+	res, err := sa.client.StateKVS(sa.ctx, &connect.Request[proto.StateKVSRequest]{
+		Msg: &proto.StateKVSRequest{
+			Active: active,
+		},
+	})
+
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to set/get state KVS: %w", err)
+	}
+
+	return res.Msg.ExistsActiveNode, nil
+}
+
 func (sa *SeedAccessor) unassign() {
 	// use context.Background() because sa.ctx may be already canceled when call this
 	_, err := sa.client.UnassignNode(context.Background(), &connect.Request[proto.UnassignNodeRequest]{})

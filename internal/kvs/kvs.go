@@ -45,6 +45,7 @@ const (
 
 type Handler interface {
 	KVSGetStability() (bool, []*shared.NodeID)
+	KVSState(active bool) (bool, error)
 }
 
 type Config struct {

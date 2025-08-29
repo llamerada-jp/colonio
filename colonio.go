@@ -336,6 +336,10 @@ func (c *colonioImpl) KVSGetStability() (bool, []*shared.NodeID) {
 	return c.network.GetStability()
 }
 
+func (c *colonioImpl) KVSState(active bool) (bool, error) {
+	return c.network.StateKVS(active)
+}
+
 func (c *colonioImpl) MessagingPost(dst, name string, val []byte, setters ...MessagingOptionSetter) ([]byte, error) {
 	dstNodeID, err := shared.NewNodeIDFromString(dst)
 	if err != nil {

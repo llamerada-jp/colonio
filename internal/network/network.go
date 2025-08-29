@@ -156,6 +156,10 @@ func (n *Network) GetNextStep2D(dst *geometry.Coordinate) *shared.NodeID {
 	return n.routing.GetNextStep2D(dst)
 }
 
+func (n *Network) StateKVS(active bool) (bool, error) {
+	return n.seedAccessor.StateKVS(active)
+}
+
 // implements for seed_accessor.Handler
 func (n *Network) SeedRecvSignalOffer(srcNodeID *shared.NodeID, offer *signal.Offer) {
 	n.nodeAccessor.SignalingOffer(srcNodeID, offer)
