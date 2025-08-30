@@ -24,28 +24,29 @@ const (
 type RaftProposalStoreCommand int32
 
 const (
-	RaftProposalStoreCommand_IMPORT RaftProposalStoreCommand = 0
-	RaftProposalStoreCommand_GET    RaftProposalStoreCommand = 1
-	RaftProposalStoreCommand_SET    RaftProposalStoreCommand = 2
-	RaftProposalStoreCommand_PATCH  RaftProposalStoreCommand = 3
-	RaftProposalStoreCommand_DELETE RaftProposalStoreCommand = 4
+	// buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+	RaftProposalStoreCommand_RAFT_PROPOSAL_STORE_COMMAND_IMPORT RaftProposalStoreCommand = 0
+	RaftProposalStoreCommand_RAFT_PROPOSAL_STORE_COMMAND_GET    RaftProposalStoreCommand = 1
+	RaftProposalStoreCommand_RAFT_PROPOSAL_STORE_COMMAND_SET    RaftProposalStoreCommand = 2
+	RaftProposalStoreCommand_RAFT_PROPOSAL_STORE_COMMAND_PATCH  RaftProposalStoreCommand = 3
+	RaftProposalStoreCommand_RAFT_PROPOSAL_STORE_COMMAND_DELETE RaftProposalStoreCommand = 4
 )
 
 // Enum value maps for RaftProposalStoreCommand.
 var (
 	RaftProposalStoreCommand_name = map[int32]string{
-		0: "IMPORT",
-		1: "GET",
-		2: "SET",
-		3: "PATCH",
-		4: "DELETE",
+		0: "RAFT_PROPOSAL_STORE_COMMAND_IMPORT",
+		1: "RAFT_PROPOSAL_STORE_COMMAND_GET",
+		2: "RAFT_PROPOSAL_STORE_COMMAND_SET",
+		3: "RAFT_PROPOSAL_STORE_COMMAND_PATCH",
+		4: "RAFT_PROPOSAL_STORE_COMMAND_DELETE",
 	}
 	RaftProposalStoreCommand_value = map[string]int32{
-		"IMPORT": 0,
-		"GET":    1,
-		"SET":    2,
-		"PATCH":  3,
-		"DELETE": 4,
+		"RAFT_PROPOSAL_STORE_COMMAND_IMPORT": 0,
+		"RAFT_PROPOSAL_STORE_COMMAND_GET":    1,
+		"RAFT_PROPOSAL_STORE_COMMAND_SET":    2,
+		"RAFT_PROPOSAL_STORE_COMMAND_PATCH":  3,
+		"RAFT_PROPOSAL_STORE_COMMAND_DELETE": 4,
 	}
 )
 
@@ -197,7 +198,7 @@ func (*RaftProposalManagement) Descriptor() ([]byte, []int) {
 type RaftProposalStore struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
 	Command       RaftProposalStoreCommand `protobuf:"varint,1,opt,name=command,proto3,enum=api.colonio.v1alpha.RaftProposalStoreCommand" json:"command,omitempty"`
-	ProposalID    uint32                   `protobuf:"varint,2,opt,name=proposalID,proto3" json:"proposalID,omitempty"`
+	ProposalId    uint32                   `protobuf:"varint,2,opt,name=proposal_id,json=proposalId,proto3" json:"proposal_id,omitempty"`
 	Key           string                   `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
 	Value         []byte                   `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -238,12 +239,12 @@ func (x *RaftProposalStore) GetCommand() RaftProposalStoreCommand {
 	if x != nil {
 		return x.Command
 	}
-	return RaftProposalStoreCommand_IMPORT
+	return RaftProposalStoreCommand_RAFT_PROPOSAL_STORE_COMMAND_IMPORT
 }
 
-func (x *RaftProposalStore) GetProposalID() uint32 {
+func (x *RaftProposalStore) GetProposalId() uint32 {
 	if x != nil {
-		return x.ProposalID
+		return x.ProposalId
 	}
 	return 0
 }
@@ -361,12 +362,11 @@ const file_api_colonio_v1alpha_raft_proto_rawDesc = "" +
 	"management\x12>\n" +
 	"\x05store\x18\x02 \x01(\v2&.api.colonio.v1alpha.RaftProposalStoreH\x00R\x05storeB\t\n" +
 	"\acontent\"\x18\n" +
-	"\x16RaftProposalManagement\"\xa4\x01\n" +
+	"\x16RaftProposalManagement\"\xa5\x01\n" +
 	"\x11RaftProposalStore\x12G\n" +
-	"\acommand\x18\x01 \x01(\x0e2-.api.colonio.v1alpha.RaftProposalStoreCommandR\acommand\x12\x1e\n" +
-	"\n" +
-	"proposalID\x18\x02 \x01(\rR\n" +
-	"proposalID\x12\x10\n" +
+	"\acommand\x18\x01 \x01(\x0e2-.api.colonio.v1alpha.RaftProposalStoreCommandR\acommand\x12\x1f\n" +
+	"\vproposal_id\x18\x02 \x01(\rR\n" +
+	"proposalId\x12\x10\n" +
 	"\x03key\x18\x03 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x04 \x01(\fR\x05value\"T\n" +
 	"\x11RaftStoreSnapshot\x12?\n" +
@@ -375,15 +375,13 @@ const file_api_colonio_v1alpha_raft_proto_rawDesc = "" +
 	"\arecords\x18\x01 \x03(\v22.api.colonio.v1alpha.RaftStoreRecords.RecordsEntryR\arecords\x1a:\n" +
 	"\fRecordsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01*O\n" +
-	"\x18RaftProposalStoreCommand\x12\n" +
-	"\n" +
-	"\x06IMPORT\x10\x00\x12\a\n" +
-	"\x03GET\x10\x01\x12\a\n" +
-	"\x03SET\x10\x02\x12\t\n" +
-	"\x05PATCH\x10\x03\x12\n" +
-	"\n" +
-	"\x06DELETE\x10\x04B5Z3github.com/llamerada-jp/colonio/api/colonio/v1alphab\x06proto3"
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01*\xdb\x01\n" +
+	"\x18RaftProposalStoreCommand\x12&\n" +
+	"\"RAFT_PROPOSAL_STORE_COMMAND_IMPORT\x10\x00\x12#\n" +
+	"\x1fRAFT_PROPOSAL_STORE_COMMAND_GET\x10\x01\x12#\n" +
+	"\x1fRAFT_PROPOSAL_STORE_COMMAND_SET\x10\x02\x12%\n" +
+	"!RAFT_PROPOSAL_STORE_COMMAND_PATCH\x10\x03\x12&\n" +
+	"\"RAFT_PROPOSAL_STORE_COMMAND_DELETE\x10\x04B5Z3github.com/llamerada-jp/colonio/api/colonio/v1alphab\x06proto3"
 
 var (
 	file_api_colonio_v1alpha_raft_proto_rawDescOnce sync.Once

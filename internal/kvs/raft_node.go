@@ -57,13 +57,13 @@ type raftNodeConfig struct {
 }
 
 type raftNode struct {
-	logger      *slog.Logger
-	manager     raftNodeManager
-	store       raftNodeStore
-	nodeKey     config.KVSNodeKey
-	ctx         context.Context
-	etcdNode    raft.Node
-	raftStorage *raft.MemoryStorage
+	logger       *slog.Logger
+	manager      raftNodeManager
+	store        raftNodeStore
+	nodeKey      config.KVSNodeKey
+	ctx          context.Context
+	etcdRaftNode raft.Node
+	raftStorage  *raft.MemoryStorage
 
 	snapshotCatchUpEntriesN uint64
 	snapCount               uint64
@@ -108,9 +108,9 @@ func newRaftNode(config *raftNodeConfig) *raftNode {
 			}
 			i++
 		}
-		n.etcdNode = raft.StartNode(raftConfig, peers)
+		n.etcdRaftNode = raft.StartNode(raftConfig, peers)
 	} else {
-		n.etcdNode = raft.RestartNode(raftConfig)
+		n.etcdRaftNode = raft.RestartNode(raftConfig)
 	}
 
 	return n
@@ -126,13 +126,13 @@ func (n *raftNode) start(ctx context.Context) {
 		for {
 			select {
 			case <-n.ctx.Done():
-				n.etcdNode.Stop()
+				n.etcdRaftNode.Stop()
 				return
 
 			case <-ticker.C:
-				n.etcdNode.Tick()
+				n.etcdRaftNode.Tick()
 
-			case rd := <-n.etcdNode.Ready():
+			case rd := <-n.etcdRaftNode.Ready():
 				if !raft.IsEmptySnap(rd.Snapshot) {
 					n.raftStorage.ApplySnapshot(rd.Snapshot)
 					n.confState = rd.Snapshot.Metadata.ConfState
@@ -158,18 +158,18 @@ func (n *raftNode) start(ctx context.Context) {
 					n.logger.Error("Failed to trigger snapshot", "error", err)
 				}
 
-				n.etcdNode.Advance()
+				n.etcdRaftNode.Advance()
 			}
 		}
 	}()
 }
 
 func (n *raftNode) stop() {
-	n.etcdNode.Stop()
+	n.etcdRaftNode.Stop()
 }
 
 func (n *raftNode) appendNode(sequence uint64, nodeID *shared.NodeID) error {
-	return n.etcdNode.ProposeConfChange(n.ctx, raftpb.ConfChange{
+	return n.etcdRaftNode.ProposeConfChange(n.ctx, raftpb.ConfChange{
 		Type:    raftpb.ConfChangeAddNode,
 		NodeID:  sequence,
 		Context: []byte(nodeID.String()),
@@ -177,7 +177,7 @@ func (n *raftNode) appendNode(sequence uint64, nodeID *shared.NodeID) error {
 }
 
 func (n *raftNode) removeNode(sequence uint64) error {
-	return n.etcdNode.ProposeConfChange(n.ctx, raftpb.ConfChange{
+	return n.etcdRaftNode.ProposeConfChange(n.ctx, raftpb.ConfChange{
 		Type:   raftpb.ConfChangeRemoveNode,
 		NodeID: sequence,
 	})
@@ -189,7 +189,7 @@ func (n *raftNode) propose(p *proto.RaftProposal) {
 		panic("Failed to marshal Raft proposal: " + err.Error())
 	}
 
-	if err := n.etcdNode.Propose(n.ctx, data); err != nil {
+	if err := n.etcdRaftNode.Propose(n.ctx, data); err != nil {
 		n.manager.raftNodeError(&n.nodeKey, err)
 	}
 }
@@ -200,7 +200,7 @@ func (n *raftNode) processMessage(p *proto.RaftMessage) error {
 		return err
 	}
 
-	return n.etcdNode.Step(n.ctx, msg)
+	return n.etcdRaftNode.Step(n.ctx, msg)
 }
 
 func (n *raftNode) sendMessages(messages []raftpb.Message) error {
@@ -254,15 +254,25 @@ func (n *raftNode) publishEntries(entries []raftpb.Entry) error {
 			if err := cc.Unmarshal(entry.Data); err != nil {
 				return err
 			}
-			n.confState = *n.etcdNode.ApplyConfChange(cc)
+			n.confState = *n.etcdRaftNode.ApplyConfChange(cc)
 
 			switch cc.Type {
 			case raftpb.ConfChangeAddNode:
-				nodeID, err := shared.NewNodeIDFromString(string(cc.Context))
-				if err != nil {
-					return err
+				var nodeID *shared.NodeID
+				if len(cc.Context) != 0 {
+					var err error
+					nodeID, err = shared.NewNodeIDFromString(string(cc.Context))
+					if err != nil {
+						return err
+					}
+					n.member[cc.NodeID] = nodeID
+				} else {
+					var ok bool
+					nodeID, ok = n.member[cc.NodeID]
+					if !ok {
+						return errors.New("missing node ID in conf change")
+					}
 				}
-				n.member[cc.NodeID] = nodeID
 				n.manager.raftNodeAppendNode(&n.nodeKey, cc.NodeID, nodeID)
 
 			case raftpb.ConfChangeRemoveNode:

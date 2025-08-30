@@ -18,12 +18,14 @@ package util
 import (
 	"crypto/tls"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"net/http/cookiejar"
 	"slices"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
@@ -71,6 +73,52 @@ func UniqueNodeIDsWithRange(min, max *shared.NodeID, count int) []*shared.NodeID
 	}
 
 	return nodeIDs
+}
+
+func UniqueUUIDs(count int) []uuid.UUID {
+	uuids := make([]uuid.UUID, count)
+	exists := make(map[uuid.UUID]struct{})
+	for i := range uuids {
+		for {
+			id := uuid.New()
+			if _, ok := exists[id]; !ok {
+				uuids[i] = id
+				exists[id] = struct{}{}
+				break
+			}
+		}
+	}
+	return uuids
+}
+
+func UniqueNumbers[V ~int | ~int32 | ~int64 | ~uint | ~uint32 | ~uint64](count int) []V {
+	nums := make([]V, count)
+	exists := make(map[V]struct{})
+	for i := range nums {
+		for {
+			var n V
+			switch any(n).(type) {
+			case int:
+				n = V(rand.Int())
+			case int32:
+				n = V(rand.Int31())
+			case int64:
+				n = V(rand.Int63())
+			case uint:
+				n = V(rand.Uint32())
+			case uint32:
+				n = V(rand.Uint32())
+			case uint64:
+				n = V(rand.Uint64())
+			}
+			if _, ok := exists[n]; !ok {
+				nums[i] = n
+				exists[n] = struct{}{}
+				break
+			}
+		}
+	}
+	return nums
 }
 
 // create client to accept self-signed certificate & cookie

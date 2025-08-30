@@ -15,16 +15,17 @@ message RaftProposalManagement {
 }
 
 enum RaftProposalStoreCommand {
-  IMPORT = 0;
-  GET    = 1;
-  SET    = 2;
-  PATCH  = 3;
-  DELETE = 4;
+  // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+  RAFT_PROPOSAL_STORE_COMMAND_IMPORT = 0;
+  RAFT_PROPOSAL_STORE_COMMAND_GET    = 1;
+  RAFT_PROPOSAL_STORE_COMMAND_SET    = 2;
+  RAFT_PROPOSAL_STORE_COMMAND_PATCH  = 3;
+  RAFT_PROPOSAL_STORE_COMMAND_DELETE = 4;
 }
 
 message RaftProposalStore {
   RaftProposalStoreCommand command = 1;
-  uint32 proposalID                = 2;
+  uint32 proposal_id               = 2;
   string key                       = 3;
   bytes value                      = 4;
 }

@@ -50,6 +50,9 @@ func (s *SimpleKVSStore) DeleteCluster(nodeKey *config.KVSNodeKey) error {
 }
 
 func (s *SimpleKVSStore) Set(nodeKey *config.KVSNodeKey, key string, value []byte) error {
+	if value == nil {
+		return fmt.Errorf("value cannot be nil")
+	}
 	if _, exists := s.stores[*nodeKey]; !exists {
 		return fmt.Errorf("node does not exist: %s", nodeKey.ClusterID.String())
 	}

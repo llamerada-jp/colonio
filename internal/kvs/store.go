@@ -55,8 +55,8 @@ func newStore(config *storeConfig) *store {
 	}
 }
 
-func (s *store) firstActivate() {
-	panic("firstActivate not implemented")
+func (s *store) activate(tail *shared.NodeID) {
+	panic("activate not implemented")
 }
 
 func (s *store) applyProposal(command *proto.RaftProposalStore) {

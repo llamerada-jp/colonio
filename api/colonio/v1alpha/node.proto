@@ -37,9 +37,11 @@ message PacketContent {
     Messaging messaging = 20;
     MessagingResponse messaging_response = 21;
 
-    RaftConfig raft_config = 30;
-    RaftConfigResponse raft_config_response = 31;
-    RaftMessage raft_message = 32;
+    RaftFit raft_fit = 30;
+    RaftFitResponse raft_fit_response = 31;
+    RaftConfig raft_config = 32;
+    RaftConfigResponse raft_config_response = 33;
+    RaftMessage raft_message = 34;
 
     Spread spread = 50;
     SpreadKnock spread_knock = 51;
@@ -77,7 +79,24 @@ message MessagingResponse {
 }
 
 // for raft
+enum RaftFitStage {
+  // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+  RAFT_FIT_STAGE_EMPTY = 0;
+  RAFT_FIT_STAGE_ACTIVE = 1;
+}
+
+message RaftFit {
+  RaftFitStage stage = 1;
+  uint64 head = 2;
+  uint64 tail = 3;
+}
+
+message RaftFitResponse {
+  bool contradiction = 1;
+}
+
 enum RaftConfigCommand {
+  // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
   RAFT_CONFIG_COMMAND_CREATE = 0;
   RAFT_CONFIG_COMMAND_APPEND = 1;
 }
