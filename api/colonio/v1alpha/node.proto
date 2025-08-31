@@ -8,13 +8,15 @@ option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
 
 // node-node packet container
 // Or use an empty message as a ping to cancel the timeout.
-message NodePackets { repeated NodePacket packets = 1; }
+message NodePackets {
+  repeated NodePacket packets = 1;
+}
 
 message NodePacketHead {
   NodeID dst_node_id = 1;
   NodeID src_node_id = 2;
-  uint32 hop_count = 3;
-  uint32 mode = 4;
+  uint32 hop_count   = 3;
+  uint32 mode        = 4;
 }
 
 message NodePacket {
@@ -23,7 +25,7 @@ message NodePacket {
   // ID is common to sequence of packets.
   uint32 id = 2;
   // index decreases by 1 in a sequence of packets.
-  uint32 index = 3;
+  uint32 index  = 3;
   bytes content = 4;
 }
 
@@ -34,31 +36,34 @@ message PacketContent {
 
     Routing routing = 10;
 
-    Messaging messaging = 20;
+    Messaging messaging                  = 20;
     MessagingResponse messaging_response = 21;
 
-    RaftFit raft_fit = 30;
-    RaftFitResponse raft_fit_response = 31;
-    RaftConfig raft_config = 32;
-    RaftConfigResponse raft_config_response = 33;
-    RaftMessage raft_message = 34;
+    KvsOperation kvs_operation                  = 30;
+    KvsOperationResponse kvs_operation_response = 31;
 
-    Spread spread = 50;
-    SpreadKnock spread_knock = 51;
+    RaftFit raft_fit                        = 40;
+    RaftFitResponse raft_fit_response       = 41;
+    RaftConfig raft_config                  = 42;
+    RaftConfigResponse raft_config_response = 43;
+    RaftMessage raft_message                = 44;
+
+    Spread spread                             = 50;
+    SpreadKnock spread_knock                  = 51;
     SpreadKnockResponse spread_knock_response = 52;
-    SpreadRelay spread_relay = 53;
+    SpreadRelay spread_relay                  = 53;
     SpreadRelayResponse spread_relay_response = 54;
   }
 }
 
 message Error {
-  uint32 code = 1;
+  uint32 code    = 1;
   string message = 2;
 }
 
 // for routing
 message RoutingNodeRecord {
-  int64 r1d_score = 1;
+  int64 r1d_score         = 1;
   Coordinate r2d_position = 2;
 }
 
@@ -70,23 +75,42 @@ message Routing {
 
 // for messaging module
 message Messaging {
-  string name = 1;
+  string name   = 1;
   bytes message = 2;
 }
 
-message MessagingResponse { 
+message MessagingResponse {
   bytes response = 1;
 }
 
-// for raft
-enum RaftFitStage {
-  // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
-  RAFT_FIT_STAGE_EMPTY = 0;
-  RAFT_FIT_STAGE_ACTIVE = 1;
+// for kvs and raft module
+message KvsOperation {
+  enum Command {
+    // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+    COMMAND_GET    = 0;
+    COMMAND_SET    = 1;
+    COMMAND_PATCH  = 2;
+    COMMAND_DELETE = 3;
+  }
+
+  Command command = 1;
+  string key      = 2;
+  bytes value     = 3;  // used for SET and PATCH
+}
+
+message KvsOperationResponse {
+  bool found  = 1;  // used for GET
+  bytes value = 2;  // used for GET
 }
 
 message RaftFit {
-  RaftFitStage stage = 1;
+  enum Stage {
+    // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+    STAGE_EMPTY  = 0;
+    STAGE_ACTIVE = 1;
+  }
+
+  Stage stage = 1;
   uint64 head = 2;
   uint64 tail = 3;
 }
@@ -95,45 +119,45 @@ message RaftFitResponse {
   bool contradiction = 1;
 }
 
-enum RaftConfigCommand {
-  // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
-  RAFT_CONFIG_COMMAND_CREATE = 0;
-  RAFT_CONFIG_COMMAND_APPEND = 1;
-}
-
 message RaftConfig {
-  bytes cluster_id = 1; // UUID of the cluster
-  RaftConfigCommand command = 2;
-  uint64 sequence = 3;
-  map<uint64, NodeID> members = 5;  
+  enum Command {
+    // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+    COMMAND_CREATE = 0;
+    COMMAND_APPEND = 1;
+  }
+
+  bytes cluster_id            = 1;  // UUID of the cluster
+  Command command             = 2;
+  uint64 sequence             = 3;
+  map<uint64, NodeID> members = 5;
 }
 
 message RaftConfigResponse {
   bytes cluster_id = 1;
-  uint64 sequence = 2;
+  uint64 sequence  = 2;
 }
 
 message RaftMessage {
   bytes cluster_id = 1;
-  uint64 sequence = 2;
-  bytes message = 3;
+  uint64 sequence  = 2;
+  bytes message    = 3;
 }
 
 // for spread module
 message Spread {
-  NodeID source = 1;
+  NodeID source     = 1;
   Coordinate center = 2;
-  double r = 3;
-  uint64 uid = 4;
-  string name = 5;
-  bytes message = 6;
-  uint32 opt = 7;
+  double r          = 3;
+  uint64 uid        = 4;
+  string name       = 5;
+  bytes message     = 6;
+  uint32 opt        = 7;
 }
 
 message SpreadKnock {
   Coordinate center = 1;
-  double r = 2;
-  uint64 uid = 3;
+  double r          = 2;
+  uint64 uid        = 3;
 }
 
 message SpreadKnockResponse {
@@ -141,13 +165,13 @@ message SpreadKnockResponse {
 }
 
 message SpreadRelay {
-  NodeID source = 1;
+  NodeID source     = 1;
   Coordinate center = 2;
-  double r = 3;
-  uint64 uid = 4;
-  string name = 5;
-  bytes message = 6;
-  uint32 opt = 7;
+  double r          = 3;
+  uint64 uid        = 4;
+  string name       = 5;
+  bytes message     = 6;
+  uint32 opt        = 7;
 }
 
 message SpreadRelayResponse {

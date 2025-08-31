@@ -58,6 +58,11 @@ type Colonio interface {
 	IsStable() bool
 	GetLocalNodeID() string
 	UpdateLocalPosition(x, y float64) error
+	// kvs
+	KvsGet(key string) ([]byte, error)
+	KvsSet(key string, value []byte) error
+	KvsPatch(key string, value []byte) error
+	KvsDelete(key string) error
 	// messaging
 	MessagingPost(dst, name string, val []byte, setters ...MessagingOptionSetter) ([]byte, error)
 	MessagingSetHandler(name string, handler func(*MessagingRequest, MessagingResponseWriter))
@@ -85,8 +90,8 @@ type Config struct {
 	// If you set 0, the default value of 64 will be set.
 	PacketHopLimit uint
 
-	// KVSStore is an actual data store for KVS.
-	KVSStore config.KVSStore
+	// KvsStore is an actual data store for KVS.
+	KvsStore config.KvsStore
 
 	// CacheLifetime is the lifetime of the cache. The spread algorithm is
 	// so simple that the same packet may be received multiple times;
@@ -143,9 +148,9 @@ func WithPlaneGeometry(xMin, xMax, yMin, yMax float64) ConfigSetter {
 	}
 }
 
-func WithKVSStore(store config.KVSStore) ConfigSetter {
+func WithKvsStore(store config.KvsStore) ConfigSetter {
 	return func(c *Config) {
-		c.KVSStore = store
+		c.KvsStore = store
 	}
 }
 
@@ -204,8 +209,8 @@ func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 		}
 	}
 
-	if config.KVSStore == nil {
-		config.KVSStore = kvs.NewSimpleKVSStore()
+	if config.KvsStore == nil {
+		config.KvsStore = kvs.NewSimpleKvsStore()
 	}
 
 	impl := &colonioImpl{
@@ -257,7 +262,7 @@ func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 	impl.kvs = kvs.NewKVS(&kvs.Config{
 		Logger:     config.Logger,
 		Handler:    impl,
-		Store:      config.KVSStore,
+		Store:      config.KvsStore,
 		Transferer: net.GetTransferer(),
 	})
 
@@ -318,6 +323,32 @@ func (c *colonioImpl) UpdateLocalPosition(x, y float64) error {
 	return c.network.UpdateLocalPosition(position)
 }
 
+// kvs
+
+func (c *colonioImpl) KvsGetStability() (bool, []*shared.NodeID) {
+	return c.network.GetStability()
+}
+
+func (c *colonioImpl) KvsState(active bool) (bool, error) {
+	return c.network.StateKvs(active)
+}
+
+func (c *colonioImpl) KvsGet(key string) ([]byte, error) {
+	return c.kvs.Get(key)
+}
+
+func (c *colonioImpl) KvsSet(key string, value []byte) error {
+	return c.kvs.Set(key, value)
+}
+
+func (c *colonioImpl) KvsPatch(key string, value []byte) error {
+	return c.kvs.Patch(key, value)
+}
+
+func (c *colonioImpl) KvsDelete(key string) error {
+	return c.kvs.Delete(key)
+}
+
 // messaging
 
 func MessagingWithAcceptNearby() MessagingOptionSetter {
@@ -330,14 +361,6 @@ func MessagingWithIgnoreResponse() MessagingOptionSetter {
 	return func(o *MessagingOptions) {
 		o.IgnoreResponse = true
 	}
-}
-
-func (c *colonioImpl) KVSGetStability() (bool, []*shared.NodeID) {
-	return c.network.GetStability()
-}
-
-func (c *colonioImpl) KVSState(active bool) (bool, error) {
-	return c.network.StateKVS(active)
 }
 
 func (c *colonioImpl) MessagingPost(dst, name string, val []byte, setters ...MessagingOptionSetter) ([]byte, error) {

@@ -30,14 +30,14 @@ import (
 
 type raftNodeManagerHelper struct {
 	t                      *testing.T
-	raftNodeErrorF         func(nodeKey *config.KVSNodeKey, err error)
+	raftNodeErrorF         func(nodeKey *config.KvsNodeKey, err error)
 	raftNodeSendMessageF   func(dstNodeID *shared.NodeID, data *proto.RaftMessage)
-	raftNodeApplyProposalF func(nodeKey *config.KVSNodeKey, proposal *proto.RaftProposalManagement)
-	raftNodeAppendNodeF    func(nodeKey *config.KVSNodeKey, sequence uint64, nodeID *shared.NodeID)
-	raftNodeRemoveNodeF    func(nodeKey *config.KVSNodeKey, sequence uint64)
+	raftNodeApplyProposalF func(nodeKey *config.KvsNodeKey, proposal *proto.RaftProposalManagement)
+	raftNodeAppendNodeF    func(nodeKey *config.KvsNodeKey, sequence uint64, nodeID *shared.NodeID)
+	raftNodeRemoveNodeF    func(nodeKey *config.KvsNodeKey, sequence uint64)
 }
 
-func (h *raftNodeManagerHelper) raftNodeError(nodeKey *config.KVSNodeKey, err error) {
+func (h *raftNodeManagerHelper) raftNodeError(nodeKey *config.KvsNodeKey, err error) {
 	h.t.Helper()
 	require.NotNil(h.t, h.raftNodeErrorF)
 	h.raftNodeErrorF(nodeKey, err)
@@ -49,19 +49,19 @@ func (h *raftNodeManagerHelper) raftNodeSendMessage(dstNodeID *shared.NodeID, da
 	h.raftNodeSendMessageF(dstNodeID, data)
 }
 
-func (h *raftNodeManagerHelper) raftNodeApplyProposal(nodeKey *config.KVSNodeKey, proposal *proto.RaftProposalManagement) {
+func (h *raftNodeManagerHelper) raftNodeApplyProposal(nodeKey *config.KvsNodeKey, proposal *proto.RaftProposalManagement) {
 	h.t.Helper()
 	require.NotNil(h.t, h.raftNodeApplyProposalF)
 	h.raftNodeApplyProposalF(nodeKey, proposal)
 }
 
-func (h *raftNodeManagerHelper) raftNodeAppendNode(nodeKey *config.KVSNodeKey, sequence uint64, nodeID *shared.NodeID) {
+func (h *raftNodeManagerHelper) raftNodeAppendNode(nodeKey *config.KvsNodeKey, sequence uint64, nodeID *shared.NodeID) {
 	h.t.Helper()
 	require.NotNil(h.t, h.raftNodeAppendNodeF)
 	h.raftNodeAppendNodeF(nodeKey, sequence, nodeID)
 }
 
-func (h *raftNodeManagerHelper) raftNodeRemoveNode(nodeKey *config.KVSNodeKey, sequence uint64) {
+func (h *raftNodeManagerHelper) raftNodeRemoveNode(nodeKey *config.KvsNodeKey, sequence uint64) {
 	h.t.Helper()
 	require.NotNil(h.t, h.raftNodeRemoveNodeF)
 	h.raftNodeRemoveNodeF(nodeKey, sequence)
@@ -130,7 +130,7 @@ func TestRaftNode(t *testing.T) {
 
 	manager := &raftNodeManagerHelper{
 		t: t,
-		raftNodeErrorF: func(nodeKey *config.KVSNodeKey, err error) {
+		raftNodeErrorF: func(nodeKey *config.KvsNodeKey, err error) {
 			require.FailNow(t, "unexpected raftNodeError")
 		},
 		raftNodeSendMessageF: func(dstNodeID *shared.NodeID, data *proto.RaftMessage) {
@@ -146,7 +146,7 @@ func TestRaftNode(t *testing.T) {
 			err := raftNodes[i].processMessage(data)
 			assert.NoError(t, err)
 		},
-		raftNodeAppendNodeF: func(nodeKey *config.KVSNodeKey, sequence uint64, nodeID *shared.NodeID) {
+		raftNodeAppendNodeF: func(nodeKey *config.KvsNodeKey, sequence uint64, nodeID *shared.NodeID) {
 			mtx.Lock()
 			defer mtx.Unlock()
 			i := sequenceMap[nodeKey.Sequence]
@@ -155,7 +155,7 @@ func TestRaftNode(t *testing.T) {
 				nodeID:   nodeID,
 			})
 		},
-		raftNodeRemoveNodeF: func(nodeKey *config.KVSNodeKey, sequence uint64) {
+		raftNodeRemoveNodeF: func(nodeKey *config.KvsNodeKey, sequence uint64) {
 			mtx.Lock()
 			defer mtx.Unlock()
 			i := sequenceMap[nodeKey.Sequence]
@@ -163,7 +163,7 @@ func TestRaftNode(t *testing.T) {
 				sequence: sequence,
 			})
 		},
-		raftNodeApplyProposalF: func(nodeKey *config.KVSNodeKey, proposal *proto.RaftProposalManagement) {
+		raftNodeApplyProposalF: func(nodeKey *config.KvsNodeKey, proposal *proto.RaftProposalManagement) {
 			mtx.Lock()
 			defer mtx.Unlock()
 			i := sequenceMap[nodeKey.Sequence]
@@ -192,7 +192,7 @@ func TestRaftNode(t *testing.T) {
 				logger:  testUtil.Logger(t),
 				manager: manager,
 				store:   store,
-				nodeKey: &config.KVSNodeKey{
+				nodeKey: &config.KvsNodeKey{
 					ClusterID: clusterID,
 					Sequence:  sequences[i],
 				},
@@ -261,7 +261,7 @@ func TestRaftNode(t *testing.T) {
 					})
 				},
 			},
-			nodeKey: &config.KVSNodeKey{
+			nodeKey: &config.KvsNodeKey{
 				ClusterID: clusterID,
 				Sequence:  sequences[3],
 			},
@@ -329,7 +329,7 @@ func TestRaftNode(t *testing.T) {
 				prop: &proto.RaftProposal{
 					Content: &proto.RaftProposal_Store{
 						Store: &proto.RaftProposalStore{
-							Command:    proto.RaftProposalStoreCommand_RAFT_PROPOSAL_STORE_COMMAND_DELETE,
+							Command:    proto.RaftProposalStore_COMMAND_DELETE,
 							ProposalId: 1,
 							Key:        "key",
 							Value:      []byte("value"),
@@ -342,7 +342,7 @@ func TestRaftNode(t *testing.T) {
 				prop: &proto.RaftProposal{
 					Content: &proto.RaftProposal_Store{
 						Store: &proto.RaftProposalStore{
-							Command:    proto.RaftProposalStoreCommand_RAFT_PROPOSAL_STORE_COMMAND_DELETE,
+							Command:    proto.RaftProposalStore_COMMAND_DELETE,
 							ProposalId: 2,
 							Key:        "key",
 							Value:      []byte("value"),

@@ -290,7 +290,7 @@ func (h *SimpleGateway) PublishSignal(ctx context.Context, signal *proto.Signal,
 	return nil
 }
 
-func (h *SimpleGateway) SetKVSState(ctx context.Context, nodeID *shared.NodeID, active bool) error {
+func (h *SimpleGateway) SetKvsState(ctx context.Context, nodeID *shared.NodeID, active bool) error {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
@@ -303,7 +303,7 @@ func (h *SimpleGateway) SetKVSState(ctx context.Context, nodeID *shared.NodeID, 
 	return nil
 }
 
-func (h *SimpleGateway) ExistsKVSActiveNode(ctx context.Context) (bool, error) {
+func (h *SimpleGateway) ExistsKvsActiveNode(ctx context.Context) (bool, error) {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 

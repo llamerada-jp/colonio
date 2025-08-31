@@ -34,11 +34,11 @@ const (
 )
 
 type raftNodeManager interface {
-	raftNodeError(nodeKey *config.KVSNodeKey, err error)
+	raftNodeError(nodeKey *config.KvsNodeKey, err error)
 	raftNodeSendMessage(dstNodeID *shared.NodeID, data *proto.RaftMessage)
-	raftNodeApplyProposal(nodeKey *config.KVSNodeKey, proposal *proto.RaftProposalManagement)
-	raftNodeAppendNode(nodeKey *config.KVSNodeKey, sequence uint64, nodeID *shared.NodeID)
-	raftNodeRemoveNode(nodeKey *config.KVSNodeKey, sequence uint64)
+	raftNodeApplyProposal(nodeKey *config.KvsNodeKey, proposal *proto.RaftProposalManagement)
+	raftNodeAppendNode(nodeKey *config.KvsNodeKey, sequence uint64, nodeID *shared.NodeID)
+	raftNodeRemoveNode(nodeKey *config.KvsNodeKey, sequence uint64)
 }
 
 type raftNodeStore interface {
@@ -51,7 +51,7 @@ type raftNodeConfig struct {
 	logger  *slog.Logger
 	manager raftNodeManager
 	store   raftNodeStore
-	nodeKey *config.KVSNodeKey
+	nodeKey *config.KvsNodeKey
 	join    bool
 	member  map[uint64]*shared.NodeID
 }
@@ -60,7 +60,7 @@ type raftNode struct {
 	logger       *slog.Logger
 	manager      raftNodeManager
 	store        raftNodeStore
-	nodeKey      config.KVSNodeKey
+	nodeKey      config.KvsNodeKey
 	ctx          context.Context
 	etcdRaftNode raft.Node
 	raftStorage  *raft.MemoryStorage

@@ -21,19 +21,19 @@ import (
 	"github.com/llamerada-jp/colonio/config"
 )
 
-type SimpleKVSStore struct {
-	stores map[config.KVSNodeKey]map[string][]byte
+type SimpleKvsStore struct {
+	stores map[config.KvsNodeKey]map[string][]byte
 }
 
-var _ config.KVSStore = (*SimpleKVSStore)(nil)
+var _ config.KvsStore = (*SimpleKvsStore)(nil)
 
-func NewSimpleKVSStore() *SimpleKVSStore {
-	return &SimpleKVSStore{
-		stores: make(map[config.KVSNodeKey]map[string][]byte),
+func NewSimpleKvsStore() *SimpleKvsStore {
+	return &SimpleKvsStore{
+		stores: make(map[config.KvsNodeKey]map[string][]byte),
 	}
 }
 
-func (s *SimpleKVSStore) NewCluster(nodeKey *config.KVSNodeKey) error {
+func (s *SimpleKvsStore) NewCluster(nodeKey *config.KvsNodeKey) error {
 	if _, exists := s.stores[*nodeKey]; exists {
 		return fmt.Errorf("node already exists: %s", nodeKey.ClusterID.String())
 	}
@@ -41,7 +41,7 @@ func (s *SimpleKVSStore) NewCluster(nodeKey *config.KVSNodeKey) error {
 	return nil
 }
 
-func (s *SimpleKVSStore) DeleteCluster(nodeKey *config.KVSNodeKey) error {
+func (s *SimpleKvsStore) DeleteCluster(nodeKey *config.KvsNodeKey) error {
 	if _, exists := s.stores[*nodeKey]; !exists {
 		return fmt.Errorf("node does not exist: %s", nodeKey.ClusterID.String())
 	}
@@ -49,7 +49,7 @@ func (s *SimpleKVSStore) DeleteCluster(nodeKey *config.KVSNodeKey) error {
 	return nil
 }
 
-func (s *SimpleKVSStore) Set(nodeKey *config.KVSNodeKey, key string, value []byte) error {
+func (s *SimpleKvsStore) Set(nodeKey *config.KvsNodeKey, key string, value []byte) error {
 	if value == nil {
 		return fmt.Errorf("value cannot be nil")
 	}
@@ -60,7 +60,7 @@ func (s *SimpleKVSStore) Set(nodeKey *config.KVSNodeKey, key string, value []byt
 	return nil
 }
 
-func (s *SimpleKVSStore) Get(nodeKey *config.KVSNodeKey, key string) ([]byte, error) {
+func (s *SimpleKvsStore) Get(nodeKey *config.KvsNodeKey, key string) ([]byte, error) {
 	if _, exists := s.stores[*nodeKey]; !exists {
 		return nil, fmt.Errorf("node does not exist: %s", nodeKey.ClusterID.String())
 	}
@@ -71,11 +71,11 @@ func (s *SimpleKVSStore) Get(nodeKey *config.KVSNodeKey, key string) ([]byte, er
 	return value, nil
 }
 
-func (s *SimpleKVSStore) Patch(nodeKey *config.KVSNodeKey, key string, value []byte) error {
-	panic("Patch not implemented in SimpleKVSStore")
+func (s *SimpleKvsStore) Patch(nodeKey *config.KvsNodeKey, key string, value []byte) error {
+	panic("Patch not implemented in SimpleKvsStore")
 }
 
-func (s *SimpleKVSStore) Delete(nodeKey *config.KVSNodeKey, key string) error {
+func (s *SimpleKvsStore) Delete(nodeKey *config.KvsNodeKey, key string) error {
 	if _, exists := s.stores[*nodeKey]; !exists {
 		return fmt.Errorf("node does not exist: %s", nodeKey.ClusterID.String())
 	}

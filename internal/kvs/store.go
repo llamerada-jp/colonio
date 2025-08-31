@@ -16,6 +16,8 @@
 package kvs
 
 import (
+	"sync"
+
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/shared"
@@ -26,8 +28,9 @@ type storeHandler interface {
 }
 
 type storeConfig struct {
-	nodeKey *config.KVSNodeKey
+	nodeKey *config.KvsNodeKey
 	handler storeHandler
+	store   config.KvsStore
 	head    *shared.NodeID
 }
 
@@ -37,26 +40,53 @@ type lock struct {
 }
 
 type store struct {
-	nodeKey  config.KVSNodeKey
+	nodeKey  config.KvsNodeKey
 	handler  storeHandler
+	mtx      sync.RWMutex
+	store    config.KvsStore
 	head     *shared.NodeID
 	tail     *shared.NodeID
 	readonly *lock
 	blocked  *lock
-	records  map[shared.NodeID]map[string][]byte
+	keys     map[string]any
 }
 
 func newStore(config *storeConfig) *store {
 	return &store{
 		nodeKey: *config.nodeKey,
 		handler: config.handler,
+		store:   config.store,
 		head:    config.head,
-		records: make(map[shared.NodeID]map[string][]byte),
+		keys:    make(map[string]any),
 	}
 }
 
+func (s *store) get(key string) ([]byte, error) {
+	panic("get not implemented")
+}
+
+func (s *store) set(key string, value []byte) error {
+	panic("set not implemented")
+}
+
+func (s *store) patch(key string, value []byte) error {
+	panic("patch not implemented")
+}
+
+func (s *store) delete(key string) error {
+	panic("delete not implemented")
+}
+
 func (s *store) activate(tail *shared.NodeID) {
-	panic("activate not implemented")
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if s.tail != nil {
+		panic("logic error: already activated")
+	}
+
+	t := *tail
+	s.tail = &t
 }
 
 func (s *store) applyProposal(command *proto.RaftProposalStore) {

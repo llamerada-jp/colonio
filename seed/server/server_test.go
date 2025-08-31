@@ -85,9 +85,9 @@ func (c *controllerMock) PollSignal(ctx context.Context, nodeID *shared.NodeID, 
 	return c.pollSignalF(ctx, nodeID, send)
 }
 
-func (c *controllerMock) StateKVS(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error) {
+func (c *controllerMock) StateKvs(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error) {
 	c.t.Helper()
-	require.NotNil(c.t, c.stateKvsF, "StateKVSF must not be nil")
+	require.NotNil(c.t, c.stateKvsF, "StateKvsF must not be nil")
 	return c.stateKvsF(ctx, nodeID, active)
 }
 
@@ -388,7 +388,7 @@ func TestServer_PollSignal(t *testing.T) {
 	assert.Equal(t, uint32(2), signals[1].GetIce().OfferId)
 }
 
-func TestServer_StateKVS(t *testing.T) {
+func TestServer_StateKvs(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(1)
 	called := false
 	port := runTestServer(t, &controllerMock{
@@ -405,9 +405,9 @@ func TestServer_StateKVS(t *testing.T) {
 	})
 	client := createTestClient(t, port)
 
-	// StateKVS without assigning first should return an error
-	_, err := client.StateKVS(t.Context(), &connect.Request[proto.StateKVSRequest]{
-		Msg: &proto.StateKVSRequest{
+	// StateKvs without assigning first should return an error
+	_, err := client.StateKvs(t.Context(), &connect.Request[proto.StateKvsRequest]{
+		Msg: &proto.StateKvsRequest{
 			Active: true,
 		},
 	})
@@ -415,13 +415,13 @@ func TestServer_StateKVS(t *testing.T) {
 	assert.ErrorAs(t, err, &ce)
 	assert.ErrorContains(t, err, "reqID")
 
-	// Assign a node and then StateKVS
+	// Assign a node and then StateKvs
 	_, err = client.AssignNode(t.Context(), &connect.Request[proto.AssignNodeRequest]{
 		Msg: &proto.AssignNodeRequest{},
 	})
 	require.NoError(t, err)
-	_, err = client.StateKVS(t.Context(), &connect.Request[proto.StateKVSRequest]{
-		Msg: &proto.StateKVSRequest{
+	_, err = client.StateKvs(t.Context(), &connect.Request[proto.StateKvsRequest]{
+		Msg: &proto.StateKvsRequest{
 			Active: true,
 		},
 	})

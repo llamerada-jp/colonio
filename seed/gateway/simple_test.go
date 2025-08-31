@@ -503,7 +503,7 @@ func TestSimpleGateway_PublishSignal(t *testing.T) {
 	}
 }
 
-func TestSimpleGateway_SetKVSState(t *testing.T) {
+func TestSimpleGateway_SetKvsState(t *testing.T) {
 	sg := NewSimpleGateway(testUtil.Logger(t),
 		&HandlerHelper{
 			t: t,
@@ -516,19 +516,19 @@ func TestSimpleGateway_SetKVSState(t *testing.T) {
 		waitingSignals:    make([]signalEntry, 0),
 	}
 
-	err := sg.SetKVSState(t.Context(), nodeIDs[0], true)
+	err := sg.SetKvsState(t.Context(), nodeIDs[0], true)
 	require.NoError(t, err)
 	assert.True(t, sg.nodes[*nodeIDs[0]].kvsActive)
 
-	err = sg.SetKVSState(t.Context(), nodeIDs[0], false)
+	err = sg.SetKvsState(t.Context(), nodeIDs[0], false)
 	require.NoError(t, err)
 	assert.False(t, sg.nodes[*nodeIDs[0]].kvsActive)
 
-	err = sg.SetKVSState(t.Context(), nodeIDs[1], true)
+	err = sg.SetKvsState(t.Context(), nodeIDs[1], true)
 	require.Error(t, err)
 }
 
-func TestSimpleGateway_ExistsKVSActiveNode(t *testing.T) {
+func TestSimpleGateway_ExistsKvsActiveNode(t *testing.T) {
 	sg := NewSimpleGateway(testUtil.Logger(t),
 		&HandlerHelper{
 			t: t,
@@ -554,15 +554,15 @@ func TestSimpleGateway_ExistsKVSActiveNode(t *testing.T) {
 		kvsActive:         false,
 	}
 
-	exists, err := sg.ExistsKVSActiveNode(t.Context())
+	exists, err := sg.ExistsKvsActiveNode(t.Context())
 	require.NoError(t, err)
 	assert.True(t, exists)
 
 	// Set all nodes to inactive
-	err = sg.SetKVSState(t.Context(), nodeIDs[1], false)
+	err = sg.SetKvsState(t.Context(), nodeIDs[1], false)
 	require.NoError(t, err)
 
-	exists, err = sg.ExistsKVSActiveNode(t.Context())
+	exists, err = sg.ExistsKvsActiveNode(t.Context())
 	require.NoError(t, err)
 	assert.False(t, exists)
 }

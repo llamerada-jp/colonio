@@ -44,14 +44,14 @@ const (
 )
 
 type Handler interface {
-	KVSGetStability() (bool, []*shared.NodeID)
-	KVSState(active bool) (bool, error)
+	KvsGetStability() (bool, []*shared.NodeID)
+	KvsState(active bool) (bool, error)
 }
 
 type Config struct {
 	Logger     *slog.Logger
 	Handler    Handler
-	Store      config.KVSStore
+	Store      config.KvsStore
 	Transferer *transferer.Transferer
 }
 
@@ -64,12 +64,12 @@ type KVS struct {
 	logger       *slog.Logger
 	ctx          context.Context
 	handler      Handler
-	store        config.KVSStore
+	store        config.KvsStore
 	transferer   *transferer.Transferer
 	localNodeID  *shared.NodeID
 	mtx          sync.RWMutex
-	nodes        map[config.KVSNodeKey]*node
-	coordinating *config.KVSNodeKey
+	nodes        map[config.KvsNodeKey]*node
+	coordinating *config.KvsNodeKey
 	lastSequence uint64
 	// currentNode's member state
 	members map[uint64]*memberEntry
@@ -81,7 +81,7 @@ func NewKVS(conf *Config) *KVS {
 		handler:    conf.Handler,
 		store:      conf.Store,
 		transferer: conf.Transferer,
-		nodes:      make(map[config.KVSNodeKey]*node),
+		nodes:      make(map[config.KvsNodeKey]*node),
 		members:    make(map[uint64]*memberEntry),
 	}
 
@@ -113,8 +113,24 @@ func (k *KVS) Start(ctx context.Context, localNodeID *shared.NodeID) error {
 	return nil
 }
 
+func (k *KVS) Get(key string) ([]byte, error) {
+	panic("Get not implemented")
+}
+
+func (k *KVS) Set(key string, value []byte) error {
+	panic("Set not implemented")
+}
+
+func (k *KVS) Patch(key string, value []byte) error {
+	panic("Patch not implemented")
+}
+
+func (k *KVS) Delete(key string) error {
+	panic("Delete not implemented")
+}
+
 func (k *KVS) subRoutine() {
-	isStable, nextNodeIDs := k.handler.KVSGetStability()
+	isStable, nextNodeIDs := k.handler.KvsGetStability()
 	if !isStable {
 		return
 	}
@@ -199,7 +215,7 @@ func (k *KVS) createCluster(nextNodeIDs []*shared.NodeID) {
 		}
 	}
 
-	nodeKey := &config.KVSNodeKey{
+	nodeKey := &config.KvsNodeKey{
 		ClusterID: clusterID,
 		Sequence:  coordinatingNodeSequence,
 	}
@@ -207,7 +223,7 @@ func (k *KVS) createCluster(nextNodeIDs []*shared.NodeID) {
 	k.allocateCluster(nodeKey, k.localNodeID, false, member)
 }
 
-func (k *KVS) allocateCluster(nodeKey *config.KVSNodeKey, head *shared.NodeID, append bool, members map[uint64]*shared.NodeID) {
+func (k *KVS) allocateCluster(nodeKey *config.KvsNodeKey, head *shared.NodeID, append bool, members map[uint64]*shared.NodeID) {
 	n := &node{}
 	k.nodes[*nodeKey] = n
 
@@ -260,11 +276,11 @@ func (k *KVS) sendSettingMessage() {
 			members[ms] = mm.nodeID.Proto()
 		}
 
-		var command proto.RaftConfigCommand
+		var command proto.RaftConfig_Command
 		if member.state == memberStateCreating {
-			command = proto.RaftConfigCommand_RAFT_CONFIG_COMMAND_CREATE
+			command = proto.RaftConfig_COMMAND_CREATE
 		} else {
-			command = proto.RaftConfigCommand_RAFT_CONFIG_COMMAND_APPEND
+			command = proto.RaftConfig_COMMAND_APPEND
 		}
 
 		k.transferer.RequestOneWay(
@@ -306,12 +322,12 @@ func (k *KVS) recvConfig(packet *shared.Packet) {
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
 
-	nodeKey := config.KVSNodeKey{ClusterID: clusterID, Sequence: sequence}
+	nodeKey := config.KvsNodeKey{ClusterID: clusterID, Sequence: sequence}
 	switch command {
-	case proto.RaftConfigCommand_RAFT_CONFIG_COMMAND_CREATE, proto.RaftConfigCommand_RAFT_CONFIG_COMMAND_APPEND:
+	case proto.RaftConfig_COMMAND_CREATE, proto.RaftConfig_COMMAND_APPEND:
 		if _, ok := k.nodes[nodeKey]; !ok {
 			append := true
-			if command == proto.RaftConfigCommand_RAFT_CONFIG_COMMAND_CREATE {
+			if command == proto.RaftConfig_COMMAND_CREATE {
 				append = false
 			}
 			k.allocateCluster(&nodeKey, packet.SrcNodeID, append, members)
@@ -364,7 +380,7 @@ func (k *KVS) recvMessage(packet *shared.Packet) {
 		return
 	}
 
-	key := config.KVSNodeKey{
+	key := config.KvsNodeKey{
 		ClusterID: clusterID,
 		Sequence:  content.Sequence,
 	}
@@ -381,7 +397,7 @@ func (k *KVS) recvMessage(packet *shared.Packet) {
 	}
 }
 
-func (k *KVS) raftNodeError(nodeKey *config.KVSNodeKey, err error) {
+func (k *KVS) raftNodeError(nodeKey *config.KvsNodeKey, err error) {
 	panic(fmt.Sprintf("raftNodeError not implemented: %s", err))
 }
 
@@ -396,7 +412,7 @@ func (k *KVS) raftNodeSendMessage(dstNodeID *shared.NodeID, message *proto.RaftM
 		})
 }
 
-func (k *KVS) raftNodeApplyProposal(nodeKey *config.KVSNodeKey, proposal *proto.RaftProposalManagement) {
+func (k *KVS) raftNodeApplyProposal(nodeKey *config.KvsNodeKey, proposal *proto.RaftProposalManagement) {
 	_, ok := k.nodes[*nodeKey]
 	if !ok {
 		return
@@ -405,7 +421,7 @@ func (k *KVS) raftNodeApplyProposal(nodeKey *config.KVSNodeKey, proposal *proto.
 	panic("raftNodeApplyProposal not implemented")
 }
 
-func (k *KVS) raftNodeAppendNode(nodeKey *config.KVSNodeKey, sequence uint64, nodeID *shared.NodeID) {
+func (k *KVS) raftNodeAppendNode(nodeKey *config.KvsNodeKey, sequence uint64, nodeID *shared.NodeID) {
 	if *nodeKey != *k.coordinating {
 		return
 	}
@@ -430,7 +446,7 @@ func (k *KVS) raftNodeAppendNode(nodeKey *config.KVSNodeKey, sequence uint64, no
 	}
 }
 
-func (k *KVS) raftNodeRemoveNode(nodeKey *config.KVSNodeKey, sequence uint64) {
+func (k *KVS) raftNodeRemoveNode(nodeKey *config.KvsNodeKey, sequence uint64) {
 	k.mtx.RLock()
 	node, ok := k.nodes[*nodeKey]
 	k.mtx.RUnlock()

@@ -647,7 +647,7 @@ func TestController_SendSignal(t *testing.T) {
 		Content: &proto.Signal_Offer{
 			Offer: &proto.SignalOffer{
 				OfferId: 1,
-				Type:    proto.SignalOfferType_SIGNAL_OFFER_TYPE_NEXT,
+				Type:    proto.SignalOffer_TYPE_NEXT,
 			},
 		},
 	})
@@ -666,7 +666,7 @@ func TestController_SendSignal(t *testing.T) {
 	assert.Equal(t, 6, callCount)
 }
 
-func TestController_StateKVS(t *testing.T) {
+func TestController_StateKvs(t *testing.T) {
 	ctx := misc.NewLoggerContext(t.Context(), nil)
 	nodeIDs := testUtil.UniqueNodeIDs(2)
 	mtx := sync.Mutex{}
@@ -676,14 +676,14 @@ func TestController_StateKVS(t *testing.T) {
 	c := NewController(&Options{
 		Logger: testUtil.Logger(t),
 		Gateway: &helper.Gateway{
-			SetKVSStateF: func(_ context.Context, nodeID *shared.NodeID, active bool) error {
+			SetKvsStateF: func(_ context.Context, nodeID *shared.NodeID, active bool) error {
 				mtx.Lock()
 				defer mtx.Unlock()
 				callCount++
 				activeStates[nodeID.String()] = active
 				return nil
 			},
-			ExistsKVSActiveNodeF: func(_ context.Context) (bool, error) {
+			ExistsKvsActiveNodeF: func(_ context.Context) (bool, error) {
 				mtx.Lock()
 				defer mtx.Unlock()
 				callCount++
@@ -698,22 +698,22 @@ func TestController_StateKVS(t *testing.T) {
 	})
 
 	// set active state for node 0
-	exists, err := c.StateKVS(ctx, nodeIDs[0], false)
+	exists, err := c.StateKvs(ctx, nodeIDs[0], false)
 	require.NoError(t, err)
 	assert.False(t, exists)
 
 	// check exists active node
-	exists, err = c.StateKVS(ctx, nodeIDs[1], true)
+	exists, err = c.StateKvs(ctx, nodeIDs[1], true)
 	require.NoError(t, err)
 	assert.True(t, exists)
 
 	// set inactive state for node 0
-	exists, err = c.StateKVS(ctx, nodeIDs[0], false)
+	exists, err = c.StateKvs(ctx, nodeIDs[0], false)
 	require.NoError(t, err)
 	assert.True(t, exists)
 
 	// set inactive state for node 1
-	exists, err = c.StateKVS(ctx, nodeIDs[1], false)
+	exists, err = c.StateKvs(ctx, nodeIDs[1], false)
 	require.NoError(t, err)
 	assert.False(t, exists)
 

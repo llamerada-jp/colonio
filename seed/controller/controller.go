@@ -43,7 +43,7 @@ type Controller interface {
 	ReconcileNextNodes(ctx context.Context, nodeID *shared.NodeID, nextNodeIDs, disconnectedIDs []*shared.NodeID) (bool, error)
 	SendSignal(ctx context.Context, nodeID *shared.NodeID, signal *proto.Signal) error
 	PollSignal(ctx context.Context, nodeID *shared.NodeID, send func(*proto.Signal) error) error
-	StateKVS(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error)
+	StateKvs(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error)
 }
 
 type ControllerImpl struct {
@@ -290,7 +290,7 @@ func (c *ControllerImpl) SendSignal(ctx context.Context, nodeID *shared.NodeID, 
 		}
 
 		relayToNext := false
-		if signal.GetOffer() != nil && signal.GetOffer().GetType() == proto.SignalOfferType_SIGNAL_OFFER_TYPE_NEXT {
+		if signal.GetOffer() != nil && signal.GetOffer().GetType() == proto.SignalOffer_TYPE_NEXT {
 			relayToNext = true
 		}
 
@@ -346,12 +346,12 @@ func (c *ControllerImpl) PollSignal(ctx context.Context, nodeID *shared.NodeID, 
 	}
 }
 
-func (c *ControllerImpl) StateKVS(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error) {
-	if err := c.gateway.SetKVSState(ctx, nodeID, active); err != nil {
+func (c *ControllerImpl) StateKvs(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error) {
+	if err := c.gateway.SetKvsState(ctx, nodeID, active); err != nil {
 		return false, fmt.Errorf("failed to set KVS state: %w", err)
 	}
 
-	exists, err := c.gateway.ExistsKVSActiveNode(ctx)
+	exists, err := c.gateway.ExistsKvsActiveNode(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to check if KVS active node exists: %w", err)
 	}

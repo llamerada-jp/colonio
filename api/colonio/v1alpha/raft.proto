@@ -14,20 +14,20 @@ message RaftProposal {
 message RaftProposalManagement {
 }
 
-enum RaftProposalStoreCommand {
-  // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
-  RAFT_PROPOSAL_STORE_COMMAND_IMPORT = 0;
-  RAFT_PROPOSAL_STORE_COMMAND_GET    = 1;
-  RAFT_PROPOSAL_STORE_COMMAND_SET    = 2;
-  RAFT_PROPOSAL_STORE_COMMAND_PATCH  = 3;
-  RAFT_PROPOSAL_STORE_COMMAND_DELETE = 4;
-}
-
 message RaftProposalStore {
-  RaftProposalStoreCommand command = 1;
-  uint32 proposal_id               = 2;
-  string key                       = 3;
-  bytes value                      = 4;
+  enum Command {
+    // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+    COMMAND_IMPORT = 0;
+    COMMAND_GET    = 1;
+    COMMAND_SET    = 2;
+    COMMAND_PATCH  = 3;
+    COMMAND_DELETE = 4;
+  }
+
+  Command command    = 1;
+  uint32 proposal_id = 2;
+  string key         = 3;
+  bytes value        = 4;
 }
 
 message RaftStoreSnapshot {

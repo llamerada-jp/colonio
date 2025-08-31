@@ -27,17 +27,17 @@ type ICEServer struct {
 	Credential string `json:"credential,omitempty"`
 }
 
-type KVSNodeKey struct {
+type KvsNodeKey struct {
 	ClusterID uuid.UUID
 	Sequence  uint64
 }
 
-type KVSStore interface {
-	NewCluster(nodeKey *KVSNodeKey) error
-	DeleteCluster(nodeKey *KVSNodeKey) error
+type KvsStore interface {
+	NewCluster(nodeKey *KvsNodeKey) error
+	DeleteCluster(nodeKey *KvsNodeKey) error
 
-	Get(nodeKey *KVSNodeKey, key string) ([]byte, error)
-	Set(nodeKey *KVSNodeKey, key string, value []byte) error
-	Patch(nodeKey *KVSNodeKey, key string, value []byte) error
-	Delete(nodeKey *KVSNodeKey, key string) error
+	Get(nodeKey *KvsNodeKey, key string) ([]byte, error)
+	Set(nodeKey *KvsNodeKey, key string, value []byte) error
+	Patch(nodeKey *KvsNodeKey, key string, value []byte) error
+	Delete(nodeKey *KvsNodeKey, key string) error
 }

@@ -21,60 +21,60 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type RaftProposalStoreCommand int32
+type RaftProposalStore_Command int32
 
 const (
 	// buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
-	RaftProposalStoreCommand_RAFT_PROPOSAL_STORE_COMMAND_IMPORT RaftProposalStoreCommand = 0
-	RaftProposalStoreCommand_RAFT_PROPOSAL_STORE_COMMAND_GET    RaftProposalStoreCommand = 1
-	RaftProposalStoreCommand_RAFT_PROPOSAL_STORE_COMMAND_SET    RaftProposalStoreCommand = 2
-	RaftProposalStoreCommand_RAFT_PROPOSAL_STORE_COMMAND_PATCH  RaftProposalStoreCommand = 3
-	RaftProposalStoreCommand_RAFT_PROPOSAL_STORE_COMMAND_DELETE RaftProposalStoreCommand = 4
+	RaftProposalStore_COMMAND_IMPORT RaftProposalStore_Command = 0
+	RaftProposalStore_COMMAND_GET    RaftProposalStore_Command = 1
+	RaftProposalStore_COMMAND_SET    RaftProposalStore_Command = 2
+	RaftProposalStore_COMMAND_PATCH  RaftProposalStore_Command = 3
+	RaftProposalStore_COMMAND_DELETE RaftProposalStore_Command = 4
 )
 
-// Enum value maps for RaftProposalStoreCommand.
+// Enum value maps for RaftProposalStore_Command.
 var (
-	RaftProposalStoreCommand_name = map[int32]string{
-		0: "RAFT_PROPOSAL_STORE_COMMAND_IMPORT",
-		1: "RAFT_PROPOSAL_STORE_COMMAND_GET",
-		2: "RAFT_PROPOSAL_STORE_COMMAND_SET",
-		3: "RAFT_PROPOSAL_STORE_COMMAND_PATCH",
-		4: "RAFT_PROPOSAL_STORE_COMMAND_DELETE",
+	RaftProposalStore_Command_name = map[int32]string{
+		0: "COMMAND_IMPORT",
+		1: "COMMAND_GET",
+		2: "COMMAND_SET",
+		3: "COMMAND_PATCH",
+		4: "COMMAND_DELETE",
 	}
-	RaftProposalStoreCommand_value = map[string]int32{
-		"RAFT_PROPOSAL_STORE_COMMAND_IMPORT": 0,
-		"RAFT_PROPOSAL_STORE_COMMAND_GET":    1,
-		"RAFT_PROPOSAL_STORE_COMMAND_SET":    2,
-		"RAFT_PROPOSAL_STORE_COMMAND_PATCH":  3,
-		"RAFT_PROPOSAL_STORE_COMMAND_DELETE": 4,
+	RaftProposalStore_Command_value = map[string]int32{
+		"COMMAND_IMPORT": 0,
+		"COMMAND_GET":    1,
+		"COMMAND_SET":    2,
+		"COMMAND_PATCH":  3,
+		"COMMAND_DELETE": 4,
 	}
 )
 
-func (x RaftProposalStoreCommand) Enum() *RaftProposalStoreCommand {
-	p := new(RaftProposalStoreCommand)
+func (x RaftProposalStore_Command) Enum() *RaftProposalStore_Command {
+	p := new(RaftProposalStore_Command)
 	*p = x
 	return p
 }
 
-func (x RaftProposalStoreCommand) String() string {
+func (x RaftProposalStore_Command) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (RaftProposalStoreCommand) Descriptor() protoreflect.EnumDescriptor {
+func (RaftProposalStore_Command) Descriptor() protoreflect.EnumDescriptor {
 	return file_api_colonio_v1alpha_raft_proto_enumTypes[0].Descriptor()
 }
 
-func (RaftProposalStoreCommand) Type() protoreflect.EnumType {
+func (RaftProposalStore_Command) Type() protoreflect.EnumType {
 	return &file_api_colonio_v1alpha_raft_proto_enumTypes[0]
 }
 
-func (x RaftProposalStoreCommand) Number() protoreflect.EnumNumber {
+func (x RaftProposalStore_Command) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use RaftProposalStoreCommand.Descriptor instead.
-func (RaftProposalStoreCommand) EnumDescriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_raft_proto_rawDescGZIP(), []int{0}
+// Deprecated: Use RaftProposalStore_Command.Descriptor instead.
+func (RaftProposalStore_Command) EnumDescriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_raft_proto_rawDescGZIP(), []int{2, 0}
 }
 
 type RaftProposal struct {
@@ -196,11 +196,11 @@ func (*RaftProposalManagement) Descriptor() ([]byte, []int) {
 }
 
 type RaftProposalStore struct {
-	state         protoimpl.MessageState   `protogen:"open.v1"`
-	Command       RaftProposalStoreCommand `protobuf:"varint,1,opt,name=command,proto3,enum=api.colonio.v1alpha.RaftProposalStoreCommand" json:"command,omitempty"`
-	ProposalId    uint32                   `protobuf:"varint,2,opt,name=proposal_id,json=proposalId,proto3" json:"proposal_id,omitempty"`
-	Key           string                   `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
-	Value         []byte                   `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Command       RaftProposalStore_Command `protobuf:"varint,1,opt,name=command,proto3,enum=api.colonio.v1alpha.RaftProposalStore_Command" json:"command,omitempty"`
+	ProposalId    uint32                    `protobuf:"varint,2,opt,name=proposal_id,json=proposalId,proto3" json:"proposal_id,omitempty"`
+	Key           string                    `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	Value         []byte                    `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -235,11 +235,11 @@ func (*RaftProposalStore) Descriptor() ([]byte, []int) {
 	return file_api_colonio_v1alpha_raft_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *RaftProposalStore) GetCommand() RaftProposalStoreCommand {
+func (x *RaftProposalStore) GetCommand() RaftProposalStore_Command {
 	if x != nil {
 		return x.Command
 	}
-	return RaftProposalStoreCommand_RAFT_PROPOSAL_STORE_COMMAND_IMPORT
+	return RaftProposalStore_COMMAND_IMPORT
 }
 
 func (x *RaftProposalStore) GetProposalId() uint32 {
@@ -362,26 +362,26 @@ const file_api_colonio_v1alpha_raft_proto_rawDesc = "" +
 	"management\x12>\n" +
 	"\x05store\x18\x02 \x01(\v2&.api.colonio.v1alpha.RaftProposalStoreH\x00R\x05storeB\t\n" +
 	"\acontent\"\x18\n" +
-	"\x16RaftProposalManagement\"\xa5\x01\n" +
-	"\x11RaftProposalStore\x12G\n" +
-	"\acommand\x18\x01 \x01(\x0e2-.api.colonio.v1alpha.RaftProposalStoreCommandR\acommand\x12\x1f\n" +
+	"\x16RaftProposalManagement\"\x8e\x02\n" +
+	"\x11RaftProposalStore\x12H\n" +
+	"\acommand\x18\x01 \x01(\x0e2..api.colonio.v1alpha.RaftProposalStore.CommandR\acommand\x12\x1f\n" +
 	"\vproposal_id\x18\x02 \x01(\rR\n" +
 	"proposalId\x12\x10\n" +
 	"\x03key\x18\x03 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x04 \x01(\fR\x05value\"T\n" +
+	"\x05value\x18\x04 \x01(\fR\x05value\"f\n" +
+	"\aCommand\x12\x12\n" +
+	"\x0eCOMMAND_IMPORT\x10\x00\x12\x0f\n" +
+	"\vCOMMAND_GET\x10\x01\x12\x0f\n" +
+	"\vCOMMAND_SET\x10\x02\x12\x11\n" +
+	"\rCOMMAND_PATCH\x10\x03\x12\x12\n" +
+	"\x0eCOMMAND_DELETE\x10\x04\"T\n" +
 	"\x11RaftStoreSnapshot\x12?\n" +
 	"\arecords\x18\x01 \x01(\v2%.api.colonio.v1alpha.RaftStoreRecordsR\arecords\"\x9c\x01\n" +
 	"\x10RaftStoreRecords\x12L\n" +
 	"\arecords\x18\x01 \x03(\v22.api.colonio.v1alpha.RaftStoreRecords.RecordsEntryR\arecords\x1a:\n" +
 	"\fRecordsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01*\xdb\x01\n" +
-	"\x18RaftProposalStoreCommand\x12&\n" +
-	"\"RAFT_PROPOSAL_STORE_COMMAND_IMPORT\x10\x00\x12#\n" +
-	"\x1fRAFT_PROPOSAL_STORE_COMMAND_GET\x10\x01\x12#\n" +
-	"\x1fRAFT_PROPOSAL_STORE_COMMAND_SET\x10\x02\x12%\n" +
-	"!RAFT_PROPOSAL_STORE_COMMAND_PATCH\x10\x03\x12&\n" +
-	"\"RAFT_PROPOSAL_STORE_COMMAND_DELETE\x10\x04B5Z3github.com/llamerada-jp/colonio/api/colonio/v1alphab\x06proto3"
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01B5Z3github.com/llamerada-jp/colonio/api/colonio/v1alphab\x06proto3"
 
 var (
 	file_api_colonio_v1alpha_raft_proto_rawDescOnce sync.Once
@@ -398,7 +398,7 @@ func file_api_colonio_v1alpha_raft_proto_rawDescGZIP() []byte {
 var file_api_colonio_v1alpha_raft_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_api_colonio_v1alpha_raft_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_api_colonio_v1alpha_raft_proto_goTypes = []any{
-	(RaftProposalStoreCommand)(0),  // 0: api.colonio.v1alpha.RaftProposalStoreCommand
+	(RaftProposalStore_Command)(0), // 0: api.colonio.v1alpha.RaftProposalStore.Command
 	(*RaftProposal)(nil),           // 1: api.colonio.v1alpha.RaftProposal
 	(*RaftProposalManagement)(nil), // 2: api.colonio.v1alpha.RaftProposalManagement
 	(*RaftProposalStore)(nil),      // 3: api.colonio.v1alpha.RaftProposalStore
@@ -409,7 +409,7 @@ var file_api_colonio_v1alpha_raft_proto_goTypes = []any{
 var file_api_colonio_v1alpha_raft_proto_depIdxs = []int32{
 	2, // 0: api.colonio.v1alpha.RaftProposal.management:type_name -> api.colonio.v1alpha.RaftProposalManagement
 	3, // 1: api.colonio.v1alpha.RaftProposal.store:type_name -> api.colonio.v1alpha.RaftProposalStore
-	0, // 2: api.colonio.v1alpha.RaftProposalStore.command:type_name -> api.colonio.v1alpha.RaftProposalStoreCommand
+	0, // 2: api.colonio.v1alpha.RaftProposalStore.command:type_name -> api.colonio.v1alpha.RaftProposalStore.Command
 	5, // 3: api.colonio.v1alpha.RaftStoreSnapshot.records:type_name -> api.colonio.v1alpha.RaftStoreRecords
 	6, // 4: api.colonio.v1alpha.RaftStoreRecords.records:type_name -> api.colonio.v1alpha.RaftStoreRecords.RecordsEntry
 	5, // [5:5] is the sub-list for method output_type
