@@ -137,11 +137,25 @@ func (n *Node) renewColonio() error {
 				URLs: []string{},
 			},
 		}),
-		colonio.WithObservation(&colonio.ObservationHandlers{
+		colonio.WithObservation(&config.ObservationHandler{
 			OnChangeConnectedNodes: func(nodeIDs map[string]struct{}) {
 				n.mtx.Lock()
 				defer n.mtx.Unlock()
 				r.ConnectedNodeIDs = convertMapToSlice(nodeIDs)
+			},
+			OnChangeKvsSectors: func(s map[config.KvsSectorKey]*config.ObservationSectorInfo) {
+				n.mtx.Lock()
+				defer n.mtx.Unlock()
+				sectorInfos := make([]SectorInfo, 0, len(s))
+				for sectorKey, info := range s {
+					sectorInfos = append(sectorInfos, SectorInfo{
+						SectorID: sectorKey.SectorID.String(),
+						Sequence: uint64(sectorKey.Sequence),
+						Head:     info.Head,
+						Tail:     info.Tail,
+					})
+				}
+				r.SectorInfos = sectorInfos
 			},
 			OnUpdateRequiredNodeIDs1D: func(nodeIDs map[string]struct{}) {
 				n.mtx.Lock()

@@ -29,6 +29,7 @@ import (
 	"github.com/gorilla/sessions"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	service "github.com/llamerada-jp/colonio/api/colonio/v1alpha/v1alphaconnect"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed/controller"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
@@ -44,7 +45,7 @@ type controllerMock struct {
 	reconcileNextNodesF func(ctx context.Context, nodeID *shared.NodeID, nextNodeIDs, disconnectedIDs []*shared.NodeID) (bool, error)
 	sendSignalF         func(ctx context.Context, nodeID *shared.NodeID, signal *proto.Signal) error
 	pollSignalF         func(ctx context.Context, nodeID *shared.NodeID, send func(*proto.Signal) error) error
-	stateKvsF           func(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error)
+	stateKvsF           func(ctx context.Context, nodeID *shared.NodeID, active bool) (constants.KvsState, error)
 }
 
 var _ controller.Controller = &controllerMock{}
@@ -85,7 +86,7 @@ func (c *controllerMock) PollSignal(ctx context.Context, nodeID *shared.NodeID, 
 	return c.pollSignalF(ctx, nodeID, send)
 }
 
-func (c *controllerMock) StateKvs(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error) {
+func (c *controllerMock) StateKvs(ctx context.Context, nodeID *shared.NodeID, active bool) (constants.KvsState, error) {
 	c.t.Helper()
 	require.NotNil(c.t, c.stateKvsF, "StateKvsF must not be nil")
 	return c.stateKvsF(ctx, nodeID, active)
@@ -396,11 +397,11 @@ func TestServer_StateKvs(t *testing.T) {
 		assignNodeF: func(ctx context.Context) (*shared.NodeID, bool, error) {
 			return nodeIDs[0], true, nil
 		},
-		stateKvsF: func(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error) {
+		stateKvsF: func(ctx context.Context, nodeID *shared.NodeID, active bool) (constants.KvsState, error) {
 			called = true
 			assert.Equal(t, nodeID, nodeIDs[0])
 			assert.True(t, active)
-			return true, nil
+			return constants.KvsStateActive, nil
 		},
 	})
 	client := createTestClient(t, port)
@@ -408,7 +409,7 @@ func TestServer_StateKvs(t *testing.T) {
 	// StateKvs without assigning first should return an error
 	_, err := client.StateKvs(t.Context(), &connect.Request[proto.StateKvsRequest]{
 		Msg: &proto.StateKvsRequest{
-			Active: true,
+			State: proto.KvsState_KVS_STATE_ACTIVE,
 		},
 	})
 	ce := &connect.Error{}
@@ -422,7 +423,7 @@ func TestServer_StateKvs(t *testing.T) {
 	require.NoError(t, err)
 	_, err = client.StateKvs(t.Context(), &connect.Request[proto.StateKvsRequest]{
 		Msg: &proto.StateKvsRequest{
-			Active: true,
+			State: proto.KvsState_KVS_STATE_ACTIVE,
 		},
 	})
 	require.NoError(t, err)

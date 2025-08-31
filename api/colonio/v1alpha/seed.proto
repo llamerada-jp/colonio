@@ -100,10 +100,17 @@ message PollSignalResponse {
   repeated Signal signals = 1;
 }
 
+enum KvsState {
+  // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+  KVS_STATE_UNKNOWN  = 0;
+  KVS_STATE_ACTIVE   = 1;
+  KVS_STATE_INACTIVE = 2;
+}
+
 message StateKvsRequest {
-  bool active = 1;
+  KvsState state = 1;
 }
 
 message StateKvsResponse {
-  bool exists_active_node = 1;
+  KvsState entire_state = 1;
 }

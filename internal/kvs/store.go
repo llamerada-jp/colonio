@@ -28,10 +28,10 @@ type storeHandler interface {
 }
 
 type storeConfig struct {
-	nodeKey *config.KvsNodeKey
-	handler storeHandler
-	store   config.KvsStore
-	head    *shared.NodeID
+	sectorKey *config.KvsSectorKey
+	handler   storeHandler
+	store     config.KvsStore
+	head      *shared.NodeID
 }
 
 type lock struct {
@@ -40,24 +40,24 @@ type lock struct {
 }
 
 type store struct {
-	nodeKey  config.KvsNodeKey
-	handler  storeHandler
-	mtx      sync.RWMutex
-	store    config.KvsStore
-	head     *shared.NodeID
-	tail     *shared.NodeID
-	readonly *lock
-	blocked  *lock
-	keys     map[string]any
+	sectorKey config.KvsSectorKey
+	handler   storeHandler
+	mtx       sync.RWMutex
+	store     config.KvsStore
+	head      shared.NodeID
+	tail      *shared.NodeID
+	readonly  *lock
+	blocked   *lock
+	keys      map[string]any
 }
 
 func newStore(config *storeConfig) *store {
 	return &store{
-		nodeKey: *config.nodeKey,
-		handler: config.handler,
-		store:   config.store,
-		head:    config.head,
-		keys:    make(map[string]any),
+		sectorKey: *config.sectorKey,
+		handler:   config.handler,
+		store:     config.store,
+		head:      *config.head,
+		keys:      make(map[string]any),
 	}
 }
 

@@ -22,7 +22,9 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/seed/gateway"
 	"github.com/llamerada-jp/colonio/seed/misc"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/test/util/helper"
@@ -666,64 +668,76 @@ func TestController_SendSignal(t *testing.T) {
 	assert.Equal(t, 6, callCount)
 }
 
+type dummyGWHandler struct {
+}
+
+func (h *dummyGWHandler) HandleSignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error {
+	return nil
+}
+
+func (h *dummyGWHandler) HandleKeepaliveRequest(ctx context.Context, nodeID *shared.NodeID) error {
+	return nil
+}
+
+func (h *dummyGWHandler) HandleUnassignNode(ctx context.Context, nodeID *shared.NodeID) error {
+	return nil
+}
+
 func TestController_StateKvs(t *testing.T) {
 	ctx := misc.NewLoggerContext(t.Context(), nil)
-	nodeIDs := testUtil.UniqueNodeIDs(2)
-	mtx := sync.Mutex{}
-	activeStates := make(map[string]bool)
-	callCount := 0
+	nodeIDs := testUtil.UniqueNodeIDs(3)
 
-	c := NewController(&Options{
-		Logger: testUtil.Logger(t),
-		Gateway: &helper.Gateway{
-			SetKvsStateF: func(_ context.Context, nodeID *shared.NodeID, active bool) error {
-				mtx.Lock()
-				defer mtx.Unlock()
-				callCount++
-				activeStates[nodeID.String()] = active
-				return nil
-			},
-			ExistsKvsActiveNodeF: func(_ context.Context) (bool, error) {
-				mtx.Lock()
-				defer mtx.Unlock()
-				callCount++
-				for _, v := range activeStates {
-					if v {
-						return true, nil
-					}
-				}
-				return false, nil
-			},
+	gw := gateway.NewSimpleGateway(
+		testUtil.Logger(t),
+		&dummyGWHandler{},
+		func(exists map[shared.NodeID]any) (*shared.NodeID, error) {
+			return nodeIDs[len(exists)], nil
 		},
+	)
+	c := NewController(&Options{
+		Logger:  testUtil.Logger(t),
+		Gateway: gw,
 	})
 
-	// set active state for node 0
-	exists, err := c.StateKvs(ctx, nodeIDs[0], false)
-	require.NoError(t, err)
-	assert.False(t, exists)
+	// create 3 nodes
+	for i := 0; i < len(nodeIDs); i++ {
+		_, _, err := c.AssignNode(ctx)
+		require.NoError(t, err)
+	}
 
-	// check exists active node
-	exists, err = c.StateKvs(ctx, nodeIDs[1], true)
+	// The first node becomes a candidate.
+	state, err := c.StateKvs(ctx, nodeIDs[0], false)
 	require.NoError(t, err)
-	assert.True(t, exists)
+	assert.Equal(t, constants.KvsStateInactive, state)
 
-	// set inactive state for node 0
-	exists, err = c.StateKvs(ctx, nodeIDs[0], false)
+	// Next node tries to become a candidate but fails because the first node is already a candidate.
+	state, err = c.StateKvs(ctx, nodeIDs[1], false)
 	require.NoError(t, err)
-	assert.True(t, exists)
+	assert.Equal(t, constants.KvsStateUnknown, state)
 
-	// set inactive state for node 1
-	exists, err = c.StateKvs(ctx, nodeIDs[1], false)
+	// The first node becomes offline.
+	err = c.UnassignNode(ctx, nodeIDs[0])
 	require.NoError(t, err)
-	assert.False(t, exists)
 
-	mtx.Lock()
-	defer mtx.Unlock()
-	assert.Equal(t, 8, callCount)
-	assert.Equal(t, map[string]bool{
-		nodeIDs[0].String(): false,
-		nodeIDs[1].String(): false,
-	}, activeStates)
+	// The second node becomes a candidate.
+	state, err = c.StateKvs(ctx, nodeIDs[1], false)
+	require.NoError(t, err)
+	assert.Equal(t, constants.KvsStateInactive, state)
+
+	// The third node tries to become a candidate but fails because the second node is already a candidate.
+	state, err = c.StateKvs(ctx, nodeIDs[2], false)
+	require.NoError(t, err)
+	assert.Equal(t, constants.KvsStateUnknown, state)
+
+	// The second node becomes active.
+	state, err = c.StateKvs(ctx, nodeIDs[1], true)
+	require.NoError(t, err)
+	assert.Equal(t, constants.KvsStateActive, state)
+
+	// The third node knows that the entire KVS is already active.
+	state, err = c.StateKvs(ctx, nodeIDs[2], false)
+	require.NoError(t, err)
+	assert.Equal(t, constants.KvsStateActive, state)
 }
 
 func TestController_cleanup(t *testing.T) {

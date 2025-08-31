@@ -25,6 +25,7 @@ import (
 	"github.com/google/uuid"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/config"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
@@ -39,52 +40,52 @@ const (
 	memberStateRemoving
 )
 
-const (
-	coordinatingNodeSequence = uint64(1)
-)
-
 type Handler interface {
 	KvsGetStability() (bool, []*shared.NodeID)
-	KvsState(active bool) (bool, error)
+	KvsState(state constants.KvsState) (constants.KvsState, error)
 }
 
 type Config struct {
-	Logger     *slog.Logger
-	Handler    Handler
-	Store      config.KvsStore
-	Transferer *transferer.Transferer
+	Logger      *slog.Logger
+	Handler     Handler
+	Observation config.ObservationCaller
+	Store       config.KvsStore
+	Transferer  *transferer.Transferer
 }
 
-type memberEntry struct {
+type memberStateEntry struct {
 	nodeID *shared.NodeID
 	state  memberState
 }
 
 type KVS struct {
-	logger       *slog.Logger
-	ctx          context.Context
-	handler      Handler
-	store        config.KvsStore
-	transferer   *transferer.Transferer
-	localNodeID  *shared.NodeID
-	mtx          sync.RWMutex
-	nodes        map[config.KvsNodeKey]*node
-	coordinating *config.KvsNodeKey
-	lastSequence uint64
-	// currentNode's member state
-	members map[uint64]*memberEntry
+	logger        *slog.Logger
+	ctx           context.Context
+	handler       Handler
+	observation   config.ObservationCaller
+	store         config.KvsStore
+	transferer    *transferer.Transferer
+	localNodeID   *shared.NodeID
+	mtx           sync.RWMutex
+	sectors       map[config.KvsSectorKey]*sector
+	sectorUpdated bool // for observation
+	hostingSector *config.KvsSectorKey
+	lastSequence  config.KvsSequence
+	memberStates  map[config.KvsSequence]*memberStateEntry
 }
 
 func NewKVS(conf *Config) *KVS {
 	k := &KVS{
-		logger:     conf.Logger,
-		handler:    conf.Handler,
-		store:      conf.Store,
-		transferer: conf.Transferer,
-		nodes:      make(map[config.KvsNodeKey]*node),
-		members:    make(map[uint64]*memberEntry),
+		logger:       conf.Logger,
+		handler:      conf.Handler,
+		observation:  conf.Observation,
+		store:        conf.Store,
+		transferer:   conf.Transferer,
+		sectors:      make(map[config.KvsSectorKey]*sector),
+		memberStates: make(map[config.KvsSequence]*memberStateEntry),
 	}
 
+	transferer.SetRequestHandler[proto.PacketContent_KvsOperation](k.transferer, k.recvOperation)
 	transferer.SetRequestHandler[proto.PacketContent_RaftConfig](k.transferer, k.recvConfig)
 	transferer.SetRequestHandler[proto.PacketContent_RaftConfigResponse](k.transferer, k.recvConfigResponse)
 	transferer.SetRequestHandler[proto.PacketContent_RaftMessage](k.transferer, k.recvMessage)
@@ -92,13 +93,14 @@ func NewKVS(conf *Config) *KVS {
 	return k
 }
 
-func (k *KVS) Start(ctx context.Context, localNodeID *shared.NodeID) error {
+func (k *KVS) Start(ctx context.Context, localNodeID *shared.NodeID) {
 	k.localNodeID = localNodeID
 	k.ctx = ctx
 
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
 	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -106,27 +108,113 @@ func (k *KVS) Start(ctx context.Context, localNodeID *shared.NodeID) error {
 
 			case <-ticker.C:
 				k.subRoutine()
+				if k.observation != nil {
+					k.takeObservation()
+				}
 			}
 		}
 	}()
-
-	return nil
 }
 
-func (k *KVS) Get(key string) ([]byte, error) {
-	panic("Get not implemented")
+func (k *KVS) Get(key string) chan *config.KvsGetResult {
+	c := make(chan *config.KvsGetResult, 1)
+	k.sendOperation(proto.KvsOperation_COMMAND_GET, key, nil, func(res *proto.KvsOperationResponse, err error) {
+		defer close(c)
+
+		if err != nil {
+			c <- &config.KvsGetResult{
+				Data: nil,
+				Err:  err,
+			}
+			return
+		}
+
+		switch res.Error {
+		case proto.KvsOperationResponse_ERROR_NONE:
+			// ok
+			c <- &config.KvsGetResult{
+				Data: res.Value,
+				Err:  nil,
+			}
+
+		case proto.KvsOperationResponse_ERROR_NOT_FOUND:
+			c <- &config.KvsGetResult{
+				Data: nil,
+				Err:  fmt.Errorf("key not found: %s", key),
+			}
+
+		default:
+			c <- &config.KvsGetResult{
+				Data: nil,
+				Err:  fmt.Errorf("unknown error: %d", res.Error),
+			}
+		}
+	})
+
+	return c
 }
 
-func (k *KVS) Set(key string, value []byte) error {
-	panic("Set not implemented")
+func (k *KVS) Set(key string, value []byte) chan error {
+	c := make(chan error, 1)
+	k.sendOperation(proto.KvsOperation_COMMAND_SET, key, value, func(res *proto.KvsOperationResponse, err error) {
+		defer close(c)
+
+		if err != nil {
+			c <- err
+			return
+		}
+
+		if res.Error != proto.KvsOperationResponse_ERROR_NONE {
+			c <- fmt.Errorf("kvs set error: %d", res.Error)
+			return
+		}
+
+		c <- nil
+	})
+
+	return c
 }
 
-func (k *KVS) Patch(key string, value []byte) error {
-	panic("Patch not implemented")
+func (k *KVS) Patch(key string, value []byte) chan error {
+	c := make(chan error, 1)
+	k.sendOperation(proto.KvsOperation_COMMAND_PATCH, key, value, func(res *proto.KvsOperationResponse, err error) {
+		defer close(c)
+
+		if err != nil {
+			c <- err
+			return
+		}
+
+		if res.Error != proto.KvsOperationResponse_ERROR_NONE {
+			c <- fmt.Errorf("kvs patch error: %d", res.Error)
+			return
+		}
+
+		c <- nil
+	})
+
+	return c
 }
 
-func (k *KVS) Delete(key string) error {
-	panic("Delete not implemented")
+func (k *KVS) Delete(key string) chan error {
+	c := make(chan error, 1)
+	k.sendOperation(proto.KvsOperation_COMMAND_DELETE, key, nil, func(res *proto.KvsOperationResponse, err error) {
+		defer close(c)
+
+		if err != nil {
+			c <- err
+			return
+		}
+
+		if res.Error != proto.KvsOperationResponse_ERROR_NONE {
+			c <- fmt.Errorf("kvs delete error: %d", res.Error)
+			return
+		}
+
+		c <- nil
+	})
+
+	return c
 }
 
 func (k *KVS) subRoutine() {
@@ -138,9 +226,9 @@ func (k *KVS) subRoutine() {
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
 
-	if k.coordinating == nil {
+	if k.hostingSector == nil {
 		k.createCluster(nextNodeIDs)
-		if k.coordinating == nil {
+		if k.hostingSector == nil {
 			return
 		}
 	}
@@ -148,13 +236,13 @@ func (k *KVS) subRoutine() {
 	toAppend, toRemove := k.getNodeDiff(nextNodeIDs)
 	for _, nodeID := range toAppend {
 		k.lastSequence++
-		k.members[k.lastSequence] = &memberEntry{
+		k.memberStates[k.lastSequence] = &memberStateEntry{
 			nodeID: nodeID,
 			state:  memberStateAppendingRaft,
 		}
 	}
 	for seq := range toRemove {
-		k.members[seq].state = memberStateRemoving
+		k.memberStates[seq].state = memberStateRemoving
 	}
 
 	if err := k.applyConfigRaft(); err != nil {
@@ -164,14 +252,14 @@ func (k *KVS) subRoutine() {
 	k.sendSettingMessage()
 }
 
-func (k *KVS) getNodeDiff(nextNodeIDs []*shared.NodeID) ([]*shared.NodeID, map[uint64]*memberEntry) {
+func (k *KVS) getNodeDiff(nextNodeIDs []*shared.NodeID) ([]*shared.NodeID, map[config.KvsSequence]*memberStateEntry) {
 	nextNodeIDMap := make(map[shared.NodeID]struct{})
 	for _, nodeID := range nextNodeIDs {
 		nextNodeIDMap[*nodeID] = struct{}{}
 	}
 
-	memberMap := make(map[shared.NodeID]uint64)
-	for seq, entry := range k.members {
+	memberMap := make(map[shared.NodeID]config.KvsSequence)
+	for seq, entry := range k.memberStates {
 		if entry.state == memberStateRemoving {
 			continue
 		}
@@ -179,13 +267,13 @@ func (k *KVS) getNodeDiff(nextNodeIDs []*shared.NodeID) ([]*shared.NodeID, map[u
 	}
 
 	toAppend := make([]*shared.NodeID, 0)
-	toRemove := make(map[uint64]*memberEntry)
+	toRemove := make(map[config.KvsSequence]*memberStateEntry)
 	for nodeID := range nextNodeIDMap {
 		if _, ok := memberMap[nodeID]; !ok {
 			toAppend = append(toAppend, &nodeID)
 		}
 	}
-	for seq, entry := range k.members {
+	for seq, entry := range k.memberStates {
 		if entry.state == memberStateRemoving {
 			continue
 		}
@@ -203,55 +291,61 @@ func (k *KVS) createCluster(nextNodeIDs []*shared.NodeID) {
 		return
 	}
 
-	k.lastSequence = coordinatingNodeSequence
-	member := make(map[uint64]*shared.NodeID)
-	member[coordinatingNodeSequence] = k.localNodeID
+	k.lastSequence = config.KvsSectorHostNodeSequence
+	member := make(map[config.KvsSequence]*shared.NodeID)
+	member[config.KvsSectorHostNodeSequence] = k.localNodeID
 	for _, nodeID := range nextNodeIDs {
 		k.lastSequence++
 		member[k.lastSequence] = nodeID
-		k.members[k.lastSequence] = &memberEntry{
+		k.memberStates[k.lastSequence] = &memberStateEntry{
 			nodeID: nodeID,
 			state:  memberStateCreating,
 		}
 	}
 
-	nodeKey := &config.KvsNodeKey{
-		ClusterID: clusterID,
-		Sequence:  coordinatingNodeSequence,
+	sectorKey := &config.KvsSectorKey{
+		SectorID: clusterID,
+		Sequence: config.KvsSectorHostNodeSequence,
 	}
-	k.coordinating = nodeKey
-	k.allocateCluster(nodeKey, k.localNodeID, false, member)
+	k.hostingSector = sectorKey
+	k.allocateCluster(sectorKey, k.localNodeID, false, member)
 }
 
-func (k *KVS) allocateCluster(nodeKey *config.KvsNodeKey, head *shared.NodeID, append bool, members map[uint64]*shared.NodeID) {
-	n := &node{}
-	k.nodes[*nodeKey] = n
+func (k *KVS) allocateCluster(
+	sectorKey *config.KvsSectorKey,
+	head *shared.NodeID,
+	append bool,
+	members map[config.KvsSequence]*shared.NodeID,
+) {
+	s := &sector{}
+	k.sectors[*sectorKey] = s
+	k.sectorUpdated = true
 
 	raftNode := newRaftNode(&raftNodeConfig{
-		logger:  k.logger,
-		manager: k,
-		store:   n,
-		nodeKey: nodeKey,
-		join:    append,
-		member:  members,
+		logger:    k.logger,
+		manager:   k,
+		store:     s,
+		sectorKey: sectorKey,
+		join:      append,
+		member:    members,
 	})
 
 	store := newStore(&storeConfig{
-		nodeKey: nodeKey,
-		handler: n,
-		head:    head,
+		sectorKey: sectorKey,
+		handler:   s,
+		head:      head,
 	})
 
-	n.raft = raftNode
-	n.store = store
+	s.raft = raftNode
+	s.store = store
 
 	raftNode.start(k.ctx)
 }
 
 func (k *KVS) applyConfigRaft() error {
-	raftNode := k.nodes[*k.coordinating].raft
+	raftNode := k.sectors[*k.hostingSector].raft
 
-	for sequence, member := range k.members {
+	for sequence, member := range k.memberStates {
 		switch member.state {
 		case memberStateAppendingRaft:
 			return raftNode.appendNode(sequence, member.nodeID)
@@ -264,55 +358,172 @@ func (k *KVS) applyConfigRaft() error {
 	return nil
 }
 
+type kvsOperationHandler struct {
+	receiver func(res *proto.KvsOperationResponse, err error)
+}
+
+func (h *kvsOperationHandler) OnResponse(packet *shared.Packet) {
+	h.receiver(packet.Content.GetKvsOperationResponse(), nil)
+}
+
+func (h *kvsOperationHandler) OnError(code constants.PacketErrorCode, message string) {
+	h.receiver(nil, fmt.Errorf("packet error %d: %s", code, message))
+}
+
+func (k *KVS) sendOperation(command proto.KvsOperation_Command, key string, value []byte, receiver func(res *proto.KvsOperationResponse, err error)) {
+	dst := shared.NewHashedNodeID([]byte(key))
+
+	content := &proto.PacketContent{
+		Content: &proto.PacketContent_KvsOperation{
+			KvsOperation: &proto.KvsOperation{
+				Command: command,
+				Key:     key,
+				Value:   value,
+			},
+		},
+	}
+
+	k.transferer.Request(dst, shared.PacketModeNone, content, &kvsOperationHandler{
+		receiver: receiver,
+	})
+}
+
 func (k *KVS) sendSettingMessage() {
-	for sequence, member := range k.members {
-		if member.state == memberStateRemoving {
+	for sequence, ms := range k.memberStates {
+		switch ms.state {
+		case memberStateNormal, memberStateRemoving, memberStateAppendingNode:
 			continue
-		}
 
-		members := make(map[uint64]*proto.NodeID)
-		members[coordinatingNodeSequence] = k.localNodeID.Proto()
-		for ms, mm := range k.members {
-			members[ms] = mm.nodeID.Proto()
-		}
+		case memberStateCreating, memberStateAppendingRaft:
+			members := make(map[uint64]*proto.NodeID)
+			members[uint64(config.KvsSectorHostNodeSequence)] = k.localNodeID.Proto()
+			for sequence, ms := range k.memberStates {
+				members[uint64(sequence)] = ms.nodeID.Proto()
+			}
 
-		var command proto.RaftConfig_Command
-		if member.state == memberStateCreating {
-			command = proto.RaftConfig_COMMAND_CREATE
-		} else {
-			command = proto.RaftConfig_COMMAND_APPEND
-		}
+			var command proto.RaftConfig_Command
+			if ms.state == memberStateCreating {
+				command = proto.RaftConfig_COMMAND_CREATE
+			} else { // memberStateAppendingRaft
+				command = proto.RaftConfig_COMMAND_APPEND
+			}
 
-		k.transferer.RequestOneWay(
-			member.nodeID,
-			shared.PacketModeExplicit|shared.PacketModeNoRetry,
-			&proto.PacketContent{
-				Content: &proto.PacketContent_RaftConfig{
-					RaftConfig: &proto.RaftConfig{
-						ClusterId: MustMarshalUUID(k.coordinating.ClusterID),
-						Sequence:  sequence,
-						Command:   command,
-						Members:   members,
+			k.transferer.RequestOneWay(
+				ms.nodeID,
+				shared.PacketModeExplicit|shared.PacketModeNoRetry,
+				&proto.PacketContent{
+					Content: &proto.PacketContent_RaftConfig{
+						RaftConfig: &proto.RaftConfig{
+							SectorId: MustMarshalUUID(k.hostingSector.SectorID),
+							Sequence: uint64(sequence),
+							Command:  command,
+							Members:  members,
+						},
 					},
 				},
+			)
+		}
+	}
+}
+
+func (k *KVS) recvOperation(packet *shared.Packet) {
+	content := packet.Content.GetKvsOperation()
+	command := content.Command
+	key := content.Key
+	value := content.Value
+	store := k.sectors[*k.hostingSector].store
+
+	switch command {
+	case proto.KvsOperation_COMMAND_GET:
+		data, err := store.get(key)
+
+		e := proto.KvsOperationResponse_ERROR_NONE
+		if err != nil {
+			if err == config.ErrorKvsStoreKeyNotFound {
+				e = proto.KvsOperationResponse_ERROR_NOT_FOUND
+			} else {
+				e = proto.KvsOperationResponse_ERROR_UNKNOWN
+			}
+		}
+
+		k.transferer.Response(packet, &proto.PacketContent{
+			Content: &proto.PacketContent_KvsOperationResponse{
+				KvsOperationResponse: &proto.KvsOperationResponse{
+					Error: e,
+					Value: data,
+				},
 			},
-		)
+		})
+
+	case proto.KvsOperation_COMMAND_SET:
+		err := store.set(key, value)
+		e := proto.KvsOperationResponse_ERROR_NONE
+		if err != nil {
+			e = proto.KvsOperationResponse_ERROR_UNKNOWN
+		}
+
+		k.transferer.Response(packet, &proto.PacketContent{
+			Content: &proto.PacketContent_KvsOperationResponse{
+				KvsOperationResponse: &proto.KvsOperationResponse{
+					Error: e,
+				},
+			},
+		})
+
+	case proto.KvsOperation_COMMAND_PATCH:
+		err := store.patch(key, value)
+		e := proto.KvsOperationResponse_ERROR_NONE
+		if err != nil {
+			e = proto.KvsOperationResponse_ERROR_UNKNOWN
+		}
+
+		k.transferer.Response(packet, &proto.PacketContent{
+			Content: &proto.PacketContent_KvsOperationResponse{
+				KvsOperationResponse: &proto.KvsOperationResponse{
+					Error: e,
+				},
+			},
+		})
+
+	case proto.KvsOperation_COMMAND_DELETE:
+		err := store.delete(key)
+		e := proto.KvsOperationResponse_ERROR_NONE
+		if err != nil {
+			e = proto.KvsOperationResponse_ERROR_UNKNOWN
+		}
+
+		k.transferer.Response(packet, &proto.PacketContent{
+			Content: &proto.PacketContent_KvsOperationResponse{
+				KvsOperationResponse: &proto.KvsOperationResponse{
+					Error: e,
+				},
+			},
+		})
+
+	default:
+		k.transferer.Response(packet, &proto.PacketContent{
+			Content: &proto.PacketContent_KvsOperationResponse{
+				KvsOperationResponse: &proto.KvsOperationResponse{
+					Error: proto.KvsOperationResponse_ERROR_UNKNOWN,
+				},
+			},
+		})
 	}
 }
 
 func (k *KVS) recvConfig(packet *shared.Packet) {
 	content := packet.Content.GetRaftConfig()
-	clusterID, err := uuid.ParseBytes(content.ClusterId)
-	if err != nil {
-		k.logger.Warn("Failed to parse promoter NodeID", "error", err)
+	var sectorID uuid.UUID
+	if err := sectorID.UnmarshalBinary(content.SectorId); err != nil {
+		k.logger.Warn("Failed to parse promoter sectorID", "error", err)
 		return
 	}
-	sequence := content.Sequence
+	sequence := config.KvsSequence(content.Sequence)
 	command := content.Command
-	members := make(map[uint64]*shared.NodeID)
-	for seq, nodeID := range content.Members {
+	members := make(map[config.KvsSequence]*shared.NodeID)
+	for sequence, nodeID := range content.Members {
 		var err error
-		members[seq], err = shared.NewNodeIDFromProto(nodeID)
+		members[config.KvsSequence(sequence)], err = shared.NewNodeIDFromProto(nodeID)
 		if err != nil {
 			k.logger.Warn("Failed to create NodeID from proto", "error", err, "nodeID", nodeID)
 			return
@@ -322,15 +533,19 @@ func (k *KVS) recvConfig(packet *shared.Packet) {
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
 
-	nodeKey := config.KvsNodeKey{ClusterID: clusterID, Sequence: sequence}
+	sectorKey := config.KvsSectorKey{
+		SectorID: sectorID,
+		Sequence: sequence,
+	}
 	switch command {
 	case proto.RaftConfig_COMMAND_CREATE, proto.RaftConfig_COMMAND_APPEND:
-		if _, ok := k.nodes[nodeKey]; !ok {
+		if _, ok := k.sectors[sectorKey]; !ok {
 			append := true
 			if command == proto.RaftConfig_COMMAND_CREATE {
+				fmt.Println("✅ received CREATE")
 				append = false
 			}
-			k.allocateCluster(&nodeKey, packet.SrcNodeID, append, members)
+			k.allocateCluster(&sectorKey, packet.SrcNodeID, append, members)
 		}
 
 	default:
@@ -342,8 +557,8 @@ func (k *KVS) recvConfig(packet *shared.Packet) {
 	response := &proto.PacketContent{
 		Content: &proto.PacketContent_RaftConfigResponse{
 			RaftConfigResponse: &proto.RaftConfigResponse{
-				ClusterId: MustMarshalUUID(clusterID),
-				Sequence:  sequence,
+				SectorId: MustMarshalUUID(sectorID),
+				Sequence: uint64(sequence),
 			},
 		},
 	}
@@ -352,41 +567,41 @@ func (k *KVS) recvConfig(packet *shared.Packet) {
 
 func (k *KVS) recvConfigResponse(packet *shared.Packet) {
 	content := packet.Content.GetRaftConfigResponse()
-	clusterID, err := uuid.ParseBytes(content.ClusterId)
+	sectorID, err := uuid.ParseBytes(content.SectorId)
 	if err != nil {
 		k.logger.Warn("Failed to parse promoter NodeID", "error", err)
 		return
 	}
-	sequence := content.Sequence
+	sequence := config.KvsSequence(content.Sequence)
 
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
 
 	// ignore response if it does not match the current node
-	if k.coordinating == nil || k.coordinating.ClusterID != clusterID {
+	if k.hostingSector == nil || k.hostingSector.SectorID != sectorID {
 		return
 	}
 
-	if entry, ok := k.members[sequence]; ok && entry.nodeID.Equal(packet.SrcNodeID) {
+	if entry, ok := k.memberStates[sequence]; ok && entry.nodeID.Equal(packet.SrcNodeID) {
 		entry.state = memberStateNormal
 	}
 }
 
 func (k *KVS) recvMessage(packet *shared.Packet) {
 	content := packet.Content.GetRaftMessage()
-	clusterID, err := uuid.ParseBytes(content.ClusterId)
+	sectorID, err := uuid.ParseBytes(content.SectorId)
 	if err != nil {
 		k.logger.Warn("Failed to parse promoter NodeID", "error", err)
 		return
 	}
 
-	key := config.KvsNodeKey{
-		ClusterID: clusterID,
-		Sequence:  content.Sequence,
+	key := config.KvsSectorKey{
+		SectorID: sectorID,
+		Sequence: config.KvsSequence(content.Sequence),
 	}
 
 	k.mtx.RLock()
-	n, ok := k.nodes[key]
+	n, ok := k.sectors[key]
 	k.mtx.RUnlock()
 	if !ok {
 		return
@@ -397,7 +612,7 @@ func (k *KVS) recvMessage(packet *shared.Packet) {
 	}
 }
 
-func (k *KVS) raftNodeError(nodeKey *config.KvsNodeKey, err error) {
+func (k *KVS) raftNodeError(sectorKey *config.KvsSectorKey, err error) {
 	panic(fmt.Sprintf("raftNodeError not implemented: %s", err))
 }
 
@@ -412,8 +627,8 @@ func (k *KVS) raftNodeSendMessage(dstNodeID *shared.NodeID, message *proto.RaftM
 		})
 }
 
-func (k *KVS) raftNodeApplyProposal(nodeKey *config.KvsNodeKey, proposal *proto.RaftProposalManagement) {
-	_, ok := k.nodes[*nodeKey]
+func (k *KVS) raftNodeApplyProposal(sectorKey *config.KvsSectorKey, proposal *proto.RaftProposalManagement) {
+	_, ok := k.sectors[*sectorKey]
 	if !ok {
 		return
 	}
@@ -421,22 +636,23 @@ func (k *KVS) raftNodeApplyProposal(nodeKey *config.KvsNodeKey, proposal *proto.
 	panic("raftNodeApplyProposal not implemented")
 }
 
-func (k *KVS) raftNodeAppendNode(nodeKey *config.KvsNodeKey, sequence uint64, nodeID *shared.NodeID) {
-	if *nodeKey != *k.coordinating {
+func (k *KVS) raftNodeAppendNode(sectorKey *config.KvsSectorKey, sequence config.KvsSequence, nodeID *shared.NodeID) {
+	if k.hostingSector == nil || *sectorKey != *k.hostingSector {
 		return
 	}
 
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
 
-	member, ok := k.members[sequence]
+	member, ok := k.memberStates[sequence]
 	// unknown
 	if !ok {
 		k.logger.Warn("Unknown node sequence for appending", "sequence", sequence, "nodeID", nodeID)
-		k.members[sequence] = &memberEntry{
+		k.memberStates[sequence] = &memberStateEntry{
 			nodeID: nodeID,
 			state:  memberStateRemoving,
 		}
+		return
 	}
 
 	if member.state == memberStateAppendingRaft {
@@ -446,20 +662,42 @@ func (k *KVS) raftNodeAppendNode(nodeKey *config.KvsNodeKey, sequence uint64, no
 	}
 }
 
-func (k *KVS) raftNodeRemoveNode(nodeKey *config.KvsNodeKey, sequence uint64) {
+func (k *KVS) raftNodeRemoveNode(sectorKey *config.KvsSectorKey, sequence config.KvsSequence) {
 	k.mtx.RLock()
-	node, ok := k.nodes[*nodeKey]
+	sector, ok := k.sectors[*sectorKey]
 	k.mtx.RUnlock()
 	if !ok {
 		return
 	}
 
-	if *nodeKey == *k.coordinating {
-		delete(k.members, sequence)
+	if *sectorKey == *k.hostingSector {
+		delete(k.memberStates, sequence)
 	}
 
-	node.raft.stop()
+	sector.raft.stop()
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
-	delete(k.nodes, *nodeKey)
+	delete(k.sectors, *sectorKey)
+}
+
+func (k *KVS) takeObservation() {
+	k.mtx.RLock()
+	defer k.mtx.RUnlock()
+	if !k.sectorUpdated {
+		return
+	}
+
+	sectorInfos := make(map[config.KvsSectorKey]*config.ObservationSectorInfo)
+	for sectorKey, sector := range k.sectors {
+		tail := ""
+		if sector.store.tail != nil {
+			tail = sector.store.tail.String()
+		}
+		sectorInfos[sectorKey] = &config.ObservationSectorInfo{
+			Head: sector.store.head.String(),
+			Tail: tail,
+		}
+	}
+
+	k.observation.ChangeKvsSectors(sectorInfos)
 }

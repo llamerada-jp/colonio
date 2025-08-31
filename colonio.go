@@ -24,12 +24,12 @@ import (
 	"time"
 
 	"github.com/llamerada-jp/colonio/config"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/geometry"
 	"github.com/llamerada-jp/colonio/internal/kvs"
 	"github.com/llamerada-jp/colonio/internal/messaging"
 	"github.com/llamerada-jp/colonio/internal/network"
 	"github.com/llamerada-jp/colonio/internal/network/node_accessor"
-	"github.com/llamerada-jp/colonio/internal/observation"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/internal/spread"
 )
@@ -59,10 +59,10 @@ type Colonio interface {
 	GetLocalNodeID() string
 	UpdateLocalPosition(x, y float64) error
 	// kvs
-	KvsGet(key string) ([]byte, error)
-	KvsSet(key string, value []byte) error
-	KvsPatch(key string, value []byte) error
-	KvsDelete(key string) error
+	KvsGet(key string) chan *config.KvsGetResult
+	KvsSet(key string, value []byte) chan error
+	KvsPatch(key string, value []byte) chan error
+	KvsDelete(key string) chan error
 	// messaging
 	MessagingPost(dst, name string, val []byte, setters ...MessagingOptionSetter) ([]byte, error)
 	MessagingSetHandler(name string, handler func(*MessagingRequest, MessagingResponseWriter))
@@ -73,18 +73,13 @@ type Colonio interface {
 	SpreadUnsetHandler(name string)
 }
 
-// ObservationHandler is an interface for observing the internal status of colonio.
-// These interfaces are for debugging and simulation and are not intended for normal use.
-// They are not guaranteed to work or be compatible.
-type ObservationHandlers observation.Handlers
-
 type Config struct {
-	Logger              *slog.Logger
-	ObservationHandlers *ObservationHandlers
-	HttpClient          *http.Client
-	SeedURL             string
-	ICEServers          []*config.ICEServer
-	CoordinateSystem    geometry.CoordinateSystem
+	Logger             *slog.Logger
+	ObservationHandler *config.ObservationHandler
+	HttpClient         *http.Client
+	SeedURL            string
+	ICEServers         []*config.ICEServer
+	CoordinateSystem   geometry.CoordinateSystem
 
 	// PacketHopLimit is the maximum number of hops that a packet can be relayed.
 	// If you set 0, the default value of 64 will be set.
@@ -113,9 +108,9 @@ func WithLogger(logger *slog.Logger) ConfigSetter {
 	}
 }
 
-func WithObservation(handlers *ObservationHandlers) ConfigSetter {
+func WithObservation(handler *config.ObservationHandler) ConfigSetter {
 	return func(c *Config) {
-		c.ObservationHandlers = handlers
+		c.ObservationHandler = handler
 	}
 }
 
@@ -175,9 +170,9 @@ type colonioImpl struct {
 
 func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 	config := &Config{
-		Logger:              slog.Default(),
-		ObservationHandlers: &ObservationHandlers{},
-		PacketHopLimit:      64,
+		Logger:             slog.Default(),
+		ObservationHandler: nil,
+		PacketHopLimit:     64,
 
 		SpreadCacheLifetime:  1 * time.Minute,
 		SpreadSizeToUseKnock: 4096,
@@ -221,7 +216,7 @@ func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 	net, err := network.NewNetwork(&network.Config{
 		Logger:           config.Logger,
 		Handler:          impl,
-		Observation:      (*observation.Handlers)(config.ObservationHandlers),
+		Observation:      config.ObservationHandler,
 		CoordinateSystem: config.CoordinateSystem,
 		HttpClient:       config.HttpClient,
 		SeedURL:          config.SeedURL,
@@ -260,10 +255,11 @@ func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 	impl.network = net
 
 	impl.kvs = kvs.NewKVS(&kvs.Config{
-		Logger:     config.Logger,
-		Handler:    impl,
-		Store:      config.KvsStore,
-		Transferer: net.GetTransferer(),
+		Logger:      config.Logger,
+		Handler:     impl,
+		Observation: config.ObservationHandler,
+		Store:       config.KvsStore,
+		Transferer:  net.GetTransferer(),
 	})
 
 	impl.messaging = messaging.NewMessaging(&messaging.Config{
@@ -295,6 +291,7 @@ func (c *colonioImpl) Start(ctx context.Context) error {
 		return err
 	}
 
+	c.kvs.Start(c.ctx, c.localNodeID)
 	c.spread.Start(c.ctx, c.localNodeID)
 
 	return nil
@@ -329,23 +326,23 @@ func (c *colonioImpl) KvsGetStability() (bool, []*shared.NodeID) {
 	return c.network.GetStability()
 }
 
-func (c *colonioImpl) KvsState(active bool) (bool, error) {
-	return c.network.StateKvs(active)
+func (c *colonioImpl) KvsState(state constants.KvsState) (constants.KvsState, error) {
+	return c.network.StateKvs(state)
 }
 
-func (c *colonioImpl) KvsGet(key string) ([]byte, error) {
+func (c *colonioImpl) KvsGet(key string) chan *config.KvsGetResult {
 	return c.kvs.Get(key)
 }
 
-func (c *colonioImpl) KvsSet(key string, value []byte) error {
+func (c *colonioImpl) KvsSet(key string, value []byte) chan error {
 	return c.kvs.Set(key, value)
 }
 
-func (c *colonioImpl) KvsPatch(key string, value []byte) error {
+func (c *colonioImpl) KvsPatch(key string, value []byte) chan error {
 	return c.kvs.Patch(key, value)
 }
 
-func (c *colonioImpl) KvsDelete(key string) error {
+func (c *colonioImpl) KvsDelete(key string) chan error {
 	return c.kvs.Delete(key)
 }
 

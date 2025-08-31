@@ -23,6 +23,7 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed/gateway"
 	"github.com/llamerada-jp/colonio/seed/misc"
@@ -43,7 +44,7 @@ type Controller interface {
 	ReconcileNextNodes(ctx context.Context, nodeID *shared.NodeID, nextNodeIDs, disconnectedIDs []*shared.NodeID) (bool, error)
 	SendSignal(ctx context.Context, nodeID *shared.NodeID, signal *proto.Signal) error
 	PollSignal(ctx context.Context, nodeID *shared.NodeID, send func(*proto.Signal) error) error
-	StateKvs(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error)
+	StateKvs(ctx context.Context, nodeID *shared.NodeID, active bool) (constants.KvsState, error)
 }
 
 type ControllerImpl struct {
@@ -305,17 +306,24 @@ func (c *ControllerImpl) SendSignal(ctx context.Context, nodeID *shared.NodeID, 
 func (c *ControllerImpl) PollSignal(ctx context.Context, nodeID *shared.NodeID, send func(*proto.Signal) error) error {
 	logger := misc.NewLogger(ctx, c.logger)
 
-	c.mtx.Lock()
-	if _, exists := c.signalChannels[*nodeID]; exists {
-		c.mtx.Unlock()
-		return fmt.Errorf("node %s already subscribed to signal", nodeID.String())
+	var ch *misc.Channel[*proto.Signal]
+	err := func() error {
+		c.mtx.Lock()
+		defer c.mtx.Unlock()
+		if _, exists := c.signalChannels[*nodeID]; exists {
+			return fmt.Errorf("node %s already subscribed to signal", nodeID.String())
+		}
+		if err := c.gateway.SubscribeSignal(ctx, nodeID); err != nil {
+			return fmt.Errorf("failed to subscribe to signal: %w", err)
+		}
+		ch = misc.NewChannel[*proto.Signal](100)
+		c.signalChannels[*nodeID] = ch
+		return nil
+	}()
+	if err != nil {
+		return err
 	}
-	if err := c.gateway.SubscribeSignal(ctx, nodeID); err != nil {
-		return fmt.Errorf("failed to subscribe to signal: %w", err)
-	}
-	ch := misc.NewChannel[*proto.Signal](100)
-	c.signalChannels[*nodeID] = ch
-	c.mtx.Unlock()
+
 	defer func() {
 		if err := c.gateway.UnsubscribeSignal(ctx, nodeID); err != nil {
 			logger.Error("failed to unsubscribe from signal", slog.String("nodeID", nodeID.String()), slog.Any("error", err))
@@ -346,17 +354,29 @@ func (c *ControllerImpl) PollSignal(ctx context.Context, nodeID *shared.NodeID, 
 	}
 }
 
-func (c *ControllerImpl) StateKvs(ctx context.Context, nodeID *shared.NodeID, active bool) (bool, error) {
+func (c *ControllerImpl) StateKvs(ctx context.Context, nodeID *shared.NodeID, active bool) (constants.KvsState, error) {
+	if active {
+		_ = c.gateway.UnsetKvsFirstActiveCandidate(ctx)
+	}
+
 	if err := c.gateway.SetKvsState(ctx, nodeID, active); err != nil {
-		return false, fmt.Errorf("failed to set KVS state: %w", err)
+		return constants.KvsStateUnknown, fmt.Errorf("failed to set KVS state: %w", err)
 	}
 
-	exists, err := c.gateway.ExistsKvsActiveNode(ctx)
+	active, err := c.gateway.ExistsKvsActiveNode(ctx)
 	if err != nil {
-		return false, fmt.Errorf("failed to check if KVS active node exists: %w", err)
+		return constants.KvsStateUnknown, fmt.Errorf("failed to check if KVS active node exists: %w", err)
+	}
+	if active {
+		return constants.KvsStateActive, nil
 	}
 
-	return exists, nil
+	err = c.gateway.SetKvsFirstActiveCandidate(ctx, nodeID)
+	if err != nil {
+		return constants.KvsStateUnknown, nil
+	}
+
+	return constants.KvsStateInactive, nil
 }
 
 func (c *ControllerImpl) cleanup(ctx context.Context) error {

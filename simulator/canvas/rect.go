@@ -13,14 +13,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package config
+package canvas
 
-// ICEServer is a configuration for ICE server. It is used to establish a WebRTC connection.
-type ICEServer struct {
-	// URLs is a list of URLs of the ICE server.
-	URLs []string `json:"urls,omitempty"`
-	// Username is a username for the ICE server.
-	Username string `json:"username,omitempty"`
-	// Credential is a credential for the ICE server.
-	Credential string `json:"credential,omitempty"`
+import (
+	"github.com/veandco/go-sdl2/sdl"
+)
+
+var _ objectRenderer = &rect{}
+
+type rect struct {
+	x, y  int32
+	w, h  int32
+	color *sdl.Color
+}
+
+func (b *rect) getZIndex() float64 {
+	return 80
+}
+
+func (b *rect) render(context *context) {
+	context.renderer.SetDrawColor(b.color.R, b.color.G, b.color.B, b.color.A)
+
+	rect := sdl.Rect{
+		X: b.x,
+		Y: b.y,
+		W: b.w,
+		H: b.h,
+	}
+	context.renderer.FillRect(&rect)
 }

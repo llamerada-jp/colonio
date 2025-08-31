@@ -34,11 +34,11 @@ const (
 )
 
 type raftNodeManager interface {
-	raftNodeError(nodeKey *config.KvsNodeKey, err error)
+	raftNodeError(sectorKey *config.KvsSectorKey, err error)
 	raftNodeSendMessage(dstNodeID *shared.NodeID, data *proto.RaftMessage)
-	raftNodeApplyProposal(nodeKey *config.KvsNodeKey, proposal *proto.RaftProposalManagement)
-	raftNodeAppendNode(nodeKey *config.KvsNodeKey, sequence uint64, nodeID *shared.NodeID)
-	raftNodeRemoveNode(nodeKey *config.KvsNodeKey, sequence uint64)
+	raftNodeApplyProposal(sectorKey *config.KvsSectorKey, proposal *proto.RaftProposalManagement)
+	raftNodeAppendNode(sectorKey *config.KvsSectorKey, sequence config.KvsSequence, nodeID *shared.NodeID)
+	raftNodeRemoveNode(sectorKey *config.KvsSectorKey, sequence config.KvsSequence)
 }
 
 type raftNodeStore interface {
@@ -48,19 +48,19 @@ type raftNodeStore interface {
 }
 
 type raftNodeConfig struct {
-	logger  *slog.Logger
-	manager raftNodeManager
-	store   raftNodeStore
-	nodeKey *config.KvsNodeKey
-	join    bool
-	member  map[uint64]*shared.NodeID
+	logger    *slog.Logger
+	manager   raftNodeManager
+	store     raftNodeStore
+	sectorKey *config.KvsSectorKey
+	join      bool
+	member    map[config.KvsSequence]*shared.NodeID
 }
 
 type raftNode struct {
 	logger       *slog.Logger
 	manager      raftNodeManager
 	store        raftNodeStore
-	nodeKey      config.KvsNodeKey
+	sectorKey    config.KvsSectorKey
 	ctx          context.Context
 	etcdRaftNode raft.Node
 	raftStorage  *raft.MemoryStorage
@@ -72,7 +72,7 @@ type raftNode struct {
 	snapshotIndex uint64
 	appliedIndex  uint64
 
-	member map[uint64]*shared.NodeID
+	member map[config.KvsSequence]*shared.NodeID
 }
 
 func newRaftNode(config *raftNodeConfig) *raftNode {
@@ -80,7 +80,7 @@ func newRaftNode(config *raftNodeConfig) *raftNode {
 		logger:      config.logger,
 		manager:     config.manager,
 		store:       config.store,
-		nodeKey:     *config.nodeKey,
+		sectorKey:   *config.sectorKey,
 		raftStorage: raft.NewMemoryStorage(),
 
 		snapshotCatchUpEntriesN: 100,
@@ -90,7 +90,7 @@ func newRaftNode(config *raftNodeConfig) *raftNode {
 	}
 
 	raftConfig := &raft.Config{
-		ID:                        config.nodeKey.Sequence,
+		ID:                        uint64(config.sectorKey.Sequence),
 		ElectionTick:              10,
 		HeartbeatTick:             1,
 		Storage:                   n.raftStorage,
@@ -102,9 +102,9 @@ func newRaftNode(config *raftNodeConfig) *raftNode {
 	if !config.join {
 		peers := make([]raft.Peer, len(config.member))
 		i := 0
-		for seq := range config.member {
+		for sequence := range config.member {
 			peers[i] = raft.Peer{
-				ID: seq,
+				ID: uint64(sequence),
 			}
 			i++
 		}
@@ -168,18 +168,18 @@ func (n *raftNode) stop() {
 	n.etcdRaftNode.Stop()
 }
 
-func (n *raftNode) appendNode(sequence uint64, nodeID *shared.NodeID) error {
+func (n *raftNode) appendNode(sequence config.KvsSequence, nodeID *shared.NodeID) error {
 	return n.etcdRaftNode.ProposeConfChange(n.ctx, raftpb.ConfChange{
 		Type:    raftpb.ConfChangeAddNode,
-		NodeID:  sequence,
+		NodeID:  uint64(sequence),
 		Context: []byte(nodeID.String()),
 	})
 }
 
-func (n *raftNode) removeNode(sequence uint64) error {
+func (n *raftNode) removeNode(sequence config.KvsSequence) error {
 	return n.etcdRaftNode.ProposeConfChange(n.ctx, raftpb.ConfChange{
 		Type:   raftpb.ConfChangeRemoveNode,
-		NodeID: sequence,
+		NodeID: uint64(sequence),
 	})
 }
 
@@ -190,7 +190,7 @@ func (n *raftNode) propose(p *proto.RaftProposal) {
 	}
 
 	if err := n.etcdRaftNode.Propose(n.ctx, data); err != nil {
-		n.manager.raftNodeError(&n.nodeKey, err)
+		n.manager.raftNodeError(&n.sectorKey, err)
 	}
 }
 
@@ -216,7 +216,7 @@ func (n *raftNode) sendMessages(messages []raftpb.Message) error {
 			msg.Snapshot.Metadata.ConfState = n.confState
 		}
 
-		sequenceTo := uint64(msg.To)
+		sequenceTo := config.KvsSequence(msg.To)
 		data, err := msg.Marshal()
 		if err != nil {
 			return err
@@ -227,9 +227,9 @@ func (n *raftNode) sendMessages(messages []raftpb.Message) error {
 		}
 
 		n.manager.raftNodeSendMessage(dstNodeID, &proto.RaftMessage{
-			ClusterId: MustMarshalUUID(n.nodeKey.ClusterID),
-			Sequence:  sequenceTo,
-			Message:   data,
+			SectorId: MustMarshalUUID(n.sectorKey.SectorID),
+			Sequence: uint64(sequenceTo),
+			Message:  data,
 		})
 	}
 	return nil
@@ -265,19 +265,19 @@ func (n *raftNode) publishEntries(entries []raftpb.Entry) error {
 					if err != nil {
 						return err
 					}
-					n.member[cc.NodeID] = nodeID
+					n.member[config.KvsSequence(cc.NodeID)] = nodeID
 				} else {
 					var ok bool
-					nodeID, ok = n.member[cc.NodeID]
+					nodeID, ok = n.member[config.KvsSequence(cc.NodeID)]
 					if !ok {
 						return errors.New("missing node ID in conf change")
 					}
 				}
-				n.manager.raftNodeAppendNode(&n.nodeKey, cc.NodeID, nodeID)
+				n.manager.raftNodeAppendNode(&n.sectorKey, config.KvsSequence(cc.NodeID), nodeID)
 
 			case raftpb.ConfChangeRemoveNode:
-				delete(n.member, cc.NodeID)
-				n.manager.raftNodeRemoveNode(&n.nodeKey, cc.NodeID)
+				delete(n.member, config.KvsSequence(cc.NodeID))
+				n.manager.raftNodeRemoveNode(&n.sectorKey, config.KvsSequence(cc.NodeID))
 
 			default:
 				n.logger.Warn("Unknown conf change type", "type", cc.Type)
@@ -287,7 +287,7 @@ func (n *raftNode) publishEntries(entries []raftpb.Entry) error {
 
 	for _, proposal := range proposals {
 		if p := proposal.GetManagement(); p != nil {
-			n.manager.raftNodeApplyProposal(&n.nodeKey, p)
+			n.manager.raftNodeApplyProposal(&n.sectorKey, p)
 		} else if p := proposal.GetStore(); p != nil {
 			n.store.raftNodeApplyProposal(p)
 		}

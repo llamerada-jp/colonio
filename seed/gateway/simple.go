@@ -41,11 +41,12 @@ type nodeEntry struct {
 }
 
 type SimpleGateway struct {
-	logger          *slog.Logger
-	mtx             sync.Mutex
-	handler         Handler
-	nodeIDGenerator func(exists map[shared.NodeID]any) (*shared.NodeID, error)
-	nodes           map[shared.NodeID]*nodeEntry
+	logger                  *slog.Logger
+	mtx                     sync.Mutex
+	handler                 Handler
+	nodeIDGenerator         func(exists map[shared.NodeID]any) (*shared.NodeID, error)
+	nodes                   map[shared.NodeID]*nodeEntry
+	kvsFirstActiveCandidate *shared.NodeID
 }
 
 func NewSimpleGateway(logger *slog.Logger, handler Handler, nodeIDGenerator func(exists map[shared.NodeID]any) (*shared.NodeID, error)) Gateway {
@@ -314,4 +315,40 @@ func (h *SimpleGateway) ExistsKvsActiveNode(ctx context.Context) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// SetKvsFirstActiveCandidate registers one candidate node to be activated first.
+// If another candidate already exists, it returns ErrKvsFirstActiveCandidateAlreadySet.
+func (h *SimpleGateway) SetKvsFirstActiveCandidate(ctx context.Context, nodeID *shared.NodeID) error {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+
+	// When a candidate node was offline, the candidate is cleared.
+	if h.kvsFirstActiveCandidate != nil {
+		if _, exists := h.nodes[*h.kvsFirstActiveCandidate]; !exists {
+			h.kvsFirstActiveCandidate = nil
+		}
+	}
+
+	if h.kvsFirstActiveCandidate == nil {
+		h.kvsFirstActiveCandidate = nodeID
+		return nil
+	}
+
+	// If the same node attempts to register as a candidate again, it will continue to be accepted.
+	if h.kvsFirstActiveCandidate.Compare(nodeID) == 0 {
+		return nil
+	}
+
+	return ErrKvsFirstActiveCandidateAlreadySet
+}
+
+// UpsetKvsFirstActiveCandidate clears the candidate if the specified node is the current candidate.
+func (h *SimpleGateway) UnsetKvsFirstActiveCandidate(ctx context.Context) error {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+
+	h.kvsFirstActiveCandidate = nil
+
+	return nil
 }

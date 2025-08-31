@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/geometry"
 	"github.com/llamerada-jp/colonio/internal/network/node_accessor"
@@ -28,7 +29,6 @@ import (
 	"github.com/llamerada-jp/colonio/internal/network/seed_accessor"
 	"github.com/llamerada-jp/colonio/internal/network/signal"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
-	"github.com/llamerada-jp/colonio/internal/observation"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
@@ -39,7 +39,7 @@ type Handler interface {
 type Config struct {
 	Logger           *slog.Logger
 	Handler          Handler
-	Observation      observation.Caller
+	Observation      config.ObservationCaller
 	CoordinateSystem geometry.CoordinateSystem
 
 	// config parameters for seed
@@ -55,7 +55,7 @@ type Config struct {
 type Network struct {
 	logger      *slog.Logger
 	handler     Handler
-	observation observation.Caller
+	observation config.ObservationCaller
 
 	localNodeID *shared.NodeID
 
@@ -156,8 +156,8 @@ func (n *Network) GetNextStep2D(dst *geometry.Coordinate) *shared.NodeID {
 	return n.routing.GetNextStep2D(dst)
 }
 
-func (n *Network) StateKvs(active bool) (bool, error) {
-	return n.seedAccessor.StateKvs(active)
+func (n *Network) StateKvs(state constants.KvsState) (constants.KvsState, error) {
+	return n.seedAccessor.StateKvs(state)
 }
 
 // implements for seed_accessor.Handler
@@ -189,7 +189,9 @@ func (n *Network) NodeAccessorChangeConnections(connections map[shared.NodeID]st
 	// use go routine to avoid deadlock
 	go n.routing.UpdateNodeConnections(connections)
 
-	n.observation.ChangeConnectedNodes(shared.ConvertNodeIDSetToStringMap(connections))
+	if n.observation != nil {
+		n.observation.ChangeConnectedNodes(shared.ConvertNodeIDSetToStringMap(connections))
+	}
 }
 
 func (n *Network) NodeAccessorSendSignalOffer(dstNodeID *shared.NodeID, offer *signal.Offer) error {
@@ -214,8 +216,7 @@ func (n *Network) TransfererRelayPacket(dstNodeID *shared.NodeID, packet *shared
 		return
 	}
 
-	err := n.nodeAccessor.RelayPacket(dstNodeID, packet)
-	if err != nil {
+	if err := n.nodeAccessor.RelayPacket(dstNodeID, packet); err != nil {
 		n.logger.Debug("failed to relay packet", slog.String("error", err.Error()))
 	}
 }
@@ -257,8 +258,6 @@ func (n *Network) classifyPacket(packet *shared.Packet) {
 	} else if nextNodeID.IsNormal() || nextNodeID.Equal(&shared.NodeNeighborhoods) {
 		if err := n.nodeAccessor.RelayPacket(nextNodeID, packet); err != nil {
 			n.logger.Debug("failed to relay packet", slog.String("error", err.Error()))
-			n.nodeAccessor.RelayPacket(nextNodeID, packet)
-			return
 		}
 		return
 	}

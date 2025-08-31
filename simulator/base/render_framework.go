@@ -16,12 +16,20 @@
 package base
 
 import (
+	"math"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/llamerada-jp/colonio/config"
+	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/simulator/canvas"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
+)
+
+const (
+	memberFullCount = 5
+	memberPixelSize = 5.0
 )
 
 type NodeInfo struct {
@@ -159,6 +167,7 @@ func (f *RenderFramework) Start() error {
 			f.aggregatePacketInfos(timestamp)
 			sec += 1
 			f.drawer(f, f.canvas, sec)
+			f.drawSectorInfo()
 			f.canvas.Render()
 			if f.filer != nil {
 				f.filer.Save()
@@ -172,6 +181,148 @@ func (f *RenderFramework) Start() error {
 			timestamp = timestamp.Add(time.Second)
 		}
 	}
+}
+
+type sectorInfo struct {
+	head        *shared.NodeID
+	tail        *shared.NodeID
+	memberCount int
+	active      bool
+	stateOK     bool
+}
+
+type sectorRecord struct {
+	sequence config.KvsSequence
+	nodeID   *shared.NodeID
+	head     *shared.NodeID
+	tail     *shared.NodeID
+}
+
+func (f *RenderFramework) drawSectorInfo() {
+	sectorInfos := f.gatherSectorInfo()
+
+	slices.SortFunc(sectorInfos, func(a, b sectorInfo) int {
+		return a.head.Compare(b.head)
+	})
+
+	for idx, info := range sectorInfos {
+		f.canvas.SetColor(0, 0, 255)
+		if !info.stateOK {
+			f.canvas.SetColor(255, 0, 0)
+		} else {
+			if info.active {
+				f.canvas.SetColor(0, 255, 0)
+			} else {
+				f.canvas.SetColor(255, 255, 0)
+			}
+		}
+
+		yHead := nodeIDtoY(info.head)
+		yTail := float64(0)
+		if info.tail != nil {
+			yTail = nodeIDtoY(info.tail)
+		} else if idx < len(sectorInfos)-1 {
+			// estimate tail position from next sector
+			yTail = nodeIDtoY(sectorInfos[idx+1].head)
+		} else {
+			yTail = nodeIDtoY(sectorInfos[0].head)
+		}
+
+		if yTail < yHead {
+			f.canvas.DrawRect(
+				1.0,
+				yHead,
+				1.0-(memberPixelSize*float64(info.memberCount)/f.canvas.GetCanvasWidthPixel()),
+				yTail,
+			)
+		} else {
+			f.canvas.DrawRect(
+				1.0,
+				yHead,
+				1.0-(memberPixelSize*float64(info.memberCount)/f.canvas.GetCanvasWidthPixel()),
+				-1.0,
+			)
+			f.canvas.DrawRect(
+				1.0,
+				1.0,
+				1.0-(memberPixelSize*float64(info.memberCount)/f.canvas.GetCanvasWidthPixel()),
+				yTail,
+			)
+		}
+	}
+}
+
+func nodeIDtoY(nodeID *shared.NodeID) float64 {
+	raw0, _ := nodeID.Raw()
+	y := float64(raw0) / math.MaxUint
+	return 1 - 2.0*y
+}
+
+func (f *RenderFramework) gatherSectorInfo() []sectorInfo {
+	// gather sector records
+	sectorRecords := make(map[string][]sectorRecord)
+	for nodeIDstr, n := range f.AliveNodes {
+		for _, sectorInfo := range n.Record.GetRecord().SectorInfos {
+			if _, ok := sectorRecords[sectorInfo.SectorID]; !ok {
+				sectorRecords[sectorInfo.SectorID] = make([]sectorRecord, 0)
+			}
+			var nodeID, head, tail *shared.NodeID
+			nodeID, _ = shared.NewNodeIDFromString(nodeIDstr)
+			head, _ = shared.NewNodeIDFromString(sectorInfo.Head)
+			if sectorInfo.Tail != "" {
+				tail, _ = shared.NewNodeIDFromString(sectorInfo.Tail)
+			}
+			sectorRecords[sectorInfo.SectorID] = append(sectorRecords[sectorInfo.SectorID], sectorRecord{
+				sequence: config.KvsSequence(sectorInfo.Sequence),
+				nodeID:   nodeID,
+				head:     head,
+				tail:     tail,
+			})
+		}
+	}
+
+	sectorInfos := make([]sectorInfo, 0)
+	for _, records := range sectorRecords {
+		// convert sector record to sector info
+		var hostRecord *sectorRecord
+		for _, r := range records {
+			if r.sequence == config.KvsSectorHostNodeSequence {
+				hostRecord = &r
+				break
+			}
+		}
+		if hostRecord == nil {
+			continue
+		}
+		active := false
+		if hostRecord.tail != nil {
+			active = true
+		}
+		info := sectorInfo{
+			head:        hostRecord.head,
+			tail:        hostRecord.tail,
+			memberCount: len(records),
+			active:      active,
+			stateOK:     true,
+		}
+		// check correctness
+		if info.memberCount < memberFullCount {
+			info.stateOK = false
+		}
+		for _, r := range records {
+			if !info.head.Equal(r.head) {
+				info.stateOK = false
+				break
+			}
+			if r.tail != nil && (info.tail == nil || !info.tail.Equal(r.tail)) {
+				info.stateOK = false
+				break
+			}
+		}
+		sectorInfos = append(sectorInfos, info)
+	}
+
+	return sectorInfos
 }
 
 // will return loss rate, duration p90 sec, duration p99 sec

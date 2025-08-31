@@ -28,6 +28,7 @@ import (
 	"connectrpc.com/connect"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	service "github.com/llamerada-jp/colonio/api/colonio/v1alpha/v1alphaconnect"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/network/signal"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
@@ -264,21 +265,25 @@ func (sa *SeedAccessor) ReconcileNextNodes(nextNodeIDs, disconnectedNodeIDs []*s
 	return res.Msg.Matched, nil
 }
 
-func (sa *SeedAccessor) StateKvs(active bool) (bool, error) {
+func (sa *SeedAccessor) StateKvs(state constants.KvsState) (constants.KvsState, error) {
+	if state == constants.KvsStateUnknown {
+		panic("logic error: state should not be KvsStateUnknown")
+	}
+
 	res, err := sa.client.StateKvs(sa.ctx, &connect.Request[proto.StateKvsRequest]{
 		Msg: &proto.StateKvsRequest{
-			Active: active,
+			State: proto.KvsState(state),
 		},
 	})
 
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return false, nil
+			return constants.KvsStateUnknown, nil
 		}
-		return false, fmt.Errorf("failed to set/get state KVS: %w", err)
+		return constants.KvsStateUnknown, fmt.Errorf("failed to set/get state KVS: %w", err)
 	}
 
-	return res.Msg.ExistsActiveNode, nil
+	return constants.KvsState(res.Msg.EntireState), nil
 }
 
 func (sa *SeedAccessor) unassign() {

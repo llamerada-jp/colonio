@@ -74,6 +74,56 @@ func (KvsOperation_Command) EnumDescriptor() ([]byte, []int) {
 	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{9, 0}
 }
 
+type KvsOperationResponse_Error int32
+
+const (
+	// buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+	KvsOperationResponse_ERROR_NONE      KvsOperationResponse_Error = 0
+	KvsOperationResponse_ERROR_UNKNOWN   KvsOperationResponse_Error = 1
+	KvsOperationResponse_ERROR_NOT_FOUND KvsOperationResponse_Error = 2 // used for GET
+)
+
+// Enum value maps for KvsOperationResponse_Error.
+var (
+	KvsOperationResponse_Error_name = map[int32]string{
+		0: "ERROR_NONE",
+		1: "ERROR_UNKNOWN",
+		2: "ERROR_NOT_FOUND",
+	}
+	KvsOperationResponse_Error_value = map[string]int32{
+		"ERROR_NONE":      0,
+		"ERROR_UNKNOWN":   1,
+		"ERROR_NOT_FOUND": 2,
+	}
+)
+
+func (x KvsOperationResponse_Error) Enum() *KvsOperationResponse_Error {
+	p := new(KvsOperationResponse_Error)
+	*p = x
+	return p
+}
+
+func (x KvsOperationResponse_Error) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (KvsOperationResponse_Error) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_colonio_v1alpha_node_proto_enumTypes[1].Descriptor()
+}
+
+func (KvsOperationResponse_Error) Type() protoreflect.EnumType {
+	return &file_api_colonio_v1alpha_node_proto_enumTypes[1]
+}
+
+func (x KvsOperationResponse_Error) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use KvsOperationResponse_Error.Descriptor instead.
+func (KvsOperationResponse_Error) EnumDescriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{10, 0}
+}
+
 type RaftFit_Stage int32
 
 const (
@@ -105,11 +155,11 @@ func (x RaftFit_Stage) String() string {
 }
 
 func (RaftFit_Stage) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_colonio_v1alpha_node_proto_enumTypes[1].Descriptor()
+	return file_api_colonio_v1alpha_node_proto_enumTypes[2].Descriptor()
 }
 
 func (RaftFit_Stage) Type() protoreflect.EnumType {
-	return &file_api_colonio_v1alpha_node_proto_enumTypes[1]
+	return &file_api_colonio_v1alpha_node_proto_enumTypes[2]
 }
 
 func (x RaftFit_Stage) Number() protoreflect.EnumNumber {
@@ -152,11 +202,11 @@ func (x RaftConfig_Command) String() string {
 }
 
 func (RaftConfig_Command) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_colonio_v1alpha_node_proto_enumTypes[2].Descriptor()
+	return file_api_colonio_v1alpha_node_proto_enumTypes[3].Descriptor()
 }
 
 func (RaftConfig_Command) Type() protoreflect.EnumType {
-	return &file_api_colonio_v1alpha_node_proto_enumTypes[2]
+	return &file_api_colonio_v1alpha_node_proto_enumTypes[3]
 }
 
 func (x RaftConfig_Command) Number() protoreflect.EnumNumber {
@@ -976,9 +1026,9 @@ func (x *KvsOperation) GetValue() []byte {
 }
 
 type KvsOperationResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Found         bool                   `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"` // used for GET
-	Value         []byte                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`  // used for GET
+	state         protoimpl.MessageState     `protogen:"open.v1"`
+	Error         KvsOperationResponse_Error `protobuf:"varint,1,opt,name=error,proto3,enum=api.colonio.v1alpha.KvsOperationResponse_Error" json:"error,omitempty"` // used for GET
+	Value         []byte                     `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`                                                      // used for GET
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1013,11 +1063,11 @@ func (*KvsOperationResponse) Descriptor() ([]byte, []int) {
 	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *KvsOperationResponse) GetFound() bool {
+func (x *KvsOperationResponse) GetError() KvsOperationResponse_Error {
 	if x != nil {
-		return x.Found
+		return x.Error
 	}
-	return false
+	return KvsOperationResponse_ERROR_NONE
 }
 
 func (x *KvsOperationResponse) GetValue() []byte {
@@ -1133,7 +1183,7 @@ func (x *RaftFitResponse) GetContradiction() bool {
 
 type RaftConfig struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ClusterId     []byte                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"` // UUID of the cluster
+	SectorId      []byte                 `protobuf:"bytes,1,opt,name=sector_id,json=sectorId,proto3" json:"sector_id,omitempty"` // UUID of the sector
 	Command       RaftConfig_Command     `protobuf:"varint,2,opt,name=command,proto3,enum=api.colonio.v1alpha.RaftConfig_Command" json:"command,omitempty"`
 	Sequence      uint64                 `protobuf:"varint,3,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	Members       map[uint64]*NodeID     `protobuf:"bytes,5,rep,name=members,proto3" json:"members,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -1171,9 +1221,9 @@ func (*RaftConfig) Descriptor() ([]byte, []int) {
 	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{13}
 }
 
-func (x *RaftConfig) GetClusterId() []byte {
+func (x *RaftConfig) GetSectorId() []byte {
 	if x != nil {
-		return x.ClusterId
+		return x.SectorId
 	}
 	return nil
 }
@@ -1201,7 +1251,7 @@ func (x *RaftConfig) GetMembers() map[uint64]*NodeID {
 
 type RaftConfigResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ClusterId     []byte                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
+	SectorId      []byte                 `protobuf:"bytes,1,opt,name=sector_id,json=sectorId,proto3" json:"sector_id,omitempty"`
 	Sequence      uint64                 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1237,9 +1287,9 @@ func (*RaftConfigResponse) Descriptor() ([]byte, []int) {
 	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{14}
 }
 
-func (x *RaftConfigResponse) GetClusterId() []byte {
+func (x *RaftConfigResponse) GetSectorId() []byte {
 	if x != nil {
-		return x.ClusterId
+		return x.SectorId
 	}
 	return nil
 }
@@ -1253,7 +1303,7 @@ func (x *RaftConfigResponse) GetSequence() uint64 {
 
 type RaftMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ClusterId     []byte                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
+	SectorId      []byte                 `protobuf:"bytes,1,opt,name=sector_id,json=sectorId,proto3" json:"sector_id,omitempty"`
 	Sequence      uint64                 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	Message       []byte                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1290,9 +1340,9 @@ func (*RaftMessage) Descriptor() ([]byte, []int) {
 	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{15}
 }
 
-func (x *RaftMessage) GetClusterId() []byte {
+func (x *RaftMessage) GetSectorId() []byte {
 	if x != nil {
-		return x.ClusterId
+		return x.SectorId
 	}
 	return nil
 }
@@ -1707,10 +1757,15 @@ const file_api_colonio_v1alpha_node_proto_rawDesc = "" +
 	"\vCOMMAND_GET\x10\x00\x12\x0f\n" +
 	"\vCOMMAND_SET\x10\x01\x12\x11\n" +
 	"\rCOMMAND_PATCH\x10\x02\x12\x12\n" +
-	"\x0eCOMMAND_DELETE\x10\x03\"B\n" +
-	"\x14KvsOperationResponse\x12\x14\n" +
-	"\x05found\x18\x01 \x01(\bR\x05found\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value\"\x97\x01\n" +
+	"\x0eCOMMAND_DELETE\x10\x03\"\xb4\x01\n" +
+	"\x14KvsOperationResponse\x12E\n" +
+	"\x05error\x18\x01 \x01(\x0e2/.api.colonio.v1alpha.KvsOperationResponse.ErrorR\x05error\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value\"?\n" +
+	"\x05Error\x12\x0e\n" +
+	"\n" +
+	"ERROR_NONE\x10\x00\x12\x11\n" +
+	"\rERROR_UNKNOWN\x10\x01\x12\x13\n" +
+	"\x0fERROR_NOT_FOUND\x10\x02\"\x97\x01\n" +
 	"\aRaftFit\x128\n" +
 	"\x05stage\x18\x01 \x01(\x0e2\".api.colonio.v1alpha.RaftFit.StageR\x05stage\x12\x12\n" +
 	"\x04head\x18\x02 \x01(\x04R\x04head\x12\x12\n" +
@@ -1719,11 +1774,10 @@ const file_api_colonio_v1alpha_node_proto_rawDesc = "" +
 	"\vSTAGE_EMPTY\x10\x00\x12\x10\n" +
 	"\fSTAGE_ACTIVE\x10\x01\"7\n" +
 	"\x0fRaftFitResponse\x12$\n" +
-	"\rcontradiction\x18\x01 \x01(\bR\rcontradiction\"\xde\x02\n" +
+	"\rcontradiction\x18\x01 \x01(\bR\rcontradiction\"\xdc\x02\n" +
 	"\n" +
-	"RaftConfig\x12\x1d\n" +
-	"\n" +
-	"cluster_id\x18\x01 \x01(\fR\tclusterId\x12A\n" +
+	"RaftConfig\x12\x1b\n" +
+	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12A\n" +
 	"\acommand\x18\x02 \x01(\x0e2'.api.colonio.v1alpha.RaftConfig.CommandR\acommand\x12\x1a\n" +
 	"\bsequence\x18\x03 \x01(\x04R\bsequence\x12F\n" +
 	"\amembers\x18\x05 \x03(\v2,.api.colonio.v1alpha.RaftConfig.MembersEntryR\amembers\x1aW\n" +
@@ -1732,14 +1786,12 @@ const file_api_colonio_v1alpha_node_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x05value:\x028\x01\"1\n" +
 	"\aCommand\x12\x12\n" +
 	"\x0eCOMMAND_CREATE\x10\x00\x12\x12\n" +
-	"\x0eCOMMAND_APPEND\x10\x01\"O\n" +
-	"\x12RaftConfigResponse\x12\x1d\n" +
-	"\n" +
-	"cluster_id\x18\x01 \x01(\fR\tclusterId\x12\x1a\n" +
-	"\bsequence\x18\x02 \x01(\x04R\bsequence\"b\n" +
-	"\vRaftMessage\x12\x1d\n" +
-	"\n" +
-	"cluster_id\x18\x01 \x01(\fR\tclusterId\x12\x1a\n" +
+	"\x0eCOMMAND_APPEND\x10\x01\"M\n" +
+	"\x12RaftConfigResponse\x12\x1b\n" +
+	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1a\n" +
+	"\bsequence\x18\x02 \x01(\x04R\bsequence\"`\n" +
+	"\vRaftMessage\x12\x1b\n" +
+	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1a\n" +
 	"\bsequence\x18\x02 \x01(\x04R\bsequence\x12\x18\n" +
 	"\amessage\x18\x03 \x01(\fR\amessage\"\xd6\x01\n" +
 	"\x06Spread\x123\n" +
@@ -1779,78 +1831,80 @@ func file_api_colonio_v1alpha_node_proto_rawDescGZIP() []byte {
 	return file_api_colonio_v1alpha_node_proto_rawDescData
 }
 
-var file_api_colonio_v1alpha_node_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_api_colonio_v1alpha_node_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
 var file_api_colonio_v1alpha_node_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_api_colonio_v1alpha_node_proto_goTypes = []any{
-	(KvsOperation_Command)(0),    // 0: api.colonio.v1alpha.KvsOperation.Command
-	(RaftFit_Stage)(0),           // 1: api.colonio.v1alpha.RaftFit.Stage
-	(RaftConfig_Command)(0),      // 2: api.colonio.v1alpha.RaftConfig.Command
-	(*NodePackets)(nil),          // 3: api.colonio.v1alpha.NodePackets
-	(*NodePacketHead)(nil),       // 4: api.colonio.v1alpha.NodePacketHead
-	(*NodePacket)(nil),           // 5: api.colonio.v1alpha.NodePacket
-	(*PacketContent)(nil),        // 6: api.colonio.v1alpha.PacketContent
-	(*Error)(nil),                // 7: api.colonio.v1alpha.Error
-	(*RoutingNodeRecord)(nil),    // 8: api.colonio.v1alpha.RoutingNodeRecord
-	(*Routing)(nil),              // 9: api.colonio.v1alpha.Routing
-	(*Messaging)(nil),            // 10: api.colonio.v1alpha.Messaging
-	(*MessagingResponse)(nil),    // 11: api.colonio.v1alpha.MessagingResponse
-	(*KvsOperation)(nil),         // 12: api.colonio.v1alpha.KvsOperation
-	(*KvsOperationResponse)(nil), // 13: api.colonio.v1alpha.KvsOperationResponse
-	(*RaftFit)(nil),              // 14: api.colonio.v1alpha.RaftFit
-	(*RaftFitResponse)(nil),      // 15: api.colonio.v1alpha.RaftFitResponse
-	(*RaftConfig)(nil),           // 16: api.colonio.v1alpha.RaftConfig
-	(*RaftConfigResponse)(nil),   // 17: api.colonio.v1alpha.RaftConfigResponse
-	(*RaftMessage)(nil),          // 18: api.colonio.v1alpha.RaftMessage
-	(*Spread)(nil),               // 19: api.colonio.v1alpha.Spread
-	(*SpreadKnock)(nil),          // 20: api.colonio.v1alpha.SpreadKnock
-	(*SpreadKnockResponse)(nil),  // 21: api.colonio.v1alpha.SpreadKnockResponse
-	(*SpreadRelay)(nil),          // 22: api.colonio.v1alpha.SpreadRelay
-	(*SpreadRelayResponse)(nil),  // 23: api.colonio.v1alpha.SpreadRelayResponse
-	nil,                          // 24: api.colonio.v1alpha.Routing.NodeRecordsEntry
-	nil,                          // 25: api.colonio.v1alpha.RaftConfig.MembersEntry
-	(*NodeID)(nil),               // 26: api.colonio.v1alpha.NodeID
-	(*Coordinate)(nil),           // 27: api.colonio.v1alpha.Coordinate
+	(KvsOperation_Command)(0),       // 0: api.colonio.v1alpha.KvsOperation.Command
+	(KvsOperationResponse_Error)(0), // 1: api.colonio.v1alpha.KvsOperationResponse.Error
+	(RaftFit_Stage)(0),              // 2: api.colonio.v1alpha.RaftFit.Stage
+	(RaftConfig_Command)(0),         // 3: api.colonio.v1alpha.RaftConfig.Command
+	(*NodePackets)(nil),             // 4: api.colonio.v1alpha.NodePackets
+	(*NodePacketHead)(nil),          // 5: api.colonio.v1alpha.NodePacketHead
+	(*NodePacket)(nil),              // 6: api.colonio.v1alpha.NodePacket
+	(*PacketContent)(nil),           // 7: api.colonio.v1alpha.PacketContent
+	(*Error)(nil),                   // 8: api.colonio.v1alpha.Error
+	(*RoutingNodeRecord)(nil),       // 9: api.colonio.v1alpha.RoutingNodeRecord
+	(*Routing)(nil),                 // 10: api.colonio.v1alpha.Routing
+	(*Messaging)(nil),               // 11: api.colonio.v1alpha.Messaging
+	(*MessagingResponse)(nil),       // 12: api.colonio.v1alpha.MessagingResponse
+	(*KvsOperation)(nil),            // 13: api.colonio.v1alpha.KvsOperation
+	(*KvsOperationResponse)(nil),    // 14: api.colonio.v1alpha.KvsOperationResponse
+	(*RaftFit)(nil),                 // 15: api.colonio.v1alpha.RaftFit
+	(*RaftFitResponse)(nil),         // 16: api.colonio.v1alpha.RaftFitResponse
+	(*RaftConfig)(nil),              // 17: api.colonio.v1alpha.RaftConfig
+	(*RaftConfigResponse)(nil),      // 18: api.colonio.v1alpha.RaftConfigResponse
+	(*RaftMessage)(nil),             // 19: api.colonio.v1alpha.RaftMessage
+	(*Spread)(nil),                  // 20: api.colonio.v1alpha.Spread
+	(*SpreadKnock)(nil),             // 21: api.colonio.v1alpha.SpreadKnock
+	(*SpreadKnockResponse)(nil),     // 22: api.colonio.v1alpha.SpreadKnockResponse
+	(*SpreadRelay)(nil),             // 23: api.colonio.v1alpha.SpreadRelay
+	(*SpreadRelayResponse)(nil),     // 24: api.colonio.v1alpha.SpreadRelayResponse
+	nil,                             // 25: api.colonio.v1alpha.Routing.NodeRecordsEntry
+	nil,                             // 26: api.colonio.v1alpha.RaftConfig.MembersEntry
+	(*NodeID)(nil),                  // 27: api.colonio.v1alpha.NodeID
+	(*Coordinate)(nil),              // 28: api.colonio.v1alpha.Coordinate
 }
 var file_api_colonio_v1alpha_node_proto_depIdxs = []int32{
-	5,  // 0: api.colonio.v1alpha.NodePackets.packets:type_name -> api.colonio.v1alpha.NodePacket
-	26, // 1: api.colonio.v1alpha.NodePacketHead.dst_node_id:type_name -> api.colonio.v1alpha.NodeID
-	26, // 2: api.colonio.v1alpha.NodePacketHead.src_node_id:type_name -> api.colonio.v1alpha.NodeID
-	4,  // 3: api.colonio.v1alpha.NodePacket.head:type_name -> api.colonio.v1alpha.NodePacketHead
-	7,  // 4: api.colonio.v1alpha.PacketContent.error:type_name -> api.colonio.v1alpha.Error
-	9,  // 5: api.colonio.v1alpha.PacketContent.routing:type_name -> api.colonio.v1alpha.Routing
-	10, // 6: api.colonio.v1alpha.PacketContent.messaging:type_name -> api.colonio.v1alpha.Messaging
-	11, // 7: api.colonio.v1alpha.PacketContent.messaging_response:type_name -> api.colonio.v1alpha.MessagingResponse
-	12, // 8: api.colonio.v1alpha.PacketContent.kvs_operation:type_name -> api.colonio.v1alpha.KvsOperation
-	13, // 9: api.colonio.v1alpha.PacketContent.kvs_operation_response:type_name -> api.colonio.v1alpha.KvsOperationResponse
-	14, // 10: api.colonio.v1alpha.PacketContent.raft_fit:type_name -> api.colonio.v1alpha.RaftFit
-	15, // 11: api.colonio.v1alpha.PacketContent.raft_fit_response:type_name -> api.colonio.v1alpha.RaftFitResponse
-	16, // 12: api.colonio.v1alpha.PacketContent.raft_config:type_name -> api.colonio.v1alpha.RaftConfig
-	17, // 13: api.colonio.v1alpha.PacketContent.raft_config_response:type_name -> api.colonio.v1alpha.RaftConfigResponse
-	18, // 14: api.colonio.v1alpha.PacketContent.raft_message:type_name -> api.colonio.v1alpha.RaftMessage
-	19, // 15: api.colonio.v1alpha.PacketContent.spread:type_name -> api.colonio.v1alpha.Spread
-	20, // 16: api.colonio.v1alpha.PacketContent.spread_knock:type_name -> api.colonio.v1alpha.SpreadKnock
-	21, // 17: api.colonio.v1alpha.PacketContent.spread_knock_response:type_name -> api.colonio.v1alpha.SpreadKnockResponse
-	22, // 18: api.colonio.v1alpha.PacketContent.spread_relay:type_name -> api.colonio.v1alpha.SpreadRelay
-	23, // 19: api.colonio.v1alpha.PacketContent.spread_relay_response:type_name -> api.colonio.v1alpha.SpreadRelayResponse
-	27, // 20: api.colonio.v1alpha.RoutingNodeRecord.r2d_position:type_name -> api.colonio.v1alpha.Coordinate
-	27, // 21: api.colonio.v1alpha.Routing.r2d_position:type_name -> api.colonio.v1alpha.Coordinate
-	24, // 22: api.colonio.v1alpha.Routing.node_records:type_name -> api.colonio.v1alpha.Routing.NodeRecordsEntry
+	6,  // 0: api.colonio.v1alpha.NodePackets.packets:type_name -> api.colonio.v1alpha.NodePacket
+	27, // 1: api.colonio.v1alpha.NodePacketHead.dst_node_id:type_name -> api.colonio.v1alpha.NodeID
+	27, // 2: api.colonio.v1alpha.NodePacketHead.src_node_id:type_name -> api.colonio.v1alpha.NodeID
+	5,  // 3: api.colonio.v1alpha.NodePacket.head:type_name -> api.colonio.v1alpha.NodePacketHead
+	8,  // 4: api.colonio.v1alpha.PacketContent.error:type_name -> api.colonio.v1alpha.Error
+	10, // 5: api.colonio.v1alpha.PacketContent.routing:type_name -> api.colonio.v1alpha.Routing
+	11, // 6: api.colonio.v1alpha.PacketContent.messaging:type_name -> api.colonio.v1alpha.Messaging
+	12, // 7: api.colonio.v1alpha.PacketContent.messaging_response:type_name -> api.colonio.v1alpha.MessagingResponse
+	13, // 8: api.colonio.v1alpha.PacketContent.kvs_operation:type_name -> api.colonio.v1alpha.KvsOperation
+	14, // 9: api.colonio.v1alpha.PacketContent.kvs_operation_response:type_name -> api.colonio.v1alpha.KvsOperationResponse
+	15, // 10: api.colonio.v1alpha.PacketContent.raft_fit:type_name -> api.colonio.v1alpha.RaftFit
+	16, // 11: api.colonio.v1alpha.PacketContent.raft_fit_response:type_name -> api.colonio.v1alpha.RaftFitResponse
+	17, // 12: api.colonio.v1alpha.PacketContent.raft_config:type_name -> api.colonio.v1alpha.RaftConfig
+	18, // 13: api.colonio.v1alpha.PacketContent.raft_config_response:type_name -> api.colonio.v1alpha.RaftConfigResponse
+	19, // 14: api.colonio.v1alpha.PacketContent.raft_message:type_name -> api.colonio.v1alpha.RaftMessage
+	20, // 15: api.colonio.v1alpha.PacketContent.spread:type_name -> api.colonio.v1alpha.Spread
+	21, // 16: api.colonio.v1alpha.PacketContent.spread_knock:type_name -> api.colonio.v1alpha.SpreadKnock
+	22, // 17: api.colonio.v1alpha.PacketContent.spread_knock_response:type_name -> api.colonio.v1alpha.SpreadKnockResponse
+	23, // 18: api.colonio.v1alpha.PacketContent.spread_relay:type_name -> api.colonio.v1alpha.SpreadRelay
+	24, // 19: api.colonio.v1alpha.PacketContent.spread_relay_response:type_name -> api.colonio.v1alpha.SpreadRelayResponse
+	28, // 20: api.colonio.v1alpha.RoutingNodeRecord.r2d_position:type_name -> api.colonio.v1alpha.Coordinate
+	28, // 21: api.colonio.v1alpha.Routing.r2d_position:type_name -> api.colonio.v1alpha.Coordinate
+	25, // 22: api.colonio.v1alpha.Routing.node_records:type_name -> api.colonio.v1alpha.Routing.NodeRecordsEntry
 	0,  // 23: api.colonio.v1alpha.KvsOperation.command:type_name -> api.colonio.v1alpha.KvsOperation.Command
-	1,  // 24: api.colonio.v1alpha.RaftFit.stage:type_name -> api.colonio.v1alpha.RaftFit.Stage
-	2,  // 25: api.colonio.v1alpha.RaftConfig.command:type_name -> api.colonio.v1alpha.RaftConfig.Command
-	25, // 26: api.colonio.v1alpha.RaftConfig.members:type_name -> api.colonio.v1alpha.RaftConfig.MembersEntry
-	26, // 27: api.colonio.v1alpha.Spread.source:type_name -> api.colonio.v1alpha.NodeID
-	27, // 28: api.colonio.v1alpha.Spread.center:type_name -> api.colonio.v1alpha.Coordinate
-	27, // 29: api.colonio.v1alpha.SpreadKnock.center:type_name -> api.colonio.v1alpha.Coordinate
-	26, // 30: api.colonio.v1alpha.SpreadRelay.source:type_name -> api.colonio.v1alpha.NodeID
-	27, // 31: api.colonio.v1alpha.SpreadRelay.center:type_name -> api.colonio.v1alpha.Coordinate
-	8,  // 32: api.colonio.v1alpha.Routing.NodeRecordsEntry.value:type_name -> api.colonio.v1alpha.RoutingNodeRecord
-	26, // 33: api.colonio.v1alpha.RaftConfig.MembersEntry.value:type_name -> api.colonio.v1alpha.NodeID
-	34, // [34:34] is the sub-list for method output_type
-	34, // [34:34] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	1,  // 24: api.colonio.v1alpha.KvsOperationResponse.error:type_name -> api.colonio.v1alpha.KvsOperationResponse.Error
+	2,  // 25: api.colonio.v1alpha.RaftFit.stage:type_name -> api.colonio.v1alpha.RaftFit.Stage
+	3,  // 26: api.colonio.v1alpha.RaftConfig.command:type_name -> api.colonio.v1alpha.RaftConfig.Command
+	26, // 27: api.colonio.v1alpha.RaftConfig.members:type_name -> api.colonio.v1alpha.RaftConfig.MembersEntry
+	27, // 28: api.colonio.v1alpha.Spread.source:type_name -> api.colonio.v1alpha.NodeID
+	28, // 29: api.colonio.v1alpha.Spread.center:type_name -> api.colonio.v1alpha.Coordinate
+	28, // 30: api.colonio.v1alpha.SpreadKnock.center:type_name -> api.colonio.v1alpha.Coordinate
+	27, // 31: api.colonio.v1alpha.SpreadRelay.source:type_name -> api.colonio.v1alpha.NodeID
+	28, // 32: api.colonio.v1alpha.SpreadRelay.center:type_name -> api.colonio.v1alpha.Coordinate
+	9,  // 33: api.colonio.v1alpha.Routing.NodeRecordsEntry.value:type_name -> api.colonio.v1alpha.RoutingNodeRecord
+	27, // 34: api.colonio.v1alpha.RaftConfig.MembersEntry.value:type_name -> api.colonio.v1alpha.NodeID
+	35, // [35:35] is the sub-list for method output_type
+	35, // [35:35] is the sub-list for method input_type
+	35, // [35:35] is the sub-list for extension type_name
+	35, // [35:35] is the sub-list for extension extendee
+	0,  // [0:35] is the sub-list for field type_name
 }
 
 func init() { file_api_colonio_v1alpha_node_proto_init() }
@@ -1882,7 +1936,7 @@ func file_api_colonio_v1alpha_node_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_colonio_v1alpha_node_proto_rawDesc), len(file_api_colonio_v1alpha_node_proto_rawDesc)),
-			NumEnums:      3,
+			NumEnums:      4,
 			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   0,

@@ -293,7 +293,18 @@ func (c *Server) StateKvs(ctx context.Context, request *connect.Request[proto.St
 		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 	}
 
-	exists, err := c.controller.StateKvs(ctx, nodeID, request.Msg.GetActive())
+	var active bool
+	switch request.Msg.GetState() {
+	case proto.KvsState_KVS_STATE_ACTIVE:
+		active = true
+	case proto.KvsState_KVS_STATE_INACTIVE:
+		active = false
+	default:
+		logger.Warn("invalid KVS state", slog.Int("state", int(request.Msg.GetState())))
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
+	}
+
+	entireState, err := c.controller.StateKvs(ctx, nodeID, active)
 	if err != nil {
 		logger.Warn("failed to set KVS state", slog.String("error", err.Error()))
 		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
@@ -301,7 +312,7 @@ func (c *Server) StateKvs(ctx context.Context, request *connect.Request[proto.St
 
 	return &connect.Response[proto.StateKvsResponse]{
 		Msg: &proto.StateKvsResponse{
-			ExistsActiveNode: exists,
+			EntireState: proto.KvsState(entireState),
 		},
 	}, nil
 }

@@ -17,25 +17,25 @@ package kvs
 
 import proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 
-type node struct {
+type sector struct {
 	raft  *raftNode
 	store *store
 }
 
-func (n *node) raftNodeApplyProposal(proposal *proto.RaftProposalStore) {
-	n.store.applyProposal(proposal)
+func (s *sector) raftNodeApplyProposal(proposal *proto.RaftProposalStore) {
+	s.store.applyProposal(proposal)
 }
 
-func (n *node) raftNodeGetSnapshot() ([]byte, error) {
-	return n.store.exportSnapshot()
+func (s *sector) raftNodeGetSnapshot() ([]byte, error) {
+	return s.store.exportSnapshot()
 }
 
-func (n *node) raftNodeApplySnapshot(snapshot []byte) error {
-	return n.store.importSnapshot(snapshot)
+func (s *sector) raftNodeApplySnapshot(snapshot []byte) error {
+	return s.store.importSnapshot(snapshot)
 }
 
-func (n *node) storePropose(command *proto.RaftProposalStore) {
-	n.raft.propose(&proto.RaftProposal{
+func (s *sector) storePropose(command *proto.RaftProposalStore) {
+	s.raft.propose(&proto.RaftProposal{
 		Content: &proto.RaftProposal_Store{
 			Store: command,
 		},
