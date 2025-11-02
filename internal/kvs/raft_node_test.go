@@ -220,13 +220,13 @@ func TestRaftNode(t *testing.T) {
 
 		// check append requests
 		for _, appends := range receivedAppends {
-			appendSeq := map[config.KvsSequence]bool{}
+			appendSeq := map[config.SectorNo]bool{}
 			for _, req := range appends {
-				appendSeq[req.sequence] = true
-				assert.Equal(tt, req.nodeID, nodeIDs[sequenceMap[req.sequence]])
+				appendSeq[req.sectorNo] = true
+				assert.Equal(tt, req.nodeID, nodeIDs[sectorNoMap[req.sectorNo]])
 			}
-			for _, seq := range sequences {
-				assert.Contains(tt, sequences, seq)
+			for _, seq := range appendSeq {
+				assert.Contains(tt, appendSeq, seq)
 			}
 		}
 	})

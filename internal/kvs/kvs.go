@@ -328,12 +328,13 @@ func (k *KVS) allocateSector(
 	s := &sector{}
 
 	raftNode := newRaftNode(&raftNodeConfig{
-		logger:    k.logger,
-		manager:   k,
-		store:     s,
-		sectorKey: sectorKey,
-		join:      append,
-		member:    members,
+		logger:     k.logger,
+		raftLogger: k.raftLogger,
+		manager:    k,
+		store:      s,
+		sectorKey:  sectorKey,
+		join:       append,
+		member:     members,
 	})
 
 	store := newStore(&storeConfig{
@@ -557,7 +558,6 @@ func (k *KVS) recvConfig(packet *shared.Packet) {
 		if _, ok := k.sectors[sectorKey]; !ok {
 			append := true
 			if command == proto.RaftConfig_COMMAND_CREATE {
-				fmt.Println("✅ received CREATE")
 				append = false
 			}
 			k.allocateSector(&sectorKey, packet.SrcNodeID, append, members)
