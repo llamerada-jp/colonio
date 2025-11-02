@@ -33,8 +33,8 @@ type raftNodeManagerHelper struct {
 	raftNodeErrorF         func(sectorKey *config.KvsSectorKey, err error)
 	raftNodeSendMessageF   func(dstNodeID *shared.NodeID, data *proto.RaftMessage)
 	raftNodeApplyProposalF func(sectorKey *config.KvsSectorKey, proposal *proto.RaftProposalManagement)
-	raftNodeAppendNodeF    func(sectorKey *config.KvsSectorKey, sequence config.KvsSequence, nodeID *shared.NodeID)
-	raftNodeRemoveNodeF    func(sectorKey *config.KvsSectorKey, sequence config.KvsSequence)
+	raftNodeAppendNodeF    func(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo, nodeID *shared.NodeID)
+	raftNodeRemoveNodeF    func(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo)
 }
 
 func (h *raftNodeManagerHelper) raftNodeError(sectorKey *config.KvsSectorKey, err error) {
@@ -55,16 +55,16 @@ func (h *raftNodeManagerHelper) raftNodeApplyProposal(sectorKey *config.KvsSecto
 	h.raftNodeApplyProposalF(sectorKey, proposal)
 }
 
-func (h *raftNodeManagerHelper) raftNodeAppendNode(sectorKey *config.KvsSectorKey, sequence config.KvsSequence, nodeID *shared.NodeID) {
+func (h *raftNodeManagerHelper) raftNodeAppendNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo, nodeID *shared.NodeID) {
 	h.t.Helper()
 	require.NotNil(h.t, h.raftNodeAppendNodeF)
-	h.raftNodeAppendNodeF(sectorKey, sequence, nodeID)
+	h.raftNodeAppendNodeF(sectorKey, sectorNo, nodeID)
 }
 
-func (h *raftNodeManagerHelper) raftNodeRemoveNode(sectorKey *config.KvsSectorKey, sequence config.KvsSequence) {
+func (h *raftNodeManagerHelper) raftNodeRemoveNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo) {
 	h.t.Helper()
 	require.NotNil(h.t, h.raftNodeRemoveNodeF)
-	h.raftNodeRemoveNodeF(sectorKey, sequence)
+	h.raftNodeRemoveNodeF(sectorKey, sectorNo)
 }
 
 type raftNodeStoreHelper struct {
@@ -107,26 +107,26 @@ func (p *proposalReq) String() string {
 }
 
 func TestRaftNode(t *testing.T) {
-	sectorID := testUtil.UniqueUUIDs(1)[0]
-	sequences := testUtil.UniqueNumbers[config.KvsSequence](4)
-	nodeIDs := testUtil.UniqueNodeIDs(len(sequences))
-	sequenceMap := map[config.KvsSequence]int{}
-	for i, sequence := range sequences {
-		sequenceMap[sequence] = i
+	sectorID := testUtil.UniqueSectorIDs(1)[0]
+	sectorNos := testUtil.UniqueNumbers[config.SectorNo](4)
+	nodeIDs := testUtil.UniqueNodeIDs(len(sectorNos))
+	sectorNoMap := map[config.SectorNo]int{}
+	for i, sectorNo := range sectorNos {
+		sectorNoMap[sectorNo] = i
 	}
-	raftNodes := make([]*raftNode, len(sequences))
+	raftNodes := make([]*raftNode, len(sectorNos))
 	mtx := sync.Mutex{}
 	type appendReq struct {
-		sequence config.KvsSequence
+		sectorNo config.SectorNo
 		nodeID   *shared.NodeID
 	}
 	type removeReq struct {
-		sequence config.KvsSequence
+		sectorNo config.SectorNo
 	}
-	receivedAppends := make([][]*appendReq, len(sequences))
-	receivedRemoves := make([][]*removeReq, len(sequences))
+	receivedAppends := make([][]*appendReq, len(sectorNos))
+	receivedRemoves := make([][]*removeReq, len(sectorNos))
 	node0Stopped := false
-	receivedProposals := make([][]*proposalReq, len(sequences))
+	receivedProposals := make([][]*proposalReq, len(sectorNos))
 
 	manager := &raftNodeManagerHelper{
 		t: t,
@@ -134,8 +134,8 @@ func TestRaftNode(t *testing.T) {
 			require.FailNow(t, "unexpected raftNodeError")
 		},
 		raftNodeSendMessageF: func(dstNodeID *shared.NodeID, data *proto.RaftMessage) {
-			assert.Equal(t, data.SectorId, MustMarshalUUID(sectorID))
-			i := sequenceMap[config.KvsSequence(data.Sequence)]
+			assert.Equal(t, data.SectorId, MustMarshalSectorID(sectorID))
+			i := sectorNoMap[config.SectorNo(data.SectorNo)]
 			assert.Equal(t, *dstNodeID, *nodeIDs[i])
 			mtx.Lock()
 			if node0Stopped && i == 0 {
@@ -146,27 +146,27 @@ func TestRaftNode(t *testing.T) {
 			err := raftNodes[i].processMessage(data)
 			assert.NoError(t, err)
 		},
-		raftNodeAppendNodeF: func(sectorKey *config.KvsSectorKey, sequence config.KvsSequence, nodeID *shared.NodeID) {
+		raftNodeAppendNodeF: func(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo, nodeID *shared.NodeID) {
 			mtx.Lock()
 			defer mtx.Unlock()
-			i := sequenceMap[sectorKey.Sequence]
+			i := sectorNoMap[sectorKey.SectorNo]
 			receivedAppends[i] = append(receivedAppends[i], &appendReq{
-				sequence: sequence,
+				sectorNo: sectorNo,
 				nodeID:   nodeID,
 			})
 		},
-		raftNodeRemoveNodeF: func(sectorKey *config.KvsSectorKey, sequence config.KvsSequence) {
+		raftNodeRemoveNodeF: func(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo) {
 			mtx.Lock()
 			defer mtx.Unlock()
-			i := sequenceMap[sectorKey.Sequence]
+			i := sectorNoMap[sectorKey.SectorNo]
 			receivedRemoves[i] = append(receivedRemoves[i], &removeReq{
-				sequence: sequence,
+				sectorNo: sectorNo,
 			})
 		},
 		raftNodeApplyProposalF: func(sectorKey *config.KvsSectorKey, proposal *proto.RaftProposalManagement) {
 			mtx.Lock()
 			defer mtx.Unlock()
-			i := sequenceMap[sectorKey.Sequence]
+			i := sectorNoMap[sectorKey.SectorNo]
 			receivedProposals[i] = append(receivedProposals[i], &proposalReq{
 				management: proposal,
 			})
@@ -194,13 +194,13 @@ func TestRaftNode(t *testing.T) {
 				store:   store,
 				sectorKey: &config.KvsSectorKey{
 					SectorID: sectorID,
-					Sequence: sequences[i],
+					SectorNo: sectorNos[i],
 				},
 				join: false,
-				member: map[config.KvsSequence]*shared.NodeID{
-					sequences[0]: nodeIDs[0],
-					sequences[1]: nodeIDs[1],
-					sequences[2]: nodeIDs[2],
+				member: map[config.SectorNo]*shared.NodeID{
+					sectorNos[0]: nodeIDs[0],
+					sectorNos[1]: nodeIDs[1],
+					sectorNos[2]: nodeIDs[2],
 				},
 			})
 			raftNodes[i].start(t.Context())
@@ -238,7 +238,7 @@ func TestRaftNode(t *testing.T) {
 		}
 		mtx.Unlock()
 
-		err := raftNodes[0].appendNode(sequences[3], nodeIDs[3])
+		err := raftNodes[0].appendNode(sectorNos[3], nodeIDs[3])
 		require.NoError(tt, err)
 
 		raftNodes[3] = newRaftNode(&raftNodeConfig{
@@ -263,14 +263,14 @@ func TestRaftNode(t *testing.T) {
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorID,
-				Sequence: sequences[3],
+				SectorNo: sectorNos[3],
 			},
 			join: true,
-			member: map[config.KvsSequence]*shared.NodeID{
-				sequences[0]: nodeIDs[0],
-				sequences[1]: nodeIDs[1],
-				sequences[2]: nodeIDs[2],
-				sequences[3]: nodeIDs[3],
+			member: map[config.SectorNo]*shared.NodeID{
+				sectorNos[0]: nodeIDs[0],
+				sectorNos[1]: nodeIDs[1],
+				sectorNos[2]: nodeIDs[2],
+				sectorNos[3]: nodeIDs[3],
 			},
 		})
 		raftNodes[3].start(t.Context())
@@ -282,7 +282,7 @@ func TestRaftNode(t *testing.T) {
 				if len(receivedAppends[i]) != 1 {
 					return false
 				}
-				assert.Equal(tt, sequences[3], receivedAppends[i][0].sequence)
+				assert.Equal(tt, sectorNos[3], receivedAppends[i][0].sectorNo)
 			}
 			return len(receivedAppends[3]) == 4
 		}, 3*time.Second, 100*time.Millisecond)
@@ -301,7 +301,7 @@ func TestRaftNode(t *testing.T) {
 		assert.Eventually(tt, func() bool {
 			if !removed {
 				// remove node until the sender node receives the remove request: is it necessary?
-				raftNodes[1].removeNode(sequences[0])
+				raftNodes[1].removeNode(sectorNos[0])
 			}
 
 			mtx.Lock()
@@ -313,7 +313,7 @@ func TestRaftNode(t *testing.T) {
 				if len(receivedRemoves[i]) != 1 {
 					return false
 				}
-				assert.Equal(tt, sequences[0], receivedRemoves[i][0].sequence)
+				assert.Equal(tt, sectorNos[0], receivedRemoves[i][0].sectorNo)
 			}
 			return true
 		}, 3*time.Second, 100*time.Millisecond)

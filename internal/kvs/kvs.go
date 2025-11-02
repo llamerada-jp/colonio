@@ -28,6 +28,7 @@ import (
 	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"go.etcd.io/raft/v3"
 )
 
 type memberState int
@@ -46,11 +47,12 @@ type Handler interface {
 }
 
 type Config struct {
-	Logger      *slog.Logger
-	Handler     Handler
-	Observation config.ObservationCaller
-	Store       config.KvsStore
-	Transferer  *transferer.Transferer
+	Logger            *slog.Logger
+	EnableRaftLogging bool
+	Handler           Handler
+	Observation       config.ObservationCaller
+	Store             config.KvsStore
+	Transferer        *transferer.Transferer
 }
 
 type memberStateEntry struct {
@@ -60,18 +62,19 @@ type memberStateEntry struct {
 
 type KVS struct {
 	logger        *slog.Logger
+	raftLogger    raft.Logger
 	ctx           context.Context
 	handler       Handler
 	observation   config.ObservationCaller
 	store         config.KvsStore
 	transferer    *transferer.Transferer
 	localNodeID   *shared.NodeID
-	mtx           sync.RWMutex
+	mtx           sync.RWMutex // for sectors, hostingSector, memberStates
 	sectors       map[config.KvsSectorKey]*sector
 	sectorUpdated bool // for observation
 	hostingSector *config.KvsSectorKey
-	lastSequence  config.KvsSequence
-	memberStates  map[config.KvsSequence]*memberStateEntry
+	lastSectorNo  config.SectorNo
+	memberStates  map[config.SectorNo]*memberStateEntry
 }
 
 func NewKVS(conf *Config) *KVS {
@@ -82,7 +85,13 @@ func NewKVS(conf *Config) *KVS {
 		store:        conf.Store,
 		transferer:   conf.Transferer,
 		sectors:      make(map[config.KvsSectorKey]*sector),
-		memberStates: make(map[config.KvsSequence]*memberStateEntry),
+		memberStates: make(map[config.SectorNo]*memberStateEntry),
+	}
+
+	if conf.EnableRaftLogging {
+		k.raftLogger = newSlogWrapper(conf.Logger)
+	} else {
+		k.raftLogger = newEmptyLogger()
 	}
 
 	transferer.SetRequestHandler[proto.PacketContent_KvsOperation](k.transferer, k.recvOperation)
@@ -227,21 +236,21 @@ func (k *KVS) subRoutine() {
 	defer k.mtx.Unlock()
 
 	if k.hostingSector == nil {
-		k.createCluster(nextNodeIDs)
-		if k.hostingSector == nil {
-			return
-		}
+		k.hostSector(nextNodeIDs)
 	}
 
 	toAppend, toRemove := k.getNodeDiff(nextNodeIDs)
 	for _, nodeID := range toAppend {
-		k.lastSequence++
-		k.memberStates[k.lastSequence] = &memberStateEntry{
+		k.lastSectorNo++
+		k.memberStates[k.lastSectorNo] = &memberStateEntry{
 			nodeID: nodeID,
 			state:  memberStateAppendingRaft,
 		}
 	}
 	for seq := range toRemove {
+		if seq == config.KvsHostNodeSectorNo {
+			continue
+		}
 		k.memberStates[seq].state = memberStateRemoving
 	}
 
@@ -252,13 +261,13 @@ func (k *KVS) subRoutine() {
 	k.sendSettingMessage()
 }
 
-func (k *KVS) getNodeDiff(nextNodeIDs []*shared.NodeID) ([]*shared.NodeID, map[config.KvsSequence]*memberStateEntry) {
+func (k *KVS) getNodeDiff(nextNodeIDs []*shared.NodeID) ([]*shared.NodeID, map[config.SectorNo]*memberStateEntry) {
 	nextNodeIDMap := make(map[shared.NodeID]struct{})
 	for _, nodeID := range nextNodeIDs {
 		nextNodeIDMap[*nodeID] = struct{}{}
 	}
 
-	memberMap := make(map[shared.NodeID]config.KvsSequence)
+	memberMap := make(map[shared.NodeID]config.SectorNo)
 	for seq, entry := range k.memberStates {
 		if entry.state == memberStateRemoving {
 			continue
@@ -267,7 +276,7 @@ func (k *KVS) getNodeDiff(nextNodeIDs []*shared.NodeID) ([]*shared.NodeID, map[c
 	}
 
 	toAppend := make([]*shared.NodeID, 0)
-	toRemove := make(map[config.KvsSequence]*memberStateEntry)
+	toRemove := make(map[config.SectorNo]*memberStateEntry)
 	for nodeID := range nextNodeIDMap {
 		if _, ok := memberMap[nodeID]; !ok {
 			toAppend = append(toAppend, &nodeID)
@@ -284,42 +293,39 @@ func (k *KVS) getNodeDiff(nextNodeIDs []*shared.NodeID) ([]*shared.NodeID, map[c
 	return toAppend, toRemove
 }
 
-func (k *KVS) createCluster(nextNodeIDs []*shared.NodeID) {
-	clusterID, err := uuid.NewV7()
+func (k *KVS) hostSector(nextNodeIDs []*shared.NodeID) {
+	sectorID, err := uuid.NewV7()
 	if err != nil {
-		k.logger.Error("Failed to create new cluster ID", "error", err)
-		return
+		panic("Failed to create new sector ID")
 	}
 
-	k.lastSequence = config.KvsSectorHostNodeSequence
-	member := make(map[config.KvsSequence]*shared.NodeID)
-	member[config.KvsSectorHostNodeSequence] = k.localNodeID
+	k.lastSectorNo = config.KvsHostNodeSectorNo
+	member := make(map[config.SectorNo]*shared.NodeID)
+	member[config.KvsHostNodeSectorNo] = k.localNodeID
 	for _, nodeID := range nextNodeIDs {
-		k.lastSequence++
-		member[k.lastSequence] = nodeID
-		k.memberStates[k.lastSequence] = &memberStateEntry{
+		k.lastSectorNo++
+		member[k.lastSectorNo] = nodeID
+		k.memberStates[k.lastSectorNo] = &memberStateEntry{
 			nodeID: nodeID,
 			state:  memberStateCreating,
 		}
 	}
 
 	sectorKey := &config.KvsSectorKey{
-		SectorID: clusterID,
-		Sequence: config.KvsSectorHostNodeSequence,
+		SectorID: config.SectorID(sectorID),
+		SectorNo: config.KvsHostNodeSectorNo,
 	}
 	k.hostingSector = sectorKey
-	k.allocateCluster(sectorKey, k.localNodeID, false, member)
+	k.allocateSector(sectorKey, k.localNodeID, false, member)
 }
 
-func (k *KVS) allocateCluster(
+func (k *KVS) allocateSector(
 	sectorKey *config.KvsSectorKey,
 	head *shared.NodeID,
 	append bool,
-	members map[config.KvsSequence]*shared.NodeID,
+	members map[config.SectorNo]*shared.NodeID,
 ) {
 	s := &sector{}
-	k.sectors[*sectorKey] = s
-	k.sectorUpdated = true
 
 	raftNode := newRaftNode(&raftNodeConfig{
 		logger:    k.logger,
@@ -338,6 +344,8 @@ func (k *KVS) allocateCluster(
 
 	s.raft = raftNode
 	s.store = store
+	k.sectors[*sectorKey] = s
+	k.sectorUpdated = true
 
 	raftNode.start(k.ctx)
 }
@@ -345,13 +353,13 @@ func (k *KVS) allocateCluster(
 func (k *KVS) applyConfigRaft() error {
 	raftNode := k.sectors[*k.hostingSector].raft
 
-	for sequence, member := range k.memberStates {
+	for sectorNo, member := range k.memberStates {
 		switch member.state {
 		case memberStateAppendingRaft:
-			return raftNode.appendNode(sequence, member.nodeID)
+			return raftNode.appendNode(sectorNo, member.nodeID)
 
 		case memberStateRemoving:
-			return raftNode.removeNode(sequence)
+			return raftNode.removeNode(sectorNo)
 		}
 	}
 
@@ -389,16 +397,16 @@ func (k *KVS) sendOperation(command proto.KvsOperation_Command, key string, valu
 }
 
 func (k *KVS) sendSettingMessage() {
-	for sequence, ms := range k.memberStates {
+	for sectorNo, ms := range k.memberStates {
 		switch ms.state {
 		case memberStateNormal, memberStateRemoving, memberStateAppendingNode:
 			continue
 
 		case memberStateCreating, memberStateAppendingRaft:
 			members := make(map[uint64]*proto.NodeID)
-			members[uint64(config.KvsSectorHostNodeSequence)] = k.localNodeID.Proto()
-			for sequence, ms := range k.memberStates {
-				members[uint64(sequence)] = ms.nodeID.Proto()
+			members[uint64(config.KvsHostNodeSectorNo)] = k.localNodeID.Proto()
+			for sn, ms := range k.memberStates {
+				members[uint64(sn)] = ms.nodeID.Proto()
 			}
 
 			var command proto.RaftConfig_Command
@@ -414,8 +422,8 @@ func (k *KVS) sendSettingMessage() {
 				&proto.PacketContent{
 					Content: &proto.PacketContent_RaftConfig{
 						RaftConfig: &proto.RaftConfig{
-							SectorId: MustMarshalUUID(k.hostingSector.SectorID),
-							Sequence: uint64(sequence),
+							SectorId: MustMarshalSectorID(k.hostingSector.SectorID),
+							SectorNo: uint64(sectorNo),
 							Command:  command,
 							Members:  members,
 						},
@@ -427,11 +435,18 @@ func (k *KVS) sendSettingMessage() {
 }
 
 func (k *KVS) recvOperation(packet *shared.Packet) {
+	k.mtx.RLock()
+	if k.hostingSector == nil {
+		k.mtx.RUnlock()
+		k.logger.Debug("preparing hosting sector")
+		return
+	}
 	content := packet.Content.GetKvsOperation()
 	command := content.Command
 	key := content.Key
 	value := content.Value
 	store := k.sectors[*k.hostingSector].store
+	k.mtx.RUnlock()
 
 	switch command {
 	case proto.KvsOperation_COMMAND_GET:
@@ -513,17 +528,17 @@ func (k *KVS) recvOperation(packet *shared.Packet) {
 
 func (k *KVS) recvConfig(packet *shared.Packet) {
 	content := packet.Content.GetRaftConfig()
-	var sectorID uuid.UUID
-	if err := sectorID.UnmarshalBinary(content.SectorId); err != nil {
+	sectorID, err := UnmarshalSectorID(content.SectorId)
+	if err != nil {
 		k.logger.Warn("Failed to parse promoter sectorID", "error", err)
 		return
 	}
-	sequence := config.KvsSequence(content.Sequence)
+	sectorNo := config.SectorNo(content.SectorNo)
 	command := content.Command
-	members := make(map[config.KvsSequence]*shared.NodeID)
-	for sequence, nodeID := range content.Members {
+	members := make(map[config.SectorNo]*shared.NodeID)
+	for sectorNo, nodeID := range content.Members {
 		var err error
-		members[config.KvsSequence(sequence)], err = shared.NewNodeIDFromProto(nodeID)
+		members[config.SectorNo(sectorNo)], err = shared.NewNodeIDFromProto(nodeID)
 		if err != nil {
 			k.logger.Warn("Failed to create NodeID from proto", "error", err, "nodeID", nodeID)
 			return
@@ -535,7 +550,7 @@ func (k *KVS) recvConfig(packet *shared.Packet) {
 
 	sectorKey := config.KvsSectorKey{
 		SectorID: sectorID,
-		Sequence: sequence,
+		SectorNo: sectorNo,
 	}
 	switch command {
 	case proto.RaftConfig_COMMAND_CREATE, proto.RaftConfig_COMMAND_APPEND:
@@ -545,7 +560,7 @@ func (k *KVS) recvConfig(packet *shared.Packet) {
 				fmt.Println("✅ received CREATE")
 				append = false
 			}
-			k.allocateCluster(&sectorKey, packet.SrcNodeID, append, members)
+			k.allocateSector(&sectorKey, packet.SrcNodeID, append, members)
 		}
 
 	default:
@@ -557,8 +572,8 @@ func (k *KVS) recvConfig(packet *shared.Packet) {
 	response := &proto.PacketContent{
 		Content: &proto.PacketContent_RaftConfigResponse{
 			RaftConfigResponse: &proto.RaftConfigResponse{
-				SectorId: MustMarshalUUID(sectorID),
-				Sequence: uint64(sequence),
+				SectorId: MustMarshalSectorID(sectorID),
+				SectorNo: uint64(sectorNo),
 			},
 		},
 	}
@@ -567,12 +582,12 @@ func (k *KVS) recvConfig(packet *shared.Packet) {
 
 func (k *KVS) recvConfigResponse(packet *shared.Packet) {
 	content := packet.Content.GetRaftConfigResponse()
-	sectorID, err := uuid.ParseBytes(content.SectorId)
+	sectorID, err := UnmarshalSectorID(content.SectorId)
 	if err != nil {
 		k.logger.Warn("Failed to parse promoter NodeID", "error", err)
 		return
 	}
-	sequence := config.KvsSequence(content.Sequence)
+	sectorNo := config.SectorNo(content.SectorNo)
 
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
@@ -582,14 +597,14 @@ func (k *KVS) recvConfigResponse(packet *shared.Packet) {
 		return
 	}
 
-	if entry, ok := k.memberStates[sequence]; ok && entry.nodeID.Equal(packet.SrcNodeID) {
+	if entry, ok := k.memberStates[sectorNo]; ok && entry.nodeID.Equal(packet.SrcNodeID) {
 		entry.state = memberStateNormal
 	}
 }
 
 func (k *KVS) recvMessage(packet *shared.Packet) {
 	content := packet.Content.GetRaftMessage()
-	sectorID, err := uuid.ParseBytes(content.SectorId)
+	sectorID, err := UnmarshalSectorID(content.SectorId)
 	if err != nil {
 		k.logger.Warn("Failed to parse promoter NodeID", "error", err)
 		return
@@ -597,7 +612,7 @@ func (k *KVS) recvMessage(packet *shared.Packet) {
 
 	key := config.KvsSectorKey{
 		SectorID: sectorID,
-		Sequence: config.KvsSequence(content.Sequence),
+		SectorNo: config.SectorNo(content.SectorNo),
 	}
 
 	k.mtx.RLock()
@@ -636,7 +651,7 @@ func (k *KVS) raftNodeApplyProposal(sectorKey *config.KvsSectorKey, proposal *pr
 	panic("raftNodeApplyProposal not implemented")
 }
 
-func (k *KVS) raftNodeAppendNode(sectorKey *config.KvsSectorKey, sequence config.KvsSequence, nodeID *shared.NodeID) {
+func (k *KVS) raftNodeAppendNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo, nodeID *shared.NodeID) {
 	if k.hostingSector == nil || *sectorKey != *k.hostingSector {
 		return
 	}
@@ -644,11 +659,11 @@ func (k *KVS) raftNodeAppendNode(sectorKey *config.KvsSectorKey, sequence config
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
 
-	member, ok := k.memberStates[sequence]
+	member, ok := k.memberStates[sectorNo]
 	// unknown
 	if !ok {
-		k.logger.Warn("Unknown node sequence for appending", "sequence", sequence, "nodeID", nodeID)
-		k.memberStates[sequence] = &memberStateEntry{
+		k.logger.Warn("Unknown sectorNo for appending", "sectorNo", sectorNo, "nodeID", nodeID)
+		k.memberStates[sectorNo] = &memberStateEntry{
 			nodeID: nodeID,
 			state:  memberStateRemoving,
 		}
@@ -658,26 +673,25 @@ func (k *KVS) raftNodeAppendNode(sectorKey *config.KvsSectorKey, sequence config
 	if member.state == memberStateAppendingRaft {
 		member.state = memberStateAppendingNode
 	} else {
-		k.logger.Warn("Unexpected state for appending node", "sequence", sequence, "state", member.state, "nodeID", nodeID)
+		k.logger.Warn("Unexpected state for appending node", "sectorNo", sectorNo, "state", member.state, "nodeID", nodeID)
 	}
 }
 
-func (k *KVS) raftNodeRemoveNode(sectorKey *config.KvsSectorKey, sequence config.KvsSequence) {
-	k.mtx.RLock()
+func (k *KVS) raftNodeRemoveNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo) {
+	k.mtx.Lock()
+	defer k.mtx.Unlock()
 	sector, ok := k.sectors[*sectorKey]
-	k.mtx.RUnlock()
 	if !ok {
 		return
 	}
 
-	if *sectorKey == *k.hostingSector {
-		delete(k.memberStates, sequence)
+	if k.hostingSector != nil && *sectorKey == *k.hostingSector {
+		delete(k.memberStates, sectorNo)
 	}
 
-	sector.raft.stop()
-	k.mtx.Lock()
-	defer k.mtx.Unlock()
 	delete(k.sectors, *sectorKey)
+
+	go sector.raft.stop()
 }
 
 func (k *KVS) takeObservation() {

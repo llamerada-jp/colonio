@@ -37,8 +37,8 @@ type raftNodeManager interface {
 	raftNodeError(sectorKey *config.KvsSectorKey, err error)
 	raftNodeSendMessage(dstNodeID *shared.NodeID, data *proto.RaftMessage)
 	raftNodeApplyProposal(sectorKey *config.KvsSectorKey, proposal *proto.RaftProposalManagement)
-	raftNodeAppendNode(sectorKey *config.KvsSectorKey, sequence config.KvsSequence, nodeID *shared.NodeID)
-	raftNodeRemoveNode(sectorKey *config.KvsSectorKey, sequence config.KvsSequence)
+	raftNodeAppendNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo, nodeID *shared.NodeID)
+	raftNodeRemoveNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo)
 }
 
 type raftNodeStore interface {
@@ -48,12 +48,13 @@ type raftNodeStore interface {
 }
 
 type raftNodeConfig struct {
-	logger    *slog.Logger
-	manager   raftNodeManager
-	store     raftNodeStore
-	sectorKey *config.KvsSectorKey
-	join      bool
-	member    map[config.KvsSequence]*shared.NodeID
+	logger     *slog.Logger
+	raftLogger raft.Logger
+	manager    raftNodeManager
+	store      raftNodeStore
+	sectorKey  *config.KvsSectorKey
+	join       bool
+	member     map[config.SectorNo]*shared.NodeID
 }
 
 type raftNode struct {
@@ -72,7 +73,7 @@ type raftNode struct {
 	snapshotIndex uint64
 	appliedIndex  uint64
 
-	member map[config.KvsSequence]*shared.NodeID
+	member map[config.SectorNo]*shared.NodeID
 }
 
 func newRaftNode(config *raftNodeConfig) *raftNode {
@@ -90,7 +91,8 @@ func newRaftNode(config *raftNodeConfig) *raftNode {
 	}
 
 	raftConfig := &raft.Config{
-		ID:                        uint64(config.sectorKey.Sequence),
+		Logger:                    config.raftLogger,
+		ID:                        uint64(config.sectorKey.SectorNo),
 		ElectionTick:              10,
 		HeartbeatTick:             1,
 		Storage:                   n.raftStorage,
@@ -102,9 +104,9 @@ func newRaftNode(config *raftNodeConfig) *raftNode {
 	if !config.join {
 		peers := make([]raft.Peer, len(config.member))
 		i := 0
-		for sequence := range config.member {
+		for sectorNo := range config.member {
 			peers[i] = raft.Peer{
-				ID: uint64(sequence),
+				ID: uint64(sectorNo),
 			}
 			i++
 		}
@@ -168,18 +170,18 @@ func (n *raftNode) stop() {
 	n.etcdRaftNode.Stop()
 }
 
-func (n *raftNode) appendNode(sequence config.KvsSequence, nodeID *shared.NodeID) error {
+func (n *raftNode) appendNode(sectorNo config.SectorNo, nodeID *shared.NodeID) error {
 	return n.etcdRaftNode.ProposeConfChange(n.ctx, raftpb.ConfChange{
 		Type:    raftpb.ConfChangeAddNode,
-		NodeID:  uint64(sequence),
+		NodeID:  uint64(sectorNo),
 		Context: []byte(nodeID.String()),
 	})
 }
 
-func (n *raftNode) removeNode(sequence config.KvsSequence) error {
+func (n *raftNode) removeNode(sectorNo config.SectorNo) error {
 	return n.etcdRaftNode.ProposeConfChange(n.ctx, raftpb.ConfChange{
 		Type:   raftpb.ConfChangeRemoveNode,
-		NodeID: uint64(sequence),
+		NodeID: uint64(sectorNo),
 	})
 }
 
@@ -216,19 +218,19 @@ func (n *raftNode) sendMessages(messages []raftpb.Message) error {
 			msg.Snapshot.Metadata.ConfState = n.confState
 		}
 
-		sequenceTo := config.KvsSequence(msg.To)
+		sectorNoTo := config.SectorNo(msg.To)
 		data, err := msg.Marshal()
 		if err != nil {
 			return err
 		}
-		dstNodeID, ok := n.member[sequenceTo]
+		dstNodeID, ok := n.member[sectorNoTo]
 		if !ok {
-			panic("Unknown node sequence for sending Raft message")
+			panic("Unknown node sectorNo for sending Raft message")
 		}
 
 		n.manager.raftNodeSendMessage(dstNodeID, &proto.RaftMessage{
-			SectorId: MustMarshalUUID(n.sectorKey.SectorID),
-			Sequence: uint64(sequenceTo),
+			SectorId: MustMarshalSectorID(n.sectorKey.SectorID),
+			SectorNo: uint64(sectorNoTo),
 			Message:  data,
 		})
 	}
@@ -265,19 +267,19 @@ func (n *raftNode) publishEntries(entries []raftpb.Entry) error {
 					if err != nil {
 						return err
 					}
-					n.member[config.KvsSequence(cc.NodeID)] = nodeID
+					n.member[config.SectorNo(cc.NodeID)] = nodeID
 				} else {
 					var ok bool
-					nodeID, ok = n.member[config.KvsSequence(cc.NodeID)]
+					nodeID, ok = n.member[config.SectorNo(cc.NodeID)]
 					if !ok {
 						return errors.New("missing node ID in conf change")
 					}
 				}
-				n.manager.raftNodeAppendNode(&n.sectorKey, config.KvsSequence(cc.NodeID), nodeID)
+				n.manager.raftNodeAppendNode(&n.sectorKey, config.SectorNo(cc.NodeID), nodeID)
 
 			case raftpb.ConfChangeRemoveNode:
-				delete(n.member, config.KvsSequence(cc.NodeID))
-				n.manager.raftNodeRemoveNode(&n.sectorKey, config.KvsSequence(cc.NodeID))
+				delete(n.member, config.SectorNo(cc.NodeID))
+				n.manager.raftNodeRemoveNode(&n.sectorKey, config.SectorNo(cc.NodeID))
 
 			default:
 				n.logger.Warn("Unknown conf change type", "type", cc.Type)

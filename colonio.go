@@ -75,6 +75,7 @@ type Colonio interface {
 
 type Config struct {
 	Logger             *slog.Logger
+	EnableRaftLogging  bool
 	ObservationHandler *config.ObservationHandler
 	HttpClient         *http.Client
 	SeedURL            string
@@ -105,6 +106,12 @@ type ConfigSetter func(*Config)
 func WithLogger(logger *slog.Logger) ConfigSetter {
 	return func(c *Config) {
 		c.Logger = logger
+	}
+}
+
+func WithRaftLogging() ConfigSetter {
+	return func(c *Config) {
+		c.EnableRaftLogging = true
 	}
 }
 
@@ -255,11 +262,12 @@ func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 	impl.network = net
 
 	impl.kvs = kvs.NewKVS(&kvs.Config{
-		Logger:      config.Logger,
-		Handler:     impl,
-		Observation: config.ObservationHandler,
-		Store:       config.KvsStore,
-		Transferer:  net.GetTransferer(),
+		Logger:            config.Logger,
+		EnableRaftLogging: config.EnableRaftLogging,
+		Handler:           impl,
+		Observation:       config.ObservationHandler,
+		Store:             config.KvsStore,
+		Transferer:        net.GetTransferer(),
 	})
 
 	impl.messaging = messaging.NewMessaging(&messaging.Config{

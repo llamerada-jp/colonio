@@ -23,7 +23,7 @@ const (
 
 type SectorInfo struct {
 	SectorID string `json:"sector_id"`
-	Sequence uint64 `json:"sequence"`
+	SectorNo uint64 `json:"sector_no"`
 	Head     string `json:"head"`
 	Tail     string `json:"tail,omitempty"`
 }

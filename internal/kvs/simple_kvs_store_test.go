@@ -24,8 +24,8 @@ import (
 )
 
 func TestSimpleKvsStore_NewCluster(t *testing.T) {
-	sectorIDs := testUtil.UniqueUUIDs(2)
-	sequences := testUtil.UniqueNumbers[config.KvsSequence](2)
+	sectorIDs := testUtil.UniqueSectorIDs(2)
+	sectorNos := testUtil.UniqueNumbers[config.SectorNo](2)
 
 	tests := []struct {
 		name      string
@@ -39,12 +39,12 @@ func TestSimpleKvsStore_NewCluster(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			expect: map[config.KvsSectorKey]any{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: nil,
 			},
 		},
@@ -53,21 +53,21 @@ func TestSimpleKvsStore_NewCluster(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[1],
+				SectorNo: sectorNos[1],
 			},
 			expect: map[config.KvsSectorKey]any{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: nil,
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[1],
+					SectorNo: sectorNos[1],
 				}: nil,
 			},
 		},
@@ -76,21 +76,21 @@ func TestSimpleKvsStore_NewCluster(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[1],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			expect: map[config.KvsSectorKey]any{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: nil,
 				{
 					SectorID: sectorIDs[1],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: nil,
 			},
 		},
@@ -99,17 +99,17 @@ func TestSimpleKvsStore_NewCluster(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			expect: map[config.KvsSectorKey]any{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: nil,
 			},
 			wantErr: "node already exists",
@@ -133,8 +133,8 @@ func TestSimpleKvsStore_NewCluster(t *testing.T) {
 }
 
 func TestSimpleKvsStore_DeleteCluster(t *testing.T) {
-	sectorIDs := testUtil.UniqueUUIDs(2)
-	sequences := testUtil.UniqueNumbers[config.KvsSequence](2)
+	sectorIDs := testUtil.UniqueSectorIDs(2)
+	sectorNos := testUtil.UniqueNumbers[config.SectorNo](2)
 
 	tests := []struct {
 		name      string
@@ -148,21 +148,21 @@ func TestSimpleKvsStore_DeleteCluster(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {},
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[1],
+					SectorNo: sectorNos[1],
 				}: {},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			expect: map[config.KvsSectorKey]any{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[1],
+					SectorNo: sectorNos[1],
 				}: nil,
 			},
 		},
@@ -171,12 +171,12 @@ func TestSimpleKvsStore_DeleteCluster(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			expect: map[config.KvsSectorKey]any{},
 		},
@@ -185,17 +185,17 @@ func TestSimpleKvsStore_DeleteCluster(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[1],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			expect: map[config.KvsSectorKey]any{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: nil,
 			},
 			wantErr: "node does not exist",
@@ -219,8 +219,8 @@ func TestSimpleKvsStore_DeleteCluster(t *testing.T) {
 }
 
 func TestSimpleKvsStore_Set(t *testing.T) {
-	sectorIDs := testUtil.UniqueUUIDs(2)
-	sequences := testUtil.UniqueNumbers[config.KvsSequence](2)
+	sectorIDs := testUtil.UniqueSectorIDs(2)
+	sectorNos := testUtil.UniqueNumbers[config.SectorNo](2)
 
 	tests := []struct {
 		name      string
@@ -236,19 +236,19 @@ func TestSimpleKvsStore_Set(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			key:   "foo",
 			value: []byte("bar"),
 			expect: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {
 					"foo": []byte("bar"),
 				},
@@ -259,21 +259,21 @@ func TestSimpleKvsStore_Set(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {
 					"foo": []byte("bar"),
 				},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			key:   "foo",
 			value: []byte("baz"),
 			expect: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {
 					"foo": []byte("baz"),
 				},
@@ -284,31 +284,31 @@ func TestSimpleKvsStore_Set(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {
 					"foo": []byte("bar"),
 				},
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[1],
+					SectorNo: sectorNos[1],
 				}: {},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[1],
+				SectorNo: sectorNos[1],
 			},
 			key:   "foo",
 			value: []byte("baz"),
 			expect: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {
 					"foo": []byte("bar"),
 				},
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[1],
+					SectorNo: sectorNos[1],
 				}: {
 					"foo": []byte("baz"),
 				},
@@ -319,19 +319,19 @@ func TestSimpleKvsStore_Set(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[1],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			key:   "foo",
 			value: []byte("bar"),
 			expect: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {},
 			},
 			wantErr: "node does not exist",
@@ -341,19 +341,19 @@ func TestSimpleKvsStore_Set(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			key:   "foo",
 			value: nil,
 			expect: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {},
 			},
 			wantErr: "value cannot be nil",
@@ -377,8 +377,8 @@ func TestSimpleKvsStore_Set(t *testing.T) {
 }
 
 func TestSimpleKvsStore_Get(t *testing.T) {
-	sectorIDs := testUtil.UniqueUUIDs(2)
-	sequences := testUtil.UniqueNumbers[config.KvsSequence](2)
+	sectorIDs := testUtil.UniqueSectorIDs(2)
+	sectorNos := testUtil.UniqueNumbers[config.SectorNo](2)
 
 	tests := []struct {
 		name      string
@@ -393,14 +393,14 @@ func TestSimpleKvsStore_Get(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {
 					"foo": []byte("bar"),
 				},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			key:    "foo",
 			expect: []byte("bar"),
@@ -410,14 +410,14 @@ func TestSimpleKvsStore_Get(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {
 					"foo": []byte("bar"),
 				},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			key:    "baz",
 			expect: nil,
@@ -427,20 +427,20 @@ func TestSimpleKvsStore_Get(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {
 					"foo": []byte("bar"),
 				},
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[1],
+					SectorNo: sectorNos[1],
 				}: {
 					"foo": []byte("baz"),
 				},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[1],
+				SectorNo: sectorNos[1],
 			},
 			key:    "foo",
 			expect: []byte("baz"),
@@ -450,14 +450,14 @@ func TestSimpleKvsStore_Get(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {
 					"foo": []byte("bar"),
 				},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[1],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			key:     "foo",
 			expect:  nil,
@@ -482,8 +482,8 @@ func TestSimpleKvsStore_Get(t *testing.T) {
 }
 
 func TestSimpleKvsStore_Delete(t *testing.T) {
-	sectorIDs := testUtil.UniqueUUIDs(2)
-	sequences := testUtil.UniqueNumbers[config.KvsSequence](2)
+	sectorIDs := testUtil.UniqueSectorIDs(2)
+	sectorNos := testUtil.UniqueNumbers[config.SectorNo](2)
 
 	tests := []struct {
 		name      string
@@ -498,7 +498,7 @@ func TestSimpleKvsStore_Delete(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {
 					"foo": []byte("bar"),
 					"baz": []byte("qux"),
@@ -506,13 +506,13 @@ func TestSimpleKvsStore_Delete(t *testing.T) {
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			key: "foo",
 			expect: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {
 					"baz": []byte("qux"),
 				},
@@ -523,20 +523,20 @@ func TestSimpleKvsStore_Delete(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {
 					"foo": []byte("bar"),
 				},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			key: "foo",
 			expect: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {},
 			},
 		},
@@ -545,20 +545,20 @@ func TestSimpleKvsStore_Delete(t *testing.T) {
 			stores: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {
 					"foo": []byte("bar"),
 				},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorIDs[0],
-				Sequence: sequences[0],
+				SectorNo: sectorNos[0],
 			},
 			key: "baz",
 			expect: map[config.KvsSectorKey]map[string][]byte{
 				{
 					SectorID: sectorIDs[0],
-					Sequence: sequences[0],
+					SectorNo: sectorNos[0],
 				}: {
 					"foo": []byte("bar"),
 				},

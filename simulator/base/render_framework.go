@@ -192,7 +192,7 @@ type sectorInfo struct {
 }
 
 type sectorRecord struct {
-	sequence config.KvsSequence
+	sectorNo config.SectorNo
 	nodeID   *shared.NodeID
 	head     *shared.NodeID
 	tail     *shared.NodeID
@@ -273,7 +273,7 @@ func (f *RenderFramework) gatherSectorInfo() []sectorInfo {
 				tail, _ = shared.NewNodeIDFromString(sectorInfo.Tail)
 			}
 			sectorRecords[sectorInfo.SectorID] = append(sectorRecords[sectorInfo.SectorID], sectorRecord{
-				sequence: config.KvsSequence(sectorInfo.Sequence),
+				sectorNo: config.SectorNo(sectorInfo.SectorNo),
 				nodeID:   nodeID,
 				head:     head,
 				tail:     tail,
@@ -286,7 +286,7 @@ func (f *RenderFramework) gatherSectorInfo() []sectorInfo {
 		// convert sector record to sector info
 		var hostRecord *sectorRecord
 		for _, r := range records {
-			if r.sequence == config.KvsSectorHostNodeSequence {
+			if r.sectorNo == config.KvsHostNodeSectorNo {
 				hostRecord = &r
 				break
 			}

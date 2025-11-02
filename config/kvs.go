@@ -26,16 +26,26 @@ var (
 	ErrorKvsStoreKeyNotFound    = fmt.Errorf("key not found")
 )
 
-// KvsSequence is a number assigned sequentially to nodes constituting a Sector.
+// SectorID is a unique ID assigned to a Sector across the entire colonio cluster.
+// In colonio, sectors are rebuilt when nodes are replaced.
+// At most one valid Store holding any specific address can exist at any time.
+// But there may be Stores processing retirement. We distinguish them using UUID.
+type SectorID uuid.UUID
+
+func (s SectorID) String() string {
+	return uuid.UUID(s).String()
+}
+
+// SectorNo is a number assigned sequentially to nodes constituting a Sector.
 // It is unique within the Sector but not unique across the entire colonio cluster.
 // Numbers are not reused within the same Sector. When the same node leaves
 // a Sector and rejoins it, a different number is assigned.
-type KvsSequence uint64
+type SectorNo uint64
 
 const (
-	// Each Sector has one host node. The Sequence of that node is fixed at 1.
+	// Each Sector has one host node. The SectorNo of that node is fixed at 1.
 	// The host node does not necessarily match the Raft leader.
-	KvsSectorHostNodeSequence = KvsSequence(1)
+	KvsHostNodeSectorNo = SectorNo(1)
 )
 
 // Colonio manages the KVS address space by partitioning it. A sector refers to
@@ -43,12 +53,8 @@ const (
 // the replication Nodes before and after it. Both nodes are member of a Raft cluster.
 // The Store acts as a state machine.
 type KvsSectorKey struct {
-	// SectorID is a unique ID assigned to a Sector across the entire colonio cluster.
-	// In colonio, sectors are rebuilt when nodes are replaced.
-	// At most one valid Store holding any specific address can exist at any time.
-	// But there may be Stores processing retirement. We distinguish them using UUID.
-	SectorID uuid.UUID
-	Sequence KvsSequence
+	SectorID SectorID
+	SectorNo SectorNo
 }
 
 type KvsStore interface {

@@ -132,21 +132,21 @@ message RaftConfig {
     COMMAND_APPEND = 1;
   }
 
-  bytes sector_id             = 1;  // UUID of the sector
+  bytes sector_id             = 1;
   Command command             = 2;
-  uint64 sequence             = 3;
+  uint64 sector_no            = 3;
   map<uint64, NodeID> members = 5;
 }
 
 message RaftConfigResponse {
-  bytes sector_id = 1;
-  uint64 sequence = 2;
+  bytes sector_id  = 1;
+  uint64 sector_no = 2;
 }
 
 message RaftMessage {
-  bytes sector_id = 1;
-  uint64 sequence = 2;
-  bytes message   = 3;
+  bytes sector_id  = 1;
+  uint64 sector_no = 2;
+  bytes message    = 3;
 }
 
 // for spread module

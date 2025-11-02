@@ -15,12 +15,24 @@
  */
 package kvs
 
-import "github.com/google/uuid"
+import (
+	"github.com/google/uuid"
+	"github.com/llamerada-jp/colonio/config"
+)
 
-func MustMarshalUUID(id uuid.UUID) []byte {
-	data, err := id.MarshalBinary()
+func MustMarshalSectorID(sectorID config.SectorID) []byte {
+	data, err := uuid.UUID(sectorID).MarshalBinary()
 	if err != nil {
 		panic(err)
 	}
 	return data
+}
+
+func UnmarshalSectorID(data []byte) (config.SectorID, error) {
+	var sectorID uuid.UUID
+	err := sectorID.UnmarshalBinary(data)
+	if err != nil {
+		return config.SectorID(uuid.Nil), err
+	}
+	return config.SectorID(sectorID), nil
 }

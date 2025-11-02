@@ -150,7 +150,7 @@ func (n *Node) renewColonio() error {
 				for sectorKey, info := range s {
 					sectorInfos = append(sectorInfos, SectorInfo{
 						SectorID: sectorKey.SectorID.String(),
-						Sequence: uint64(sectorKey.Sequence),
+						SectorNo: uint64(sectorKey.SectorNo),
 						Head:     info.Head,
 						Tail:     info.Tail,
 					})

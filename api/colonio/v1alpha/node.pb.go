@@ -1183,9 +1183,9 @@ func (x *RaftFitResponse) GetContradiction() bool {
 
 type RaftConfig struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SectorId      []byte                 `protobuf:"bytes,1,opt,name=sector_id,json=sectorId,proto3" json:"sector_id,omitempty"` // UUID of the sector
+	SectorId      []byte                 `protobuf:"bytes,1,opt,name=sector_id,json=sectorId,proto3" json:"sector_id,omitempty"`
 	Command       RaftConfig_Command     `protobuf:"varint,2,opt,name=command,proto3,enum=api.colonio.v1alpha.RaftConfig_Command" json:"command,omitempty"`
-	Sequence      uint64                 `protobuf:"varint,3,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	SectorNo      uint64                 `protobuf:"varint,3,opt,name=sector_no,json=sectorNo,proto3" json:"sector_no,omitempty"`
 	Members       map[uint64]*NodeID     `protobuf:"bytes,5,rep,name=members,proto3" json:"members,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1235,9 +1235,9 @@ func (x *RaftConfig) GetCommand() RaftConfig_Command {
 	return RaftConfig_COMMAND_CREATE
 }
 
-func (x *RaftConfig) GetSequence() uint64 {
+func (x *RaftConfig) GetSectorNo() uint64 {
 	if x != nil {
-		return x.Sequence
+		return x.SectorNo
 	}
 	return 0
 }
@@ -1252,7 +1252,7 @@ func (x *RaftConfig) GetMembers() map[uint64]*NodeID {
 type RaftConfigResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SectorId      []byte                 `protobuf:"bytes,1,opt,name=sector_id,json=sectorId,proto3" json:"sector_id,omitempty"`
-	Sequence      uint64                 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	SectorNo      uint64                 `protobuf:"varint,2,opt,name=sector_no,json=sectorNo,proto3" json:"sector_no,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1294,9 +1294,9 @@ func (x *RaftConfigResponse) GetSectorId() []byte {
 	return nil
 }
 
-func (x *RaftConfigResponse) GetSequence() uint64 {
+func (x *RaftConfigResponse) GetSectorNo() uint64 {
 	if x != nil {
-		return x.Sequence
+		return x.SectorNo
 	}
 	return 0
 }
@@ -1304,7 +1304,7 @@ func (x *RaftConfigResponse) GetSequence() uint64 {
 type RaftMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SectorId      []byte                 `protobuf:"bytes,1,opt,name=sector_id,json=sectorId,proto3" json:"sector_id,omitempty"`
-	Sequence      uint64                 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	SectorNo      uint64                 `protobuf:"varint,2,opt,name=sector_no,json=sectorNo,proto3" json:"sector_no,omitempty"`
 	Message       []byte                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1347,9 +1347,9 @@ func (x *RaftMessage) GetSectorId() []byte {
 	return nil
 }
 
-func (x *RaftMessage) GetSequence() uint64 {
+func (x *RaftMessage) GetSectorNo() uint64 {
 	if x != nil {
-		return x.Sequence
+		return x.SectorNo
 	}
 	return 0
 }
@@ -1774,25 +1774,25 @@ const file_api_colonio_v1alpha_node_proto_rawDesc = "" +
 	"\vSTAGE_EMPTY\x10\x00\x12\x10\n" +
 	"\fSTAGE_ACTIVE\x10\x01\"7\n" +
 	"\x0fRaftFitResponse\x12$\n" +
-	"\rcontradiction\x18\x01 \x01(\bR\rcontradiction\"\xdc\x02\n" +
+	"\rcontradiction\x18\x01 \x01(\bR\rcontradiction\"\xdd\x02\n" +
 	"\n" +
 	"RaftConfig\x12\x1b\n" +
 	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12A\n" +
-	"\acommand\x18\x02 \x01(\x0e2'.api.colonio.v1alpha.RaftConfig.CommandR\acommand\x12\x1a\n" +
-	"\bsequence\x18\x03 \x01(\x04R\bsequence\x12F\n" +
+	"\acommand\x18\x02 \x01(\x0e2'.api.colonio.v1alpha.RaftConfig.CommandR\acommand\x12\x1b\n" +
+	"\tsector_no\x18\x03 \x01(\x04R\bsectorNo\x12F\n" +
 	"\amembers\x18\x05 \x03(\v2,.api.colonio.v1alpha.RaftConfig.MembersEntryR\amembers\x1aW\n" +
 	"\fMembersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x04R\x03key\x121\n" +
 	"\x05value\x18\x02 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x05value:\x028\x01\"1\n" +
 	"\aCommand\x12\x12\n" +
 	"\x0eCOMMAND_CREATE\x10\x00\x12\x12\n" +
-	"\x0eCOMMAND_APPEND\x10\x01\"M\n" +
+	"\x0eCOMMAND_APPEND\x10\x01\"N\n" +
 	"\x12RaftConfigResponse\x12\x1b\n" +
-	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1a\n" +
-	"\bsequence\x18\x02 \x01(\x04R\bsequence\"`\n" +
+	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1b\n" +
+	"\tsector_no\x18\x02 \x01(\x04R\bsectorNo\"a\n" +
 	"\vRaftMessage\x12\x1b\n" +
-	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1a\n" +
-	"\bsequence\x18\x02 \x01(\x04R\bsequence\x12\x18\n" +
+	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1b\n" +
+	"\tsector_no\x18\x02 \x01(\x04R\bsectorNo\x12\x18\n" +
 	"\amessage\x18\x03 \x01(\fR\amessage\"\xd6\x01\n" +
 	"\x06Spread\x123\n" +
 	"\x06source\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x06source\x127\n" +

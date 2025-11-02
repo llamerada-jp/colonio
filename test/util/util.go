@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
@@ -75,12 +76,12 @@ func UniqueNodeIDsWithRange(min, max *shared.NodeID, count int) []*shared.NodeID
 	return nodeIDs
 }
 
-func UniqueUUIDs(count int) []uuid.UUID {
-	uuids := make([]uuid.UUID, count)
-	exists := make(map[uuid.UUID]struct{})
+func UniqueSectorIDs(count int) []config.SectorID {
+	uuids := make([]config.SectorID, count)
+	exists := make(map[config.SectorID]struct{})
 	for i := range uuids {
 		for {
-			id := uuid.New()
+			id := config.SectorID(uuid.New())
 			if _, ok := exists[id]; !ok {
 				uuids[i] = id
 				exists[id] = struct{}{}
