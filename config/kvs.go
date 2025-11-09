@@ -38,8 +38,9 @@ func (s SectorID) String() string {
 
 // SectorNo is a number assigned sequentially to nodes constituting a Sector.
 // It is unique within the Sector but not unique across the entire colonio cluster.
-// Numbers are not reused within the same Sector. When the same node leaves
-// a Sector and rejoins it, a different number is assigned.
+// This number is used as the node ID for etcd raft in the internal implementation.
+// As a convention, avoid using 0, and are not reused within the same Sector.
+// When the same node leaves a Sector and rejoins it, a different number is assigned.
 type SectorNo uint64
 
 const (

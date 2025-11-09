@@ -220,13 +220,13 @@ func TestRaftNode(t *testing.T) {
 
 		// check append requests
 		for _, appends := range receivedAppends {
-			appendSeq := map[config.SectorNo]bool{}
+			appendSec := make(map[config.SectorNo]struct{})
 			for _, req := range appends {
-				appendSeq[req.sectorNo] = true
+				appendSec[req.sectorNo] = struct{}{}
 				assert.Equal(tt, req.nodeID, nodeIDs[sectorNoMap[req.sectorNo]])
 			}
-			for _, seq := range appendSeq {
-				assert.Contains(tt, appendSeq, seq)
+			for _, sec := range sectorNos {
+				assert.Contains(tt, appendSec, sec)
 			}
 		}
 	})

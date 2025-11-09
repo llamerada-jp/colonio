@@ -239,7 +239,7 @@ func (k *KVS) subRoutine() {
 		k.hostSector(nextNodeIDs)
 	}
 
-	toAppend, toRemove := k.getNodeDiff(nextNodeIDs)
+	toAppend, toRemove := k.getNodesToBeChanged(nextNodeIDs)
 	for _, nodeID := range toAppend {
 		k.lastSectorNo++
 		k.memberStates[k.lastSectorNo] = &memberStateEntry{
@@ -247,11 +247,8 @@ func (k *KVS) subRoutine() {
 			state:  memberStateAppendingRaft,
 		}
 	}
-	for seq := range toRemove {
-		if seq == config.KvsHostNodeSectorNo {
-			continue
-		}
-		k.memberStates[seq].state = memberStateRemoving
+	for sec := range toRemove {
+		k.memberStates[sec].state = memberStateRemoving
 	}
 
 	if err := k.applyConfigRaft(); err != nil {
@@ -261,33 +258,33 @@ func (k *KVS) subRoutine() {
 	k.sendSettingMessage()
 }
 
-func (k *KVS) getNodeDiff(nextNodeIDs []*shared.NodeID) ([]*shared.NodeID, map[config.SectorNo]*memberStateEntry) {
+func (k *KVS) getNodesToBeChanged(nextNodeIDs []*shared.NodeID) ([]*shared.NodeID, map[config.SectorNo]struct{}) {
 	nextNodeIDMap := make(map[shared.NodeID]struct{})
 	for _, nodeID := range nextNodeIDs {
 		nextNodeIDMap[*nodeID] = struct{}{}
 	}
 
+	toAppend := make([]*shared.NodeID, 0)
 	memberMap := make(map[shared.NodeID]config.SectorNo)
-	for seq, entry := range k.memberStates {
+	for sec, entry := range k.memberStates {
 		if entry.state == memberStateRemoving {
 			continue
 		}
-		memberMap[*entry.nodeID] = seq
+		memberMap[*entry.nodeID] = sec
 	}
-
-	toAppend := make([]*shared.NodeID, 0)
-	toRemove := make(map[config.SectorNo]*memberStateEntry)
 	for nodeID := range nextNodeIDMap {
 		if _, ok := memberMap[nodeID]; !ok {
 			toAppend = append(toAppend, &nodeID)
 		}
 	}
-	for seq, entry := range k.memberStates {
-		if entry.state == memberStateRemoving {
+
+	toRemove := make(map[config.SectorNo]struct{})
+	for sec, entry := range k.memberStates {
+		if entry.state == memberStateRemoving || sec == config.KvsHostNodeSectorNo {
 			continue
 		}
 		if _, ok := nextNodeIDMap[*entry.nodeID]; !ok {
-			toRemove[seq] = entry
+			toRemove[sec] = struct{}{}
 		}
 	}
 	return toAppend, toRemove
