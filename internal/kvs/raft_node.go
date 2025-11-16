@@ -35,7 +35,6 @@ const (
 
 type raftNodeManager interface {
 	raftNodeError(sectorKey *config.KvsSectorKey, err error)
-	raftNodeSendMessage(dstNodeID *shared.NodeID, data *proto.RaftMessage)
 	raftNodeApplyProposal(sectorKey *config.KvsSectorKey, proposal *proto.RaftProposalManagement)
 	raftNodeAppendNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo, nodeID *shared.NodeID)
 	raftNodeRemoveNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo)
@@ -48,23 +47,25 @@ type raftNodeStore interface {
 }
 
 type raftNodeConfig struct {
-	logger     *slog.Logger
-	raftLogger raft.Logger
-	manager    raftNodeManager
-	store      raftNodeStore
-	sectorKey  *config.KvsSectorKey
-	join       bool
-	member     map[config.SectorNo]*shared.NodeID
+	logger         *slog.Logger
+	raftLogger     raft.Logger
+	manager        raftNodeManager
+	infrastructure RaftInfrastructure
+	store          raftNodeStore
+	sectorKey      *config.KvsSectorKey
+	join           bool
+	member         map[config.SectorNo]*shared.NodeID
 }
 
 type raftNode struct {
-	logger       *slog.Logger
-	manager      raftNodeManager
-	store        raftNodeStore
-	sectorKey    config.KvsSectorKey
-	ctx          context.Context
-	etcdRaftNode raft.Node
-	raftStorage  *raft.MemoryStorage
+	logger         *slog.Logger
+	manager        raftNodeManager
+	infrastructure RaftInfrastructure
+	store          raftNodeStore
+	sectorKey      config.KvsSectorKey
+	ctx            context.Context
+	etcdRaftNode   raft.Node
+	raftStorage    *raft.MemoryStorage
 
 	snapshotCatchUpEntriesN uint64
 	snapCount               uint64
@@ -78,11 +79,12 @@ type raftNode struct {
 
 func newRaftNode(config *raftNodeConfig) *raftNode {
 	n := &raftNode{
-		logger:      config.logger,
-		manager:     config.manager,
-		store:       config.store,
-		sectorKey:   *config.sectorKey,
-		raftStorage: raft.NewMemoryStorage(),
+		logger:         config.logger,
+		manager:        config.manager,
+		infrastructure: config.infrastructure,
+		store:          config.store,
+		sectorKey:      *config.sectorKey,
+		raftStorage:    raft.NewMemoryStorage(),
 
 		snapshotCatchUpEntriesN: 100,
 		snapCount:               1000,
@@ -229,10 +231,13 @@ func (n *raftNode) sendMessages(messages []raftpb.Message) error {
 			panic("Unknown node sectorNo for sending Raft message")
 		}
 
-		n.manager.raftNodeSendMessage(dstNodeID, &proto.RaftMessage{
-			SectorId: MustMarshalSectorID(n.sectorKey.SectorID),
-			SectorNo: uint64(sectorNoTo),
-			Message:  data,
+		n.infrastructure.sendRaftMessage(&raftMessageParam{
+			dstNodeID: dstNodeID,
+			message: &proto.RaftMessage{
+				SectorId: MustMarshalSectorID(n.sectorKey.SectorID),
+				SectorNo: uint64(sectorNoTo),
+				Message:  data,
+			},
 		})
 	}
 	return nil

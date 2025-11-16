@@ -262,13 +262,15 @@ func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 	impl.network = net
 
 	impl.kvs = kvs.NewKVS(&kvs.Config{
-		Logger:            config.Logger,
-		EnableRaftLogging: config.EnableRaftLogging,
-		Handler:           impl,
-		Observation:       config.ObservationHandler,
-		Store:             config.KvsStore,
-		Transferer:        net.GetTransferer(),
+		Logger:             config.Logger,
+		EnableRaftLogging:  config.EnableRaftLogging,
+		Handler:            impl,
+		Infrastructure:     kvs.NewKvsInfrastructure(net.GetTransferer()),
+		RaftInfrastructure: kvs.NewRaftInfrastructure(net.GetTransferer()),
+		Observation:        config.ObservationHandler,
+		Store:              config.KvsStore,
 	})
+	kvs.NewKvsGateway(impl.logger, net.GetTransferer(), impl.kvs)
 
 	impl.messaging = messaging.NewMessaging(&messaging.Config{
 		Logger:     config.Logger,

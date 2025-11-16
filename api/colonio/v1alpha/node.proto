@@ -103,9 +103,10 @@ message KvsOperationResponse {
     // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
     ERROR_NONE      = 0;
     ERROR_UNKNOWN   = 1;
-    ERROR_NOT_FOUND = 2;  // used for GET
+    ERROR_PREPARING = 2;
+    ERROR_NOT_FOUND = 3;  // used for GET
   }
-  Error error = 1;  // used for GET
+  Error error = 1;
   bytes value = 2;  // used for GET
 }
 

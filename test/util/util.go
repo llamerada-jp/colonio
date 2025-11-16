@@ -92,26 +92,28 @@ func UniqueSectorIDs(count int) []config.SectorID {
 	return uuids
 }
 
-func UniqueNumbers[V ~int | ~int32 | ~int64 | ~uint | ~uint32 | ~uint64](count int) []V {
+func UniqueNumbersS[V ~int | ~int32 | ~int64](count int) []V {
 	nums := make([]V, count)
 	exists := make(map[V]struct{})
 	for i := range nums {
 		for {
-			var n V
-			switch any(n).(type) {
-			case int:
-				n = V(rand.Int())
-			case int32:
-				n = V(rand.Int31())
-			case int64:
-				n = V(rand.Int63())
-			case uint:
-				n = V(rand.Uint32())
-			case uint32:
-				n = V(rand.Uint32())
-			case uint64:
-				n = V(rand.Uint64())
+			n := V(rand.Int63())
+			if _, ok := exists[n]; !ok {
+				nums[i] = n
+				exists[n] = struct{}{}
+				break
 			}
+		}
+	}
+	return nums
+}
+
+func UniqueNumbersU[V ~uint | ~uint32 | ~uint64](count int) []V {
+	nums := make([]V, count)
+	exists := make(map[V]struct{})
+	for i := range nums {
+		for {
+			n := V(rand.Uint64())
 			if _, ok := exists[n]; !ok {
 				nums[i] = n
 				exists[n] = struct{}{}

@@ -25,7 +25,7 @@ import (
 
 func TestSimpleKvsStore_NewCluster(t *testing.T) {
 	sectorIDs := testUtil.UniqueSectorIDs(2)
-	sectorNos := testUtil.UniqueNumbers[config.SectorNo](2)
+	sectorNos := testUtil.UniqueNumbersU[config.SectorNo](2)
 
 	tests := []struct {
 		name      string
@@ -134,7 +134,7 @@ func TestSimpleKvsStore_NewCluster(t *testing.T) {
 
 func TestSimpleKvsStore_DeleteCluster(t *testing.T) {
 	sectorIDs := testUtil.UniqueSectorIDs(2)
-	sectorNos := testUtil.UniqueNumbers[config.SectorNo](2)
+	sectorNos := testUtil.UniqueNumbersU[config.SectorNo](2)
 
 	tests := []struct {
 		name      string
@@ -220,7 +220,7 @@ func TestSimpleKvsStore_DeleteCluster(t *testing.T) {
 
 func TestSimpleKvsStore_Set(t *testing.T) {
 	sectorIDs := testUtil.UniqueSectorIDs(2)
-	sectorNos := testUtil.UniqueNumbers[config.SectorNo](2)
+	sectorNos := testUtil.UniqueNumbersU[config.SectorNo](2)
 
 	tests := []struct {
 		name      string
@@ -378,7 +378,7 @@ func TestSimpleKvsStore_Set(t *testing.T) {
 
 func TestSimpleKvsStore_Get(t *testing.T) {
 	sectorIDs := testUtil.UniqueSectorIDs(2)
-	sectorNos := testUtil.UniqueNumbers[config.SectorNo](2)
+	sectorNos := testUtil.UniqueNumbersU[config.SectorNo](2)
 
 	tests := []struct {
 		name      string
@@ -483,7 +483,7 @@ func TestSimpleKvsStore_Get(t *testing.T) {
 
 func TestSimpleKvsStore_Delete(t *testing.T) {
 	sectorIDs := testUtil.UniqueSectorIDs(2)
-	sectorNos := testUtil.UniqueNumbers[config.SectorNo](2)
+	sectorNos := testUtil.UniqueNumbersU[config.SectorNo](2)
 
 	tests := []struct {
 		name      string

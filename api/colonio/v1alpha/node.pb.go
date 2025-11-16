@@ -80,7 +80,8 @@ const (
 	// buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
 	KvsOperationResponse_ERROR_NONE      KvsOperationResponse_Error = 0
 	KvsOperationResponse_ERROR_UNKNOWN   KvsOperationResponse_Error = 1
-	KvsOperationResponse_ERROR_NOT_FOUND KvsOperationResponse_Error = 2 // used for GET
+	KvsOperationResponse_ERROR_PREPARING KvsOperationResponse_Error = 2
+	KvsOperationResponse_ERROR_NOT_FOUND KvsOperationResponse_Error = 3 // used for GET
 )
 
 // Enum value maps for KvsOperationResponse_Error.
@@ -88,12 +89,14 @@ var (
 	KvsOperationResponse_Error_name = map[int32]string{
 		0: "ERROR_NONE",
 		1: "ERROR_UNKNOWN",
-		2: "ERROR_NOT_FOUND",
+		2: "ERROR_PREPARING",
+		3: "ERROR_NOT_FOUND",
 	}
 	KvsOperationResponse_Error_value = map[string]int32{
 		"ERROR_NONE":      0,
 		"ERROR_UNKNOWN":   1,
-		"ERROR_NOT_FOUND": 2,
+		"ERROR_PREPARING": 2,
+		"ERROR_NOT_FOUND": 3,
 	}
 )
 
@@ -1027,8 +1030,8 @@ func (x *KvsOperation) GetValue() []byte {
 
 type KvsOperationResponse struct {
 	state         protoimpl.MessageState     `protogen:"open.v1"`
-	Error         KvsOperationResponse_Error `protobuf:"varint,1,opt,name=error,proto3,enum=api.colonio.v1alpha.KvsOperationResponse_Error" json:"error,omitempty"` // used for GET
-	Value         []byte                     `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`                                                      // used for GET
+	Error         KvsOperationResponse_Error `protobuf:"varint,1,opt,name=error,proto3,enum=api.colonio.v1alpha.KvsOperationResponse_Error" json:"error,omitempty"`
+	Value         []byte                     `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"` // used for GET
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1757,15 +1760,16 @@ const file_api_colonio_v1alpha_node_proto_rawDesc = "" +
 	"\vCOMMAND_GET\x10\x00\x12\x0f\n" +
 	"\vCOMMAND_SET\x10\x01\x12\x11\n" +
 	"\rCOMMAND_PATCH\x10\x02\x12\x12\n" +
-	"\x0eCOMMAND_DELETE\x10\x03\"\xb4\x01\n" +
+	"\x0eCOMMAND_DELETE\x10\x03\"\xc9\x01\n" +
 	"\x14KvsOperationResponse\x12E\n" +
 	"\x05error\x18\x01 \x01(\x0e2/.api.colonio.v1alpha.KvsOperationResponse.ErrorR\x05error\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value\"?\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value\"T\n" +
 	"\x05Error\x12\x0e\n" +
 	"\n" +
 	"ERROR_NONE\x10\x00\x12\x11\n" +
 	"\rERROR_UNKNOWN\x10\x01\x12\x13\n" +
-	"\x0fERROR_NOT_FOUND\x10\x02\"\x97\x01\n" +
+	"\x0fERROR_PREPARING\x10\x02\x12\x13\n" +
+	"\x0fERROR_NOT_FOUND\x10\x03\"\x97\x01\n" +
 	"\aRaftFit\x128\n" +
 	"\x05stage\x18\x01 \x01(\x0e2\".api.colonio.v1alpha.RaftFit.StageR\x05stage\x12\x12\n" +
 	"\x04head\x18\x02 \x01(\x04R\x04head\x12\x12\n" +

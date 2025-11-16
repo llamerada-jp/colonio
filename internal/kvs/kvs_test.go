@@ -16,14 +16,61 @@
 package kvs
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/llamerada-jp/colonio/config"
+	"github.com/llamerada-jp/colonio/internal/constants"
+	"github.com/llamerada-jp/colonio/internal/network/transferer"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type transfererHandlerHelper struct {
+	mtx        sync.Mutex
+	sendPacket []*shared.Packet
+	// relay packet is not used in this test
+}
+
+var _ transferer.Handler = &transfererHandlerHelper{}
+
+func (h *transfererHandlerHelper) TransfererSendPacket(p *shared.Packet) {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+	h.sendPacket = append(h.sendPacket, p)
+}
+
+func (h *transfererHandlerHelper) TransfererRelayPacket(nid *shared.NodeID, p *shared.Packet) {
+	panic("not used in this test")
+}
+
+type kvsHandlerHelper struct {
+	mtx         sync.Mutex
+	isStable    bool
+	nextNodeIDs []*shared.NodeID
+	// KvsState is not used in this test yet
+}
+
+var _ Handler = &kvsHandlerHelper{}
+
+func (h *kvsHandlerHelper) setStability(isStable bool, nextNodeIDs []*shared.NodeID) {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+	h.isStable = isStable
+	h.nextNodeIDs = nextNodeIDs
+}
+
+func (h *kvsHandlerHelper) KvsGetStability() (bool, []*shared.NodeID) {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+	return h.isStable, h.nextNodeIDs
+}
+
+func (h *kvsHandlerHelper) KvsState(state constants.KvsState) (constants.KvsState, error) {
+	panic("not used in this test")
+}
 
 func TestKVS_getNodesToBeChanged(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(5)

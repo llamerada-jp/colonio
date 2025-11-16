@@ -108,7 +108,7 @@ func (p *proposalReq) String() string {
 
 func TestRaftNode(t *testing.T) {
 	sectorID := testUtil.UniqueSectorIDs(1)[0]
-	sectorNos := testUtil.UniqueNumbers[config.SectorNo](4)
+	sectorNos := testUtil.UniqueNumbersU[config.SectorNo](4)
 	nodeIDs := testUtil.UniqueNodeIDs(len(sectorNos))
 	sectorNoMap := map[config.SectorNo]int{}
 	for i, sectorNo := range sectorNos {
