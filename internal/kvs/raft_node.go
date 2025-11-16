@@ -102,13 +102,14 @@ func newRaftNode(config *raftNodeConfig) *raftNode {
 	}
 
 	if !config.join {
-		peers := make([]raft.Peer, len(config.member))
-		i := 0
+		peers := []raft.Peer{}
 		for sectorNo := range config.member {
-			peers[i] = raft.Peer{
-				ID: uint64(sectorNo),
+			if sectorNo == config.sectorKey.SectorNo {
+				continue
 			}
-			i++
+			peers = append(peers, raft.Peer{
+				ID: uint64(sectorNo),
+			})
 		}
 		n.etcdRaftNode = raft.StartNode(raftConfig, peers)
 	} else {

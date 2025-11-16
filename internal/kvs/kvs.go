@@ -299,6 +299,10 @@ func (k *KVS) hostSector(nextNodeIDs []*shared.NodeID) {
 	k.lastSectorNo = config.KvsHostNodeSectorNo
 	member := make(map[config.SectorNo]*shared.NodeID)
 	member[config.KvsHostNodeSectorNo] = k.localNodeID
+	k.memberStates[config.KvsHostNodeSectorNo] = &memberStateEntry{
+		nodeID: k.localNodeID,
+		state:  memberStateCreating,
+	}
 	for _, nodeID := range nextNodeIDs {
 		k.lastSectorNo++
 		member[k.lastSectorNo] = nodeID
@@ -667,7 +671,7 @@ func (k *KVS) raftNodeAppendNode(sectorKey *config.KvsSectorKey, sectorNo config
 		return
 	}
 
-	if member.state == memberStateAppendingRaft {
+	if member.state == memberStateCreating || member.state == memberStateAppendingRaft {
 		member.state = memberStateAppendingNode
 	} else {
 		k.logger.Warn("Unexpected state for appending node", "sectorNo", sectorNo, "state", member.state, "nodeID", nodeID)
