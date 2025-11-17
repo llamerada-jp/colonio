@@ -28,43 +28,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type raftNodeManagerHelper struct {
-	t                      *testing.T
+type raftNodeHelper struct {
+	t *testing.T
+	// raftNodeManager interface
 	raftNodeErrorF         func(sectorKey *config.KvsSectorKey, err error)
-	raftNodeSendMessageF   func(dstNodeID *shared.NodeID, data *proto.RaftMessage)
 	raftNodeApplyProposalF func(sectorKey *config.KvsSectorKey, proposal *proto.RaftProposalManagement)
 	raftNodeAppendNodeF    func(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo, nodeID *shared.NodeID)
 	raftNodeRemoveNodeF    func(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo)
+	// RaftInfrastructure interface
+	sendRaftMessageF func(param *raftMessageParam)
 }
 
-func (h *raftNodeManagerHelper) raftNodeError(sectorKey *config.KvsSectorKey, err error) {
+var _ raftNodeManager = &raftNodeHelper{}
+var _ RaftInfrastructure = &raftNodeHelper{}
+
+func (h *raftNodeHelper) raftNodeError(sectorKey *config.KvsSectorKey, err error) {
 	h.t.Helper()
 	require.NotNil(h.t, h.raftNodeErrorF)
 	h.raftNodeErrorF(sectorKey, err)
 }
 
-func (h *raftNodeManagerHelper) raftNodeSendMessage(dstNodeID *shared.NodeID, data *proto.RaftMessage) {
-	h.t.Helper()
-	require.NotNil(h.t, h.raftNodeSendMessageF)
-	h.raftNodeSendMessageF(dstNodeID, data)
-}
-
-func (h *raftNodeManagerHelper) raftNodeApplyProposal(sectorKey *config.KvsSectorKey, proposal *proto.RaftProposalManagement) {
+func (h *raftNodeHelper) raftNodeApplyProposal(sectorKey *config.KvsSectorKey, proposal *proto.RaftProposalManagement) {
 	h.t.Helper()
 	require.NotNil(h.t, h.raftNodeApplyProposalF)
 	h.raftNodeApplyProposalF(sectorKey, proposal)
 }
 
-func (h *raftNodeManagerHelper) raftNodeAppendNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo, nodeID *shared.NodeID) {
+func (h *raftNodeHelper) raftNodeAppendNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo, nodeID *shared.NodeID) {
 	h.t.Helper()
 	require.NotNil(h.t, h.raftNodeAppendNodeF)
 	h.raftNodeAppendNodeF(sectorKey, sectorNo, nodeID)
 }
 
-func (h *raftNodeManagerHelper) raftNodeRemoveNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo) {
+func (h *raftNodeHelper) raftNodeRemoveNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo) {
 	h.t.Helper()
 	require.NotNil(h.t, h.raftNodeRemoveNodeF)
 	h.raftNodeRemoveNodeF(sectorKey, sectorNo)
+}
+
+func (h *raftNodeHelper) sendRaftMessage(param *raftMessageParam) {
+	h.t.Helper()
+	require.NotNil(h.t, h.sendRaftMessageF)
+	h.sendRaftMessageF(param)
 }
 
 type raftNodeStoreHelper struct {
@@ -128,23 +133,10 @@ func TestRaftNode(t *testing.T) {
 	node0Stopped := false
 	receivedProposals := make([][]*proposalReq, len(sectorNos))
 
-	manager := &raftNodeManagerHelper{
+	helper := &raftNodeHelper{
 		t: t,
 		raftNodeErrorF: func(sectorKey *config.KvsSectorKey, err error) {
 			require.FailNow(t, "unexpected raftNodeError")
-		},
-		raftNodeSendMessageF: func(dstNodeID *shared.NodeID, data *proto.RaftMessage) {
-			assert.Equal(t, data.SectorId, MustMarshalSectorID(sectorID))
-			i := sectorNoMap[config.SectorNo(data.SectorNo)]
-			assert.Equal(t, *dstNodeID, *nodeIDs[i])
-			mtx.Lock()
-			if node0Stopped && i == 0 {
-				mtx.Unlock()
-				return
-			}
-			mtx.Unlock()
-			err := raftNodes[i].processMessage(data)
-			assert.NoError(t, err)
 		},
 		raftNodeAppendNodeF: func(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo, nodeID *shared.NodeID) {
 			mtx.Lock()
@@ -171,11 +163,30 @@ func TestRaftNode(t *testing.T) {
 				management: proposal,
 			})
 		},
+		sendRaftMessageF: func(param *raftMessageParam) {
+			assert.Equal(t, param.message.SectorId, MustMarshalSectorID(sectorID))
+			i := sectorNoMap[config.SectorNo(param.message.SectorNo)]
+			assert.Equal(t, *param.dstNodeID, *nodeIDs[i])
+			mtx.Lock()
+			if node0Stopped && i == 0 {
+				mtx.Unlock()
+				return
+			}
+			mtx.Unlock()
+			err := raftNodes[i].processMessage(param.message)
+			assert.NoError(t, err)
+		},
 	}
 
-	t.Run("create raft cluster with 3 nodes", func(tt *testing.T) {
+	initialMemberCount := 3
+	t.Run("create the initial raft cluster with 3 nodes", func(tt *testing.T) {
 		// create raft node 0, 1, 2
-		for i := 0; i < 3; i++ {
+		initialMember := map[config.SectorNo]*shared.NodeID{}
+		for i := 0; i < initialMemberCount; i++ {
+			initialMember[sectorNos[i]] = nodeIDs[i]
+		}
+
+		for i := 0; i < initialMemberCount; i++ {
 			i := i
 			store := &raftNodeStoreHelper{
 				t: t,
@@ -189,19 +200,16 @@ func TestRaftNode(t *testing.T) {
 			}
 
 			raftNodes[i] = newRaftNode(&raftNodeConfig{
-				logger:  testUtil.Logger(t),
-				manager: manager,
-				store:   store,
+				logger:         testUtil.Logger(t),
+				manager:        helper,
+				infrastructure: helper,
+				store:          store,
 				sectorKey: &config.KvsSectorKey{
 					SectorID: sectorID,
 					SectorNo: sectorNos[i],
 				},
-				join: false,
-				member: map[config.SectorNo]*shared.NodeID{
-					sectorNos[0]: nodeIDs[0],
-					sectorNos[1]: nodeIDs[1],
-					sectorNos[2]: nodeIDs[2],
-				},
+				join:   false,
+				member: initialMember,
 			})
 			raftNodes[i].start(t.Context())
 		}
@@ -209,9 +217,9 @@ func TestRaftNode(t *testing.T) {
 		assert.Eventually(tt, func() bool {
 			mtx.Lock()
 			defer mtx.Unlock()
-			for i := 0; i < 3; i++ {
+			for i := 0; i < initialMemberCount; i++ {
 				assert.Len(tt, receivedRemoves[i], 0)
-				if len(receivedAppends[i]) != 3 {
+				if len(receivedAppends[i]) != initialMemberCount-1 {
 					return false
 				}
 			}
@@ -219,31 +227,43 @@ func TestRaftNode(t *testing.T) {
 		}, 3*time.Second, 100*time.Millisecond)
 
 		// check append requests
-		for _, appends := range receivedAppends {
+		for i := 0; i < initialMemberCount; i++ {
+			appends := receivedAppends[i]
 			appendSec := make(map[config.SectorNo]struct{})
 			for _, req := range appends {
 				appendSec[req.sectorNo] = struct{}{}
 				assert.Equal(tt, req.nodeID, nodeIDs[sectorNoMap[req.sectorNo]])
 			}
-			for _, sec := range sectorNos {
-				assert.Contains(tt, appendSec, sec)
+
+			for j := 0; j < initialMemberCount; j++ {
+				seqNo := sectorNos[j]
+				if j == i {
+					assert.NotContains(tt, appendSec, seqNo)
+				} else {
+					assert.Contains(tt, appendSec, seqNo)
+				}
 			}
 		}
 	})
 
+	additionalNodeIdx := initialMemberCount
 	t.Run("add a new node", func(tt *testing.T) {
 		mtx.Lock()
-		for i := 0; i < 3; i++ {
+		for i := 0; i < initialMemberCount; i++ {
 			receivedAppends[i] = nil
 		}
 		mtx.Unlock()
 
-		err := raftNodes[0].appendNode(sectorNos[3], nodeIDs[3])
+		err := raftNodes[0].appendNode(
+			sectorNos[additionalNodeIdx],
+			nodeIDs[additionalNodeIdx],
+		)
 		require.NoError(tt, err)
 
-		raftNodes[3] = newRaftNode(&raftNodeConfig{
-			logger:  testUtil.Logger(t),
-			manager: manager,
+		raftNodes[additionalNodeIdx] = newRaftNode(&raftNodeConfig{
+			logger:         testUtil.Logger(t),
+			manager:        helper,
+			infrastructure: helper,
 			store: &raftNodeStoreHelper{
 				t: t,
 				raftNodeGetSnapshotF: func() ([]byte, error) {
@@ -256,14 +276,15 @@ func TestRaftNode(t *testing.T) {
 				raftNodeApplyProposalF: func(command *proto.RaftProposalStore) {
 					mtx.Lock()
 					defer mtx.Unlock()
-					receivedProposals[3] = append(receivedProposals[3], &proposalReq{
-						store: command,
-					})
+					receivedProposals[additionalNodeIdx] =
+						append(receivedProposals[additionalNodeIdx], &proposalReq{
+							store: command,
+						})
 				},
 			},
 			sectorKey: &config.KvsSectorKey{
 				SectorID: sectorID,
-				SectorNo: sectorNos[3],
+				SectorNo: sectorNos[additionalNodeIdx],
 			},
 			join: true,
 			member: map[config.SectorNo]*shared.NodeID{
@@ -273,18 +294,18 @@ func TestRaftNode(t *testing.T) {
 				sectorNos[3]: nodeIDs[3],
 			},
 		})
-		raftNodes[3].start(t.Context())
+		raftNodes[additionalNodeIdx].start(t.Context())
 
 		assert.Eventually(tt, func() bool {
 			mtx.Lock()
 			defer mtx.Unlock()
-			for i := 0; i < 3; i++ {
+			for i := 0; i < initialMemberCount; i++ {
 				if len(receivedAppends[i]) != 1 {
 					return false
 				}
-				assert.Equal(tt, sectorNos[3], receivedAppends[i][0].sectorNo)
+				assert.Equal(tt, sectorNos[additionalNodeIdx], receivedAppends[i][0].sectorNo)
 			}
-			return len(receivedAppends[3]) == 4
+			return len(receivedAppends[additionalNodeIdx]) == initialMemberCount
 		}, 3*time.Second, 100*time.Millisecond)
 	})
 
