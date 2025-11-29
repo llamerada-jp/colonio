@@ -17,10 +17,15 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/internal/shared"
+)
+
+var (
+	ErrKvsFirstActiveCandidateAlreadySet = errors.New("KVS first active candidate is already set")
 )
 
 type Handler interface {
@@ -42,4 +47,8 @@ type Gateway interface {
 	SubscribeSignal(ctx context.Context, nodeID *shared.NodeID) error
 	UnsubscribeSignal(ctx context.Context, nodeID *shared.NodeID) error
 	PublishSignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error
+	SetKvsState(ctx context.Context, nodeID *shared.NodeID, active bool) error
+	ExistsKvsActiveNode(ctx context.Context) (bool, error)
+	SetKvsFirstActiveCandidate(ctx context.Context, nodeID *shared.NodeID) error
+	UnsetKvsFirstActiveCandidate(ctx context.Context) error
 }

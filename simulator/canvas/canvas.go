@@ -230,10 +230,12 @@ func (c *Canvas) DrawLine3(x1, y1, z1, x2, y2, z2 float64) {
 }
 
 func (c *Canvas) DrawBox2(x, y, w float64) {
-	c.objects = append(c.objects, &box2{
-		x:     x,
-		y:     y,
-		width: w,
+	ox, oy := c.context.getCanvasPosition(x, y)
+	c.objects = append(c.objects, &rect{
+		x:     ox - int32(w/2.0),
+		y:     oy - int32(w/2.0),
+		w:     int32(w),
+		h:     int32(w),
 		color: c.currentColor,
 	})
 }
@@ -244,6 +246,24 @@ func (c *Canvas) DrawBox3(x, y, z, w float64) {
 		y:     y,
 		z:     z,
 		width: w,
+		color: c.currentColor,
+	})
+}
+
+func (c *Canvas) DrawRect(x1, y1, x2, y2 float64) {
+	if x2 < x1 {
+		x1, x2 = x2, x1
+	}
+	if y2 > y1 {
+		y1, y2 = y2, y1
+	}
+	ox1, oy1 := c.context.getCanvasPosition(x1, y1)
+	ox2, oy2 := c.context.getCanvasPosition(x2, y2)
+	c.objects = append(c.objects, &rect{
+		x:     ox1,
+		y:     oy1,
+		w:     ox2 - ox1,
+		h:     oy2 - oy1,
 		color: c.currentColor,
 	})
 }

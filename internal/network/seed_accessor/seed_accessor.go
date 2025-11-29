@@ -28,6 +28,7 @@ import (
 	"connectrpc.com/connect"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	service "github.com/llamerada-jp/colonio/api/colonio/v1alpha/v1alphaconnect"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/network/signal"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
@@ -157,12 +158,12 @@ func (sa *SeedAccessor) IsAlone() bool {
 }
 
 func (sa *SeedAccessor) SendSignalOffer(dstNodeID *shared.NodeID, offer *signal.Offer) error {
-	var offerType proto.SignalOfferType
+	var offerType proto.SignalOffer_Type
 	switch offer.OfferType {
 	case signal.OfferTypeExplicit:
-		offerType = proto.SignalOfferType_SIGNAL_OFFER_TYPE_EXPLICIT
+		offerType = proto.SignalOffer_TYPE_EXPLICIT
 	case signal.OfferTypeNext:
-		offerType = proto.SignalOfferType_SIGNAL_OFFER_TYPE_NEXT
+		offerType = proto.SignalOffer_TYPE_NEXT
 	default:
 		return fmt.Errorf("unknown offer type: %d", offer.OfferType)
 	}
@@ -264,6 +265,27 @@ func (sa *SeedAccessor) ReconcileNextNodes(nextNodeIDs, disconnectedNodeIDs []*s
 	return res.Msg.Matched, nil
 }
 
+func (sa *SeedAccessor) StateKvs(state constants.KvsState) (constants.KvsState, error) {
+	if state == constants.KvsStateUnknown {
+		panic("logic error: state should not be KvsStateUnknown")
+	}
+
+	res, err := sa.client.StateKvs(sa.ctx, &connect.Request[proto.StateKvsRequest]{
+		Msg: &proto.StateKvsRequest{
+			State: proto.KvsState(state),
+		},
+	})
+
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return constants.KvsStateUnknown, nil
+		}
+		return constants.KvsStateUnknown, fmt.Errorf("failed to set/get state KVS: %w", err)
+	}
+
+	return constants.KvsState(res.Msg.EntireState), nil
+}
+
 func (sa *SeedAccessor) unassign() {
 	// use context.Background() because sa.ctx may be already canceled when call this
 	_, err := sa.client.UnassignNode(context.Background(), &connect.Request[proto.UnassignNodeRequest]{})
@@ -313,9 +335,9 @@ func (sa *SeedAccessor) poll() error {
 			case *proto.Signal_Offer:
 				var offerType signal.OfferType
 				switch content.Offer.Type {
-				case proto.SignalOfferType_SIGNAL_OFFER_TYPE_EXPLICIT:
+				case proto.SignalOffer_TYPE_EXPLICIT:
 					offerType = signal.OfferTypeExplicit
-				case proto.SignalOfferType_SIGNAL_OFFER_TYPE_NEXT:
+				case proto.SignalOffer_TYPE_NEXT:
 					offerType = signal.OfferTypeNext
 				default:
 					sa.logger.Warn("unknown offer type")

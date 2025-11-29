@@ -13,38 +13,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package signal
+package canvas
 
 import (
-	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/veandco/go-sdl2/sdl"
 )
 
-type OfferType int
-type AnswerStatus int
+var _ objectRenderer = &rect{}
 
-const (
-	OfferTypeExplicit = OfferType(proto.SignalOffer_TYPE_EXPLICIT)
-	OfferTypeNext     = OfferType(proto.SignalOffer_TYPE_NEXT)
-)
-
-const (
-	AnswerStatusReject = iota
-	AnswerStatusAccept
-)
-
-type Offer struct {
-	OfferID   uint32
-	OfferType OfferType
-	Sdp       string
+type rect struct {
+	x, y  int32
+	w, h  int32
+	color *sdl.Color
 }
 
-type Answer struct {
-	OfferID uint32
-	Status  AnswerStatus
-	Sdp     string
+func (b *rect) getZIndex() float64 {
+	return 80
 }
 
-type ICE struct {
-	OfferID uint32
-	Ices    []string
+func (b *rect) render(context *context) {
+	context.renderer.SetDrawColor(b.color.R, b.color.G, b.color.B, b.color.A)
+
+	rect := sdl.Rect{
+		X: b.x,
+		Y: b.y,
+		W: b.w,
+		H: b.h,
+	}
+	context.renderer.FillRect(&rect)
 }

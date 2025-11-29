@@ -13,33 +13,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package canvas
+package kvs
 
-import (
-	"github.com/veandco/go-sdl2/sdl"
-)
+import proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 
-var _ objectRenderer = &box2{}
-
-type box2 struct {
-	x, y  float64
-	width float64
-	color *sdl.Color
+type sector struct {
+	raft  *raftNode
+	store *store
 }
 
-func (b *box2) getZIndex() float64 {
-	return 80
+func (s *sector) raftNodeApplyProposal(proposal *proto.RaftProposalStore) {
+	s.store.applyProposal(proposal)
 }
 
-func (b *box2) render(context *context) {
-	context.renderer.SetDrawColor(b.color.R, b.color.G, b.color.B, b.color.A)
+func (s *sector) raftNodeGetSnapshot() ([]byte, error) {
+	return s.store.exportSnapshot()
+}
 
-	x, y := context.getCanvasPosition(b.x, b.y)
-	rect := sdl.Rect{
-		X: x - int32(b.width/2.0),
-		Y: y - int32(b.width/2.0),
-		W: int32(b.width),
-		H: int32(b.width),
-	}
-	context.renderer.FillRect(&rect)
+func (s *sector) raftNodeApplySnapshot(snapshot []byte) error {
+	return s.store.importSnapshot(snapshot)
+}
+
+func (s *sector) storePropose(command *proto.RaftProposalStore) {
+	s.raft.propose(&proto.RaftProposal{
+		Content: &proto.RaftProposal_Store{
+			Store: command,
+		},
+	})
 }

@@ -47,6 +47,8 @@ const (
 	SeedServiceSendSignalProcedure = "/api.colonio.v1alpha.SeedService/SendSignal"
 	// SeedServicePollSignalProcedure is the fully-qualified name of the SeedService's PollSignal RPC.
 	SeedServicePollSignalProcedure = "/api.colonio.v1alpha.SeedService/PollSignal"
+	// SeedServiceStateKvsProcedure is the fully-qualified name of the SeedService's StateKvs RPC.
+	SeedServiceStateKvsProcedure = "/api.colonio.v1alpha.SeedService/StateKvs"
 )
 
 // SeedServiceClient is a client for the api.colonio.v1alpha.SeedService service.
@@ -57,6 +59,7 @@ type SeedServiceClient interface {
 	ReconcileNextNodes(context.Context, *connect.Request[v1alpha.ReconcileNextNodesRequest]) (*connect.Response[v1alpha.ReconcileNextNodesResponse], error)
 	SendSignal(context.Context, *connect.Request[v1alpha.SendSignalRequest]) (*connect.Response[v1alpha.SendSignalResponse], error)
 	PollSignal(context.Context, *connect.Request[v1alpha.PollSignalRequest]) (*connect.ServerStreamForClient[v1alpha.PollSignalResponse], error)
+	StateKvs(context.Context, *connect.Request[v1alpha.StateKvsRequest]) (*connect.Response[v1alpha.StateKvsResponse], error)
 }
 
 // NewSeedServiceClient constructs a client for the api.colonio.v1alpha.SeedService service. By
@@ -106,6 +109,12 @@ func NewSeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(seedServiceMethods.ByName("PollSignal")),
 			connect.WithClientOptions(opts...),
 		),
+		stateKvs: connect.NewClient[v1alpha.StateKvsRequest, v1alpha.StateKvsResponse](
+			httpClient,
+			baseURL+SeedServiceStateKvsProcedure,
+			connect.WithSchema(seedServiceMethods.ByName("StateKvs")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -117,6 +126,7 @@ type seedServiceClient struct {
 	reconcileNextNodes *connect.Client[v1alpha.ReconcileNextNodesRequest, v1alpha.ReconcileNextNodesResponse]
 	sendSignal         *connect.Client[v1alpha.SendSignalRequest, v1alpha.SendSignalResponse]
 	pollSignal         *connect.Client[v1alpha.PollSignalRequest, v1alpha.PollSignalResponse]
+	stateKvs           *connect.Client[v1alpha.StateKvsRequest, v1alpha.StateKvsResponse]
 }
 
 // AssignNode calls api.colonio.v1alpha.SeedService.AssignNode.
@@ -149,6 +159,11 @@ func (c *seedServiceClient) PollSignal(ctx context.Context, req *connect.Request
 	return c.pollSignal.CallServerStream(ctx, req)
 }
 
+// StateKvs calls api.colonio.v1alpha.SeedService.StateKvs.
+func (c *seedServiceClient) StateKvs(ctx context.Context, req *connect.Request[v1alpha.StateKvsRequest]) (*connect.Response[v1alpha.StateKvsResponse], error) {
+	return c.stateKvs.CallUnary(ctx, req)
+}
+
 // SeedServiceHandler is an implementation of the api.colonio.v1alpha.SeedService service.
 type SeedServiceHandler interface {
 	AssignNode(context.Context, *connect.Request[v1alpha.AssignNodeRequest]) (*connect.Response[v1alpha.AssignNodeResponse], error)
@@ -157,6 +172,7 @@ type SeedServiceHandler interface {
 	ReconcileNextNodes(context.Context, *connect.Request[v1alpha.ReconcileNextNodesRequest]) (*connect.Response[v1alpha.ReconcileNextNodesResponse], error)
 	SendSignal(context.Context, *connect.Request[v1alpha.SendSignalRequest]) (*connect.Response[v1alpha.SendSignalResponse], error)
 	PollSignal(context.Context, *connect.Request[v1alpha.PollSignalRequest], *connect.ServerStream[v1alpha.PollSignalResponse]) error
+	StateKvs(context.Context, *connect.Request[v1alpha.StateKvsRequest]) (*connect.Response[v1alpha.StateKvsResponse], error)
 }
 
 // NewSeedServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -202,6 +218,12 @@ func NewSeedServiceHandler(svc SeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(seedServiceMethods.ByName("PollSignal")),
 		connect.WithHandlerOptions(opts...),
 	)
+	seedServiceStateKvsHandler := connect.NewUnaryHandler(
+		SeedServiceStateKvsProcedure,
+		svc.StateKvs,
+		connect.WithSchema(seedServiceMethods.ByName("StateKvs")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/api.colonio.v1alpha.SeedService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SeedServiceAssignNodeProcedure:
@@ -216,6 +238,8 @@ func NewSeedServiceHandler(svc SeedServiceHandler, opts ...connect.HandlerOption
 			seedServiceSendSignalHandler.ServeHTTP(w, r)
 		case SeedServicePollSignalProcedure:
 			seedServicePollSignalHandler.ServeHTTP(w, r)
+		case SeedServiceStateKvsProcedure:
+			seedServiceStateKvsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -247,4 +271,8 @@ func (UnimplementedSeedServiceHandler) SendSignal(context.Context, *connect.Requ
 
 func (UnimplementedSeedServiceHandler) PollSignal(context.Context, *connect.Request[v1alpha.PollSignalRequest], *connect.ServerStream[v1alpha.PollSignalResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("api.colonio.v1alpha.SeedService.PollSignal is not implemented"))
+}
+
+func (UnimplementedSeedServiceHandler) StateKvs(context.Context, *connect.Request[v1alpha.StateKvsRequest]) (*connect.Response[v1alpha.StateKvsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.colonio.v1alpha.SeedService.StateKvs is not implemented"))
 }

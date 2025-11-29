@@ -13,38 +13,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package signal
+package kvs
 
 import (
-	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/google/uuid"
+	"github.com/llamerada-jp/colonio/config"
 )
 
-type OfferType int
-type AnswerStatus int
-
-const (
-	OfferTypeExplicit = OfferType(proto.SignalOffer_TYPE_EXPLICIT)
-	OfferTypeNext     = OfferType(proto.SignalOffer_TYPE_NEXT)
-)
-
-const (
-	AnswerStatusReject = iota
-	AnswerStatusAccept
-)
-
-type Offer struct {
-	OfferID   uint32
-	OfferType OfferType
-	Sdp       string
+func MustMarshalSectorID(sectorID config.SectorID) []byte {
+	data, err := uuid.UUID(sectorID).MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	return data
 }
 
-type Answer struct {
-	OfferID uint32
-	Status  AnswerStatus
-	Sdp     string
-}
-
-type ICE struct {
-	OfferID uint32
-	Ices    []string
+func UnmarshalSectorID(data []byte) (config.SectorID, error) {
+	var sectorID uuid.UUID
+	err := sectorID.UnmarshalBinary(data)
+	if err != nil {
+		return config.SectorID(uuid.Nil), err
+	}
+	return config.SectorID(sectorID), nil
 }

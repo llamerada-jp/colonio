@@ -27,11 +27,11 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/geometry"
 	"github.com/llamerada-jp/colonio/internal/network/node_accessor"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
-	"github.com/llamerada-jp/colonio/internal/observation"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
@@ -55,7 +55,7 @@ func newTestConfigBase(t *testing.T, seedURL string, i int) *Config {
 	return &Config{
 		Logger:           testUtil.Logger(t).With(slog.String("node", fmt.Sprintf("#%d", i))),
 		Handler:          &networkHandlerHelper{},
-		Observation:      &observation.Handlers{},
+		Observation:      &config.ObservationHandler{},
 		CoordinateSystem: geometry.NewPlaneCoordinateSystem(-1.0, 1.0, -1.0, 1.0),
 		HttpClient:       testUtil.NewInsecureHttpClient(),
 		SeedURL:          seedURL,
@@ -116,7 +116,8 @@ func TestNetwork(t *testing.T) {
 
 	// can be online only one node
 	require.Eventually(t, func() bool {
-		return networks[0].IsOnline() && networks[0].IsStable()
+		st, _ := networks[0].GetStability()
+		return networks[0].IsOnline() && st
 	}, 60*time.Second, 1*time.Second)
 
 	// make other nodes online
@@ -145,7 +146,8 @@ func TestNetwork(t *testing.T) {
 	// all nodes should be online
 	require.Eventually(t, func() bool {
 		for _, network := range networks {
-			if !network.IsOnline() || !network.IsStable() {
+			st, _ := network.GetStability()
+			if !network.IsOnline() || !st {
 				return false
 			}
 		}
@@ -206,7 +208,8 @@ func TestNetwork(t *testing.T) {
 
 		for _, network := range networks {
 			assert.True(t, network.IsOnline())
-			assert.True(t, network.IsStable())
+			st, _ := network.GetStability()
+			assert.True(t, st)
 		}
 
 		return len(receivedPackets) == 2

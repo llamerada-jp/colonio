@@ -22,7 +22,9 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/seed/gateway"
 	"github.com/llamerada-jp/colonio/seed/misc"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/test/util/helper"
@@ -568,6 +570,8 @@ func TestController_Signal(t *testing.T) {
 	// stop the PollSignal
 	cancel()
 	assert.Eventually(t, func() bool {
+		mtx.Lock()
+		defer mtx.Unlock()
 		c.mtx.Lock()
 		defer c.mtx.Unlock()
 		return callCount == 2 && len(c.signalChannels) == 0
@@ -647,7 +651,7 @@ func TestController_SendSignal(t *testing.T) {
 		Content: &proto.Signal_Offer{
 			Offer: &proto.SignalOffer{
 				OfferId: 1,
-				Type:    proto.SignalOfferType_SIGNAL_OFFER_TYPE_NEXT,
+				Type:    proto.SignalOffer_TYPE_NEXT,
 			},
 		},
 	})
@@ -664,6 +668,78 @@ func TestController_SendSignal(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 6, callCount)
+}
+
+type dummyGWHandler struct {
+}
+
+func (h *dummyGWHandler) HandleSignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error {
+	return nil
+}
+
+func (h *dummyGWHandler) HandleKeepaliveRequest(ctx context.Context, nodeID *shared.NodeID) error {
+	return nil
+}
+
+func (h *dummyGWHandler) HandleUnassignNode(ctx context.Context, nodeID *shared.NodeID) error {
+	return nil
+}
+
+func TestController_StateKvs(t *testing.T) {
+	ctx := misc.NewLoggerContext(t.Context(), nil)
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+
+	gw := gateway.NewSimpleGateway(
+		testUtil.Logger(t),
+		&dummyGWHandler{},
+		func(exists map[shared.NodeID]any) (*shared.NodeID, error) {
+			return nodeIDs[len(exists)], nil
+		},
+	)
+	c := NewController(&Options{
+		Logger:  testUtil.Logger(t),
+		Gateway: gw,
+	})
+
+	// create 3 nodes
+	for i := 0; i < len(nodeIDs); i++ {
+		_, _, err := c.AssignNode(ctx)
+		require.NoError(t, err)
+	}
+
+	// The first node becomes a candidate.
+	state, err := c.StateKvs(ctx, nodeIDs[0], false)
+	require.NoError(t, err)
+	assert.Equal(t, constants.KvsStateInactive, state)
+
+	// Next node tries to become a candidate but fails because the first node is already a candidate.
+	state, err = c.StateKvs(ctx, nodeIDs[1], false)
+	require.NoError(t, err)
+	assert.Equal(t, constants.KvsStateUnknown, state)
+
+	// The first node becomes offline.
+	err = c.UnassignNode(ctx, nodeIDs[0])
+	require.NoError(t, err)
+
+	// The second node becomes a candidate.
+	state, err = c.StateKvs(ctx, nodeIDs[1], false)
+	require.NoError(t, err)
+	assert.Equal(t, constants.KvsStateInactive, state)
+
+	// The third node tries to become a candidate but fails because the second node is already a candidate.
+	state, err = c.StateKvs(ctx, nodeIDs[2], false)
+	require.NoError(t, err)
+	assert.Equal(t, constants.KvsStateUnknown, state)
+
+	// The second node becomes active.
+	state, err = c.StateKvs(ctx, nodeIDs[1], true)
+	require.NoError(t, err)
+	assert.Equal(t, constants.KvsStateActive, state)
+
+	// The third node knows that the entire KVS is already active.
+	state, err = c.StateKvs(ctx, nodeIDs[2], false)
+	require.NoError(t, err)
+	assert.Equal(t, constants.KvsStateActive, state)
 }
 
 func TestController_cleanup(t *testing.T) {

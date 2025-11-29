@@ -18,12 +18,15 @@ package util
 import (
 	"crypto/tls"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"net/http/cookiejar"
 	"slices"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
@@ -71,6 +74,54 @@ func UniqueNodeIDsWithRange(min, max *shared.NodeID, count int) []*shared.NodeID
 	}
 
 	return nodeIDs
+}
+
+func UniqueSectorIDs(count int) []config.SectorID {
+	uuids := make([]config.SectorID, count)
+	exists := make(map[config.SectorID]struct{})
+	for i := range uuids {
+		for {
+			id := config.SectorID(uuid.New())
+			if _, ok := exists[id]; !ok {
+				uuids[i] = id
+				exists[id] = struct{}{}
+				break
+			}
+		}
+	}
+	return uuids
+}
+
+func UniqueNumbersS[V ~int | ~int32 | ~int64](count int) []V {
+	nums := make([]V, count)
+	exists := make(map[V]struct{})
+	for i := range nums {
+		for {
+			n := V(rand.Int63())
+			if _, ok := exists[n]; !ok {
+				nums[i] = n
+				exists[n] = struct{}{}
+				break
+			}
+		}
+	}
+	return nums
+}
+
+func UniqueNumbersU[V ~uint | ~uint32 | ~uint64](count int) []V {
+	nums := make([]V, count)
+	exists := make(map[V]struct{})
+	for i := range nums {
+		for {
+			n := V(rand.Uint64())
+			if _, ok := exists[n]; !ok {
+				nums[i] = n
+				exists[n] = struct{}{}
+				break
+			}
+		}
+	}
+	return nums
 }
 
 // create client to accept self-signed certificate & cookie

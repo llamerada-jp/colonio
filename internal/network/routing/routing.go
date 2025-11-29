@@ -23,9 +23,9 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/geometry"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
-	"github.com/llamerada-jp/colonio/internal/observation"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
@@ -44,7 +44,7 @@ type Handler interface {
 type Config struct {
 	Logger           *slog.Logger
 	Handler          Handler
-	Observation      observation.Caller
+	Observation      config.ObservationCaller
 	Transferer       *transferer.Transferer
 	CoordinateSystem geometry.CoordinateSystem
 }
@@ -52,7 +52,7 @@ type Config struct {
 type Routing struct {
 	logger           *slog.Logger
 	handler          Handler
-	observation      observation.Caller
+	observation      config.ObservationCaller
 	transferer       *transferer.Transferer
 	coordinateSystem geometry.CoordinateSystem
 
@@ -113,8 +113,8 @@ func (r *Routing) Start(ctx context.Context, localNodeID *shared.NodeID) {
 	}()
 }
 
-func (r *Routing) IsStable() bool {
-	return r.r1d.isStable()
+func (r *Routing) GetStability() (bool, []*shared.NodeID) {
+	return r.r1d.getStability()
 }
 
 func (r *Routing) GetNextStep1D(packet *shared.Packet) *shared.NodeID {
@@ -168,13 +168,17 @@ func (r *Routing) subRoutine() {
 	if (r.triggeredAction&requireUpdateConnections) != 0 ||
 		time.Now().After(r.lastConnectionUpdate.Add(connectionUpdateInterval)) {
 		required, keep := r.r1d.getConnections()
-		r.observation.UpdateRequiredNodeIDs1D(shared.ConvertNodeIDSetToStringMap(required))
+		if r.observation != nil {
+			r.observation.UpdateRequiredNodeIDs1D(shared.ConvertNodeIDSetToStringMap(required))
+		}
 		if r.r2d != nil {
 			required2d := r.r2d.getConnections()
 			for nodeID := range required2d {
 				required[nodeID] = struct{}{}
 			}
-			r.observation.UpdateRequiredNodeIDs2D(shared.ConvertNodeIDSetToStringMap(required2d))
+			if r.observation != nil {
+				r.observation.UpdateRequiredNodeIDs2D(shared.ConvertNodeIDSetToStringMap(required2d))
+			}
 		}
 		r.handler.RoutingUpdateConnection(required, keep)
 		r.triggeredAction = r.triggeredAction &^ requireUpdateConnections

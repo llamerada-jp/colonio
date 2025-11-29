@@ -13,38 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package signal
+package constants
 
 import (
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 )
 
-type OfferType int
-type AnswerStatus int
+type KvsState int
 
 const (
-	OfferTypeExplicit = OfferType(proto.SignalOffer_TYPE_EXPLICIT)
-	OfferTypeNext     = OfferType(proto.SignalOffer_TYPE_NEXT)
+	KvsStateUnknown  = KvsState(proto.KvsState_KVS_STATE_UNKNOWN)
+	KvsStateActive   = KvsState(proto.KvsState_KVS_STATE_ACTIVE)
+	KvsStateInactive = KvsState(proto.KvsState_KVS_STATE_INACTIVE)
 )
-
-const (
-	AnswerStatusReject = iota
-	AnswerStatusAccept
-)
-
-type Offer struct {
-	OfferID   uint32
-	OfferType OfferType
-	Sdp       string
-}
-
-type Answer struct {
-	OfferID uint32
-	Status  AnswerStatus
-	Sdp     string
-}
-
-type ICE struct {
-	OfferID uint32
-	Ices    []string
-}

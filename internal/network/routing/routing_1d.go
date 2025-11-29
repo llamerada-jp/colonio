@@ -96,11 +96,14 @@ func (r *routing1D) subRoutine() {
 	}
 }
 
-func (r *routing1D) isStable() bool {
+func (r *routing1D) getStability() (bool, []*shared.NodeID) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	return r.nextNodeMatched
+	nextNodeIDs := slices.Clone(r.backwardNextNodeIDs)
+	slices.Reverse(nextNodeIDs)
+	nextNodeIDs = append(nextNodeIDs, r.frontwardNextNodeIDs...)
+	return r.nextNodeMatched, nextNodeIDs
 }
 
 func (r *routing1D) updateNodeConnections(connections map[shared.NodeID]struct{}) int {

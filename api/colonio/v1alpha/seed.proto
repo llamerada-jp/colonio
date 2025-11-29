@@ -2,49 +2,57 @@ syntax = "proto3";
 
 package api.colonio.v1alpha;
 
-import "api/colonio/v1alpha/colonio.proto";
+import "api/colonio/v1alpha/core.proto";
 
 option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
 
 service SeedService {
-  rpc AssignNode (AssignNodeRequest) returns (AssignNodeResponse) {}
-  rpc UnassignNode (UnassignNodeRequest) returns (UnassignNodeResponse) {}
-  rpc Keepalive (KeepaliveRequest) returns (KeepaliveResponse) {}
-  rpc ReconcileNextNodes (ReconcileNextNodesRequest) returns (ReconcileNextNodesResponse) {}
-  rpc SendSignal (SendSignalRequest) returns (SendSignalResponse) {}
-  rpc PollSignal (PollSignalRequest) returns (stream PollSignalResponse) {}
+  rpc AssignNode(AssignNodeRequest) returns (AssignNodeResponse) {
+  }
+  rpc UnassignNode(UnassignNodeRequest) returns (UnassignNodeResponse) {
+  }
+  rpc Keepalive(KeepaliveRequest) returns (KeepaliveResponse) {
+  }
+  rpc ReconcileNextNodes(ReconcileNextNodesRequest) returns (ReconcileNextNodesResponse) {
+  }
+  rpc SendSignal(SendSignalRequest) returns (SendSignalResponse) {
+  }
+  rpc PollSignal(PollSignalRequest) returns (stream PollSignalResponse) {
+  }
+  rpc StateKvs(StateKvsRequest) returns (StateKvsResponse) {
+  }
 }
 
 message Signal {
   colonio.v1alpha.NodeID dst_node_id = 1;
   colonio.v1alpha.NodeID src_node_id = 2;
   oneof content {
-    SignalOffer offer = 3;
+    SignalOffer offer   = 3;
     SignalAnswer answer = 4;
-    SignalICE ice = 5;
+    SignalICE ice       = 5;
   }
 }
 
-enum SignalOfferType {
-  // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
-  SIGNAL_OFFER_TYPE_EXPLICIT = 0;
-  SIGNAL_OFFER_TYPE_NEXT = 1;
-}
-
 message SignalOffer {
+  enum Type {
+    // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+    TYPE_EXPLICIT = 0;
+    TYPE_NEXT     = 1;
+  }
+
   uint32 offer_id = 1;
-  SignalOfferType type = 2;
-  string sdp = 3;
+  Type type       = 2;
+  string sdp      = 3;
 }
 
 message SignalAnswer {
   uint32 offer_id = 1;
-  uint32 status = 2;
-  string sdp = 3;
+  uint32 status   = 2;
+  string sdp      = 3;
 }
 
 message SignalICE {
-  uint32 offer_id = 1;
+  uint32 offer_id      = 1;
   repeated string ices = 2;
 }
 
@@ -53,7 +61,7 @@ message AssignNodeRequest {
 
 message AssignNodeResponse {
   colonio.v1alpha.NodeID node_id = 1;
-  bool is_alone = 2;
+  bool is_alone                  = 2;
 }
 
 message UnassignNodeRequest {
@@ -70,7 +78,7 @@ message KeepaliveResponse {
 }
 
 message ReconcileNextNodesRequest {
-  repeated colonio.v1alpha.NodeID next_node_ids = 1;
+  repeated colonio.v1alpha.NodeID next_node_ids         = 1;
   repeated colonio.v1alpha.NodeID disconnected_node_ids = 2;
 }
 
@@ -90,4 +98,19 @@ message PollSignalRequest {
 
 message PollSignalResponse {
   repeated Signal signals = 1;
+}
+
+enum KvsState {
+  // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+  KVS_STATE_UNKNOWN  = 0;
+  KVS_STATE_ACTIVE   = 1;
+  KVS_STATE_INACTIVE = 2;
+}
+
+message StateKvsRequest {
+  KvsState state = 1;
+}
+
+message StateKvsResponse {
+  KvsState entire_state = 1;
 }
