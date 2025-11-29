@@ -106,9 +106,6 @@ func newRaftNode(config *raftNodeConfig) *raftNode {
 	if !config.join {
 		peers := []raft.Peer{}
 		for sectorNo := range config.member {
-			if sectorNo == config.sectorKey.SectorNo {
-				continue
-			}
 			peers = append(peers, raft.Peer{
 				ID: uint64(sectorNo),
 			})
