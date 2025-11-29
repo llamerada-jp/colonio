@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
@@ -89,7 +90,7 @@ func newRaftNode(config *raftNodeConfig) *raftNode {
 		snapshotCatchUpEntriesN: 100,
 		snapCount:               1000,
 
-		member: config.member,
+		member: maps.Clone(config.member),
 	}
 
 	raftConfig := &raft.Config{

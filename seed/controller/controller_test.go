@@ -570,6 +570,8 @@ func TestController_Signal(t *testing.T) {
 	// stop the PollSignal
 	cancel()
 	assert.Eventually(t, func() bool {
+		mtx.Lock()
+		defer mtx.Unlock()
 		c.mtx.Lock()
 		defer c.mtx.Unlock()
 		return callCount == 2 && len(c.signalChannels) == 0
