@@ -189,10 +189,11 @@ func TestNodeAccessorAlone(t *testing.T) {
 
 	// turn on (is not only one node in the cluster)
 	na.SetBeAlone(false)
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return len(envelopes) >= 1 && len(connections) == 0
+		assert.NotEmpty(c, envelopes, 1)
+		assert.Len(c, connections, 0)
 	}, 60*time.Second, 100*time.Millisecond)
 
 	mtx.Lock()
@@ -212,10 +213,11 @@ func TestNodeAccessorAlone(t *testing.T) {
 
 	// wait for cutting off the connection
 	na.SetBeAlone(true)
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		na.mtx.Lock()
 		defer na.mtx.Unlock()
-		return len(na.offerID2state) == 0 && len(na.link2offerID) == 0
+		assert.Len(c, na.offerID2state, 0)
+		assert.Len(c, na.link2offerID, 0)
 	}, 60*time.Second, 100*time.Millisecond)
 }
 
@@ -276,13 +278,10 @@ func TestNodeAccessorPair(t *testing.T) {
 	}
 
 	// wait for detecting each other
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		for _, na := range nodeAccessors {
-			if !na.IsOnline() {
-				return false
-			}
+			require.True(c, na.IsOnline())
 		}
-		return true
 	}, 60*time.Second, 100*time.Millisecond)
 
 	for _, na := range nodeAccessors {
@@ -292,15 +291,13 @@ func TestNodeAccessorPair(t *testing.T) {
 		na.mtx.Unlock()
 	}
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		for _, na := range nodeAccessors {
 			na.mtx.Lock()
 			defer na.mtx.Unlock()
-			if len(na.offerID2state) != 0 || len(na.link2offerID) != 0 {
-				return false
-			}
+			assert.Len(c, na.offerID2state, 0)
+			assert.Len(c, na.link2offerID, 0)
 		}
-		return true
 	}, 60*time.Second, 100*time.Millisecond)
 
 	mtx.Lock()
@@ -328,10 +325,10 @@ func TestNodeAccessorPair(t *testing.T) {
 	nodeAccessors[0].RelayPacket(nodeIDs[1], origPacket)
 
 	// wait for receiving the packet
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return len(packets[1]) == 1
+		assert.Equal(c, 1, len(packets[1]))
 	}, 3*time.Second, 100*time.Millisecond)
 
 	mtx.Lock()
@@ -413,13 +410,10 @@ func testNodeAccessorMany(t *testing.T, n int) {
 	}
 
 	// wait for detecting each other
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		for _, na := range nodeAccessors {
-			if !na.IsOnline() {
-				return false
-			}
+			assert.True(c, na.IsOnline())
 		}
-		return true
 	}, 60*time.Second, 100*time.Millisecond)
 
 	for _, na := range nodeAccessors {
@@ -429,15 +423,13 @@ func testNodeAccessorMany(t *testing.T, n int) {
 		na.mtx.Unlock()
 	}
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		for _, na := range nodeAccessors {
 			na.mtx.Lock()
 			defer na.mtx.Unlock()
-			if len(na.offerID2state) != 0 || len(na.link2offerID) != 0 {
-				return false
-			}
+			assert.Len(c, na.offerID2state, 0)
+			assert.Len(c, na.link2offerID, 0)
 		}
-		return true
 	}, 60*time.Second, 100*time.Millisecond)
 
 	// each accessor connect both of the previous and the next node
@@ -456,16 +448,26 @@ func testNodeAccessorMany(t *testing.T, n int) {
 		err := na.ConnectLinks(rNodeIDs, map[shared.NodeID]struct{}{})
 		require.NoError(t, err)
 	}
-	require.Eventually(t, func() bool {
-		for _, na := range nodeAccessors {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		for i, na := range nodeAccessors {
 			na.mtx.Lock()
 			defer na.mtx.Unlock()
-			if len(na.nodeID2link) != 2 || len(na.link2nodeID) != 2 ||
-				len(na.offerID2state) != 0 || len(na.link2offerID) != 0 {
-				return false
+			assert.Len(c, na.nodeID2link, 2)
+			assert.Len(c, na.link2nodeID, 2)
+			assert.Len(c, na.offerID2state, 0)
+			assert.Len(c, na.link2offerID, 0)
+			assert.Len(c, connections[i], 2)
+			if i == 0 {
+				assert.Contains(c, connections[i], *nodeIDs[len(nodeIDs)-1])
+			} else {
+				assert.Contains(c, connections[i], *nodeIDs[i-1])
+			}
+			if i == len(nodeAccessors)-1 {
+				assert.Contains(c, connections[i], *nodeIDs[0])
+			} else {
+				assert.Contains(c, connections[i], *nodeIDs[i+1])
 			}
 		}
-		return true
 	}, 60*time.Second, 100*time.Millisecond)
 
 	// send packet
@@ -508,10 +510,11 @@ func testNodeAccessorMany(t *testing.T, n int) {
 	require.NoError(t, err)
 
 	// wait for receiving the packet
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return len(packets[1]) == 1 && len(packets[len(nodeIDs)-1]) == 1
+		require.Equal(c, 1, len(packets[1]))
+		require.Equal(c, 1, len(packets[len(nodeIDs)-1]))
 	}, 3*time.Second, 100*time.Millisecond)
 
 	mtx.Lock()
@@ -585,13 +588,10 @@ func TestNodeAccessorConnectLinks(t *testing.T) {
 	}
 
 	// wait for detecting each other
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		for _, na := range nodeAccessors {
-			if !na.IsOnline() {
-				return false
-			}
+			require.True(c, na.IsOnline())
 		}
-		return true
 	}, 60*time.Second, 100*time.Millisecond)
 
 	// node 1 ~ 3 connect to node 0
@@ -623,24 +623,19 @@ func TestNodeAccessorConnectLinks(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		for _, na := range nodeAccessors {
 			na.mtx.Lock()
 			defer na.mtx.Unlock()
 		}
 		for i := 1; i < len(nodeIDs); i++ {
-			if len(nodeAccessors[i].nodeID2link) != 1 || len(nodeAccessors[i].link2nodeID) != 1 ||
-				len(nodeAccessors[i].offerID2state) != 0 || len(nodeAccessors[i].link2offerID) != 0 {
-				return false
-			}
-			if nodeAccessors[i].nodeID2link[*nodeIDs[0]] == nil {
-				return false
-			}
-			if nodeAccessors[0].nodeID2link[*nodeIDs[i]] == nil {
-				return false
-			}
+			assert.Len(c, nodeAccessors[i].nodeID2link, 1)
+			assert.Len(c, nodeAccessors[i].link2nodeID, 1)
+			assert.Len(c, nodeAccessors[i].offerID2state, 0)
+			assert.Len(c, nodeAccessors[i].link2offerID, 0)
+			assert.NotNil(c, nodeAccessors[i].nodeID2link[*nodeIDs[0]])
+			assert.NotNil(c, nodeAccessors[0].nodeID2link[*nodeIDs[i]])
 		}
-		return true
 	}, 60*time.Second, 100*time.Millisecond)
 
 	// node 2 ~ 3 connect to also node 1
@@ -656,7 +651,7 @@ func TestNodeAccessorConnectLinks(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		for _, na := range nodeAccessors {
 			na.mtx.Lock()
 			defer na.mtx.Unlock()
@@ -666,18 +661,13 @@ func TestNodeAccessorConnectLinks(t *testing.T) {
 			assert.Contains(t, nodeAccessors[i].nodeID2link, *nodeIDs[0])
 			assert.Contains(t, nodeAccessors[0].nodeID2link, *nodeIDs[i])
 
-			if len(nodeAccessors[i].nodeID2link) != 2 || len(nodeAccessors[i].link2nodeID) != 2 ||
-				len(nodeAccessors[i].offerID2state) != 0 || len(nodeAccessors[i].link2offerID) != 0 {
-				return false
-			}
-			if nodeAccessors[i].nodeID2link[*nodeIDs[1]] == nil {
-				return false
-			}
-			if nodeAccessors[1].nodeID2link[*nodeIDs[i]] == nil {
-				return false
-			}
+			assert.Len(c, nodeAccessors[i].nodeID2link, 2)
+			assert.Len(c, nodeAccessors[i].link2nodeID, 2)
+			assert.Len(c, nodeAccessors[i].offerID2state, 0)
+			assert.Len(c, nodeAccessors[i].link2offerID, 0)
+			assert.NotNil(c, nodeAccessors[i].nodeID2link[*nodeIDs[1]])
+			assert.NotNil(c, nodeAccessors[1].nodeID2link[*nodeIDs[i]])
 		}
-		return true
 	}, 60*time.Second, 100*time.Millisecond)
 
 	for i := 2; i < len(nodeIDs); i++ {
@@ -707,6 +697,19 @@ func TestNodeAccessorConnectLinks(t *testing.T) {
 				assert.Contains(t, nodeAccessors[i].nodeID2link, *nodeIDs[1])
 				assert.Contains(t, nodeAccessors[0].nodeID2link, *nodeIDs[i])
 				assert.Contains(t, nodeAccessors[1].nodeID2link, *nodeIDs[i])
+			}
+			for i := 0; i < 2; i++ {
+				assert.Len(t, connections[i], len(nodeIDs)-1)
+				for j := 0; j < len(nodeIDs); j++ {
+					if j != i {
+						assert.Contains(t, connections[i], *nodeIDs[j])
+					}
+				}
+			}
+			for i := 2; i < len(nodeIDs); i++ {
+				assert.Len(t, connections[i], 2)
+				assert.Contains(t, connections[i], *nodeIDs[0])
+				assert.Contains(t, connections[i], *nodeIDs[1])
 			}
 		}()
 	}

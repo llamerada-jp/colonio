@@ -108,14 +108,14 @@ func TestSeedAccessor_assignment(t *testing.T) {
 	cancel1()
 
 	// 2nd node will be alone
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err := accessor2.SendSignalOffer(nodeID2, &signal.Offer{
 			OfferID:   1,
 			OfferType: signal.OfferTypeExplicit,
 			Sdp:       "test",
 		})
 		assert.NoError(t, err)
-		return accessor2.IsAlone()
+		assert.True(c, accessor2.IsAlone())
 	}, 10*time.Second, 500*time.Millisecond)
 
 	// keep session by sending signal
@@ -230,10 +230,12 @@ func TestSeedAccessor_SignalingKind(t *testing.T) {
 	assert.NoError(t, err)
 
 	// wait for receiving signals
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return receivedCounts[0] == 1 && receivedCounts[1] == 1 && receivedCounts[2] == 1
+		for _, l := range receivedCounts {
+			assert.Equal(c, 1, l)
+		}
 	}, 5*time.Second, 500*time.Millisecond)
 }
 
@@ -280,18 +282,13 @@ func TestSeedAccessor_SignalingTarget(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		for i := range receivedFrom {
-			if len(receivedFrom[i]) != 1 {
-				return false
-			}
-			if !receivedFrom[i][0].Equal(nodeIDs[mod(i+len(nodeIDs)-1, len(nodeIDs))]) {
-				return false
-			}
+			require.Len(c, receivedFrom[i], 1)
+			assert.True(c, receivedFrom[i][0].Equal(nodeIDs[mod(i+len(nodeIDs)-1, len(nodeIDs))]))
 		}
-		return true
 	}, 5*time.Second, 500*time.Millisecond)
 
 	// send signal to next destination
@@ -307,18 +304,13 @@ func TestSeedAccessor_SignalingTarget(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		for i := range receivedFrom {
-			if len(receivedFrom[i]) != 1 {
-				return false
-			}
-			if !receivedFrom[i][0].Equal(nodeIDs[mod(i+len(nodeIDs)-1, len(nodeIDs))]) {
-				return false
-			}
+			require.Len(c, receivedFrom[i], 1)
+			assert.True(c, receivedFrom[i][0].Equal(nodeIDs[mod(i+len(nodeIDs)-1, len(nodeIDs))]))
 		}
-		return true
 	}, 5*time.Second, 500*time.Millisecond)
 }
 

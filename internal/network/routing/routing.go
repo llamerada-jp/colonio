@@ -169,7 +169,7 @@ func (r *Routing) subRoutine() {
 		time.Now().After(r.lastConnectionUpdate.Add(connectionUpdateInterval)) {
 		required, keep := r.r1d.getConnections()
 		if r.observation != nil {
-		r.observation.UpdateRequiredNodeIDs1D(shared.ConvertNodeIDSetToStringMap(required))
+			r.observation.UpdateRequiredNodeIDs1D(shared.ConvertNodeIDSetToStringMap(required))
 		}
 		if r.r2d != nil {
 			required2d := r.r2d.getConnections()
@@ -177,7 +177,7 @@ func (r *Routing) subRoutine() {
 				required[nodeID] = struct{}{}
 			}
 			if r.observation != nil {
-			r.observation.UpdateRequiredNodeIDs2D(shared.ConvertNodeIDSetToStringMap(required2d))
+				r.observation.UpdateRequiredNodeIDs2D(shared.ConvertNodeIDSetToStringMap(required2d))
 			}
 		}
 		r.handler.RoutingUpdateConnection(required, keep)

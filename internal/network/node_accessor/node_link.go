@@ -74,6 +74,7 @@ type nodeLink struct {
 	ctx                context.Context
 	cancel             context.CancelFunc
 	webrtc             webRTCLink
+	flushMtx           sync.Mutex
 	stateMtx           sync.RWMutex
 	state              nodeLinkState
 	keepaliveTimestamp time.Time
@@ -257,6 +258,9 @@ func (n *nodeLink) flush() error {
 	n.queue = make([]*waiting, 0)
 	n.queueMtx.Unlock()
 
+	n.flushMtx.Lock()
+	defer n.flushMtx.Unlock()
+
 	p := &proto.NodePackets{}
 	contentSize := 0
 	for _, w := range queue {
@@ -283,6 +287,7 @@ func (n *nodeLink) flush() error {
 						Index:   uint32(i),
 						Content: w.content[send : send+size],
 					})
+					contentSize += size
 				} else {
 					p.Packets = append(p.Packets, &proto.NodePacket{
 						Id:      w.packet.ID,

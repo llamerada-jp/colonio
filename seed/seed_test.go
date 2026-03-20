@@ -31,6 +31,7 @@ import (
 	service "github.com/llamerada-jp/colonio/api/colonio/v1alpha/v1alphaconnect"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -70,10 +71,10 @@ func TestSeed(t *testing.T) {
 	}()
 
 	// wait for the HTTP server to start
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		client := testUtil.NewInsecureHttpClient()
 		_, err := client.Get(fmt.Sprintf("https://localhost:%d", port))
-		return err == nil
+		assert.NoError(c, err)
 	}, 5*time.Second, 100*time.Millisecond)
 
 	client := service.NewSeedServiceClient(

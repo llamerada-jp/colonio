@@ -51,19 +51,19 @@ func TestChannel_Send(t *testing.T) {
 		}
 	}()
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return sent == 2
+		assert.Equal(c, 2, sent)
 	}, 100*time.Millisecond, 10*time.Millisecond)
 
 	v := <-ch.C()
 	assert.Equal(t, 0, v)
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return sent == 3
+		assert.Equal(c, 3, sent)
 	}, 100*time.Millisecond, 10*time.Millisecond)
 
 	ch.Close()
