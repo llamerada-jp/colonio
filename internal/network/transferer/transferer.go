@@ -277,7 +277,7 @@ func (t *Transferer) Receive(packet *shared.Packet) {
 	t.mtx.RLock()
 	defer t.mtx.RUnlock()
 
-	contentType := reflect.TypeOf(packet.Content.Content).Elem()
+	contentType := reflect.TypeOf(packet.Content.GetContent()).Elem()
 	handler, ok := t.requestHandlers[contentType]
 	if !ok {
 		panic(fmt.Sprintf("the handler for %s not found", contentType.Name()))

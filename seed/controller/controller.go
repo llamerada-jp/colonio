@@ -289,7 +289,7 @@ func (c *ControllerImpl) SendSignal(ctx context.Context, nodeID *shared.NodeID, 
 		}
 
 		relayToNext := false
-		if signal.GetOffer() != nil && signal.GetOffer().GetType() == proto.SignalOfferType_SIGNAL_OFFER_TYPE_NEXT {
+		if signal.GetOffer() != nil && signal.GetOffer().GetType() == proto.SignalOffer_TYPE_NEXT {
 			relayToNext = true
 		}
 
@@ -304,17 +304,24 @@ func (c *ControllerImpl) SendSignal(ctx context.Context, nodeID *shared.NodeID, 
 func (c *ControllerImpl) PollSignal(ctx context.Context, nodeID *shared.NodeID, send func(*proto.Signal) error) error {
 	logger := misc.NewLogger(ctx, c.logger)
 
-	c.mtx.Lock()
-	if _, exists := c.signalChannels[*nodeID]; exists {
-		c.mtx.Unlock()
-		return fmt.Errorf("node %s already subscribed to signal", nodeID.String())
+	var ch *misc.Channel[*proto.Signal]
+	err := func() error {
+		c.mtx.Lock()
+		defer c.mtx.Unlock()
+		if _, exists := c.signalChannels[*nodeID]; exists {
+			return fmt.Errorf("node %s already subscribed to signal", nodeID.String())
+		}
+		if err := c.gateway.SubscribeSignal(ctx, nodeID); err != nil {
+			return fmt.Errorf("failed to subscribe to signal: %w", err)
+		}
+		ch = misc.NewChannel[*proto.Signal](100)
+		c.signalChannels[*nodeID] = ch
+		return nil
+	}()
+	if err != nil {
+		return err
 	}
-	if err := c.gateway.SubscribeSignal(ctx, nodeID); err != nil {
-		return fmt.Errorf("failed to subscribe to signal: %w", err)
-	}
-	ch := misc.NewChannel[*proto.Signal](100)
-	c.signalChannels[*nodeID] = ch
-	c.mtx.Unlock()
+
 	defer func() {
 		if err := c.gateway.UnsubscribeSignal(ctx, nodeID); err != nil {
 			logger.Error("failed to unsubscribe from signal", slog.String("nodeID", nodeID.String()), slog.Any("error", err))
