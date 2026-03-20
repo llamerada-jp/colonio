@@ -13,36 +13,39 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package observation
+package config
 
-type Handlers struct {
+// Handler is an interface for observing the internal status of colonio.
+// These interfaces are for debugging and simulation and are not intended for normal use.
+// They are not guaranteed to work or be compatible.
+type ObservationHandler struct {
 	OnChangeConnectedNodes    func(map[string]struct{})
 	OnUpdateRequiredNodeIDs1D func(map[string]struct{})
 	OnUpdateRequiredNodeIDs2D func(map[string]struct{})
 }
 
-type Caller interface {
+type ObservationCaller interface {
 	ChangeConnectedNodes(map[string]struct{})
 	UpdateRequiredNodeIDs1D(map[string]struct{})
 	UpdateRequiredNodeIDs2D(map[string]struct{})
 }
 
-var _ Caller = &Handlers{}
+var _ ObservationCaller = &ObservationHandler{}
 
-func (h *Handlers) ChangeConnectedNodes(p1 map[string]struct{}) {
-	if h.OnChangeConnectedNodes != nil {
+func (h *ObservationHandler) ChangeConnectedNodes(p1 map[string]struct{}) {
+	if h != nil && h.OnChangeConnectedNodes != nil {
 		go h.OnChangeConnectedNodes(p1)
 	}
 }
 
-func (h *Handlers) UpdateRequiredNodeIDs1D(p1 map[string]struct{}) {
-	if h.OnUpdateRequiredNodeIDs1D != nil {
+func (h *ObservationHandler) UpdateRequiredNodeIDs1D(p1 map[string]struct{}) {
+	if h != nil && h.OnUpdateRequiredNodeIDs1D != nil {
 		go h.OnUpdateRequiredNodeIDs1D(p1)
 	}
 }
 
-func (h *Handlers) UpdateRequiredNodeIDs2D(p1 map[string]struct{}) {
-	if h.OnUpdateRequiredNodeIDs2D != nil {
+func (h *ObservationHandler) UpdateRequiredNodeIDs2D(p1 map[string]struct{}) {
+	if h != nil && h.OnUpdateRequiredNodeIDs2D != nil {
 		go h.OnUpdateRequiredNodeIDs2D(p1)
 	}
 }

@@ -137,7 +137,7 @@ func (n *Node) renewColonio() error {
 				URLs: []string{},
 			},
 		}),
-		colonio.WithObservation(&colonio.ObservationHandlers{
+		colonio.WithObservation(&config.ObservationHandler{
 			OnChangeConnectedNodes: func(nodeIDs map[string]struct{}) {
 				n.mtx.Lock()
 				defer n.mtx.Unlock()
