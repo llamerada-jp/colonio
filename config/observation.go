@@ -15,17 +15,24 @@
  */
 package config
 
+type ObservationSectorInfo struct {
+	Head string
+	Tail string
+}
+
 // Handler is an interface for observing the internal status of colonio.
 // These interfaces are for debugging and simulation and are not intended for normal use.
 // They are not guaranteed to work or be compatible.
 type ObservationHandler struct {
 	OnChangeConnectedNodes    func(map[string]struct{})
+	OnChangeKvsSectors        func(map[KvsSectorKey]*ObservationSectorInfo)
 	OnUpdateRequiredNodeIDs1D func(map[string]struct{})
 	OnUpdateRequiredNodeIDs2D func(map[string]struct{})
 }
 
 type ObservationCaller interface {
 	ChangeConnectedNodes(map[string]struct{})
+	ChangeKvsSectors(map[KvsSectorKey]*ObservationSectorInfo)
 	UpdateRequiredNodeIDs1D(map[string]struct{})
 	UpdateRequiredNodeIDs2D(map[string]struct{})
 }
@@ -35,6 +42,12 @@ var _ ObservationCaller = &ObservationHandler{}
 func (h *ObservationHandler) ChangeConnectedNodes(p1 map[string]struct{}) {
 	if h != nil && h.OnChangeConnectedNodes != nil {
 		go h.OnChangeConnectedNodes(p1)
+	}
+}
+
+func (h *ObservationHandler) ChangeKvsSectors(p1 map[KvsSectorKey]*ObservationSectorInfo) {
+	if h != nil && h.OnChangeKvsSectors != nil {
+		go h.OnChangeKvsSectors(p1)
 	}
 }
 

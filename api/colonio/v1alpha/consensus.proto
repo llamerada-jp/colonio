@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package api.colonio.v1alpha;
+
+option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
+
+message ConsensusProposal {
+  oneof content {
+    Management management = 1;
+    Operation operation   = 2;
+  }
+}
+
+message Management {
+}
+
+message Operation {
+  enum Command {
+    // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+    COMMAND_IMPORT = 0;
+    COMMAND_GET    = 1;
+    COMMAND_SET    = 2;
+    COMMAND_PATCH  = 3;
+    COMMAND_DELETE = 4;
+  }
+
+  Command command     = 1;
+  uint32 operation_id = 2;
+  string key          = 3;
+  bytes value         = 4;
+}
+
+message ConsensusStateSnapshot {
+  ConsensusStateRecords records = 1;
+}
+
+message ConsensusStateRecords {
+  map<string, bytes> records = 1;
+}
