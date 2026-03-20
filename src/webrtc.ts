@@ -311,7 +311,7 @@ class DefaultWebRTCImplement implements WebRTCImplement {
     return true;
   }
 
-  send(id: number, data: Uint8Array): boolean {
+  send(id: number, data: Uint8Array<ArrayBuffer>): boolean {
     let link = this.links.get(id);
     if (link == undefined) {
       console.error("link not found.");
