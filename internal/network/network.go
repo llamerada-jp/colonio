@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/llamerada-jp/colonio/config"
 	"github.com/llamerada-jp/colonio/internal/constants"
 	"github.com/llamerada-jp/colonio/internal/geometry"
 	"github.com/llamerada-jp/colonio/internal/network/node_accessor"
@@ -28,7 +29,6 @@ import (
 	"github.com/llamerada-jp/colonio/internal/network/seed_accessor"
 	"github.com/llamerada-jp/colonio/internal/network/signal"
 	"github.com/llamerada-jp/colonio/internal/network/transferer"
-	"github.com/llamerada-jp/colonio/internal/observation"
 	"github.com/llamerada-jp/colonio/internal/shared"
 )
 
@@ -39,7 +39,7 @@ type Handler interface {
 type Config struct {
 	Logger           *slog.Logger
 	Handler          Handler
-	Observation      observation.Caller
+	Observation      config.ObservationCaller
 	CoordinateSystem geometry.CoordinateSystem
 
 	// config parameters for seed
@@ -55,7 +55,7 @@ type Config struct {
 type Network struct {
 	logger      *slog.Logger
 	handler     Handler
-	observation observation.Caller
+	observation config.ObservationCaller
 
 	localNodeID *shared.NodeID
 
@@ -186,7 +186,9 @@ func (n *Network) NodeAccessorChangeConnections(connections map[shared.NodeID]st
 	// use go routine to avoid deadlock
 	go n.routing.UpdateNodeConnections(connections)
 
+	if n.observation != nil {
 	n.observation.ChangeConnectedNodes(shared.ConvertNodeIDSetToStringMap(connections))
+	}
 }
 
 func (n *Network) NodeAccessorSendSignalOffer(dstNodeID *shared.NodeID, offer *signal.Offer) error {

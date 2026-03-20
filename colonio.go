@@ -28,7 +28,6 @@ import (
 	"github.com/llamerada-jp/colonio/internal/messaging"
 	"github.com/llamerada-jp/colonio/internal/network"
 	"github.com/llamerada-jp/colonio/internal/network/node_accessor"
-	"github.com/llamerada-jp/colonio/internal/observation"
 	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/internal/spread"
 )
@@ -67,18 +66,13 @@ type Colonio interface {
 	SpreadUnsetHandler(name string)
 }
 
-// ObservationHandler is an interface for observing the internal status of colonio.
-// These interfaces are for debugging and simulation and are not intended for normal use.
-// They are not guaranteed to work or be compatible.
-type ObservationHandlers observation.Handlers
-
 type Config struct {
-	Logger              *slog.Logger
-	ObservationHandlers *ObservationHandlers
-	HttpClient          *http.Client
-	SeedURL             string
-	ICEServers          []*config.ICEServer
-	CoordinateSystem    geometry.CoordinateSystem
+	Logger             *slog.Logger
+	ObservationHandler *config.ObservationHandler
+	HttpClient         *http.Client
+	SeedURL            string
+	ICEServers         []*config.ICEServer
+	CoordinateSystem   geometry.CoordinateSystem
 
 	// PacketHopLimit is the maximum number of hops that a packet can be relayed.
 	// If you set 0, the default value of 64 will be set.
@@ -104,9 +98,9 @@ func WithLogger(logger *slog.Logger) ConfigSetter {
 	}
 }
 
-func WithObservation(handlers *ObservationHandlers) ConfigSetter {
+func WithObservation(handler *config.ObservationHandler) ConfigSetter {
 	return func(c *Config) {
-		c.ObservationHandlers = handlers
+		c.ObservationHandler = handler
 	}
 }
 
@@ -159,9 +153,9 @@ type colonioImpl struct {
 
 func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 	config := &Config{
-		Logger:              slog.Default(),
-		ObservationHandlers: &ObservationHandlers{},
-		PacketHopLimit:      64,
+		Logger:             slog.Default(),
+		ObservationHandler: nil,
+		PacketHopLimit:     64,
 
 		SpreadCacheLifetime:  1 * time.Minute,
 		SpreadSizeToUseKnock: 4096,
@@ -201,7 +195,7 @@ func NewColonio(setters ...ConfigSetter) (Colonio, error) {
 	net, err := network.NewNetwork(&network.Config{
 		Logger:           config.Logger,
 		Handler:          impl,
-		Observation:      (*observation.Handlers)(config.ObservationHandlers),
+		Observation:      config.ObservationHandler,
 		CoordinateSystem: config.CoordinateSystem,
 		HttpClient:       config.HttpClient,
 		SeedURL:          config.SeedURL,
