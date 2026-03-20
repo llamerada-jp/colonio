@@ -16,3 +16,7 @@ pnpm run build
 #### Makefile
 
 Go to the site commented in the Makefile and manually rewrite the file if a newer version is available.
+
+#### .github/workflows/ci.yaml
+
+Update the version of `pnpm` to the latest one. in the `ci.yaml` file.
