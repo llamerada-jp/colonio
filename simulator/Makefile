@@ -88,7 +88,7 @@ colonio-simulator.tar: Dockerfile $(SIMULATOR)
 $(SIMULATOR): $(shell find ../ -type f -name '*.go')
 	$(MAKE) -C ..
 	mkdir -p work
-	go build -o $@ ./cmd/
+	go test -c -o $@ ./cmd/
 
 .PHONY: setup
 setup:
