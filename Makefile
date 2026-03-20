@@ -77,13 +77,13 @@ build-js: $(OUTPUT_PATH)/colonio.js
 
 # TODO: Somehow the build runs every time🙁
 $(OUTPUT_PATH)/colonio.js: $(shell find ./src -type f -name '*.ts')
-	npm run build
+	pnpm run build
 
 .PHONY: setup
 setup:
 	mkdir -p $(DEPENDING_PKG_PATH)
 	# tools for typescript
-	npm install
+	pnpm install
 	# protoc
 	$(CURL) -o protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-linux-x86_64.zip
 	unzip -o -d $(DEPENDING_PKG_PATH) protoc.zip bin/protoc
