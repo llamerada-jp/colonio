@@ -21,51 +21,51 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type SignalOfferType int32
+type SignalOffer_Type int32
 
 const (
 	// buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
-	SignalOfferType_SIGNAL_OFFER_TYPE_EXPLICIT SignalOfferType = 0
-	SignalOfferType_SIGNAL_OFFER_TYPE_NEXT     SignalOfferType = 1
+	SignalOffer_TYPE_EXPLICIT SignalOffer_Type = 0
+	SignalOffer_TYPE_NEXT     SignalOffer_Type = 1
 )
 
-// Enum value maps for SignalOfferType.
+// Enum value maps for SignalOffer_Type.
 var (
-	SignalOfferType_name = map[int32]string{
-		0: "SIGNAL_OFFER_TYPE_EXPLICIT",
-		1: "SIGNAL_OFFER_TYPE_NEXT",
+	SignalOffer_Type_name = map[int32]string{
+		0: "TYPE_EXPLICIT",
+		1: "TYPE_NEXT",
 	}
-	SignalOfferType_value = map[string]int32{
-		"SIGNAL_OFFER_TYPE_EXPLICIT": 0,
-		"SIGNAL_OFFER_TYPE_NEXT":     1,
+	SignalOffer_Type_value = map[string]int32{
+		"TYPE_EXPLICIT": 0,
+		"TYPE_NEXT":     1,
 	}
 )
 
-func (x SignalOfferType) Enum() *SignalOfferType {
-	p := new(SignalOfferType)
+func (x SignalOffer_Type) Enum() *SignalOffer_Type {
+	p := new(SignalOffer_Type)
 	*p = x
 	return p
 }
 
-func (x SignalOfferType) String() string {
+func (x SignalOffer_Type) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (SignalOfferType) Descriptor() protoreflect.EnumDescriptor {
+func (SignalOffer_Type) Descriptor() protoreflect.EnumDescriptor {
 	return file_api_colonio_v1alpha_seed_proto_enumTypes[0].Descriptor()
 }
 
-func (SignalOfferType) Type() protoreflect.EnumType {
+func (SignalOffer_Type) Type() protoreflect.EnumType {
 	return &file_api_colonio_v1alpha_seed_proto_enumTypes[0]
 }
 
-func (x SignalOfferType) Number() protoreflect.EnumNumber {
+func (x SignalOffer_Type) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use SignalOfferType.Descriptor instead.
-func (SignalOfferType) EnumDescriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{0}
+// Deprecated: Use SignalOffer_Type.Descriptor instead.
+func (SignalOffer_Type) EnumDescriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{1, 0}
 }
 
 type Signal struct {
@@ -185,7 +185,7 @@ func (*Signal_Ice) isSignal_Content() {}
 type SignalOffer struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OfferId       uint32                 `protobuf:"varint,1,opt,name=offer_id,json=offerId,proto3" json:"offer_id,omitempty"`
-	Type          SignalOfferType        `protobuf:"varint,2,opt,name=type,proto3,enum=api.colonio.v1alpha.SignalOfferType" json:"type,omitempty"`
+	Type          SignalOffer_Type       `protobuf:"varint,2,opt,name=type,proto3,enum=api.colonio.v1alpha.SignalOffer_Type" json:"type,omitempty"`
 	Sdp           string                 `protobuf:"bytes,3,opt,name=sdp,proto3" json:"sdp,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -228,11 +228,11 @@ func (x *SignalOffer) GetOfferId() uint32 {
 	return 0
 }
 
-func (x *SignalOffer) GetType() SignalOfferType {
+func (x *SignalOffer) GetType() SignalOffer_Type {
 	if x != nil {
 		return x.Type
 	}
-	return SignalOfferType_SIGNAL_OFFER_TYPE_EXPLICIT
+	return SignalOffer_TYPE_EXPLICIT
 }
 
 func (x *SignalOffer) GetSdp() string {
@@ -861,11 +861,14 @@ const file_api_colonio_v1alpha_seed_proto_rawDesc = "" +
 	"\x05offer\x18\x03 \x01(\v2 .api.colonio.v1alpha.SignalOfferH\x00R\x05offer\x12;\n" +
 	"\x06answer\x18\x04 \x01(\v2!.api.colonio.v1alpha.SignalAnswerH\x00R\x06answer\x122\n" +
 	"\x03ice\x18\x05 \x01(\v2\x1e.api.colonio.v1alpha.SignalICEH\x00R\x03iceB\t\n" +
-	"\acontent\"t\n" +
+	"\acontent\"\x9f\x01\n" +
 	"\vSignalOffer\x12\x19\n" +
-	"\boffer_id\x18\x01 \x01(\rR\aofferId\x128\n" +
-	"\x04type\x18\x02 \x01(\x0e2$.api.colonio.v1alpha.SignalOfferTypeR\x04type\x12\x10\n" +
-	"\x03sdp\x18\x03 \x01(\tR\x03sdp\"S\n" +
+	"\boffer_id\x18\x01 \x01(\rR\aofferId\x129\n" +
+	"\x04type\x18\x02 \x01(\x0e2%.api.colonio.v1alpha.SignalOffer.TypeR\x04type\x12\x10\n" +
+	"\x03sdp\x18\x03 \x01(\tR\x03sdp\"(\n" +
+	"\x04Type\x12\x11\n" +
+	"\rTYPE_EXPLICIT\x10\x00\x12\r\n" +
+	"\tTYPE_NEXT\x10\x01\"S\n" +
 	"\fSignalAnswer\x12\x19\n" +
 	"\boffer_id\x18\x01 \x01(\rR\aofferId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\rR\x06status\x12\x10\n" +
@@ -892,10 +895,7 @@ const file_api_colonio_v1alpha_seed_proto_rawDesc = "" +
 	"\x12SendSignalResponse\"\x13\n" +
 	"\x11PollSignalRequest\"K\n" +
 	"\x12PollSignalResponse\x125\n" +
-	"\asignals\x18\x01 \x03(\v2\x1b.api.colonio.v1alpha.SignalR\asignals*M\n" +
-	"\x0fSignalOfferType\x12\x1e\n" +
-	"\x1aSIGNAL_OFFER_TYPE_EXPLICIT\x10\x00\x12\x1a\n" +
-	"\x16SIGNAL_OFFER_TYPE_NEXT\x10\x012\xf0\x04\n" +
+	"\asignals\x18\x01 \x03(\v2\x1b.api.colonio.v1alpha.SignalR\asignals2\xf0\x04\n" +
 	"\vSeedService\x12_\n" +
 	"\n" +
 	"AssignNode\x12&.api.colonio.v1alpha.AssignNodeRequest\x1a'.api.colonio.v1alpha.AssignNodeResponse\"\x00\x12e\n" +
@@ -922,7 +922,7 @@ func file_api_colonio_v1alpha_seed_proto_rawDescGZIP() []byte {
 var file_api_colonio_v1alpha_seed_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_api_colonio_v1alpha_seed_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_api_colonio_v1alpha_seed_proto_goTypes = []any{
-	(SignalOfferType)(0),               // 0: api.colonio.v1alpha.SignalOfferType
+	(SignalOffer_Type)(0),              // 0: api.colonio.v1alpha.SignalOffer.Type
 	(*Signal)(nil),                     // 1: api.colonio.v1alpha.Signal
 	(*SignalOffer)(nil),                // 2: api.colonio.v1alpha.SignalOffer
 	(*SignalAnswer)(nil),               // 3: api.colonio.v1alpha.SignalAnswer
@@ -947,7 +947,7 @@ var file_api_colonio_v1alpha_seed_proto_depIdxs = []int32{
 	2,  // 2: api.colonio.v1alpha.Signal.offer:type_name -> api.colonio.v1alpha.SignalOffer
 	3,  // 3: api.colonio.v1alpha.Signal.answer:type_name -> api.colonio.v1alpha.SignalAnswer
 	4,  // 4: api.colonio.v1alpha.Signal.ice:type_name -> api.colonio.v1alpha.SignalICE
-	0,  // 5: api.colonio.v1alpha.SignalOffer.type:type_name -> api.colonio.v1alpha.SignalOfferType
+	0,  // 5: api.colonio.v1alpha.SignalOffer.type:type_name -> api.colonio.v1alpha.SignalOffer.Type
 	17, // 6: api.colonio.v1alpha.AssignNodeResponse.node_id:type_name -> api.colonio.v1alpha.NodeID
 	17, // 7: api.colonio.v1alpha.ReconcileNextNodesRequest.next_node_ids:type_name -> api.colonio.v1alpha.NodeID
 	17, // 8: api.colonio.v1alpha.ReconcileNextNodesRequest.disconnected_node_ids:type_name -> api.colonio.v1alpha.NodeID

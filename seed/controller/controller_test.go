@@ -251,10 +251,10 @@ func TestController_Keepalive(t *testing.T) {
 	}()
 
 	// wait for start to Keepalive
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c2 *assert.CollectT) {
 		c.mtx.Lock()
 		defer c.mtx.Unlock()
-		return c.keepaliveChannels[*nodeIDs[0]] != nil
+		assert.NotNil(c2, c.keepaliveChannels[*nodeIDs[0]])
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// If you request keepalive for the same node at the same time, an error will be returned.
@@ -271,10 +271,10 @@ func TestController_Keepalive(t *testing.T) {
 	// send the keepalive request for the expected node then should finish
 	err = c.HandleKeepaliveRequest(ctx, nodeIDs[0])
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c2 *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return finished
+		assert.True(c2, finished)
 	}, 3*time.Second, 100*time.Millisecond)
 	assert.NotContains(t, c.keepaliveChannels, *nodeIDs[0])
 
@@ -283,7 +283,7 @@ func TestController_Keepalive(t *testing.T) {
 	go func() {
 		isAlone, err := c.Keepalive(ctx, nodeIDs[0])
 		// occur error because the keepalive channel is closed
-		require.Error(t, err)
+		require.ErrorContains(t, err, "keepalive channel closed unexpectedly for node")
 		assert.False(t, isAlone)
 
 		mtx.Lock()
@@ -292,10 +292,10 @@ func TestController_Keepalive(t *testing.T) {
 	}()
 
 	// wait for start to Keepalive
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c2 *assert.CollectT) {
 		c.mtx.Lock()
 		defer c.mtx.Unlock()
-		return c.keepaliveChannels[*nodeIDs[0]] != nil
+		assert.NotNil(c2, c.keepaliveChannels[*nodeIDs[0]])
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// un assign another node
@@ -308,10 +308,10 @@ func TestController_Keepalive(t *testing.T) {
 	// un assign target node then should finish
 	err = c.HandleUnassignNode(ctx, nodeIDs[0])
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c2 *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return finished
+		assert.True(c2, finished)
 	}, 3*time.Second, 100*time.Millisecond)
 	assert.NotContains(t, c.keepaliveChannels, *nodeIDs[0])
 
@@ -325,14 +325,15 @@ func TestController_Keepalive(t *testing.T) {
 		defer mtx.Unlock()
 		finished = true
 	}()
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c2 *assert.CollectT) {
 		c.mtx.Lock()
 		mtx.Lock()
 		defer func() {
 			c.mtx.Unlock()
 			mtx.Unlock()
 		}()
-		return finished && len(c.keepaliveChannels) == 0
+		assert.True(c2, finished)
+		assert.Len(c2, c.keepaliveChannels, 0)
 	}, 5*time.Second, 100*time.Millisecond)
 
 	mtx.Lock()
@@ -502,10 +503,10 @@ func TestController_Signal(t *testing.T) {
 	}()
 
 	// wait for start to PollSignal
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c2 *assert.CollectT) {
 		c.mtx.Lock()
 		defer c.mtx.Unlock()
-		return c.signalChannels[*nodeIDs[0]] != nil
+		assert.NotNil(c2, c.signalChannels[*nodeIDs[0]])
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// If you poll signal for the same node at the same time, an error will be returned.
@@ -541,10 +542,11 @@ func TestController_Signal(t *testing.T) {
 	}, false)
 	require.NoError(t, err)
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c2 *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return len(received) == 1 && received[0].GetIce().GetOfferId() == 1
+		require.Len(c2, received, 1)
+		assert.Equal(c2, uint32(1), received[0].GetIce().GetOfferId())
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// acceptable signal with relayToNext
@@ -559,18 +561,22 @@ func TestController_Signal(t *testing.T) {
 	}, true)
 	require.NoError(t, err)
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c2 *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return len(received) == 2 && received[1].GetOffer().GetOfferId() == 2
+		require.Len(c2, received, 2)
+		assert.Equal(c2, uint32(2), received[1].GetOffer().GetOfferId())
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// stop the PollSignal
 	cancel()
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c2 *assert.CollectT) {
+		mtx.Lock()
+		defer mtx.Unlock()
 		c.mtx.Lock()
 		defer c.mtx.Unlock()
-		return callCount == 2 && len(c.signalChannels) == 0
+		assert.Equal(c2, 2, callCount)
+		assert.Len(c2, c.signalChannels, 0)
 	}, 3*time.Second, 100*time.Millisecond)
 
 }
@@ -647,7 +653,7 @@ func TestController_SendSignal(t *testing.T) {
 		Content: &proto.Signal_Offer{
 			Offer: &proto.SignalOffer{
 				OfferId: 1,
-				Type:    proto.SignalOfferType_SIGNAL_OFFER_TYPE_NEXT,
+				Type:    proto.SignalOffer_TYPE_NEXT,
 			},
 		},
 	})
@@ -700,9 +706,9 @@ func TestController_cleanup(t *testing.T) {
 		c.Run(t.Context())
 	}()
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c2 *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return callCount > 2
+		assert.Greater(c2, callCount, 2)
 	}, 3*time.Second, 100*time.Millisecond)
 }

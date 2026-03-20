@@ -157,12 +157,12 @@ func (sa *SeedAccessor) IsAlone() bool {
 }
 
 func (sa *SeedAccessor) SendSignalOffer(dstNodeID *shared.NodeID, offer *signal.Offer) error {
-	var offerType proto.SignalOfferType
+	var offerType proto.SignalOffer_Type
 	switch offer.OfferType {
 	case signal.OfferTypeExplicit:
-		offerType = proto.SignalOfferType_SIGNAL_OFFER_TYPE_EXPLICIT
+		offerType = proto.SignalOffer_TYPE_EXPLICIT
 	case signal.OfferTypeNext:
-		offerType = proto.SignalOfferType_SIGNAL_OFFER_TYPE_NEXT
+		offerType = proto.SignalOffer_TYPE_NEXT
 	default:
 		return fmt.Errorf("unknown offer type: %d", offer.OfferType)
 	}
@@ -313,9 +313,9 @@ func (sa *SeedAccessor) poll() error {
 			case *proto.Signal_Offer:
 				var offerType signal.OfferType
 				switch content.Offer.Type {
-				case proto.SignalOfferType_SIGNAL_OFFER_TYPE_EXPLICIT:
+				case proto.SignalOffer_TYPE_EXPLICIT:
 					offerType = signal.OfferTypeExplicit
-				case proto.SignalOfferType_SIGNAL_OFFER_TYPE_NEXT:
+				case proto.SignalOffer_TYPE_NEXT:
 					offerType = signal.OfferTypeNext
 				default:
 					sa.logger.Warn("unknown offer type")

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -72,7 +73,7 @@ func newTestConfigBase(t *testing.T, seedURL string, i int) *Config {
 
 func TestNetwork(t *testing.T) {
 	mtx := sync.Mutex{}
-	nodeIDs := testUtil.UniqueNodeIDs(5)
+	nodeIDs := testUtil.UniqueNodeIDs(10)
 	networks := make([]*Network, len(nodeIDs))
 	positionMaps := make([]map[shared.NodeID]*geometry.Coordinate, len(nodeIDs))
 	ctx, cancel := context.WithCancel(t.Context())
@@ -115,8 +116,10 @@ func TestNetwork(t *testing.T) {
 	require.True(t, nodeID.Equal(nodeIDs[0]))
 
 	// can be online only one node
-	require.Eventually(t, func() bool {
-		return networks[0].IsOnline() && networks[0].IsStable()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		st, _ := networks[0].GetStability()
+		assert.True(c, networks[0].IsOnline())
+		assert.True(c, st)
 	}, 60*time.Second, 1*time.Second)
 
 	// make other nodes online
@@ -143,13 +146,12 @@ func TestNetwork(t *testing.T) {
 	}
 
 	// all nodes should be online
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		for _, network := range networks {
-			if !network.IsOnline() || !network.IsStable() {
-				return false
-			}
+			st, _ := network.GetStability()
+			assert.True(c, network.IsOnline())
+			assert.True(c, st)
 		}
-		return true
 	}, 60*time.Second, 1*time.Second)
 
 	expectedPositionMap := make(map[shared.NodeID]*geometry.Coordinate)
@@ -163,7 +165,7 @@ func TestNetwork(t *testing.T) {
 	}
 
 	// position should be told to each node
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
 
@@ -171,14 +173,11 @@ func TestNetwork(t *testing.T) {
 			for _, nodeID := range nodeIDs {
 				expected := expectedPositionMap[*nodeID]
 				if pos, ok := pMap[*nodeID]; ok {
-					if pos.X != expected.X || pos.Y != expected.Y {
-						return false
-					}
+					assert.Equal(c, expected.X, pos.X)
+					assert.Equal(c, expected.Y, pos.Y)
 				}
 			}
 		}
-
-		return true
 	}, 60*time.Second, 1*time.Second)
 
 	// send packet
@@ -200,27 +199,43 @@ func TestNetwork(t *testing.T) {
 		},
 	})
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
 
 		for _, network := range networks {
 			assert.True(t, network.IsOnline())
-			assert.True(t, network.IsStable())
+			st, _ := network.GetStability()
+			assert.True(t, st)
 		}
-
-		return len(receivedPackets) == 2
+		assert.Len(c, receivedPackets, 2)
 	}, 60*time.Second, 1*time.Second)
+
+	sortedNodeIDs := slices.Clone(nodeIDs)
+	slices.SortFunc(sortedNodeIDs, func(a, b *shared.NodeID) int {
+		return a.Compare(b)
+	})
+	for i, network := range networks {
+		nodeID := nodeIDs[i]
+		_, nextNodeIDs := network.GetStability()
+		assert.Len(t, nextNodeIDs, 4)
+
+		j := slices.IndexFunc(sortedNodeIDs, func(id *shared.NodeID) bool {
+			return nodeID.Equal(id)
+		})
+		for k, l := range []int{-2, -1, 1, 2} {
+			nextNodeID := nextNodeIDs[k]
+			assert.Contains(t, nodeIDs, nextNodeID)
+			expectedIdx := (j + l + len(nodeIDs)) % len(nodeIDs)
+			assert.Equal(t, sortedNodeIDs[expectedIdx], nextNodeID)
+		}
+	}
 
 	cancel()
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		for _, network := range networks {
-			if network.IsOnline() {
-				return false
-			}
+			assert.False(c, network.IsOnline())
 		}
-
-		return true
 	}, 60*time.Second, 1*time.Second)
 }

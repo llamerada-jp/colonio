@@ -276,7 +276,8 @@ func (c *colonioImpl) IsOnline() bool {
 }
 
 func (c *colonioImpl) IsStable() bool {
-	return c.network.IsStable()
+	s, _ := c.network.GetStability()
+	return s
 }
 
 func (c *colonioImpl) GetLocalNodeID() string {

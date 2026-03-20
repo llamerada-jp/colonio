@@ -2,9 +2,9 @@ SHELL := /bin/bash -o pipefail
 
 # Tool and lib versions
 # https://github.com/bufbuild/buf/releases
-BUF_VERSION := 1.51.0
+BUF_VERSION := 1.60.0
 # https://github.com/protocolbuffers/protobuf/releases
-PROTOC_VERSION := 30.2
+PROTOC_VERSION := 33.1
 PROTOC_GEN_GO_VERSION := $(shell awk '/google.golang.org\/protobuf/ {print substr($$2, 2)}' go.mod)
 CONNECT_GO_VERSION := $(shell awk '/connectrpc.com\/connect/ {print substr($$2, 2)}' go.mod)
 

@@ -140,9 +140,8 @@ func (n *Network) IsOnline() bool {
 	return n.seedAccessor.IsAlone() || n.nodeAccessor.IsOnline()
 }
 
-func (n *Network) IsStable() bool {
-	isStable, _ := n.routing.GetStability()
-	return isStable
+func (n *Network) GetStability() (bool, []*shared.NodeID) {
+	return n.routing.GetStability()
 }
 
 func (n *Network) GetTransferer() *transferer.Transferer {
@@ -187,7 +186,7 @@ func (n *Network) NodeAccessorChangeConnections(connections map[shared.NodeID]st
 	go n.routing.UpdateNodeConnections(connections)
 
 	if n.observation != nil {
-	n.observation.ChangeConnectedNodes(shared.ConvertNodeIDSetToStringMap(connections))
+		n.observation.ChangeConnectedNodes(shared.ConvertNodeIDSetToStringMap(connections))
 	}
 }
 
@@ -256,8 +255,6 @@ func (n *Network) classifyPacket(packet *shared.Packet) {
 	} else if nextNodeID.IsNormal() || nextNodeID.Equal(&shared.NodeNeighborhoods) {
 		if err := n.nodeAccessor.RelayPacket(nextNodeID, packet); err != nil {
 			n.logger.Debug("failed to relay packet", slog.String("error", err.Error()))
-			n.nodeAccessor.RelayPacket(nextNodeID, packet)
-			return
 		}
 		return
 	}
