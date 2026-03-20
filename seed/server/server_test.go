@@ -125,10 +125,10 @@ func runTestServer(t *testing.T, controller *controllerMock) uint16 {
 	}()
 
 	// wait for the server to start
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		client := testUtil.NewInsecureHttpClient()
 		_, err := client.Get(fmt.Sprintf("https://localhost:%d", port))
-		return err == nil
+		assert.NoError(c, err)
 	}, 5*time.Second, 100*time.Millisecond)
 
 	return port

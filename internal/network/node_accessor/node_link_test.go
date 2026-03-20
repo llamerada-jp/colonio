@@ -146,8 +146,9 @@ func TestNodeLinkNormal(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	require.Eventually(t, func() bool {
-		return link1.getLinkState() == nodeLinkStateOnline && link2.getLinkState() == nodeLinkStateOnline
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, nodeLinkStateOnline, link1.getLinkState())
+		assert.Equal(c, nodeLinkStateOnline, link2.getLinkState())
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// check link label
@@ -174,10 +175,10 @@ func TestNodeLinkNormal(t *testing.T) {
 	require.NoError(t, err)
 
 	// receive packet
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return received != nil
+		assert.NotNil(c, received)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// check packet
@@ -194,8 +195,8 @@ func TestNodeLinkNormal(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, link1.getLinkState(), nodeLinkStateDisabled)
 
-	assert.Eventually(t, func() bool {
-		return link2.getLinkState() == nodeLinkStateDisabled
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, nodeLinkStateDisabled, link2.getLinkState())
 	}, 10*time.Second, 100*time.Millisecond)
 
 	assert.Equal(t, state1, "OD")
@@ -226,8 +227,8 @@ func TestNodeLinkTimeout(t *testing.T) {
 	link, err = newNodeLink(config, &nodeLinkHandlerHelper{}, true)
 	require.NoError(t, err)
 
-	require.Eventually(t, func() bool {
-		return link.getLinkState() == nodeLinkStateDisabled
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, nodeLinkStateDisabled, link.getLinkState())
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// connect
@@ -284,18 +285,20 @@ func TestNodeLinkTimeout(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	require.Eventually(t, func() bool {
-		return link.getLinkState() == nodeLinkStateOnline && webrtcLink.isActive() && webrtcLink.isOnline()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, nodeLinkStateOnline, link.getLinkState())
+		assert.True(c, webrtcLink.isActive())
+		assert.True(c, webrtcLink.isOnline())
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// wait for keepalive packets
 	mtx.Lock()
 	keepalivePackets = 0
 	mtx.Unlock()
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return keepalivePackets > 0
+		assert.Greater(c, keepalivePackets, 0)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	p := &proto.NodePackets{}
@@ -313,8 +316,10 @@ func TestNodeLinkTimeout(t *testing.T) {
 	// ignore error check since the error may be raised when the link is closed by the peer
 	disableErrorCheck = true
 	mtx.Unlock()
-	require.Eventually(t, func() bool {
-		return link.getLinkState() == nodeLinkStateDisabled && !webrtcLink.isActive() && !webrtcLink.isOnline()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, nodeLinkStateDisabled, link.getLinkState())
+		assert.False(c, webrtcLink.isActive())
+		assert.False(c, webrtcLink.isOnline())
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
@@ -383,8 +388,9 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	require.Eventually(t, func() bool {
-		return link1.getLinkState() == nodeLinkStateOnline && link2.getLinkState() == nodeLinkStateOnline
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, nodeLinkStateOnline, link1.getLinkState())
+		assert.Equal(c, nodeLinkStateOnline, link2.getLinkState())
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// send packet
@@ -412,10 +418,11 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 	}
 
 	// receive packet
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return received1 == 0 && received2 == 10
+		assert.Equal(c, 0, received1)
+		assert.Equal(c, 10, received2)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	time.Sleep(1 * time.Second)
@@ -423,10 +430,10 @@ func TestNodeLinkBufferInterval(t *testing.T) {
 	assert.Equal(t, received1, 0)
 	mtx.Unlock()
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return received1 == 10
+		assert.Equal(c, 10, received1)
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
@@ -488,8 +495,9 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	require.Eventually(t, func() bool {
-		return link1.getLinkState() == nodeLinkStateOnline && link2.getLinkState() == nodeLinkStateOnline
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, nodeLinkStateOnline, link1.getLinkState())
+		assert.Equal(c, nodeLinkStateOnline, link2.getLinkState())
 	}, 10*time.Second, 100*time.Millisecond)
 
 	testCases := []struct {
@@ -526,10 +534,10 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 			}
 
 			// receive packet
-			require.Eventually(t, func() bool {
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
 				mtx.Lock()
 				defer mtx.Unlock()
-				return len(received) == len(tc.packets)
+				assert.Len(c, received, len(tc.packets))
 			}, 10*time.Second, 100*time.Millisecond)
 			assert.True(t, packetEqual(received, tc.packets))
 		})
@@ -554,10 +562,10 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 	mtx.Unlock()
 
 	// receive the rest packets after buffer interval
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return len(received) == 500
+		assert.Len(c, received, 500)
 	}, 10*time.Second, 100*time.Millisecond)
 	assert.True(t, packetEqual(received, send))
 }

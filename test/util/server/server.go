@@ -146,4 +146,6 @@ func (h *Helper) Start(ctx context.Context) {
 
 func (h *Helper) Stop() {
 	h.cancel()
+	// Wait to mitigate an error caused by outputting logs after finishing the test.
+	time.Sleep(1 * time.Second)
 }

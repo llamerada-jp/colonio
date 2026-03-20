@@ -383,10 +383,10 @@ func TestSimpleGateway_SubscribeSignal(t *testing.T) {
 
 	err := sg.SubscribeSignal(ctx, nodeIDs[0])
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return callCount == 2
+		assert.Equal(c, 2, callCount)
 	}, 5*time.Second, 100*time.Millisecond)
 	sg.mtx.Lock()
 	assert.Len(t, sg.nodes[*nodeIDs[0]].waitingSignals, 0)

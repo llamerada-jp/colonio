@@ -125,8 +125,11 @@ func TestWebRTCLink(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	require.Eventually(t, func() bool {
-		return link1.isActive() && link1.isOnline() && link2.isActive() && link2.isOnline()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, link1.isActive())
+		assert.True(c, link1.isOnline())
+		assert.True(c, link2.isActive())
+		assert.True(c, link2.isOnline())
 	}, 3*time.Second, 100*time.Millisecond)
 
 	// data channel id
@@ -154,8 +157,10 @@ func TestWebRTCLink(t *testing.T) {
 	link1.disconnect()
 	assert.False(t, link1.isActive())
 
-	require.Eventually(t, func() bool {
-		return !link1.isOnline() && !link2.isActive() && !link2.isOnline()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.False(c, link1.isOnline())
+		assert.False(c, link2.isActive())
+		assert.False(c, link2.isOnline())
 	}, 3*time.Second, 100*time.Millisecond)
 
 	link2.disconnect()

@@ -101,10 +101,10 @@ func TestRequestHandler(t *testing.T) {
 
 	transferer.Receive(packet)
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return handlerCount == 1
+		assert.Equal(c, 1, handlerCount)
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
@@ -177,10 +177,10 @@ func TestRequestAndResponse(t *testing.T) {
 	)
 
 	// Wait for the packet to be sent.
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return len(packets) == 1
+		assert.Len(c, packets, 1)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	assert.True(t, dstNodeID.Equal(packets[0].DstNodeID))
@@ -191,10 +191,10 @@ func TestRequestAndResponse(t *testing.T) {
 	assert.IsType(t, &proto.PacketContent_SpreadKnock{}, packets[0].Content.Content)
 
 	// Wait for trying to send packet.
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return len(packets) == 2
+		assert.Len(c, packets, 2)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	assert.True(t, dstNodeID.Equal(packets[1].DstNodeID))
@@ -209,18 +209,18 @@ func TestRequestAndResponse(t *testing.T) {
 		Content: &proto.PacketContent_SpreadRelay{},
 	})
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return len(packets) == 3
+		assert.Len(c, packets, 3)
 	}, 10*time.Second, 100*time.Millisecond)
 	transferer.Receive(packets[2])
 
 	// Wait for the response packet to be sent.
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return responsePacket != nil
+		assert.NotNil(c, responsePacket)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	assert.True(t, localNodeID.Equal(responsePacket.DstNodeID))
@@ -262,10 +262,10 @@ func TestRequestOneWay(t *testing.T) {
 	})
 
 	// Wait for the packet to be sent.
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return packet != nil
+		assert.NotNil(c, packet)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	assert.True(t, dstNodeID.Equal(packet.DstNodeID))
@@ -319,10 +319,10 @@ func TestTimeout(t *testing.T) {
 		})
 
 	// Wait for timeout.
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		mtx.Lock()
 		defer mtx.Unlock()
-		return hasError
+		assert.True(c, hasError)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// the first packet + retry 3 times
