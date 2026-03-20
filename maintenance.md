@@ -9,12 +9,8 @@ Update `go.mod` by selecting `Upgrade direct dependencies` on VSCode and run `go
 #### package.json
 
 ```
-npm install -g npm-check-updates
-ncu
-ncu -u
-npm outdated
-npm update
-npm install
+pnpm update
+pnpm run build
 ```
 
 #### Makefile
