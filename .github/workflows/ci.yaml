@@ -14,8 +14,8 @@ jobs:
         # removing macos-latest since libwebrtc is not available on macos
         os: [ubuntu-22.04]
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-go@v5
+    - uses: actions/checkout@v5
+    - uses: actions/setup-go@v6
       with:
         go-version-file: "go.mod"
     - uses: pnpm/action-setup@v5
