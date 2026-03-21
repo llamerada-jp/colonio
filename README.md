@@ -25,12 +25,10 @@ After bootstrap, nodes establish direct WebRTC connections and relay packets thr
 
 For details, see [Architecture (ja)](doc/ja/architecture.adoc).
 
-## Requirements
+## Development Toolchain
 
-- Go 1.24+
-- npm (for WebAssembly build)
-- make
-- zip
+- Go
+- TypeScript (Optional, for browser integration and bundling)
 
 ## Build and Test
 
