@@ -283,7 +283,7 @@ func TestController_Keepalive(t *testing.T) {
 	go func() {
 		isAlone, err := c.Keepalive(ctx, nodeIDs[0])
 		// occur error because the keepalive channel is closed
-		require.ErrorContains(t, err, "keepalive channel closed unexpectedly for node")
+		require.ErrorContains(t, err, "keepalive channel closed for node")
 		assert.False(t, isAlone)
 
 		mtx.Lock()
