@@ -204,7 +204,7 @@ func (c *ControllerImpl) Keepalive(ctx context.Context, nodeID *shared.NodeID) (
 
 	cc := ch.C()
 	if cc == nil {
-		return false, nil // channel closed
+		return false, fmt.Errorf("keepalive channel closed for node %s", nodeID.String())
 	}
 	select {
 	case <-ctx.Done():
@@ -218,7 +218,7 @@ func (c *ControllerImpl) Keepalive(ctx context.Context, nodeID *shared.NodeID) (
 			}
 			return isAlone, nil
 		} else {
-			return false, fmt.Errorf("keepalive channel closed unexpectedly for node %s", nodeID.String())
+			return false, fmt.Errorf("keepalive channel closed for node %s", nodeID.String())
 		}
 
 	case <-timer.C:
