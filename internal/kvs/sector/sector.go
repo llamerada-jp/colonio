@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/config"
@@ -28,7 +29,6 @@ import (
 
 type SectorHandler interface {
 	SectorError(sectorKey *config.KvsSectorKey, err error)
-	SectorManage(sectorKey *config.KvsSectorKey, proposal *proto.Management)
 	SectorAppendNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo, nodeID *shared.NodeID)
 	SectorRemoveNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo)
 }
@@ -57,6 +57,9 @@ type Sector struct {
 	isHosting bool
 	consensus *consensus
 	operator  *operator
+	mtx       sync.RWMutex
+	head      shared.NodeID
+	tail      *shared.NodeID
 }
 
 func NewSector(config *SectorConfig) *Sector {
@@ -64,6 +67,7 @@ func NewSector(config *SectorConfig) *Sector {
 		handler:   config.Handler,
 		sectorKey: *config.SectorKey,
 		isHosting: config.IsHosting,
+		head:      *config.Head,
 	}
 
 	sector.consensus = newConsensus(&consensusConfig{
@@ -111,6 +115,27 @@ func (s *Sector) RemoveNode(sectorNo config.SectorNo) {
 	s.consensus.removeNode(sectorNo)
 }
 
+func (s *Sector) GetTail() *shared.NodeID {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	return s.tail
+}
+
+func (s *Sector) Activate(tail shared.NodeID) {
+	if !s.isHosting {
+		panic("only host sector can be activated")
+	}
+
+	s.consensus.propose(&proto.ConsensusProposal{
+		Content: &proto.ConsensusProposal_Activate{
+			Activate: &proto.Activate{
+				Tail: tail.Proto(),
+			},
+		},
+	})
+}
+
 func (s *Sector) GetOperator() Operations {
 	return s.operator
 }
@@ -127,17 +152,34 @@ func (s *Sector) consensusError(err error) {
 }
 
 func (s *Sector) consensusApplyProposal(proposal *proto.ConsensusProposal) {
-	if manage := proposal.GetManagement(); manage != nil {
-		s.handler.SectorManage(&s.sectorKey, manage)
-		return
-	}
-
 	if operation := proposal.GetOperation(); operation != nil {
 		s.operator.applyProposal(operation)
+
+	} else if activate := proposal.GetActivate(); activate != nil {
+		s.processActivateProposal(activate)
+
+	} else {
+		s.consensusError(fmt.Errorf("invalid proposal content"))
+	}
+}
+
+func (s *Sector) processActivateProposal(activate *proto.Activate) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	// set tail when the sector is activated for the first time
+	if s.tail != nil {
 		return
 	}
 
-	s.consensusError(fmt.Errorf("invalid proposal content"))
+	tail, err := shared.NewNodeIDFromProto(activate.Tail)
+	if err != nil {
+		s.consensusError(fmt.Errorf("failed to parse tail NodeID: %w", err))
+		return
+	}
+
+	s.tail = tail
+	s.operator.setRange(*tail)
 }
 
 func (s *Sector) consensusAppendNode(sectorNo config.SectorNo, nodeID *shared.NodeID) {
@@ -162,5 +204,4 @@ func (s *Sector) operatorProposeOperation(operation *proto.Operation) {
 			Operation: operation,
 		},
 	})
-
 }

@@ -246,11 +246,20 @@ func (k *KVS) Delete(key string) chan error {
 }
 
 func (k *KVS) subRoutine() {
-	isStable, nextNodeIDs := k.handler.KvsGetStability()
-	if !isStable {
+	nodeIsStable, nextNodeIDs := k.handler.KvsGetStability()
+	if !nodeIsStable {
 		return
 	}
 
+	sectorIsStable := k.manageMember(nextNodeIDs)
+	if !sectorIsStable {
+		return
+	}
+
+	k.activateSector()
+}
+
+func (k *KVS) manageMember(nextNodeIDs []*shared.NodeID) bool {
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
 
@@ -275,6 +284,14 @@ func (k *KVS) subRoutine() {
 	}
 
 	k.sendSettingMessage()
+
+	// check if all members are in normal state
+	for state := range k.memberStates {
+		if k.memberStates[state].state != memberStateNormal {
+			return false
+		}
+	}
+	return true
 }
 
 func (k *KVS) getNodesToBeChanged(nextNodeIDs []*shared.NodeID) ([]*shared.NodeID, map[config.SectorNo]struct{}) {
@@ -539,15 +556,6 @@ func (k *KVS) processConsensusMessage(key config.KvsSectorKey, message *proto.Co
 
 func (k *KVS) SectorError(sectorKey *config.KvsSectorKey, err error) {
 	panic(fmt.Sprintf("raftNodeError not implemented: %s", err))
-}
-
-func (k *KVS) SectorManage(sectorKey *config.KvsSectorKey, proposal *proto.Management) {
-	_, ok := k.sectors[*sectorKey]
-	if !ok {
-		return
-	}
-
-	panic("raftNodeApplyProposal not implemented")
 }
 
 func (k *KVS) SectorAppendNode(sectorKey *config.KvsSectorKey, sectorNo config.SectorNo, nodeID *shared.NodeID) {

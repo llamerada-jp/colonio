@@ -74,14 +74,14 @@ func (x Operation_Command) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Operation_Command.Descriptor instead.
 func (Operation_Command) EnumDescriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{3, 0}
+	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{2, 0}
 }
 
 type ConsensusProposal struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Content:
 	//
-	//	*ConsensusProposal_Management
+	//	*ConsensusProposal_Activate
 	//	*ConsensusProposal_Operation
 	Content       isConsensusProposal_Content `protobuf_oneof:"content"`
 	unknownFields protoimpl.UnknownFields
@@ -125,10 +125,10 @@ func (x *ConsensusProposal) GetContent() isConsensusProposal_Content {
 	return nil
 }
 
-func (x *ConsensusProposal) GetManagement() *Management {
+func (x *ConsensusProposal) GetActivate() *Activate {
 	if x != nil {
-		if x, ok := x.Content.(*ConsensusProposal_Management); ok {
-			return x.Management
+		if x, ok := x.Content.(*ConsensusProposal_Activate); ok {
+			return x.Activate
 		}
 	}
 	return nil
@@ -147,93 +147,28 @@ type isConsensusProposal_Content interface {
 	isConsensusProposal_Content()
 }
 
-type ConsensusProposal_Management struct {
-	Management *Management `protobuf:"bytes,1,opt,name=management,proto3,oneof"`
+type ConsensusProposal_Activate struct {
+	Activate *Activate `protobuf:"bytes,1,opt,name=activate,proto3,oneof"`
 }
 
 type ConsensusProposal_Operation struct {
 	Operation *Operation `protobuf:"bytes,2,opt,name=operation,proto3,oneof"`
 }
 
-func (*ConsensusProposal_Management) isConsensusProposal_Content() {}
+func (*ConsensusProposal_Activate) isConsensusProposal_Content() {}
 
 func (*ConsensusProposal_Operation) isConsensusProposal_Content() {}
 
-type Management struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Content:
-	//
-	//	*Management_Activate
-	Content       isManagement_Content `protobuf_oneof:"content"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Management) Reset() {
-	*x = Management{}
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Management) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Management) ProtoMessage() {}
-
-func (x *Management) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Management.ProtoReflect.Descriptor instead.
-func (*Management) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *Management) GetContent() isManagement_Content {
-	if x != nil {
-		return x.Content
-	}
-	return nil
-}
-
-func (x *Management) GetActivate() *Activate {
-	if x != nil {
-		if x, ok := x.Content.(*Management_Activate); ok {
-			return x.Activate
-		}
-	}
-	return nil
-}
-
-type isManagement_Content interface {
-	isManagement_Content()
-}
-
-type Management_Activate struct {
-	Activate *Activate `protobuf:"bytes,1,opt,name=activate,proto3,oneof"`
-}
-
-func (*Management_Activate) isManagement_Content() {}
-
 type Activate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Tail          *NodeID                `protobuf:"bytes,1,opt,name=tail,proto3" json:"tail,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Activate) Reset() {
 	*x = Activate{}
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[2]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -245,7 +180,7 @@ func (x *Activate) String() string {
 func (*Activate) ProtoMessage() {}
 
 func (x *Activate) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[2]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -258,7 +193,14 @@ func (x *Activate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Activate.ProtoReflect.Descriptor instead.
 func (*Activate) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{2}
+	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Activate) GetTail() *NodeID {
+	if x != nil {
+		return x.Tail
+	}
+	return nil
 }
 
 type Operation struct {
@@ -273,7 +215,7 @@ type Operation struct {
 
 func (x *Operation) Reset() {
 	*x = Operation{}
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[3]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -285,7 +227,7 @@ func (x *Operation) String() string {
 func (*Operation) ProtoMessage() {}
 
 func (x *Operation) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[3]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -298,7 +240,7 @@ func (x *Operation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Operation.ProtoReflect.Descriptor instead.
 func (*Operation) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{3}
+	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Operation) GetCommand() Operation_Command {
@@ -329,111 +271,17 @@ func (x *Operation) GetValue() []byte {
 	return nil
 }
 
-type ConsensusStateSnapshot struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Records       *ConsensusStateRecords `protobuf:"bytes,1,opt,name=records,proto3" json:"records,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ConsensusStateSnapshot) Reset() {
-	*x = ConsensusStateSnapshot{}
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ConsensusStateSnapshot) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ConsensusStateSnapshot) ProtoMessage() {}
-
-func (x *ConsensusStateSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ConsensusStateSnapshot.ProtoReflect.Descriptor instead.
-func (*ConsensusStateSnapshot) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *ConsensusStateSnapshot) GetRecords() *ConsensusStateRecords {
-	if x != nil {
-		return x.Records
-	}
-	return nil
-}
-
-type ConsensusStateRecords struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Records       map[string][]byte      `protobuf:"bytes,1,rep,name=records,proto3" json:"records,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ConsensusStateRecords) Reset() {
-	*x = ConsensusStateRecords{}
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ConsensusStateRecords) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ConsensusStateRecords) ProtoMessage() {}
-
-func (x *ConsensusStateRecords) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ConsensusStateRecords.ProtoReflect.Descriptor instead.
-func (*ConsensusStateRecords) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *ConsensusStateRecords) GetRecords() map[string][]byte {
-	if x != nil {
-		return x.Records
-	}
-	return nil
-}
-
 var File_api_colonio_v1alpha_consensus_proto protoreflect.FileDescriptor
 
 const file_api_colonio_v1alpha_consensus_proto_rawDesc = "" +
 	"\n" +
-	"#api/colonio/v1alpha/consensus.proto\x12\x13api.colonio.v1alpha\"\xa1\x01\n" +
-	"\x11ConsensusProposal\x12A\n" +
-	"\n" +
-	"management\x18\x01 \x01(\v2\x1f.api.colonio.v1alpha.ManagementH\x00R\n" +
-	"management\x12>\n" +
+	"#api/colonio/v1alpha/consensus.proto\x12\x13api.colonio.v1alpha\x1a\x1eapi/colonio/v1alpha/core.proto\"\x9b\x01\n" +
+	"\x11ConsensusProposal\x12;\n" +
+	"\bactivate\x18\x01 \x01(\v2\x1d.api.colonio.v1alpha.ActivateH\x00R\bactivate\x12>\n" +
 	"\toperation\x18\x02 \x01(\v2\x1e.api.colonio.v1alpha.OperationH\x00R\toperationB\t\n" +
-	"\acontent\"T\n" +
-	"\n" +
-	"Management\x12;\n" +
-	"\bactivate\x18\x01 \x01(\v2\x1d.api.colonio.v1alpha.ActivateH\x00R\bactivateB\t\n" +
-	"\acontent\"\n" +
-	"\n" +
-	"\bActivate\"\x80\x02\n" +
+	"\acontent\";\n" +
+	"\bActivate\x12/\n" +
+	"\x04tail\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x04tail\"\x80\x02\n" +
 	"\tOperation\x12@\n" +
 	"\acommand\x18\x01 \x01(\x0e2&.api.colonio.v1alpha.Operation.CommandR\acommand\x12!\n" +
 	"\foperation_id\x18\x02 \x01(\rR\voperationId\x12\x10\n" +
@@ -444,14 +292,7 @@ const file_api_colonio_v1alpha_consensus_proto_rawDesc = "" +
 	"\vCOMMAND_GET\x10\x01\x12\x0f\n" +
 	"\vCOMMAND_SET\x10\x02\x12\x11\n" +
 	"\rCOMMAND_PATCH\x10\x03\x12\x12\n" +
-	"\x0eCOMMAND_DELETE\x10\x04\"^\n" +
-	"\x16ConsensusStateSnapshot\x12D\n" +
-	"\arecords\x18\x01 \x01(\v2*.api.colonio.v1alpha.ConsensusStateRecordsR\arecords\"\xa6\x01\n" +
-	"\x15ConsensusStateRecords\x12Q\n" +
-	"\arecords\x18\x01 \x03(\v27.api.colonio.v1alpha.ConsensusStateRecords.RecordsEntryR\arecords\x1a:\n" +
-	"\fRecordsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01B5Z3github.com/llamerada-jp/colonio/api/colonio/v1alphab\x06proto3"
+	"\x0eCOMMAND_DELETE\x10\x04B5Z3github.com/llamerada-jp/colonio/api/colonio/v1alphab\x06proto3"
 
 var (
 	file_api_colonio_v1alpha_consensus_proto_rawDescOnce sync.Once
@@ -466,29 +307,24 @@ func file_api_colonio_v1alpha_consensus_proto_rawDescGZIP() []byte {
 }
 
 var file_api_colonio_v1alpha_consensus_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_colonio_v1alpha_consensus_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_api_colonio_v1alpha_consensus_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_api_colonio_v1alpha_consensus_proto_goTypes = []any{
-	(Operation_Command)(0),         // 0: api.colonio.v1alpha.Operation.Command
-	(*ConsensusProposal)(nil),      // 1: api.colonio.v1alpha.ConsensusProposal
-	(*Management)(nil),             // 2: api.colonio.v1alpha.Management
-	(*Activate)(nil),               // 3: api.colonio.v1alpha.Activate
-	(*Operation)(nil),              // 4: api.colonio.v1alpha.Operation
-	(*ConsensusStateSnapshot)(nil), // 5: api.colonio.v1alpha.ConsensusStateSnapshot
-	(*ConsensusStateRecords)(nil),  // 6: api.colonio.v1alpha.ConsensusStateRecords
-	nil,                            // 7: api.colonio.v1alpha.ConsensusStateRecords.RecordsEntry
+	(Operation_Command)(0),    // 0: api.colonio.v1alpha.Operation.Command
+	(*ConsensusProposal)(nil), // 1: api.colonio.v1alpha.ConsensusProposal
+	(*Activate)(nil),          // 2: api.colonio.v1alpha.Activate
+	(*Operation)(nil),         // 3: api.colonio.v1alpha.Operation
+	(*NodeID)(nil),            // 4: api.colonio.v1alpha.NodeID
 }
 var file_api_colonio_v1alpha_consensus_proto_depIdxs = []int32{
-	2, // 0: api.colonio.v1alpha.ConsensusProposal.management:type_name -> api.colonio.v1alpha.Management
-	4, // 1: api.colonio.v1alpha.ConsensusProposal.operation:type_name -> api.colonio.v1alpha.Operation
-	3, // 2: api.colonio.v1alpha.Management.activate:type_name -> api.colonio.v1alpha.Activate
+	2, // 0: api.colonio.v1alpha.ConsensusProposal.activate:type_name -> api.colonio.v1alpha.Activate
+	3, // 1: api.colonio.v1alpha.ConsensusProposal.operation:type_name -> api.colonio.v1alpha.Operation
+	4, // 2: api.colonio.v1alpha.Activate.tail:type_name -> api.colonio.v1alpha.NodeID
 	0, // 3: api.colonio.v1alpha.Operation.command:type_name -> api.colonio.v1alpha.Operation.Command
-	6, // 4: api.colonio.v1alpha.ConsensusStateSnapshot.records:type_name -> api.colonio.v1alpha.ConsensusStateRecords
-	7, // 5: api.colonio.v1alpha.ConsensusStateRecords.records:type_name -> api.colonio.v1alpha.ConsensusStateRecords.RecordsEntry
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_api_colonio_v1alpha_consensus_proto_init() }
@@ -496,12 +332,10 @@ func file_api_colonio_v1alpha_consensus_proto_init() {
 	if File_api_colonio_v1alpha_consensus_proto != nil {
 		return
 	}
+	file_api_colonio_v1alpha_core_proto_init()
 	file_api_colonio_v1alpha_consensus_proto_msgTypes[0].OneofWrappers = []any{
-		(*ConsensusProposal_Management)(nil),
+		(*ConsensusProposal_Activate)(nil),
 		(*ConsensusProposal_Operation)(nil),
-	}
-	file_api_colonio_v1alpha_consensus_proto_msgTypes[1].OneofWrappers = []any{
-		(*Management_Activate)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -509,7 +343,7 @@ func file_api_colonio_v1alpha_consensus_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_colonio_v1alpha_consensus_proto_rawDesc), len(file_api_colonio_v1alpha_consensus_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   7,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

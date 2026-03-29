@@ -86,16 +86,11 @@ func (s *operator) Delete(key string) error {
 	panic("delete not implemented")
 }
 
-func (s *operator) activate(tail *shared.NodeID) {
+func (s *operator) setRange(tail shared.NodeID) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	if s.tail != nil {
-		panic("logic error: already activated")
-	}
-
-	t := *tail
-	s.tail = &t
+	s.tail = &tail
 }
 
 func (s *operator) applyProposal(command *proto.Operation) {

@@ -360,8 +360,8 @@ func TestConsensus(t *testing.T) {
 			{
 				node: 1,
 				prop: &proto.ConsensusProposal{
-					Content: &proto.ConsensusProposal_Management{
-						Management: &proto.Management{},
+					Content: &proto.ConsensusProposal_Activate{
+						Activate: &proto.Activate{},
 					},
 				},
 			},
