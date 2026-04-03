@@ -13,12 +13,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package sphere
+package canvas
 
-import "github.com/llamerada-jp/colonio/simulator/base"
+import (
+	"github.com/veandco/go-sdl2/sdl"
+)
 
-type Record struct {
-	base.Record
-	X float64 `json:"x"`
-	Y float64 `json:"y"`
+var _ objectRenderer = &rect{}
+
+type rect struct {
+	x, y  int32
+	w, h  int32
+	color *sdl.Color
+}
+
+func (b *rect) getZIndex() float64 {
+	return 80
+}
+
+func (b *rect) render(context *context) {
+	context.renderer.SetDrawColor(b.color.R, b.color.G, b.color.B, b.color.A)
+
+	rect := sdl.Rect{
+		X: b.x,
+		Y: b.y,
+		W: b.w,
+		H: b.h,
+	}
+	context.renderer.FillRect(&rect)
 }

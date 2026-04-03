@@ -32,18 +32,22 @@ type Gateway struct {
 	NodeIDs      []*shared.NodeID
 	superGateway gateway.Gateway
 
-	AssignNodeF              func(ctx context.Context, lifespan time.Time) (*shared.NodeID, error)
-	UnassignNodeF            func(ctx context.Context, nodeID *shared.NodeID) error
-	GetNodeCountF            func(ctx context.Context) (uint64, error)
-	UpdateNodeLifespanF      func(ctx context.Context, nodeID *shared.NodeID, lifespan time.Time) error
-	GetNodesByRangeF         func(ctx context.Context, backward, frontward *shared.NodeID) ([]*shared.NodeID, error)
-	GetNodesF                func(ctx context.Context) (map[shared.NodeID]time.Time, error)
-	SubscribeKeepaliveF      func(ctx context.Context, nodeID *shared.NodeID) error
-	UnsubscribeKeepaliveF    func(ctx context.Context, nodeID *shared.NodeID) error
-	PublishKeepaliveRequestF func(ctx context.Context, nodeID *shared.NodeID) error
-	SubscribeSignalF         func(ctx context.Context, nodeID *shared.NodeID) error
-	UnsubscribeSignalF       func(ctx context.Context, nodeID *shared.NodeID) error
-	PublishSignalF           func(ctx context.Context, signal *proto.Signal, relayToNext bool) error
+	AssignNodeF                   func(ctx context.Context, lifespan time.Time) (*shared.NodeID, error)
+	UnassignNodeF                 func(ctx context.Context, nodeID *shared.NodeID) error
+	GetNodeCountF                 func(ctx context.Context) (uint64, error)
+	UpdateNodeLifespanF           func(ctx context.Context, nodeID *shared.NodeID, lifespan time.Time) error
+	GetNodesByRangeF              func(ctx context.Context, backward, frontward *shared.NodeID) ([]*shared.NodeID, error)
+	GetNodesF                     func(ctx context.Context) (map[shared.NodeID]time.Time, error)
+	SubscribeKeepaliveF           func(ctx context.Context, nodeID *shared.NodeID) error
+	UnsubscribeKeepaliveF         func(ctx context.Context, nodeID *shared.NodeID) error
+	PublishKeepaliveRequestF      func(ctx context.Context, nodeID *shared.NodeID) error
+	SubscribeSignalF              func(ctx context.Context, nodeID *shared.NodeID) error
+	UnsubscribeSignalF            func(ctx context.Context, nodeID *shared.NodeID) error
+	PublishSignalF                func(ctx context.Context, signal *proto.Signal, relayToNext bool) error
+	SetKvsStateF                  func(ctx context.Context, nodeID *shared.NodeID, active bool) error
+	ExistsKvsActiveNodeF          func(ctx context.Context) (bool, error)
+	SetKvsFirstActiveCandidateF   func(ctx context.Context, nodeID *shared.NodeID) error
+	UnsetKvsFirstActiveCandidateF func(ctx context.Context) error
 }
 
 var _ gateway.Gateway = (*Gateway)(nil)
@@ -152,4 +156,32 @@ func (h *Gateway) PublishSignal(ctx context.Context, signal *proto.Signal, relay
 		return h.PublishSignalF(ctx, signal, relayToNext)
 	}
 	return h.GetSuper().PublishSignal(ctx, signal, relayToNext)
+}
+
+func (h *Gateway) SetKvsState(ctx context.Context, nodeID *shared.NodeID, active bool) error {
+	if h.SetKvsStateF != nil {
+		return h.SetKvsStateF(ctx, nodeID, active)
+	}
+	return h.GetSuper().SetKvsState(ctx, nodeID, active)
+}
+
+func (h *Gateway) ExistsKvsActiveNode(ctx context.Context) (bool, error) {
+	if h.ExistsKvsActiveNodeF != nil {
+		return h.ExistsKvsActiveNodeF(ctx)
+	}
+	return h.GetSuper().ExistsKvsActiveNode(ctx)
+}
+
+func (h *Gateway) SetKvsFirstActiveCandidate(ctx context.Context, nodeID *shared.NodeID) error {
+	if h.SetKvsFirstActiveCandidateF != nil {
+		return h.SetKvsFirstActiveCandidateF(ctx, nodeID)
+	}
+	return h.GetSuper().SetKvsFirstActiveCandidate(ctx, nodeID)
+}
+
+func (h *Gateway) UnsetKvsFirstActiveCandidate(ctx context.Context) error {
+	if h.UnsetKvsFirstActiveCandidateF != nil {
+		return h.UnsetKvsFirstActiveCandidateF(ctx)
+	}
+	return h.GetSuper().UnsetKvsFirstActiveCandidate(ctx)
 }

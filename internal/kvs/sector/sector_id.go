@@ -13,12 +13,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package sphere
+package sector
 
-import "github.com/llamerada-jp/colonio/simulator/base"
+import (
+	"github.com/google/uuid"
+	"github.com/llamerada-jp/colonio/config"
+)
 
-type Record struct {
-	base.Record
-	X float64 `json:"x"`
-	Y float64 `json:"y"`
+func MustMarshalSectorID(sectorID config.SectorID) []byte {
+	data, err := uuid.UUID(sectorID).MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
+func UnmarshalSectorID(data []byte) (config.SectorID, error) {
+	var sectorID uuid.UUID
+	err := sectorID.UnmarshalBinary(data)
+	if err != nil {
+		return config.SectorID(uuid.Nil), err
+	}
+	return config.SectorID(sectorID), nil
 }
