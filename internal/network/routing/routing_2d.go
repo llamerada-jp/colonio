@@ -82,10 +82,11 @@ func (r *routing2D) updateNodeConnections(connections map[shared.NodeID]struct{}
 func (r *routing2D) getNextStep(dst *geometry.Coordinate) *shared.NodeID {
 	candidateNodeID := &shared.NodeLocal
 	var candidateInfo *routeInfo2D
-	min := r.config.geometry.GetDistance(&r.localPosition, dst)
 
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
+
+	min := r.config.geometry.GetDistance(&r.localPosition, dst)
 
 	for nodeID, info := range r.routeInfos {
 		nodeID := nodeID
