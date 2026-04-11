@@ -7,12 +7,20 @@ import "api/colonio/v1alpha/core.proto";
 option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
 
 service SeedService {
-  rpc AssignNode (AssignNodeRequest) returns (AssignNodeResponse) {}
-  rpc UnassignNode (UnassignNodeRequest) returns (UnassignNodeResponse) {}
-  rpc Keepalive (KeepaliveRequest) returns (KeepaliveResponse) {}
-  rpc ReconcileNextNodes (ReconcileNextNodesRequest) returns (ReconcileNextNodesResponse) {}
-  rpc SendSignal (SendSignalRequest) returns (SendSignalResponse) {}
-  rpc PollSignal (PollSignalRequest) returns (stream PollSignalResponse) {}
+  rpc AssignNode(AssignNodeRequest) returns (AssignNodeResponse) {
+  }
+  rpc UnassignNode(UnassignNodeRequest) returns (UnassignNodeResponse) {
+  }
+  rpc Keepalive(KeepaliveRequest) returns (KeepaliveResponse) {
+  }
+  rpc ReconcileNextNodes(ReconcileNextNodesRequest) returns (ReconcileNextNodesResponse) {
+  }
+  rpc SendSignal(SendSignalRequest) returns (SendSignalResponse) {
+  }
+  rpc PollSignal(PollSignalRequest) returns (stream PollSignalResponse) {
+  }
+  rpc StateKvs(StateKvsRequest) returns (StateKvsResponse) {
+  }
 }
 
 message Signal {
@@ -90,4 +98,19 @@ message PollSignalRequest {
 
 message PollSignalResponse {
   repeated Signal signals = 1;
+}
+
+enum KvsState {
+  // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+  KVS_STATE_UNKNOWN  = 0;
+  KVS_STATE_ACTIVE   = 1;
+  KVS_STATE_INACTIVE = 2;
+}
+
+message StateKvsRequest {
+  KvsState state = 1;
+}
+
+message StateKvsResponse {
+  KvsState entire_state = 1;
 }

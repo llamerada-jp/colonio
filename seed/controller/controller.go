@@ -43,6 +43,7 @@ type Controller interface {
 	ReconcileNextNodes(ctx context.Context, nodeID *types.NodeID, nextNodeIDs, disconnectedIDs []*types.NodeID) (bool, error)
 	SendSignal(ctx context.Context, nodeID *types.NodeID, signal *proto.Signal) error
 	PollSignal(ctx context.Context, nodeID *types.NodeID, send func(*proto.Signal) error) error
+	StateKvs(ctx context.Context, nodeID *types.NodeID, active bool) (types.KvsState, error)
 }
 
 type ControllerImpl struct {
@@ -350,6 +351,31 @@ func (c *ControllerImpl) PollSignal(ctx context.Context, nodeID *types.NodeID, s
 			}
 		}
 	}
+}
+
+func (c *ControllerImpl) StateKvs(ctx context.Context, nodeID *types.NodeID, active bool) (types.KvsState, error) {
+	if active {
+		_ = c.gateway.UnsetKvsFirstActiveCandidate(ctx)
+	}
+
+	if err := c.gateway.SetKvsState(ctx, nodeID, active); err != nil {
+		return types.KvsStateUnknown, fmt.Errorf("failed to set KVS state: %w", err)
+	}
+
+	active, err := c.gateway.ExistsKvsActiveNode(ctx)
+	if err != nil {
+		return types.KvsStateUnknown, fmt.Errorf("failed to check if KVS active node exists: %w", err)
+	}
+	if active {
+		return types.KvsStateActive, nil
+	}
+
+	err = c.gateway.SetKvsFirstActiveCandidate(ctx, nodeID)
+	if err != nil {
+		return types.KvsStateUnknown, nil
+	}
+
+	return types.KvsStateInactive, nil
 }
 
 func (c *ControllerImpl) cleanup(ctx context.Context) error {

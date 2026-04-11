@@ -13,33 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package canvas
+package types
 
 import (
-	"github.com/veandco/go-sdl2/sdl"
+	"fmt"
 )
 
-var _ objectRenderer = &box2{}
+var (
+	ErrorKvsStoreInvalidNodeKey = fmt.Errorf("invalid node key")
+	ErrorKvsStoreKeyNotFound    = fmt.Errorf("key not found")
+)
 
-type box2 struct {
-	x, y  float64
-	width float64
-	color *sdl.Color
+type KvsStore interface {
+	AllocateSector(sectorKey *SectorKey) error
+	ReleaseSector(sectorKey *SectorKey) error
+
+	Get(sectorKey *SectorKey, key string) ([]byte, error)
+	Set(sectorKey *SectorKey, key string, value []byte) error
+	Patch(sectorKey *SectorKey, key string, value []byte) error
+	Delete(sectorKey *SectorKey, key string) error
 }
 
-func (b *box2) getZIndex() float64 {
-	return 80
-}
-
-func (b *box2) render(context *context) {
-	context.renderer.SetDrawColor(b.color.R, b.color.G, b.color.B, b.color.A)
-
-	x, y := context.getCanvasPosition(b.x, b.y)
-	rect := sdl.Rect{
-		X: x - int32(b.width/2.0),
-		Y: y - int32(b.width/2.0),
-		W: int32(b.width),
-		H: int32(b.width),
-	}
-	context.renderer.FillRect(&rect)
+type KvsGetResult struct {
+	Data []byte
+	Err  error
 }

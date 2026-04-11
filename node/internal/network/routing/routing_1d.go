@@ -98,14 +98,13 @@ func (r *routing1D) subRoutine() {
 	}
 }
 
-func (r *routing1D) getStability() (bool, []*types.NodeID) {
+func (r *routing1D) getStability() (bool, []*types.NodeID, []*types.NodeID) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	nextNodeIDs := slices.Clone(r.backwardNextNodeIDs)
-	slices.Reverse(nextNodeIDs)
-	nextNodeIDs = append(nextNodeIDs, r.frontwardNextNodeIDs...)
-	return r.nextNodeMatched, nextNodeIDs
+	backwardNextNodeIDs := slices.Clone(r.backwardNextNodeIDs)
+	slices.Reverse(backwardNextNodeIDs)
+	return r.nextNodeMatched, backwardNextNodeIDs, slices.Clone(r.frontwardNextNodeIDs)
 }
 
 func (r *routing1D) updateNodeConnections(connections map[types.NodeID]struct{}) int {

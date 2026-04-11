@@ -866,28 +866,30 @@ func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 	types.SortNodeIDs(nodeIDs)
 
 	tests := []struct {
-		name                  string
-		frontwardNextNodeIDs  []*types.NodeID
-		backwardNextNodeIDs   []*types.NodeID
-		neighborhoodInfos     map[types.NodeID]*neighborhoodInfo
-		reconcileNextNodeIDs  []*types.NodeID
-		reconcileDisconnected []*types.NodeID
-		reconcileResult       bool
-		previousNextNodeIDs   []*types.NodeID
-		expectIsStable        bool
-		expectNextNodeIDs     []*types.NodeID
+		name                       string
+		frontwardNextNodeIDs       []*types.NodeID
+		backwardNextNodeIDs        []*types.NodeID
+		neighborhoodInfos          map[types.NodeID]*neighborhoodInfo
+		reconcileNextNodeIDs       []*types.NodeID
+		reconcileDisconnected      []*types.NodeID
+		reconcileResult            bool
+		previousNextNodeIDs        []*types.NodeID
+		expectIsStable             bool
+		expectBackwardNextNodeIDs  []*types.NodeID
+		expectFrontwardNextNodeIDs []*types.NodeID
 	}{
 		{
-			name:                  "no next nodes",
-			frontwardNextNodeIDs:  []*types.NodeID{},
-			backwardNextNodeIDs:   []*types.NodeID{},
-			neighborhoodInfos:     map[types.NodeID]*neighborhoodInfo{},
-			reconcileNextNodeIDs:  []*types.NodeID{},
-			reconcileDisconnected: nil,
-			reconcileResult:       true,
-			previousNextNodeIDs:   []*types.NodeID{},
-			expectIsStable:        true,
-			expectNextNodeIDs:     []*types.NodeID{},
+			name:                       "no next nodes",
+			frontwardNextNodeIDs:       []*types.NodeID{},
+			backwardNextNodeIDs:        []*types.NodeID{},
+			neighborhoodInfos:          map[types.NodeID]*neighborhoodInfo{},
+			reconcileNextNodeIDs:       []*types.NodeID{},
+			reconcileDisconnected:      nil,
+			reconcileResult:            true,
+			previousNextNodeIDs:        []*types.NodeID{},
+			expectIsStable:             true,
+			expectBackwardNextNodeIDs:  []*types.NodeID{},
+			expectFrontwardNextNodeIDs: []*types.NodeID{},
 		},
 		{
 			name:                 "having next nodes",
@@ -900,12 +902,13 @@ func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 				*nodeIDs[4]: {},
 				*nodeIDs[5]: {},
 			},
-			reconcileNextNodeIDs:  []*types.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
-			reconcileDisconnected: nil,
-			reconcileResult:       true,
-			previousNextNodeIDs:   nil,
-			expectIsStable:        true,
-			expectNextNodeIDs:     []*types.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
+			reconcileNextNodeIDs:       []*types.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
+			reconcileDisconnected:      nil,
+			reconcileResult:            true,
+			previousNextNodeIDs:        nil,
+			expectIsStable:             true,
+			expectBackwardNextNodeIDs:  []*types.NodeID{nodeIDs[4], nodeIDs[5]},
+			expectFrontwardNextNodeIDs: []*types.NodeID{nodeIDs[1], nodeIDs[2]},
 		},
 		{
 			name:                 "having next nodes, having previous nodes and no disconnected nodes",
@@ -918,12 +921,13 @@ func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 				*nodeIDs[4]: {},
 				*nodeIDs[5]: {},
 			},
-			reconcileNextNodeIDs:  []*types.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
-			reconcileDisconnected: []*types.NodeID{},
-			reconcileResult:       true,
-			previousNextNodeIDs:   []*types.NodeID{nodeIDs[1], nodeIDs[2], nodeIDs[3], nodeIDs[4]},
-			expectIsStable:        true,
-			expectNextNodeIDs:     []*types.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
+			reconcileNextNodeIDs:       []*types.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
+			reconcileDisconnected:      []*types.NodeID{},
+			reconcileResult:            true,
+			previousNextNodeIDs:        []*types.NodeID{nodeIDs[1], nodeIDs[2], nodeIDs[3], nodeIDs[4]},
+			expectIsStable:             true,
+			expectBackwardNextNodeIDs:  []*types.NodeID{nodeIDs[4], nodeIDs[5]},
+			expectFrontwardNextNodeIDs: []*types.NodeID{nodeIDs[1], nodeIDs[2]},
 		},
 		{
 			name:                 "having next nodes, having previous nodes and disconnected nodes",
@@ -935,12 +939,13 @@ func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 				*nodeIDs[4]: {},
 				*nodeIDs[5]: {},
 			},
-			reconcileNextNodeIDs:  []*types.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
-			reconcileDisconnected: []*types.NodeID{nodeIDs[3]},
-			reconcileResult:       true,
-			previousNextNodeIDs:   []*types.NodeID{nodeIDs[1], nodeIDs[2], nodeIDs[3], nodeIDs[4]},
-			expectIsStable:        true,
-			expectNextNodeIDs:     []*types.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
+			reconcileNextNodeIDs:       []*types.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
+			reconcileDisconnected:      []*types.NodeID{nodeIDs[3]},
+			reconcileResult:            true,
+			previousNextNodeIDs:        []*types.NodeID{nodeIDs[1], nodeIDs[2], nodeIDs[3], nodeIDs[4]},
+			expectIsStable:             true,
+			expectBackwardNextNodeIDs:  []*types.NodeID{nodeIDs[4], nodeIDs[5]},
+			expectFrontwardNextNodeIDs: []*types.NodeID{nodeIDs[1], nodeIDs[2]},
 		},
 		{
 			name:                 "should not be stable",
@@ -953,12 +958,13 @@ func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 				*nodeIDs[4]: {},
 				*nodeIDs[5]: {},
 			},
-			reconcileNextNodeIDs:  []*types.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
-			reconcileDisconnected: nil,
-			reconcileResult:       false,
-			previousNextNodeIDs:   nil,
-			expectIsStable:        false,
-			expectNextNodeIDs:     []*types.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
+			reconcileNextNodeIDs:       []*types.NodeID{nodeIDs[4], nodeIDs[5], nodeIDs[1], nodeIDs[2]},
+			reconcileDisconnected:      nil,
+			reconcileResult:            false,
+			previousNextNodeIDs:        nil,
+			expectIsStable:             false,
+			expectBackwardNextNodeIDs:  []*types.NodeID{nodeIDs[4], nodeIDs[5]},
+			expectFrontwardNextNodeIDs: []*types.NodeID{nodeIDs[1], nodeIDs[2]},
 		},
 	}
 
@@ -981,9 +987,10 @@ func TestRouting1D_updateNextNodeMatched(t *testing.T) {
 
 		r1d.updateNextNodeMatched(tt.previousNextNodeIDs)
 
-		isStable, nextNodeIDs := r1d.getStability()
+		isStable, backwardNextNodeIDs, frontwardNextNodeIDs := r1d.getStability()
 		assert.Equal(t, tt.expectIsStable, isStable)
-		assert.Equal(t, tt.expectNextNodeIDs, nextNodeIDs)
+		assert.Equal(t, tt.expectBackwardNextNodeIDs, backwardNextNodeIDs)
+		assert.Equal(t, tt.expectFrontwardNextNodeIDs, frontwardNextNodeIDs)
 	}
 }
 

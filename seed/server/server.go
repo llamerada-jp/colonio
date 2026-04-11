@@ -282,3 +282,37 @@ func (c *Server) PollSignal(ctx context.Context, _ *connect.Request[proto.PollSi
 
 	return nil
 }
+
+func (c *Server) StateKvs(ctx context.Context, request *connect.Request[proto.StateKvsRequest]) (*connect.Response[proto.StateKvsResponse], error) {
+	logger := misc.NewLogger(ctx, c.logger)
+	session := ctx.Value(ContextKeySession).(*session)
+
+	nodeID := session.getNodeID()
+	if nodeID == nil {
+		logger.Warn("session error (node id is not found)")
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
+	}
+
+	var active bool
+	switch request.Msg.GetState() {
+	case proto.KvsState_KVS_STATE_ACTIVE:
+		active = true
+	case proto.KvsState_KVS_STATE_INACTIVE:
+		active = false
+	default:
+		logger.Warn("invalid KVS state", slog.Int("state", int(request.Msg.GetState())))
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
+	}
+
+	entireState, err := c.controller.StateKvs(ctx, nodeID, active)
+	if err != nil {
+		logger.Warn("failed to set KVS state", slog.String("error", err.Error()))
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
+	}
+
+	return &connect.Response[proto.StateKvsResponse]{
+		Msg: &proto.StateKvsResponse{
+			EntireState: proto.KvsState(entireState),
+		},
+	}, nil
+}

@@ -18,6 +18,7 @@ package util
 import (
 	"crypto/tls"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"net/http/cookiejar"
 	"slices"
@@ -25,7 +26,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/llamerada-jp/colonio/types"
+	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 )
 
 // make unique nodeIDs
@@ -72,6 +75,38 @@ func UniqueNodeIDsWithRange(min, max *types.NodeID, count int) []*types.NodeID {
 	}
 
 	return nodeIDs
+}
+
+func UniqueSectorIDs(count int) []kvsTypes.SectorID {
+	uuids := make([]kvsTypes.SectorID, count)
+	exists := make(map[kvsTypes.SectorID]struct{})
+	for i := range uuids {
+		for {
+			id := kvsTypes.SectorID(uuid.New())
+			if _, ok := exists[id]; !ok {
+				uuids[i] = id
+				exists[id] = struct{}{}
+				break
+			}
+		}
+	}
+	return uuids
+}
+
+func UniqueNumbersU[V ~uint | ~uint32 | ~uint64](count int) []V {
+	nums := make([]V, count)
+	exists := make(map[V]struct{})
+	for i := range nums {
+		for {
+			n := V(rand.Uint64())
+			if _, ok := exists[n]; !ok {
+				nums[i] = n
+				exists[n] = struct{}{}
+				break
+			}
+		}
+	}
+	return nums
 }
 
 // create client to accept self-signed certificate & cookie
