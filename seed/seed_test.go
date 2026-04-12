@@ -29,8 +29,8 @@ import (
 	"connectrpc.com/connect"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	service "github.com/llamerada-jp/colonio/api/colonio/v1alpha/v1alphaconnect"
-	"github.com/llamerada-jp/colonio/internal/shared"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
+	"github.com/llamerada-jp/colonio/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -85,7 +85,7 @@ func TestSeed(t *testing.T) {
 	// Try AssignNodeID
 	res, err := client.AssignNode(t.Context(), &connect.Request[proto.AssignNodeRequest]{})
 	require.NoError(t, err)
-	nodeID, err := shared.NewNodeIDFromProto(res.Msg.GetNodeId())
+	nodeID, err := types.NewNodeIDFromProto(res.Msg.GetNodeId())
 	require.NoError(t, err)
 	require.True(t, nodeID.IsNormal())
 

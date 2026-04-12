@@ -20,8 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/llamerada-jp/colonio"
-	"github.com/llamerada-jp/colonio/internal/constants"
+	colonioNode "github.com/llamerada-jp/colonio/node"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/suite"
 )
@@ -29,17 +28,17 @@ import (
 type SingleNodeMessaging struct {
 	suite.Suite
 	seedURL string
-	node    colonio.Colonio
+	node    colonioNode.Node
 }
 
 func (suite *SingleNodeMessaging) SetupSuite() {
 	var err error
 	suite.T().Log("creating a new colonio instance")
-	suite.node, err = colonio.NewColonio(
-		colonio.WithSeedURL(suite.seedURL),
-		colonio.WithICEServers(constants.TestingICEServers),
-		colonio.WithHttpClient(testUtil.NewInsecureHttpClient()),
-		colonio.WithSphereGeometry(6378137.0))
+	suite.node, err = colonioNode.NewNode(
+		colonioNode.WithSeedURL(suite.seedURL),
+		colonioNode.WithICEServers(testUtil.TestingICEServers),
+		colonioNode.WithHttpClient(testUtil.NewInsecureHttpClient()),
+		colonioNode.WithSphereGeometry(6378137.0))
 	suite.NoError(err)
 	err = suite.node.Start(context.Background())
 	suite.NoError(err)
@@ -58,7 +57,7 @@ func (suite *SingleNodeMessaging) TestSingle() {
 	suite.Equal(utf8.RuneCountInString(suite.node.GetLocalNodeID()), 32)
 
 	receiveCount := 0
-	suite.node.MessagingSetHandler("expect", func(request *colonio.MessagingRequest, writer colonio.MessagingResponseWriter) {
+	suite.node.MessagingSetHandler("expect", func(request *colonioNode.MessagingRequest, writer colonioNode.MessagingResponseWriter) {
 		suite.T().Log("receive message expect")
 		receiveCount++
 
@@ -70,7 +69,7 @@ func (suite *SingleNodeMessaging) TestSingle() {
 		writer.Write([]byte("expect response"))
 	})
 
-	suite.node.MessagingSetHandler("nearby", func(request *colonio.MessagingRequest, writer colonio.MessagingResponseWriter) {
+	suite.node.MessagingSetHandler("nearby", func(request *colonioNode.MessagingRequest, writer colonioNode.MessagingResponseWriter) {
 		suite.T().Log("receive message nearby")
 		receiveCount++
 
@@ -87,7 +86,7 @@ func (suite *SingleNodeMessaging) TestSingle() {
 	suite.Equal([]byte("expect response"), response)
 
 	suite.T().Log("call message nearby")
-	response, err = suite.node.MessagingPost("00000000000000000000000000000000", "nearby", []byte("nearby message"), colonio.MessagingWithAcceptNearby())
+	response, err = suite.node.MessagingPost("00000000000000000000000000000000", "nearby", []byte("nearby message"), colonioNode.MessagingWithAcceptNearby())
 	suite.NoError(err)
 	suite.Equal([]byte("nearby response"), response)
 

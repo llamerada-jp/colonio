@@ -25,10 +25,10 @@ import (
 
 	"github.com/gorilla/sessions"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
-	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed/controller"
 	"github.com/llamerada-jp/colonio/seed/gateway"
 	"github.com/llamerada-jp/colonio/seed/server"
+	"github.com/llamerada-jp/colonio/types"
 )
 
 type options struct {
@@ -117,11 +117,11 @@ func NewSeed(optionSetters ...optionSetter) *Seed {
 	return s
 }
 
-func (s *Seed) HandleUnassignNode(ctx context.Context, nodeID *shared.NodeID) error {
+func (s *Seed) HandleUnassignNode(ctx context.Context, nodeID *types.NodeID) error {
 	return s.controller.HandleUnassignNode(ctx, nodeID)
 }
 
-func (s *Seed) HandleKeepaliveRequest(ctx context.Context, nodeID *shared.NodeID) error {
+func (s *Seed) HandleKeepaliveRequest(ctx context.Context, nodeID *types.NodeID) error {
 	return s.controller.HandleKeepaliveRequest(ctx, nodeID)
 }
 

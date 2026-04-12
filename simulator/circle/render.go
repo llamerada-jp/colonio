@@ -20,10 +20,10 @@ import (
 	"math"
 	"time"
 
-	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/simulator/base"
 	"github.com/llamerada-jp/colonio/simulator/canvas"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
+	"github.com/llamerada-jp/colonio/types"
 )
 
 const (
@@ -125,7 +125,7 @@ func drawEdge(canvas *canvas.Canvas, n1, n2 string) {
 }
 
 func convertCoordinate(n string) (xo, yo float64) {
-	nodeID, err := shared.NewNodeIDFromString(n)
+	nodeID, err := types.NewNodeIDFromString(n)
 	if err != nil {
 		panic(fmt.Sprintf("invalid nodeID: %s, %s", n, err.Error()))
 	}

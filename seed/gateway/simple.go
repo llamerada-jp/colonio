@@ -23,8 +23,8 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
-	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed/misc"
+	"github.com/llamerada-jp/colonio/types"
 )
 
 type signalEntry struct {
@@ -43,15 +43,15 @@ type SimpleGateway struct {
 	logger          *slog.Logger
 	mtx             sync.Mutex
 	handler         Handler
-	nodeIDGenerator func(exists map[shared.NodeID]any) (*shared.NodeID, error)
-	nodes           map[shared.NodeID]*nodeEntry
+	nodeIDGenerator func(exists map[types.NodeID]any) (*types.NodeID, error)
+	nodes           map[types.NodeID]*nodeEntry
 }
 
-func NewSimpleGateway(logger *slog.Logger, handler Handler, nodeIDGenerator func(exists map[shared.NodeID]any) (*shared.NodeID, error)) Gateway {
+func NewSimpleGateway(logger *slog.Logger, handler Handler, nodeIDGenerator func(exists map[types.NodeID]any) (*types.NodeID, error)) Gateway {
 	if nodeIDGenerator == nil {
-		nodeIDGenerator = func(exists map[shared.NodeID]any) (*shared.NodeID, error) {
+		nodeIDGenerator = func(exists map[types.NodeID]any) (*types.NodeID, error) {
 			for {
-				nodeID := shared.NewRandomNodeID()
+				nodeID := types.NewRandomNodeID()
 				if _, exists := exists[*nodeID]; !exists {
 					return nodeID, nil
 				}
@@ -63,15 +63,15 @@ func NewSimpleGateway(logger *slog.Logger, handler Handler, nodeIDGenerator func
 		logger:          logger,
 		handler:         handler,
 		nodeIDGenerator: nodeIDGenerator,
-		nodes:           make(map[shared.NodeID]*nodeEntry),
+		nodes:           make(map[types.NodeID]*nodeEntry),
 	}
 }
 
-func (h *SimpleGateway) AssignNode(_ context.Context, lifespan time.Time) (*shared.NodeID, error) {
+func (h *SimpleGateway) AssignNode(_ context.Context, lifespan time.Time) (*types.NodeID, error) {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
-	exists := make(map[shared.NodeID]any, len(h.nodes))
+	exists := make(map[types.NodeID]any, len(h.nodes))
 	for nodeID := range h.nodes {
 		exists[nodeID] = struct{}{}
 	}
@@ -92,7 +92,7 @@ func (h *SimpleGateway) AssignNode(_ context.Context, lifespan time.Time) (*shar
 	return nodeID, nil
 }
 
-func (h *SimpleGateway) UnassignNode(ctx context.Context, nodeID *shared.NodeID) error {
+func (h *SimpleGateway) UnassignNode(ctx context.Context, nodeID *types.NodeID) error {
 	h.mtx.Lock()
 	delete(h.nodes, *nodeID)
 	h.mtx.Unlock()
@@ -107,7 +107,7 @@ func (h *SimpleGateway) GetNodeCount(_ context.Context) (uint64, error) {
 	return uint64(len(h.nodes)), nil
 }
 
-func (h *SimpleGateway) UpdateNodeLifespan(_ context.Context, nodeID *shared.NodeID, lifespan time.Time) error {
+func (h *SimpleGateway) UpdateNodeLifespan(_ context.Context, nodeID *types.NodeID, lifespan time.Time) error {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
@@ -119,11 +119,11 @@ func (h *SimpleGateway) UpdateNodeLifespan(_ context.Context, nodeID *shared.Nod
 	return nil
 }
 
-func (h *SimpleGateway) GetNodesByRange(_ context.Context, backward, frontward *shared.NodeID) ([]*shared.NodeID, error) {
+func (h *SimpleGateway) GetNodesByRange(_ context.Context, backward, frontward *types.NodeID) ([]*types.NodeID, error) {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
-	var nodes []*shared.NodeID
+	var nodes []*types.NodeID
 	if backward == nil && frontward == nil {
 		// if both are nil, return all nodes
 		for nodeID := range h.nodes {
@@ -157,18 +157,18 @@ func (h *SimpleGateway) GetNodesByRange(_ context.Context, backward, frontward *
 	return nodes, nil
 }
 
-func (h *SimpleGateway) GetNodes(ctx context.Context) (map[shared.NodeID]time.Time, error) {
+func (h *SimpleGateway) GetNodes(ctx context.Context) (map[types.NodeID]time.Time, error) {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
-	nodes := make(map[shared.NodeID]time.Time, len(h.nodes))
+	nodes := make(map[types.NodeID]time.Time, len(h.nodes))
 	for nodeID, entry := range h.nodes {
 		nodes[nodeID] = entry.lifespan
 	}
 	return nodes, nil
 }
 
-func (h *SimpleGateway) SubscribeKeepalive(_ context.Context, nodeID *shared.NodeID) error {
+func (h *SimpleGateway) SubscribeKeepalive(_ context.Context, nodeID *types.NodeID) error {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
@@ -181,7 +181,7 @@ func (h *SimpleGateway) SubscribeKeepalive(_ context.Context, nodeID *shared.Nod
 	return nil
 }
 
-func (h *SimpleGateway) UnsubscribeKeepalive(_ context.Context, nodeID *shared.NodeID) error {
+func (h *SimpleGateway) UnsubscribeKeepalive(_ context.Context, nodeID *types.NodeID) error {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
@@ -194,7 +194,7 @@ func (h *SimpleGateway) UnsubscribeKeepalive(_ context.Context, nodeID *shared.N
 	return nil
 }
 
-func (h *SimpleGateway) PublishKeepaliveRequest(ctx context.Context, nodeID *shared.NodeID) error {
+func (h *SimpleGateway) PublishKeepaliveRequest(ctx context.Context, nodeID *types.NodeID) error {
 	h.mtx.Lock()
 	_, exists := h.nodes[*nodeID]
 	h.mtx.Unlock()
@@ -209,7 +209,7 @@ func (h *SimpleGateway) PublishKeepaliveRequest(ctx context.Context, nodeID *sha
 	return h.handler.HandleKeepaliveRequest(ctx, nodeID)
 }
 
-func (h *SimpleGateway) SubscribeSignal(ctx context.Context, nodeID *shared.NodeID) error {
+func (h *SimpleGateway) SubscribeSignal(ctx context.Context, nodeID *types.NodeID) error {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
@@ -238,7 +238,7 @@ func (h *SimpleGateway) SubscribeSignal(ctx context.Context, nodeID *shared.Node
 	return nil
 }
 
-func (h *SimpleGateway) UnsubscribeSignal(_ context.Context, nodeID *shared.NodeID) error {
+func (h *SimpleGateway) UnsubscribeSignal(_ context.Context, nodeID *types.NodeID) error {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
@@ -255,7 +255,7 @@ func (h *SimpleGateway) UnsubscribeSignal(_ context.Context, nodeID *shared.Node
 
 func (h *SimpleGateway) PublishSignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error {
 	nodeIDProto := signal.GetDstNodeId()
-	nodeID, err := shared.NewNodeIDFromProto(nodeIDProto)
+	nodeID, err := types.NewNodeIDFromProto(nodeIDProto)
 	if err != nil {
 		// the signal is already checked the node ID before here
 		panic(fmt.Sprintf("invalid source node ID in signal: %s", err.Error()))

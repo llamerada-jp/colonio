@@ -20,7 +20,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/sessions"
-	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/types"
 )
 
 const (
@@ -49,13 +49,13 @@ func newSession(sessionStore sessions.Store, request *http.Request, response htt
 	}, nil
 }
 
-func (s *session) getNodeID() *shared.NodeID {
+func (s *session) getNodeID() *types.NodeID {
 	value, ok := s.session.Values[SESSION_KEY_NODE_ID].(string)
 	if !ok {
 		return nil
 	}
 
-	nodeID, err := shared.NewNodeIDFromString(value)
+	nodeID, err := types.NewNodeIDFromString(value)
 	if err != nil {
 		return nil
 	}
@@ -63,7 +63,7 @@ func (s *session) getNodeID() *shared.NodeID {
 	return nodeID
 }
 
-func (s *session) setNodeID(nodeID *shared.NodeID) {
+func (s *session) setNodeID(nodeID *types.NodeID) {
 	s.session.Values[SESSION_KEY_NODE_ID] = nodeID.String()
 }
 

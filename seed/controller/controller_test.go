@@ -22,21 +22,21 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
-	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed/misc"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/test/util/helper"
+	"github.com/llamerada-jp/colonio/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestController_AssignNode(t *testing.T) {
-	aNodeID := shared.NewRandomNodeID()
+	aNodeID := types.NewRandomNodeID()
 
 	tests := []struct {
 		name             string
-		nodeID           *shared.NodeID
-		nodesByRange     []*shared.NodeID
+		nodeID           *types.NodeID
+		nodesByRange     []*types.NodeID
 		errorOnAssign    error
 		nodeCount        uint64
 		errorOnNodeCount error
@@ -46,7 +46,7 @@ func TestController_AssignNode(t *testing.T) {
 	}{
 		{
 			name:            "Single Node",
-			nodeID:          shared.NewRandomNodeID(),
+			nodeID:          types.NewRandomNodeID(),
 			nodeCount:       0,
 			expectIsAlone:   true,
 			expectCallCount: 2,
@@ -54,22 +54,22 @@ func TestController_AssignNode(t *testing.T) {
 		{
 			name:            "Single Node 2",
 			nodeID:          aNodeID,
-			nodesByRange:    []*shared.NodeID{aNodeID},
+			nodesByRange:    []*types.NodeID{aNodeID},
 			nodeCount:       1,
 			expectIsAlone:   true,
 			expectCallCount: 3,
 		},
 		{
 			name:            "There is an another node already",
-			nodeID:          shared.NewRandomNodeID(),
-			nodesByRange:    []*shared.NodeID{shared.NewRandomNodeID()},
+			nodeID:          types.NewRandomNodeID(),
+			nodesByRange:    []*types.NodeID{types.NewRandomNodeID()},
 			nodeCount:       1,
 			expectIsAlone:   false,
 			expectCallCount: 3,
 		},
 		{
 			name:            "Multiple Nodes",
-			nodeID:          shared.NewRandomNodeID(),
+			nodeID:          types.NewRandomNodeID(),
 			nodeCount:       3,
 			expectIsAlone:   false,
 			expectCallCount: 2,
@@ -83,7 +83,7 @@ func TestController_AssignNode(t *testing.T) {
 		},
 		{
 			name:             "Error on GetNodeCount",
-			nodeID:           shared.NewRandomNodeID(),
+			nodeID:           types.NewRandomNodeID(),
 			errorOnNodeCount: assert.AnError,
 			expectHasError:   true,
 			expectCallCount:  2,
@@ -98,7 +98,7 @@ func TestController_AssignNode(t *testing.T) {
 			c := NewController(&Options{
 				Logger: testUtil.Logger(t),
 				Gateway: &helper.Gateway{
-					AssignNodeF: func(_ context.Context, lifespan time.Time) (*shared.NodeID, error) {
+					AssignNodeF: func(_ context.Context, lifespan time.Time) (*types.NodeID, error) {
 						callCount++
 						assert.True(t, testUtil.NearTime(lifespan, time.Now().Add(normalLifespan)))
 						return tt.nodeID, tt.errorOnAssign
@@ -107,7 +107,7 @@ func TestController_AssignNode(t *testing.T) {
 						callCount++
 						return tt.nodeCount, tt.errorOnNodeCount
 					},
-					GetNodesByRangeF: func(_ context.Context, backward, frontward *shared.NodeID) ([]*shared.NodeID, error) {
+					GetNodesByRangeF: func(_ context.Context, backward, frontward *types.NodeID) ([]*types.NodeID, error) {
 						callCount++
 						assert.Nil(t, backward)
 						assert.Nil(t, frontward)
@@ -135,19 +135,19 @@ func TestController_UnassignNode(t *testing.T) {
 	ctx := misc.NewLoggerContext(t.Context(), nil)
 	tests := []struct {
 		name            string
-		nodeID          *shared.NodeID
+		nodeID          *types.NodeID
 		errorOnUnassign error
 		expectHasError  bool
 	}{
 		{
 			name:            "Unassign Node Successfully",
-			nodeID:          shared.NewRandomNodeID(),
+			nodeID:          types.NewRandomNodeID(),
 			errorOnUnassign: nil,
 			expectHasError:  false,
 		},
 		{
 			name:            "Error on Unassign Node",
-			nodeID:          shared.NewRandomNodeID(),
+			nodeID:          types.NewRandomNodeID(),
 			errorOnUnassign: assert.AnError,
 			expectHasError:  true,
 		},
@@ -160,7 +160,7 @@ func TestController_UnassignNode(t *testing.T) {
 			c := NewController(&Options{
 				Logger: testUtil.Logger(t),
 				Gateway: &helper.Gateway{
-					UnassignNodeF: func(_ context.Context, nodeID *shared.NodeID) error {
+					UnassignNodeF: func(_ context.Context, nodeID *types.NodeID) error {
 						callCount++
 						assert.Equal(t, *tt.nodeID, *nodeID)
 						return tt.errorOnUnassign
@@ -198,7 +198,7 @@ func TestController_Keepalive(t *testing.T) {
 				// there are multiple nodes
 				return 3, nil
 			},
-			UpdateNodeLifespanF: func(_ context.Context, nodeID *shared.NodeID, lifespan time.Time) error {
+			UpdateNodeLifespanF: func(_ context.Context, nodeID *types.NodeID, lifespan time.Time) error {
 				mtx.Lock()
 				defer mtx.Unlock()
 				callCount++
@@ -221,14 +221,14 @@ func TestController_Keepalive(t *testing.T) {
 				}
 				return nil
 			},
-			SubscribeKeepaliveF: func(_ context.Context, nodeID *shared.NodeID) error {
+			SubscribeKeepaliveF: func(_ context.Context, nodeID *types.NodeID) error {
 				mtx.Lock()
 				defer mtx.Unlock()
 				callCount++
 				assert.Equal(t, *nodeIDs[0], *nodeID)
 				return nil
 			},
-			UnsubscribeKeepaliveF: func(_ context.Context, nodeID *shared.NodeID) error {
+			UnsubscribeKeepaliveF: func(_ context.Context, nodeID *types.NodeID) error {
 				mtx.Lock()
 				defer mtx.Unlock()
 				callCount++
@@ -347,31 +347,31 @@ func TestController_ReconcileNextNodes(t *testing.T) {
 
 	tests := []struct {
 		name                        string
-		nodeID                      *shared.NodeID
-		nextNodeIDs                 []*shared.NodeID
-		disconnectedIDs             []*shared.NodeID
+		nodeID                      *types.NodeID
+		nextNodeIDs                 []*types.NodeID
+		disconnectedIDs             []*types.NodeID
 		nodeCount                   uint64
-		expectNodesByRangeBackward  *shared.NodeID
-		expectNodesByRangeFrontward *shared.NodeID
-		nodesByRange                []*shared.NodeID
+		expectNodesByRangeBackward  *types.NodeID
+		expectNodesByRangeFrontward *types.NodeID
+		nodesByRange                []*types.NodeID
 		expectCallCount             int
 		expectResult                bool
 	}{
 		{
 			name:            "alone node",
 			nodeID:          nodeIDs[0],
-			nextNodeIDs:     []*shared.NodeID{},
-			disconnectedIDs: []*shared.NodeID{},
+			nextNodeIDs:     []*types.NodeID{},
+			disconnectedIDs: []*types.NodeID{},
 			nodeCount:       1,
-			nodesByRange:    []*shared.NodeID{nodeIDs[0]},
+			nodesByRange:    []*types.NodeID{nodeIDs[0]},
 			expectCallCount: 2,
 			expectResult:    true,
 		},
 		{
 			name:            "multiple nodes, no next nodes",
 			nodeID:          nodeIDs[0],
-			nextNodeIDs:     []*shared.NodeID{},
-			disconnectedIDs: []*shared.NodeID{},
+			nextNodeIDs:     []*types.NodeID{},
+			disconnectedIDs: []*types.NodeID{},
 			nodeCount:       3,
 			expectCallCount: 1,
 			expectResult:    false,
@@ -379,42 +379,42 @@ func TestController_ReconcileNextNodes(t *testing.T) {
 		{
 			name:                        "multiple nodes, next nodes are all connected",
 			nodeID:                      nodeIDs[1],
-			nextNodeIDs:                 []*shared.NodeID{nodeIDs[0], nodeIDs[2]},
-			disconnectedIDs:             []*shared.NodeID{},
+			nextNodeIDs:                 []*types.NodeID{nodeIDs[0], nodeIDs[2]},
+			disconnectedIDs:             []*types.NodeID{},
 			expectNodesByRangeBackward:  nodeIDs[0],
 			expectNodesByRangeFrontward: nodeIDs[2],
-			nodesByRange:                []*shared.NodeID{nodeIDs[0], nodeIDs[1], nodeIDs[2]},
+			nodesByRange:                []*types.NodeID{nodeIDs[0], nodeIDs[1], nodeIDs[2]},
 			expectCallCount:             1,
 			expectResult:                true,
 		},
 		{
 			name:                        "multiple nodes, next nodes are not all connected 1",
 			nodeID:                      nodeIDs[1],
-			nextNodeIDs:                 []*shared.NodeID{nodeIDs[0], nodeIDs[2], nodeIDs[3]},
+			nextNodeIDs:                 []*types.NodeID{nodeIDs[0], nodeIDs[2], nodeIDs[3]},
 			expectNodesByRangeBackward:  nodeIDs[0],
 			expectNodesByRangeFrontward: nodeIDs[3],
-			nodesByRange:                []*shared.NodeID{nodeIDs[0], nodeIDs[1]},
+			nodesByRange:                []*types.NodeID{nodeIDs[0], nodeIDs[1]},
 			expectCallCount:             1,
 			expectResult:                false,
 		},
 		{
 			name:                        "multiple nodes, next nodes are not all connected 2",
 			nodeID:                      nodeIDs[1],
-			nextNodeIDs:                 []*shared.NodeID{nodeIDs[0], nodeIDs[2]},
+			nextNodeIDs:                 []*types.NodeID{nodeIDs[0], nodeIDs[2]},
 			expectNodesByRangeBackward:  nodeIDs[0],
 			expectNodesByRangeFrontward: nodeIDs[2],
-			nodesByRange:                []*shared.NodeID{nodeIDs[0], nodeIDs[1], nodeIDs[2], nodeIDs[3]},
+			nodesByRange:                []*types.NodeID{nodeIDs[0], nodeIDs[1], nodeIDs[2], nodeIDs[3]},
 			expectCallCount:             1,
 			expectResult:                false,
 		},
 		{
 			name:                        "multiple nodes, have disconnected nodes",
 			nodeID:                      nodeIDs[1],
-			nextNodeIDs:                 []*shared.NodeID{nodeIDs[0], nodeIDs[2], nodeIDs[3]},
-			disconnectedIDs:             []*shared.NodeID{nodeIDs[4], nodeIDs[5]},
+			nextNodeIDs:                 []*types.NodeID{nodeIDs[0], nodeIDs[2], nodeIDs[3]},
+			disconnectedIDs:             []*types.NodeID{nodeIDs[4], nodeIDs[5]},
 			expectNodesByRangeBackward:  nodeIDs[0],
 			expectNodesByRangeFrontward: nodeIDs[3],
-			nodesByRange:                []*shared.NodeID{nodeIDs[0], nodeIDs[1], nodeIDs[2], nodeIDs[3]},
+			nodesByRange:                []*types.NodeID{nodeIDs[0], nodeIDs[1], nodeIDs[2], nodeIDs[3]},
 			expectCallCount:             3,
 			expectResult:                true,
 		},
@@ -435,7 +435,7 @@ func TestController_ReconcileNextNodes(t *testing.T) {
 						callCount++
 						return tt.nodeCount, nil
 					},
-					GetNodesByRangeF: func(_ context.Context, backward, frontward *shared.NodeID) ([]*shared.NodeID, error) {
+					GetNodesByRangeF: func(_ context.Context, backward, frontward *types.NodeID) ([]*types.NodeID, error) {
 						mtx.Lock()
 						defer mtx.Unlock()
 						callCount++
@@ -443,7 +443,7 @@ func TestController_ReconcileNextNodes(t *testing.T) {
 						assert.Equal(t, tt.expectNodesByRangeFrontward, frontward)
 						return tt.nodesByRange, nil
 					},
-					PublishKeepaliveRequestF: func(ctx context.Context, nodeID *shared.NodeID) error {
+					PublishKeepaliveRequestF: func(ctx context.Context, nodeID *types.NodeID) error {
 						mtx.Lock()
 						defer mtx.Unlock()
 						callCount++
@@ -473,14 +473,14 @@ func TestController_Signal(t *testing.T) {
 	c := NewController(&Options{
 		Logger: testUtil.Logger(t),
 		Gateway: &helper.Gateway{
-			SubscribeSignalF: func(_ context.Context, nodeID *shared.NodeID) error {
+			SubscribeSignalF: func(_ context.Context, nodeID *types.NodeID) error {
 				mtx.Lock()
 				defer mtx.Unlock()
 				callCount++
 				assert.Equal(t, *nodeIDs[0], *nodeID)
 				return nil
 			},
-			UnsubscribeSignalF: func(_ context.Context, nodeID *shared.NodeID) error {
+			UnsubscribeSignalF: func(_ context.Context, nodeID *types.NodeID) error {
 				mtx.Lock()
 				defer mtx.Unlock()
 				callCount++
@@ -607,14 +607,14 @@ func TestController_SendSignal(t *testing.T) {
 					return 0, nil // unreachable
 				}
 			},
-			GetNodesByRangeF: func(_ context.Context, backward, frontward *shared.NodeID) ([]*shared.NodeID, error) {
+			GetNodesByRangeF: func(_ context.Context, backward, frontward *types.NodeID) ([]*types.NodeID, error) {
 				mtx.Lock()
 				defer mtx.Unlock()
 				callCount++
 				assert.Nil(t, backward)
 				assert.Nil(t, frontward)
 				assert.Equal(t, 6, callCount) // called 6 times in total
-				return []*shared.NodeID{nodeIDs[1]}, nil
+				return []*types.NodeID{nodeIDs[1]}, nil
 			},
 			PublishSignalF: func(_ context.Context, signal *proto.Signal, relayToNext bool) error {
 				mtx.Lock()
@@ -680,17 +680,17 @@ func TestController_cleanup(t *testing.T) {
 	c := NewController(&Options{
 		Logger: testUtil.Logger(t),
 		Gateway: &helper.Gateway{
-			GetNodesF: func(_ context.Context) (map[shared.NodeID]time.Time, error) {
+			GetNodesF: func(_ context.Context) (map[types.NodeID]time.Time, error) {
 				mtx.Lock()
 				defer mtx.Unlock()
 				callCount++
 				assert.Equal(t, callCount%2, 1)
-				return map[shared.NodeID]time.Time{
+				return map[types.NodeID]time.Time{
 					*nodeIDs[0]: time.Now().Add(10 * time.Second),
 					*nodeIDs[1]: time.Now().Add(-10 * time.Second),
 				}, nil
 			},
-			UnassignNodeF: func(_ context.Context, nodeID *shared.NodeID) error {
+			UnassignNodeF: func(_ context.Context, nodeID *types.NodeID) error {
 				mtx.Lock()
 				defer mtx.Unlock()
 				callCount++

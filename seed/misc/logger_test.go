@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/go-json-experiment/json/v1"
-	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,7 +34,7 @@ type logContent struct {
 }
 
 func TestLogger_withNodeID(t *testing.T) {
-	nodeID := shared.NewRandomNodeID()
+	nodeID := types.NewRandomNodeID()
 	ctx := NewLoggerContext(context.Background(), nodeID)
 
 	var byteWriter bytes.Buffer

@@ -17,29 +17,34 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
-	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/types"
+)
+
+var (
+	ErrKvsFirstActiveCandidateAlreadySet = errors.New("KVS first active candidate is already set")
 )
 
 type Handler interface {
-	HandleUnassignNode(ctx context.Context, nodeID *shared.NodeID) error
-	HandleKeepaliveRequest(ctx context.Context, nodeID *shared.NodeID) error
+	HandleUnassignNode(ctx context.Context, nodeID *types.NodeID) error
+	HandleKeepaliveRequest(ctx context.Context, nodeID *types.NodeID) error
 	HandleSignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error
 }
 
 type Gateway interface {
-	AssignNode(ctx context.Context, lifespan time.Time) (*shared.NodeID, error)
-	UnassignNode(ctx context.Context, nodeID *shared.NodeID) error
+	AssignNode(ctx context.Context, lifespan time.Time) (*types.NodeID, error)
+	UnassignNode(ctx context.Context, nodeID *types.NodeID) error
 	GetNodeCount(ctx context.Context) (uint64, error)
-	UpdateNodeLifespan(ctx context.Context, nodeID *shared.NodeID, lifespan time.Time) error
-	GetNodesByRange(ctx context.Context, backward, frontward *shared.NodeID) ([]*shared.NodeID, error)
-	GetNodes(ctx context.Context) (map[shared.NodeID]time.Time, error)
-	SubscribeKeepalive(ctx context.Context, nodeID *shared.NodeID) error
-	UnsubscribeKeepalive(ctx context.Context, nodeID *shared.NodeID) error
-	PublishKeepaliveRequest(ctx context.Context, nodeID *shared.NodeID) error
-	SubscribeSignal(ctx context.Context, nodeID *shared.NodeID) error
-	UnsubscribeSignal(ctx context.Context, nodeID *shared.NodeID) error
+	UpdateNodeLifespan(ctx context.Context, nodeID *types.NodeID, lifespan time.Time) error
+	GetNodesByRange(ctx context.Context, backward, frontward *types.NodeID) ([]*types.NodeID, error)
+	GetNodes(ctx context.Context) (map[types.NodeID]time.Time, error)
+	SubscribeKeepalive(ctx context.Context, nodeID *types.NodeID) error
+	UnsubscribeKeepalive(ctx context.Context, nodeID *types.NodeID) error
+	PublishKeepaliveRequest(ctx context.Context, nodeID *types.NodeID) error
+	SubscribeSignal(ctx context.Context, nodeID *types.NodeID) error
+	UnsubscribeSignal(ctx context.Context, nodeID *types.NodeID) error
 	PublishSignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error
 }

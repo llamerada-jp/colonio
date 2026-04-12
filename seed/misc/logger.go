@@ -21,7 +21,7 @@ import (
 	"log/slog"
 	"math/rand"
 
-	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/types"
 )
 
 type contextKey int
@@ -31,7 +31,7 @@ const (
 	contextKeyNodeID
 )
 
-func NewLoggerContext(ctx context.Context, nodeID *shared.NodeID) context.Context {
+func NewLoggerContext(ctx context.Context, nodeID *types.NodeID) context.Context {
 	// generate random request ID
 	requestID := fmt.Sprintf("%016x", rand.Int63())
 	ctx = context.WithValue(ctx, contextKeyRequestID, requestID)
@@ -46,7 +46,7 @@ func NewLogger(ctx context.Context, logger *slog.Logger) *slog.Logger {
 	}
 	logger = logger.With(slog.String("reqID", requestID))
 
-	nodeID, ok := ctx.Value(contextKeyNodeID).(*shared.NodeID)
+	nodeID, ok := ctx.Value(contextKeyNodeID).(*types.NodeID)
 	if ok && nodeID != nil {
 		logger = logger.With(slog.String("reqNodeID", nodeID.String()))
 	}

@@ -21,8 +21,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/llamerada-jp/colonio"
-	"github.com/llamerada-jp/colonio/internal/constants"
+	colonioNode "github.com/llamerada-jp/colonio/node"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/stretchr/testify/suite"
 )
@@ -30,27 +29,27 @@ import (
 type E2eSuite struct {
 	suite.Suite
 	seedURL string
-	node1   colonio.Colonio
-	node2   colonio.Colonio
+	node1   colonioNode.Node
+	node2   colonioNode.Node
 }
 
 func (suite *E2eSuite) SetupSuite() {
 	var err error
 	suite.T().Log("creating a new colonio instance")
-	suite.node1, err = colonio.NewColonio(
-		colonio.WithLogger(slog.Default().With(slog.String("node", "node1"))),
-		colonio.WithSeedURL(suite.seedURL),
-		colonio.WithICEServers(constants.TestingICEServers),
-		colonio.WithHttpClient(testUtil.NewInsecureHttpClient()),
-		colonio.WithSphereGeometry(6378137.0))
+	suite.node1, err = colonioNode.NewNode(
+		colonioNode.WithLogger(slog.Default().With(slog.String("node", "node1"))),
+		colonioNode.WithSeedURL(suite.seedURL),
+		colonioNode.WithICEServers(testUtil.TestingICEServers),
+		colonioNode.WithHttpClient(testUtil.NewInsecureHttpClient()),
+		colonioNode.WithSphereGeometry(6378137.0))
 	suite.NoError(err)
 
-	suite.node2, err = colonio.NewColonio(
-		colonio.WithLogger(slog.Default().With(slog.String("node", "node2"))),
-		colonio.WithSeedURL(suite.seedURL),
-		colonio.WithICEServers(constants.TestingICEServers),
-		colonio.WithHttpClient(testUtil.NewInsecureHttpClient()),
-		colonio.WithSphereGeometry(6378137.0))
+	suite.node2, err = colonioNode.NewNode(
+		colonioNode.WithLogger(slog.Default().With(slog.String("node", "node2"))),
+		colonioNode.WithSeedURL(suite.seedURL),
+		colonioNode.WithICEServers(testUtil.TestingICEServers),
+		colonioNode.WithHttpClient(testUtil.NewInsecureHttpClient()),
+		colonioNode.WithSphereGeometry(6378137.0))
 	suite.NoError(err)
 
 	suite.T().Log("node1 connect to seed")
@@ -73,7 +72,7 @@ func (suite *E2eSuite) TearDownSuite() {
 
 func (suite *E2eSuite) TestE2E() {
 	suite.T().Log("sending message and waiting it")
-	suite.node1.MessagingSetHandler("twice", func(request *colonio.MessagingRequest, writer colonio.MessagingResponseWriter) {
+	suite.node1.MessagingSetHandler("twice", func(request *colonioNode.MessagingRequest, writer colonioNode.MessagingResponseWriter) {
 		writer.Write(append(request.Message, request.Message...))
 	})
 	defer suite.node1.MessagingUnsetHandler("twice")
@@ -96,7 +95,7 @@ func (suite *E2eSuite) TestE2E() {
 
 	// set 1 to avoid dead-lock caused by ps1.Publish waits finish of ps2.On.
 	recvPS2 := make(chan string, 1)
-	suite.node2.SpreadSetHandler("hoge", func(request *colonio.SpreadRequest) {
+	suite.node2.SpreadSetHandler("hoge", func(request *colonioNode.SpreadRequest) {
 		recvPS2 <- string(request.Message)
 	})
 	defer suite.node2.SpreadUnsetHandler("hoge")
