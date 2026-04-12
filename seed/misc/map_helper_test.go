@@ -18,27 +18,27 @@ package misc
 import (
 	"testing"
 
-	"github.com/llamerada-jp/colonio/internal/shared"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
+	"github.com/llamerada-jp/colonio/types"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestMapHelper_GetNextByMap(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(3)
-	shared.SortNodeIDs(nodeIDs)
+	types.SortNodeIDs(nodeIDs)
 
 	tests := []struct {
 		name            string
-		nodeID          *shared.NodeID
-		nodeMap         map[shared.NodeID]int
+		nodeID          *types.NodeID
+		nodeMap         map[types.NodeID]int
 		defaultVal      int
-		expectedNextID  *shared.NodeID
+		expectedNextID  *types.NodeID
 		expectedNextVal int
 	}{
 		{
 			name:            "empty map",
 			nodeID:          nodeIDs[0],
-			nodeMap:         map[shared.NodeID]int{},
+			nodeMap:         map[types.NodeID]int{},
 			defaultVal:      1,
 			expectedNextID:  nil,
 			expectedNextVal: 1,
@@ -46,7 +46,7 @@ func TestMapHelper_GetNextByMap(t *testing.T) {
 		{
 			name:            "only the nodeID not in map",
 			nodeID:          nodeIDs[0],
-			nodeMap:         map[shared.NodeID]int{*nodeIDs[0]: 10},
+			nodeMap:         map[types.NodeID]int{*nodeIDs[0]: 10},
 			defaultVal:      1,
 			expectedNextID:  nil,
 			expectedNextVal: 1,
@@ -54,7 +54,7 @@ func TestMapHelper_GetNextByMap(t *testing.T) {
 		{
 			name:   "normal case 1",
 			nodeID: nodeIDs[1],
-			nodeMap: map[shared.NodeID]int{
+			nodeMap: map[types.NodeID]int{
 				*nodeIDs[0]: 0,
 				*nodeIDs[1]: 10,
 				*nodeIDs[2]: 20,
@@ -66,7 +66,7 @@ func TestMapHelper_GetNextByMap(t *testing.T) {
 		{
 			name:   "normal case 2",
 			nodeID: nodeIDs[2],
-			nodeMap: map[shared.NodeID]int{
+			nodeMap: map[types.NodeID]int{
 				*nodeIDs[0]: 0,
 				*nodeIDs[1]: 10,
 				*nodeIDs[2]: 20,

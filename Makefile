@@ -38,8 +38,8 @@ export COLONIO_TEST_KEY := $(shell pwd)/localhost.key
 export COLONIO_COOKIE_SECRET_KEY_PAIR := "test"
 test: build-js build-test
 	# unit tests
+	go test -v -count=1 -race -coverprofile=node.covprofile ./node/...
 	go test -v -count=1 -race -coverprofile=seed.covprofile ./seed/...
-	go test -v -count=1 -race -coverprofile=internal.covprofile ./internal/...
 	# e2e tests for native
 	go test -v -count=1 -race -coverprofile=e2e.covprofile ./test/e2e/
 	# e2e tests for wasm
@@ -60,7 +60,7 @@ test/dist/wasm_exec.js: $(shell go env GOROOT)/lib/wasm/wasm_exec.js
 
 test/dist/tests.txt: $(shell find . -type f -name '*.go')
 	rm -f test/dist/tests/*.wasm
-	for target in ./config ./internal; do \
+	for target in ./node; do \
 		for dir in `find $$target -name '*.go' -printf '%h\n' | sort -u`; do \
 		  if [ "$$(dirname $$dir)" = "." ]; then \
 				outname="$$(basename $$dir).wasm"; \

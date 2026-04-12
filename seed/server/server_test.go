@@ -29,56 +29,56 @@ import (
 	"github.com/gorilla/sessions"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	service "github.com/llamerada-jp/colonio/api/colonio/v1alpha/v1alphaconnect"
-	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed/controller"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
+	"github.com/llamerada-jp/colonio/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type controllerMock struct {
 	t                   *testing.T
-	assignNodeF         func(ctx context.Context) (*shared.NodeID, bool, error)
-	unassignNodeF       func(ctx context.Context, nodeID *shared.NodeID) error
-	keepaliveF          func(ctx context.Context, nodeID *shared.NodeID) (bool, error)
-	reconcileNextNodesF func(ctx context.Context, nodeID *shared.NodeID, nextNodeIDs, disconnectedIDs []*shared.NodeID) (bool, error)
-	sendSignalF         func(ctx context.Context, nodeID *shared.NodeID, signal *proto.Signal) error
-	pollSignalF         func(ctx context.Context, nodeID *shared.NodeID, send func(*proto.Signal) error) error
+	assignNodeF         func(ctx context.Context) (*types.NodeID, bool, error)
+	unassignNodeF       func(ctx context.Context, nodeID *types.NodeID) error
+	keepaliveF          func(ctx context.Context, nodeID *types.NodeID) (bool, error)
+	reconcileNextNodesF func(ctx context.Context, nodeID *types.NodeID, nextNodeIDs, disconnectedIDs []*types.NodeID) (bool, error)
+	sendSignalF         func(ctx context.Context, nodeID *types.NodeID, signal *proto.Signal) error
+	pollSignalF         func(ctx context.Context, nodeID *types.NodeID, send func(*proto.Signal) error) error
 }
 
 var _ controller.Controller = &controllerMock{}
 
-func (c *controllerMock) AssignNode(ctx context.Context) (*shared.NodeID, bool, error) {
+func (c *controllerMock) AssignNode(ctx context.Context) (*types.NodeID, bool, error) {
 	c.t.Helper()
 	require.NotNil(c.t, c.assignNodeF, "AssignNodeF must not be nil")
 	return c.assignNodeF(ctx)
 }
 
-func (c *controllerMock) UnassignNode(ctx context.Context, nodeID *shared.NodeID) error {
+func (c *controllerMock) UnassignNode(ctx context.Context, nodeID *types.NodeID) error {
 	c.t.Helper()
 	require.NotNil(c.t, c.unassignNodeF, "UnassignNodeF must not be nil")
 	return c.unassignNodeF(ctx, nodeID)
 }
 
-func (c *controllerMock) Keepalive(ctx context.Context, nodeID *shared.NodeID) (bool, error) {
+func (c *controllerMock) Keepalive(ctx context.Context, nodeID *types.NodeID) (bool, error) {
 	c.t.Helper()
 	require.NotNil(c.t, c.keepaliveF, "KeepaliveF must not be nil")
 	return c.keepaliveF(ctx, nodeID)
 }
 
-func (c *controllerMock) ReconcileNextNodes(ctx context.Context, nodeID *shared.NodeID, nextNodeIDs, disconnectedIDs []*shared.NodeID) (bool, error) {
+func (c *controllerMock) ReconcileNextNodes(ctx context.Context, nodeID *types.NodeID, nextNodeIDs, disconnectedIDs []*types.NodeID) (bool, error) {
 	c.t.Helper()
 	require.NotNil(c.t, c.reconcileNextNodesF, "ReconcileNextNodesF must not be nil")
 	return c.reconcileNextNodesF(ctx, nodeID, nextNodeIDs, disconnectedIDs)
 }
 
-func (c *controllerMock) SendSignal(ctx context.Context, nodeID *shared.NodeID, signal *proto.Signal) error {
+func (c *controllerMock) SendSignal(ctx context.Context, nodeID *types.NodeID, signal *proto.Signal) error {
 	c.t.Helper()
 	require.NotNil(c.t, c.sendSignalF, "SendSignalF must not be nil")
 	return c.sendSignalF(ctx, nodeID, signal)
 }
 
-func (c *controllerMock) PollSignal(ctx context.Context, nodeID *shared.NodeID, send func(*proto.Signal) error) error {
+func (c *controllerMock) PollSignal(ctx context.Context, nodeID *types.NodeID, send func(*proto.Signal) error) error {
 	c.t.Helper()
 	require.NotNil(c.t, c.pollSignalF, "PollSignalF must not be nil")
 	return c.pollSignalF(ctx, nodeID, send)
@@ -143,10 +143,10 @@ func createTestClient(t *testing.T, port uint16) service.SeedServiceClient {
 }
 
 func TestServer_AssignNode(t *testing.T) {
-	nodeID := shared.NewRandomNodeID()
+	nodeID := types.NewRandomNodeID()
 	port := runTestServer(t, &controllerMock{
 		t: t,
-		assignNodeF: func(ctx context.Context) (*shared.NodeID, bool, error) {
+		assignNodeF: func(ctx context.Context) (*types.NodeID, bool, error) {
 			return nodeID, true, nil
 		},
 	})
@@ -154,7 +154,7 @@ func TestServer_AssignNode(t *testing.T) {
 
 	res, err := client.AssignNode(t.Context(), &connect.Request[proto.AssignNodeRequest]{})
 	require.NoError(t, err)
-	resNodeID, err := shared.NewNodeIDFromProto(res.Msg.GetNodeId())
+	resNodeID, err := types.NewNodeIDFromProto(res.Msg.GetNodeId())
 	require.NoError(t, err)
 	require.Equal(t, nodeID, resNodeID)
 	resIsAlone := res.Msg.GetIsAlone()
@@ -162,14 +162,14 @@ func TestServer_AssignNode(t *testing.T) {
 }
 
 func TestServer_UnassignNode(t *testing.T) {
-	nodeID := shared.NewRandomNodeID()
+	nodeID := types.NewRandomNodeID()
 	called := false
 	port := runTestServer(t, &controllerMock{
 		t: t,
-		assignNodeF: func(ctx context.Context) (*shared.NodeID, bool, error) {
+		assignNodeF: func(ctx context.Context) (*types.NodeID, bool, error) {
 			return nodeID, true, nil
 		},
-		unassignNodeF: func(ctx context.Context, nodeID *shared.NodeID) error {
+		unassignNodeF: func(ctx context.Context, nodeID *types.NodeID) error {
 			called = true
 			require.Equal(t, nodeID, nodeID)
 			return nil
@@ -197,14 +197,14 @@ func TestServer_UnassignNode(t *testing.T) {
 }
 
 func TestServer_Keepalive(t *testing.T) {
-	nodeID := shared.NewRandomNodeID()
+	nodeID := types.NewRandomNodeID()
 	called := false
 	port := runTestServer(t, &controllerMock{
 		t: t,
-		assignNodeF: func(ctx context.Context) (*shared.NodeID, bool, error) {
+		assignNodeF: func(ctx context.Context) (*types.NodeID, bool, error) {
 			return nodeID, true, nil
 		},
-		keepaliveF: func(ctx context.Context, nodeID *shared.NodeID) (bool, error) {
+		keepaliveF: func(ctx context.Context, nodeID *types.NodeID) (bool, error) {
 			called = true
 			assert.Equal(t, nodeID, nodeID)
 			return true, nil
@@ -231,21 +231,21 @@ func TestServer_ReconcileNextNodes(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(5)
 	port := runTestServer(t, &controllerMock{
 		t: t,
-		assignNodeF: func(ctx context.Context) (*shared.NodeID, bool, error) {
+		assignNodeF: func(ctx context.Context) (*types.NodeID, bool, error) {
 			return nodeIDs[0], true, nil
 		},
-		reconcileNextNodesF: func(ctx context.Context, nodeID *shared.NodeID, nextNodeIDs, disconnectedIDs []*shared.NodeID) (bool, error) {
+		reconcileNextNodesF: func(ctx context.Context, nodeID *types.NodeID, nextNodeIDs, disconnectedIDs []*types.NodeID) (bool, error) {
 			assert.Equal(t, nodeID, nodeIDs[0])
-			assert.Equal(t, nextNodeIDs, []*shared.NodeID{nodeIDs[1], nodeIDs[2]})
-			assert.Equal(t, disconnectedIDs, []*shared.NodeID{nodeIDs[3], nodeIDs[4]})
+			assert.Equal(t, nextNodeIDs, []*types.NodeID{nodeIDs[1], nodeIDs[2]})
+			assert.Equal(t, disconnectedIDs, []*types.NodeID{nodeIDs[3], nodeIDs[4]})
 			return true, nil
 		},
 	})
 	client := createTestClient(t, port)
 
 	request := &proto.ReconcileNextNodesRequest{
-		NextNodeIds:         shared.ConvertNodeIDsToProto([]*shared.NodeID{nodeIDs[1], nodeIDs[2]}),
-		DisconnectedNodeIds: shared.ConvertNodeIDsToProto([]*shared.NodeID{nodeIDs[3], nodeIDs[4]}),
+		NextNodeIds:         types.ConvertNodeIDsToProto([]*types.NodeID{nodeIDs[1], nodeIDs[2]}),
+		DisconnectedNodeIds: types.ConvertNodeIDsToProto([]*types.NodeID{nodeIDs[3], nodeIDs[4]}),
 	}
 
 	// Reconcile next nodes without assigning first should return an error
@@ -273,10 +273,10 @@ func TestServer_SendSignal(t *testing.T) {
 	called := false
 	port := runTestServer(t, &controllerMock{
 		t: t,
-		assignNodeF: func(ctx context.Context) (*shared.NodeID, bool, error) {
+		assignNodeF: func(ctx context.Context) (*types.NodeID, bool, error) {
 			return nodeIDs[0], true, nil
 		},
-		sendSignalF: func(ctx context.Context, nodeID *shared.NodeID, signal *proto.Signal) error {
+		sendSignalF: func(ctx context.Context, nodeID *types.NodeID, signal *proto.Signal) error {
 			called = true
 			assert.Equal(t, nodeID, nodeIDs[0])
 			assert.Equal(t, signal.DstNodeId, nodeIDs[1].Proto())
@@ -319,10 +319,10 @@ func TestServer_PollSignal(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(3)
 	port := runTestServer(t, &controllerMock{
 		t: t,
-		assignNodeF: func(ctx context.Context) (*shared.NodeID, bool, error) {
+		assignNodeF: func(ctx context.Context) (*types.NodeID, bool, error) {
 			return nodeIDs[0], true, nil
 		},
-		pollSignalF: func(ctx context.Context, nodeID *shared.NodeID, send func(*proto.Signal) error) error {
+		pollSignalF: func(ctx context.Context, nodeID *types.NodeID, send func(*proto.Signal) error) error {
 			assert.Equal(t, nodeID, nodeIDs[0])
 			// Simulate sending signals
 			signals := []*proto.Signal{

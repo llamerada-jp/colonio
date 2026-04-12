@@ -13,36 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package misc
+package types
 
 import (
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/types"
 )
 
-// TODO: improve performance, this logic is worst: O(n)
-func GetNextByMap[T any](nodeID *types.NodeID, nodeMap map[types.NodeID]T, defaultVal T) (*types.NodeID, T) {
-	minNodeID := (*types.NodeID)(nil)
-	nextNodeID := (*types.NodeID)(nil)
-	for n := range nodeMap {
-		if n.Equal(nodeID) {
-			continue
-		}
-		if minNodeID == nil || n.Smaller(minNodeID) {
-			minNodeID = n.Copy()
-		}
-		if n.Smaller(nodeID) {
-			continue
-		}
-		if nextNodeID == nil || n.Smaller(nextNodeID) {
-			nextNodeID = n.Copy()
-		}
-	}
+type PacketMode uint16
 
-	if nextNodeID != nil {
-		return nextNodeID, nodeMap[*nextNodeID]
-	}
-	if minNodeID != nil {
-		return minNodeID, nodeMap[*minNodeID]
-	}
-	return nil, defaultVal
+const (
+	PacketModeNone     = PacketMode(000000)
+	PacketModeResponse = PacketMode(0x0001)
+	PacketModeExplicit = PacketMode(0x0002)
+	PacketModeOneWay   = PacketMode(0x0004)
+	PacketModeNoRetry  = PacketMode(0x0008)
+)
+
+type Packet struct {
+	DstNodeID *types.NodeID
+	SrcNodeID *types.NodeID
+	ID        uint32
+	HopCount  uint32
+	Mode      PacketMode
+	Content   *proto.PacketContent
 }

@@ -24,9 +24,9 @@ import (
 	"github.com/gorilla/sessions"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	service "github.com/llamerada-jp/colonio/api/colonio/v1alpha/v1alphaconnect"
-	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed/controller"
 	"github.com/llamerada-jp/colonio/seed/misc"
+	"github.com/llamerada-jp/colonio/types"
 )
 
 type ContextKey int
@@ -209,13 +209,13 @@ func (c *Server) ReconcileNextNodes(ctx context.Context, request *connect.Reques
 		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 	}
 
-	nextNodeIDs, err := shared.ConvertNodeIDsFromProto(request.Msg.GetNextNodeIds())
+	nextNodeIDs, err := types.ConvertNodeIDsFromProto(request.Msg.GetNextNodeIds())
 	if err != nil {
 		logger.Warn("next_node_ids contains invalid", slog.String("error", err.Error()))
 		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
 	}
 
-	disconnectedIDs, err := shared.ConvertNodeIDsFromProto(request.Msg.GetDisconnectedNodeIds())
+	disconnectedIDs, err := types.ConvertNodeIDsFromProto(request.Msg.GetDisconnectedNodeIds())
 	if err != nil {
 		logger.Warn("disconnected_node_ids contains invalid", slog.String("error", err.Error()))
 		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))

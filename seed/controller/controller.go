@@ -23,9 +23,9 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
-	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed/gateway"
 	"github.com/llamerada-jp/colonio/seed/misc"
+	"github.com/llamerada-jp/colonio/types"
 )
 
 type Options struct {
@@ -37,12 +37,12 @@ type Options struct {
 }
 
 type Controller interface {
-	AssignNode(ctx context.Context) (*shared.NodeID, bool, error)
-	UnassignNode(ctx context.Context, nodeID *shared.NodeID) error
-	Keepalive(ctx context.Context, nodeID *shared.NodeID) (bool, error)
-	ReconcileNextNodes(ctx context.Context, nodeID *shared.NodeID, nextNodeIDs, disconnectedIDs []*shared.NodeID) (bool, error)
-	SendSignal(ctx context.Context, nodeID *shared.NodeID, signal *proto.Signal) error
-	PollSignal(ctx context.Context, nodeID *shared.NodeID, send func(*proto.Signal) error) error
+	AssignNode(ctx context.Context) (*types.NodeID, bool, error)
+	UnassignNode(ctx context.Context, nodeID *types.NodeID) error
+	Keepalive(ctx context.Context, nodeID *types.NodeID) (bool, error)
+	ReconcileNextNodes(ctx context.Context, nodeID *types.NodeID, nextNodeIDs, disconnectedIDs []*types.NodeID) (bool, error)
+	SendSignal(ctx context.Context, nodeID *types.NodeID, signal *proto.Signal) error
+	PollSignal(ctx context.Context, nodeID *types.NodeID, send func(*proto.Signal) error) error
 }
 
 type ControllerImpl struct {
@@ -52,8 +52,8 @@ type ControllerImpl struct {
 	shortLifespan     time.Duration
 	interval          time.Duration
 	mtx               sync.Mutex
-	signalChannels    map[shared.NodeID]*misc.Channel[*proto.Signal]
-	keepaliveChannels map[shared.NodeID]*misc.Channel[bool]
+	signalChannels    map[types.NodeID]*misc.Channel[*proto.Signal]
+	keepaliveChannels map[types.NodeID]*misc.Channel[bool]
 }
 
 var _ gateway.Handler = &ControllerImpl{}
@@ -66,8 +66,8 @@ func NewController(options *Options) *ControllerImpl {
 		normalLifespan:    options.NormalLifespan,
 		shortLifespan:     options.ShortLifespan,
 		interval:          options.Interval,
-		signalChannels:    make(map[shared.NodeID]*misc.Channel[*proto.Signal]),
-		keepaliveChannels: make(map[shared.NodeID]*misc.Channel[bool]),
+		signalChannels:    make(map[types.NodeID]*misc.Channel[*proto.Signal]),
+		keepaliveChannels: make(map[types.NodeID]*misc.Channel[bool]),
 	}
 }
 
@@ -87,7 +87,7 @@ func (c *ControllerImpl) Run(ctx context.Context) error {
 	}
 }
 
-func (c *ControllerImpl) HandleUnassignNode(ctx context.Context, nodeID *shared.NodeID) error {
+func (c *ControllerImpl) HandleUnassignNode(ctx context.Context, nodeID *types.NodeID) error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	if ch, exists := c.signalChannels[*nodeID]; exists {
@@ -101,7 +101,7 @@ func (c *ControllerImpl) HandleUnassignNode(ctx context.Context, nodeID *shared.
 	return nil
 }
 
-func (c *ControllerImpl) HandleKeepaliveRequest(ctx context.Context, nodeID *shared.NodeID) error {
+func (c *ControllerImpl) HandleKeepaliveRequest(ctx context.Context, nodeID *types.NodeID) error {
 	if err := c.gateway.UpdateNodeLifespan(ctx, nodeID, time.Now().Add(c.shortLifespan)); err != nil {
 		return fmt.Errorf("failed to update node lifespan: %w", err)
 	}
@@ -117,7 +117,7 @@ func (c *ControllerImpl) HandleKeepaliveRequest(ctx context.Context, nodeID *sha
 }
 
 func (c *ControllerImpl) HandleSignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error {
-	dstNodeID, err := shared.NewNodeIDFromProto(signal.GetDstNodeId())
+	dstNodeID, err := types.NewNodeIDFromProto(signal.GetDstNodeId())
 	if err != nil {
 		// dst node id in the signal is already checked in the validateSignal method,
 		panic(fmt.Sprintf("invalid dst node id in the packet: %v", err))
@@ -141,7 +141,7 @@ func (c *ControllerImpl) HandleSignal(ctx context.Context, signal *proto.Signal,
 	return nil
 }
 
-func (c *ControllerImpl) AssignNode(ctx context.Context) (*shared.NodeID, bool, error) {
+func (c *ControllerImpl) AssignNode(ctx context.Context) (*types.NodeID, bool, error) {
 	logger := misc.NewLogger(ctx, c.logger)
 	nodeID, err := c.gateway.AssignNode(ctx, time.Now().Add(c.normalLifespan))
 	if err != nil {
@@ -158,7 +158,7 @@ func (c *ControllerImpl) AssignNode(ctx context.Context) (*shared.NodeID, bool, 
 	return nodeID, isAlone, nil
 }
 
-func (c *ControllerImpl) UnassignNode(ctx context.Context, nodeID *shared.NodeID) error {
+func (c *ControllerImpl) UnassignNode(ctx context.Context, nodeID *types.NodeID) error {
 	logger := misc.NewLogger(ctx, c.logger)
 
 	if err := c.gateway.UnassignNode(ctx, nodeID); err != nil {
@@ -169,7 +169,7 @@ func (c *ControllerImpl) UnassignNode(ctx context.Context, nodeID *shared.NodeID
 	return nil
 }
 
-func (c *ControllerImpl) Keepalive(ctx context.Context, nodeID *shared.NodeID) (bool, error) {
+func (c *ControllerImpl) Keepalive(ctx context.Context, nodeID *types.NodeID) (bool, error) {
 	c.mtx.Lock()
 	if _, exists := c.keepaliveChannels[*nodeID]; exists {
 		c.mtx.Unlock()
@@ -230,7 +230,7 @@ func (c *ControllerImpl) Keepalive(ctx context.Context, nodeID *shared.NodeID) (
 	}
 }
 
-func (c *ControllerImpl) ReconcileNextNodes(ctx context.Context, nodeID *shared.NodeID, nextNodeIDs, disconnectedIDs []*shared.NodeID) (bool, error) {
+func (c *ControllerImpl) ReconcileNextNodes(ctx context.Context, nodeID *types.NodeID, nextNodeIDs, disconnectedIDs []*types.NodeID) (bool, error) {
 	for _, disconnectedID := range disconnectedIDs {
 		if err := c.gateway.PublishKeepaliveRequest(ctx, disconnectedID); err != nil {
 			return false, fmt.Errorf("failed to publish keepalive request for disconnected node %s: %w", disconnectedID.String(), err)
@@ -250,7 +250,7 @@ func (c *ControllerImpl) ReconcileNextNodes(ctx context.Context, nodeID *shared.
 		return false, fmt.Errorf("failed to get nodes by range: %w", err)
 	}
 
-	nodeIDMap := make(map[shared.NodeID]struct{})
+	nodeIDMap := make(map[types.NodeID]struct{})
 	for _, n := range nodeIDs {
 		if n.Compare(nodeID) == 0 {
 			continue // skip the current node
@@ -273,7 +273,7 @@ func (c *ControllerImpl) ReconcileNextNodes(ctx context.Context, nodeID *shared.
 	return len(nodeIDMap) == 0, nil
 }
 
-func (c *ControllerImpl) SendSignal(ctx context.Context, nodeID *shared.NodeID, signal *proto.Signal) error {
+func (c *ControllerImpl) SendSignal(ctx context.Context, nodeID *types.NodeID, signal *proto.Signal) error {
 	isAlone, err := c.isAlone(ctx, nodeID)
 	if err != nil {
 		return fmt.Errorf("failed to check if node is alone: %w", err)
@@ -301,7 +301,7 @@ func (c *ControllerImpl) SendSignal(ctx context.Context, nodeID *shared.NodeID, 
 	return nil
 }
 
-func (c *ControllerImpl) PollSignal(ctx context.Context, nodeID *shared.NodeID, send func(*proto.Signal) error) error {
+func (c *ControllerImpl) PollSignal(ctx context.Context, nodeID *types.NodeID, send func(*proto.Signal) error) error {
 	logger := misc.NewLogger(ctx, c.logger)
 
 	var ch *misc.Channel[*proto.Signal]
@@ -367,7 +367,7 @@ func (c *ControllerImpl) cleanup(ctx context.Context) error {
 	return nil
 }
 
-func (c *ControllerImpl) isAlone(ctx context.Context, nodeID *shared.NodeID) (bool, error) {
+func (c *ControllerImpl) isAlone(ctx context.Context, nodeID *types.NodeID) (bool, error) {
 	nodeCount, err := c.gateway.GetNodeCount(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to get node count: %w", err)
@@ -393,15 +393,15 @@ func (c *ControllerImpl) isAlone(ctx context.Context, nodeID *shared.NodeID) (bo
 	return false, nil
 }
 
-func (c *ControllerImpl) validateSignal(signal *proto.Signal, srcNodeID *shared.NodeID) error {
-	signalSrcNodeID, err := shared.NewNodeIDFromProto(signal.GetSrcNodeId())
+func (c *ControllerImpl) validateSignal(signal *proto.Signal, srcNodeID *types.NodeID) error {
+	signalSrcNodeID, err := types.NewNodeIDFromProto(signal.GetSrcNodeId())
 	if err != nil {
 		return fmt.Errorf("failed to parse src node id in signal packet: %w", err)
 	}
 	if !srcNodeID.Equal(signalSrcNodeID) {
 		return fmt.Errorf("src node id is invalid expected:%s, got: %s", srcNodeID.String(), signalSrcNodeID.String())
 	}
-	_, err = shared.NewNodeIDFromProto(signal.GetDstNodeId())
+	_, err = types.NewNodeIDFromProto(signal.GetDstNodeId())
 	if err != nil {
 		return fmt.Errorf("failed to parse dst node id in signal packet: %w", err)
 	}

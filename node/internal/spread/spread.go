@@ -1,0 +1,547 @@
+/*
+ * Copyright 2017- Yuji Ito <llamerada.jp@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package spread
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"math/rand"
+	"sync"
+	"time"
+
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/node/internal/constants"
+	"github.com/llamerada-jp/colonio/node/internal/geometry"
+	"github.com/llamerada-jp/colonio/node/internal/network/transferer"
+	"github.com/llamerada-jp/colonio/node/internal/wait_any"
+	"github.com/llamerada-jp/colonio/types"
+	networkTypes "github.com/llamerada-jp/colonio/types/network"
+)
+
+const (
+	optSomeoneMustExists = uint32(0x1)
+)
+
+var (
+	ErrSomeoneMustReceiveViolation = fmt.Errorf("receiving node not found")
+)
+
+type Options struct {
+	SomeoneMustExists bool
+}
+
+type Request struct {
+	SourceNodeID *types.NodeID
+	Message      []byte
+	Options      *Options
+}
+
+type Handler interface {
+	SpreadGetRelayNodeID(position *geometry.Coordinate) *types.NodeID
+}
+
+type cache struct {
+	srcNodeID *types.NodeID
+	uid       uint64
+	center    *geometry.Coordinate
+	r         float64
+	name      string
+	message   []byte
+	opt       *Options
+	timestamp time.Time
+}
+
+type Spread struct {
+	logger           *slog.Logger
+	handler          Handler
+	mtx              sync.RWMutex
+	transferer       *transferer.Transferer
+	coordinateSystem geometry.CoordinateSystem
+	cacheLifetime    time.Duration
+	sizeToUseKnock   uint
+	handlers         map[string]func(*Request)
+	cache            map[uint64]*cache
+
+	localNodeID       *types.NodeID
+	localPosition     *geometry.Coordinate
+	nextNodePositions map[types.NodeID]*geometry.Coordinate
+}
+
+func convertOptToProto(opt *Options) uint32 {
+	r := uint32(0)
+
+	if opt.SomeoneMustExists {
+		r |= optSomeoneMustExists
+	}
+
+	return r
+}
+
+func convertOptFromProto(opt uint32) *Options {
+	r := &Options{}
+
+	if (optSomeoneMustExists & opt) != 0 {
+		r.SomeoneMustExists = true
+	}
+
+	return r
+}
+
+type Config struct {
+	Logger           *slog.Logger
+	Handler          Handler
+	Transferer       *transferer.Transferer
+	CoordinateSystem geometry.CoordinateSystem
+	CacheLifetime    time.Duration
+	SizeToUseKnock   uint
+}
+
+func NewSpread(config *Config) *Spread {
+	s := &Spread{
+		logger:           config.Logger,
+		handler:          config.Handler,
+		transferer:       config.Transferer,
+		coordinateSystem: config.CoordinateSystem,
+		cacheLifetime:    config.CacheLifetime,
+		sizeToUseKnock:   config.SizeToUseKnock,
+		handlers:         make(map[string]func(*Request)),
+		cache:            make(map[uint64]*cache),
+	}
+
+	transferer.SetRequestHandler[proto.PacketContent_SpreadKnock](s.transferer, s.recvKnock)
+	transferer.SetRequestHandler[proto.PacketContent_SpreadRelay](s.transferer, s.recvRelay)
+	transferer.SetRequestHandler[proto.PacketContent_Spread](s.transferer, s.recvSpread)
+
+	return s
+}
+
+func (s *Spread) Start(ctx context.Context, localNodeID *types.NodeID) {
+	s.localNodeID = localNodeID
+	go func() {
+		ticker := time.NewTicker(s.cacheLifetime / 2)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case <-ticker.C:
+				s.cleanupCache()
+			}
+		}
+	}()
+}
+
+func (s *Spread) UpdateLocalPosition(pos *geometry.Coordinate) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	s.localPosition = pos
+}
+
+func (s *Spread) UpdateNextNodePosition(positions map[types.NodeID]*geometry.Coordinate) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	s.nextNodePositions = positions
+}
+
+func (s *Spread) Post(center *geometry.Coordinate, r float64, name string, message []byte, opt *Options) error {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	cache := s.makeCache(center, r, name, message, opt)
+
+	if opt.SomeoneMustExists {
+		wa := wait_any.NewWaitAny()
+		if s.coordinateSystem.GetDistance(center, s.localPosition) <= r {
+			for nodeID, position := range s.nextNodePositions {
+				if s.coordinateSystem.GetDistance(center, position) <= r {
+					wa.Add(1)
+					s.sendRelay(wa, &nodeID, cache)
+				}
+			}
+
+		} else {
+			nextNodeID := s.handler.SpreadGetRelayNodeID(center)
+			if nextNodeID.Equal(&types.NodeLocal) {
+				return ErrSomeoneMustReceiveViolation
+			}
+			wa.Add(1)
+			s.sendRelay(wa, nextNodeID, cache)
+		}
+
+		if !wa.Wait() {
+			return ErrSomeoneMustReceiveViolation
+		}
+		return nil
+	}
+
+	if s.coordinateSystem.GetDistance(center, s.localPosition) > r {
+		nextNodeID := s.handler.SpreadGetRelayNodeID(center)
+		s.sendRelay(nil, nextNodeID, cache)
+		return nil
+	}
+
+	if len(message) > int(s.sizeToUseKnock) {
+		s.sendKnock(nil, cache)
+
+	} else {
+		for nodeID, position := range s.nextNodePositions {
+			if s.coordinateSystem.GetDistance(cache.center, position) < r {
+				s.sendSpread(&nodeID, cache)
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Spread) SetHandler(name string, handler func(*Request)) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if _, ok := s.handlers[name]; ok {
+		s.logger.Warn("handler already exists", slog.String("name", name))
+	}
+
+	s.handlers[name] = handler
+}
+
+func (s *Spread) UnsetHandler(name string) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if _, ok := s.handlers[name]; !ok {
+		s.logger.Warn("handler not found", slog.String("name", name))
+	}
+
+	delete(s.handlers, name)
+}
+
+func (s *Spread) makeCache(center *geometry.Coordinate, r float64, name string, message []byte, opt *Options) *cache {
+	uid := rand.Uint64()
+	for uid == 0 || s.cache[uid] != nil {
+		uid = rand.Uint64()
+	}
+
+	cache := &cache{
+		srcNodeID: s.localNodeID,
+		uid:       uid,
+		center:    center,
+		r:         r,
+		name:      name,
+		message:   message,
+		opt:       opt,
+		timestamp: time.Now(),
+	}
+
+	s.cache[uid] = cache
+	return cache
+}
+
+func (s *Spread) makeCacheWithUID(srcNodeID *types.NodeID, uid uint64, center *geometry.Coordinate, r float64, name string, message []byte, opt *Options) *cache {
+	cache := &cache{
+		srcNodeID: srcNodeID,
+		uid:       uid,
+		center:    center,
+		r:         r,
+		name:      name,
+		message:   message,
+		opt:       opt,
+		timestamp: time.Now(),
+	}
+
+	s.cache[uid] = cache
+	return cache
+}
+
+func (s *Spread) recvKnock(packet *networkTypes.Packet) {
+	content := packet.Content.GetSpreadKnock()
+	center := geometry.NewCoordinateFromProto(content.Center)
+	r := content.R
+	uid := content.Uid
+
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	accept := false
+	if _, ok := s.cache[uid]; !ok && s.coordinateSystem.GetDistance(center, s.localPosition) <= r {
+		accept = true
+	}
+
+	response := &proto.PacketContent{
+		Content: &proto.PacketContent_SpreadKnockResponse{
+			SpreadKnockResponse: &proto.SpreadKnockResponse{
+				Accept: accept,
+			},
+		},
+	}
+	s.transferer.Response(packet, response)
+}
+
+func (s *Spread) recvRelay(packet *networkTypes.Packet) {
+	content := packet.Content.GetSpreadRelay()
+	uid := content.Uid
+	oneWay := (packet.Mode & networkTypes.PacketModeOneWay) != 0
+	center := geometry.NewCoordinateFromProto(content.Center)
+	r := content.R
+	name := content.Name
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if _, ok := s.cache[uid]; ok {
+		if !oneWay {
+			s.responseForRelay(packet, false)
+		}
+		return
+	}
+
+	srcNodeID, err := types.NewNodeIDFromProto(content.Source)
+	if err != nil {
+		s.logger.Warn("invalid node id from packet", slog.String("error", err.Error()))
+		return
+	}
+	cache := s.makeCacheWithUID(
+		srcNodeID,
+		uid, center, r, name,
+		content.Message,
+		convertOptFromProto(content.Opt))
+
+	if s.coordinateSystem.GetDistance(center, s.localPosition) > r {
+		nextNodeID := s.handler.SpreadGetRelayNodeID(center)
+		if nextNodeID.Equal(&types.NodeLocal) {
+			if !oneWay {
+				s.responseForRelay(packet, false)
+			}
+			return
+		}
+		s.transferer.Relay(nextNodeID, packet)
+		return
+	}
+
+	handler := s.handlers[name]
+	if handler != nil {
+		go handler(&Request{
+			SourceNodeID: cache.srcNodeID,
+			Message:      cache.message,
+			Options:      cache.opt,
+		})
+	}
+
+	if !oneWay {
+		s.responseForRelay(packet, true)
+	}
+
+	if len(cache.message) > int(s.sizeToUseKnock) {
+		s.sendKnock(packet.SrcNodeID, cache)
+
+	} else {
+		for nodeID, position := range s.nextNodePositions {
+			if s.coordinateSystem.GetDistance(cache.center, position) < r {
+				s.sendSpread(&nodeID, cache)
+			}
+		}
+	}
+}
+
+func (s *Spread) responseForRelay(packet *networkTypes.Packet, success bool) {
+	response := &proto.PacketContent{
+		Content: &proto.PacketContent_SpreadRelayResponse{
+			SpreadRelayResponse: &proto.SpreadRelayResponse{
+				Success: success,
+			},
+		},
+	}
+	s.transferer.Response(packet, response)
+}
+
+func (s *Spread) recvSpread(packet *networkTypes.Packet) {
+	content := packet.Content.GetSpread()
+	center := geometry.NewCoordinateFromProto(content.Center)
+	r := content.R
+	uid := content.Uid
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if _, ok := s.cache[uid]; ok || s.coordinateSystem.GetDistance(center, s.localPosition) > r {
+		return
+	}
+
+	srcNodeID, err := types.NewNodeIDFromProto(content.Source)
+	if err != nil {
+		s.logger.Warn("invalid node id from packet", slog.String("error", err.Error()))
+		return
+	}
+	cache := s.makeCacheWithUID(
+		srcNodeID,
+		uid, center, r,
+		content.Name,
+		content.Message,
+		convertOptFromProto(content.Opt))
+
+	handler := s.handlers[content.Name]
+	if handler != nil {
+		go handler(&Request{
+			SourceNodeID: cache.srcNodeID,
+			Message:      cache.message,
+			Options:      cache.opt,
+		})
+	}
+
+	if len(cache.message) > int(s.sizeToUseKnock) {
+		s.sendKnock(packet.SrcNodeID, cache)
+
+	} else {
+		for nodeID, position := range s.nextNodePositions {
+			if *packet.SrcNodeID != nodeID && s.coordinateSystem.GetDistance(cache.center, position) < r {
+				s.sendSpread(&nodeID, cache)
+			}
+		}
+	}
+}
+
+func (s *Spread) sendKnock(exclude *types.NodeID, cache *cache) {
+	content := &proto.PacketContent{
+		Content: &proto.PacketContent_SpreadKnock{
+			SpreadKnock: &proto.SpreadKnock{
+				Center: cache.center.Proto(),
+				R:      cache.r,
+				Uid:    cache.uid,
+			},
+		},
+	}
+
+	for nodeID, position := range s.nextNodePositions {
+		if exclude != nil && *exclude == nodeID {
+			continue
+		}
+
+		handler := &knockHandler{
+			logger:    s.logger,
+			cache:     cache,
+			dstNodeID: &nodeID,
+			sender:    s.sendSpread,
+		}
+
+		if s.coordinateSystem.GetDistance(cache.center, position) < cache.r {
+			s.transferer.Request(&nodeID, networkTypes.PacketModeNone, content, handler)
+		}
+	}
+}
+
+type knockHandler struct {
+	logger    *slog.Logger
+	cache     *cache
+	dstNodeID *types.NodeID
+	sender    func(dstNodeID *types.NodeID, cache *cache)
+}
+
+func (h *knockHandler) OnResponse(p *networkTypes.Packet) {
+	response := p.Content.GetSpreadKnockResponse()
+	if response == nil {
+		h.logger.Warn("invalid packet received")
+		return
+	}
+
+	if !response.Accept {
+		return
+	}
+
+	h.sender(h.dstNodeID, h.cache)
+}
+
+func (h *knockHandler) OnError(code constants.PacketErrorCode, message string) {
+	h.logger.Warn(message, slog.Int("code", int(code)))
+}
+
+func (s *Spread) sendRelay(wa *wait_any.WaitAny, dstNodeID *types.NodeID, cache *cache) {
+	content := &proto.PacketContent{
+		Content: &proto.PacketContent_SpreadRelay{
+			SpreadRelay: &proto.SpreadRelay{
+				Source:  cache.srcNodeID.Proto(),
+				Center:  cache.center.Proto(),
+				R:       cache.r,
+				Uid:     cache.uid,
+				Name:    cache.name,
+				Message: cache.message,
+				Opt:     convertOptToProto(cache.opt),
+			},
+		},
+	}
+
+	if cache.opt.SomeoneMustExists {
+		handler := &relayHandler{
+			logger: s.logger,
+			wa:     wa,
+		}
+		s.transferer.Request(dstNodeID, networkTypes.PacketModeNone, content, handler)
+
+	} else {
+		s.transferer.RequestOneWay(dstNodeID, networkTypes.PacketModeNone, content)
+	}
+}
+
+func (s *Spread) sendSpread(dstNodeID *types.NodeID, cache *cache) {
+	content := &proto.PacketContent{
+		Content: &proto.PacketContent_Spread{
+			Spread: &proto.Spread{
+				Source:  cache.srcNodeID.Proto(),
+				Center:  cache.center.Proto(),
+				R:       cache.r,
+				Uid:     cache.uid,
+				Name:    cache.name,
+				Message: cache.message,
+				Opt:     convertOptToProto(cache.opt),
+			},
+		},
+	}
+
+	s.transferer.RequestOneWay(dstNodeID, networkTypes.PacketModeNone, content)
+}
+
+type relayHandler struct {
+	logger *slog.Logger
+	wa     *wait_any.WaitAny
+}
+
+func (h *relayHandler) OnResponse(p *networkTypes.Packet) {
+	response := p.Content.GetSpreadRelayResponse()
+	if response == nil {
+		h.logger.Warn("invalid packet received")
+		h.wa.Done(false)
+		return
+	}
+
+	h.wa.Done(response.Success)
+}
+
+func (h *relayHandler) OnError(code constants.PacketErrorCode, message string) {
+	h.logger.Warn(message, slog.Int("code", int(code)))
+	h.wa.Done(false)
+}
+
+func (s *Spread) cleanupCache() {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	now := time.Now()
+	for uid, cache := range s.cache {
+		if now.After(cache.timestamp.Add(s.cacheLifetime)) {
+			delete(s.cache, uid)
+		}
+	}
+}

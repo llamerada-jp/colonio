@@ -24,17 +24,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/llamerada-jp/colonio/internal/shared"
+	"github.com/llamerada-jp/colonio/types"
 )
 
 // make unique nodeIDs
-func UniqueNodeIDs(count int) []*shared.NodeID {
-	nodeIDs := make([]*shared.NodeID, count)
-	exists := make(map[shared.NodeID]struct{})
+func UniqueNodeIDs(count int) []*types.NodeID {
+	nodeIDs := make([]*types.NodeID, count)
+	exists := make(map[types.NodeID]struct{})
 
 	for i := range nodeIDs {
 		for {
-			nodeID := shared.NewRandomNodeID()
+			nodeID := types.NewRandomNodeID()
 			_, ok := exists[*nodeID]
 			if !ok {
 				nodeIDs[i] = nodeID
@@ -48,16 +48,16 @@ func UniqueNodeIDs(count int) []*shared.NodeID {
 }
 
 // make unique nodeIDs with min max range (min <= nodeID < max)
-func UniqueNodeIDsWithRange(min, max *shared.NodeID, count int) []*shared.NodeID {
+func UniqueNodeIDsWithRange(min, max *types.NodeID, count int) []*types.NodeID {
 	if !min.Smaller(max) {
 		panic("min must be smaller than max")
 	}
-	nodeIDs := make([]*shared.NodeID, count)
-	exists := make(map[shared.NodeID]struct{})
+	nodeIDs := make([]*types.NodeID, count)
+	exists := make(map[types.NodeID]struct{})
 
 	for i := range nodeIDs {
 		for {
-			nodeID := shared.NewRandomNodeID()
+			nodeID := types.NewRandomNodeID()
 			if nodeID.Smaller(min) || !nodeID.Smaller(max) {
 				continue
 			}
@@ -96,7 +96,7 @@ func NearTime(base, actual time.Time) bool {
 	return actual.After(base.Add(-margin)) && actual.Before(base.Add(margin))
 }
 
-func CompareNodeIDsOrdered(a, b []*shared.NodeID) bool {
+func CompareNodeIDsOrdered(a, b []*types.NodeID) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -108,7 +108,7 @@ func CompareNodeIDsOrdered(a, b []*shared.NodeID) bool {
 	return true
 }
 
-func CompareNodeIDsUnordered(a, b []*shared.NodeID) bool {
+func CompareNodeIDsUnordered(a, b []*types.NodeID) bool {
 	if len(a) != len(b) {
 		return false
 	}

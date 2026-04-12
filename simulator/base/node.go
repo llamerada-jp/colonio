@@ -23,12 +23,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/llamerada-jp/colonio"
-	"github.com/llamerada-jp/colonio/config"
-	"github.com/llamerada-jp/colonio/internal/shared"
+	colonioNode "github.com/llamerada-jp/colonio/node"
+	"github.com/llamerada-jp/colonio/node/observation"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
 	"github.com/llamerada-jp/colonio/simulator/utils"
 	"github.com/llamerada-jp/colonio/test/util"
+	"github.com/llamerada-jp/colonio/types"
+	networkTypes "github.com/llamerada-jp/colonio/types/network"
 )
 
 const (
@@ -42,7 +43,7 @@ type Handler struct {
 
 type Node struct {
 	Logger   *slog.Logger
-	Col      colonio.Colonio
+	Col      colonioNode.Node
 	Position *utils.Position
 	Record   RecordInterface
 
@@ -128,16 +129,16 @@ func (n *Node) renewColonio() error {
 	r := n.Record.GetRecord()
 
 	var err error
-	n.Col, err = colonio.NewColonio(
-		colonio.WithLogger(n.Logger),
-		colonio.WithHttpClient(util.NewInsecureHttpClient()),
-		colonio.WithSeedURL(n.seedURL),
-		colonio.WithICEServers([]*config.ICEServer{
+	n.Col, err = colonioNode.NewNode(
+		colonioNode.WithLogger(n.Logger),
+		colonioNode.WithHttpClient(util.NewInsecureHttpClient()),
+		colonioNode.WithSeedURL(n.seedURL),
+		colonioNode.WithICEServers([]*networkTypes.ICEServer{
 			{
 				URLs: []string{},
 			},
 		}),
-		colonio.WithObservation(&config.ObservationHandler{
+		colonioNode.WithObservation(&observation.Handler{
 			OnChangeConnectedNodes: func(nodeIDs map[string]struct{}) {
 				n.mtx.Lock()
 				defer n.mtx.Unlock()
@@ -154,13 +155,13 @@ func (n *Node) renewColonio() error {
 				r.RequiredNodeIDs2D = convertMapToSlice(nodeIDs)
 			},
 		}),
-		colonio.WithSphereGeometry(6378137.0),
+		colonioNode.WithSphereGeometry(6378137.0),
 	)
 	if err != nil {
 		return err
 	}
 
-	n.Col.MessagingSetHandler(messageKey, func(mr *colonio.MessagingRequest, _ colonio.MessagingResponseWriter) {
+	n.Col.MessagingSetHandler(messageKey, func(mr *colonioNode.MessagingRequest, _ colonioNode.MessagingResponseWriter) {
 		id := string(mr.Message)
 		n.mtx.Lock()
 		defer n.mtx.Unlock()
@@ -222,7 +223,7 @@ func (n *Node) runNode(ctx context.Context) error {
 		timer := time.NewTimer(1 * time.Second)
 
 		// send message randomly
-		dstNodeID := shared.NewRandomNodeID().String()
+		dstNodeID := types.NewRandomNodeID().String()
 		id7, err := uuid.NewV7()
 		if err != nil {
 			panic(err)
@@ -233,8 +234,8 @@ func (n *Node) runNode(ctx context.Context) error {
 		r.Post[id] = time.Now().Format(time.RFC3339Nano)
 		n.mtx.Unlock()
 		n.Col.MessagingPost(dstNodeID, messageKey, []byte(id),
-			colonio.MessagingWithAcceptNearby(),
-			colonio.MessagingWithIgnoreResponse(),
+			colonioNode.MessagingWithAcceptNearby(),
+			colonioNode.MessagingWithIgnoreResponse(),
 		)
 
 		select {

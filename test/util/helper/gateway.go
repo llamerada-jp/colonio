@@ -22,27 +22,27 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
-	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed/gateway"
+	"github.com/llamerada-jp/colonio/types"
 )
 
 type Gateway struct {
 	Logger       *slog.Logger
 	Seed         gateway.Handler
-	NodeIDs      []*shared.NodeID
+	NodeIDs      []*types.NodeID
 	superGateway gateway.Gateway
 
-	AssignNodeF              func(ctx context.Context, lifespan time.Time) (*shared.NodeID, error)
-	UnassignNodeF            func(ctx context.Context, nodeID *shared.NodeID) error
+	AssignNodeF              func(ctx context.Context, lifespan time.Time) (*types.NodeID, error)
+	UnassignNodeF            func(ctx context.Context, nodeID *types.NodeID) error
 	GetNodeCountF            func(ctx context.Context) (uint64, error)
-	UpdateNodeLifespanF      func(ctx context.Context, nodeID *shared.NodeID, lifespan time.Time) error
-	GetNodesByRangeF         func(ctx context.Context, backward, frontward *shared.NodeID) ([]*shared.NodeID, error)
-	GetNodesF                func(ctx context.Context) (map[shared.NodeID]time.Time, error)
-	SubscribeKeepaliveF      func(ctx context.Context, nodeID *shared.NodeID) error
-	UnsubscribeKeepaliveF    func(ctx context.Context, nodeID *shared.NodeID) error
-	PublishKeepaliveRequestF func(ctx context.Context, nodeID *shared.NodeID) error
-	SubscribeSignalF         func(ctx context.Context, nodeID *shared.NodeID) error
-	UnsubscribeSignalF       func(ctx context.Context, nodeID *shared.NodeID) error
+	UpdateNodeLifespanF      func(ctx context.Context, nodeID *types.NodeID, lifespan time.Time) error
+	GetNodesByRangeF         func(ctx context.Context, backward, frontward *types.NodeID) ([]*types.NodeID, error)
+	GetNodesF                func(ctx context.Context) (map[types.NodeID]time.Time, error)
+	SubscribeKeepaliveF      func(ctx context.Context, nodeID *types.NodeID) error
+	UnsubscribeKeepaliveF    func(ctx context.Context, nodeID *types.NodeID) error
+	PublishKeepaliveRequestF func(ctx context.Context, nodeID *types.NodeID) error
+	SubscribeSignalF         func(ctx context.Context, nodeID *types.NodeID) error
+	UnsubscribeSignalF       func(ctx context.Context, nodeID *types.NodeID) error
 	PublishSignalF           func(ctx context.Context, signal *proto.Signal, relayToNext bool) error
 }
 
@@ -54,9 +54,9 @@ func (h *Gateway) GetSuper() gateway.Gateway {
 	}
 
 	// If NodeIDs is provided, use it to generate node IDs.
-	var nodeIDGenerator func(exists map[shared.NodeID]any) (*shared.NodeID, error)
+	var nodeIDGenerator func(exists map[types.NodeID]any) (*types.NodeID, error)
 	if h.NodeIDs != nil {
-		nodeIDGenerator = func(exists map[shared.NodeID]any) (*shared.NodeID, error) {
+		nodeIDGenerator = func(exists map[types.NodeID]any) (*types.NodeID, error) {
 			if len(h.NodeIDs) == len(exists) {
 				return nil, fmt.Errorf("no more node IDs available")
 			}
@@ -70,14 +70,14 @@ func (h *Gateway) GetSuper() gateway.Gateway {
 	return h.superGateway
 }
 
-func (h *Gateway) AssignNode(ctx context.Context, lifespan time.Time) (*shared.NodeID, error) {
+func (h *Gateway) AssignNode(ctx context.Context, lifespan time.Time) (*types.NodeID, error) {
 	if h.AssignNodeF != nil {
 		return h.AssignNodeF(ctx, lifespan)
 	}
 	return h.GetSuper().AssignNode(ctx, lifespan)
 }
 
-func (h *Gateway) UnassignNode(ctx context.Context, nodeID *shared.NodeID) error {
+func (h *Gateway) UnassignNode(ctx context.Context, nodeID *types.NodeID) error {
 	if h.UnassignNodeF != nil {
 		return h.UnassignNodeF(ctx, nodeID)
 	}
@@ -91,56 +91,56 @@ func (h *Gateway) GetNodeCount(ctx context.Context) (uint64, error) {
 	return h.GetSuper().GetNodeCount(ctx)
 }
 
-func (h *Gateway) UpdateNodeLifespan(ctx context.Context, nodeID *shared.NodeID, lifespan time.Time) error {
+func (h *Gateway) UpdateNodeLifespan(ctx context.Context, nodeID *types.NodeID, lifespan time.Time) error {
 	if h.UpdateNodeLifespanF != nil {
 		return h.UpdateNodeLifespanF(ctx, nodeID, lifespan)
 	}
 	return h.GetSuper().UpdateNodeLifespan(ctx, nodeID, lifespan)
 }
 
-func (h *Gateway) GetNodesByRange(ctx context.Context, backward, frontward *shared.NodeID) ([]*shared.NodeID, error) {
+func (h *Gateway) GetNodesByRange(ctx context.Context, backward, frontward *types.NodeID) ([]*types.NodeID, error) {
 	if h.GetNodesByRangeF != nil {
 		return h.GetNodesByRangeF(ctx, backward, frontward)
 	}
 	return h.GetSuper().GetNodesByRange(ctx, backward, frontward)
 }
 
-func (h *Gateway) GetNodes(ctx context.Context) (map[shared.NodeID]time.Time, error) {
+func (h *Gateway) GetNodes(ctx context.Context) (map[types.NodeID]time.Time, error) {
 	if h.GetNodesF != nil {
 		return h.GetNodesF(ctx)
 	}
 	return h.GetSuper().GetNodes(ctx)
 }
 
-func (h *Gateway) SubscribeKeepalive(ctx context.Context, nodeID *shared.NodeID) error {
+func (h *Gateway) SubscribeKeepalive(ctx context.Context, nodeID *types.NodeID) error {
 	if h.SubscribeKeepaliveF != nil {
 		return h.SubscribeKeepaliveF(ctx, nodeID)
 	}
 	return h.GetSuper().SubscribeKeepalive(ctx, nodeID)
 }
 
-func (h *Gateway) UnsubscribeKeepalive(ctx context.Context, nodeID *shared.NodeID) error {
+func (h *Gateway) UnsubscribeKeepalive(ctx context.Context, nodeID *types.NodeID) error {
 	if h.UnsubscribeKeepaliveF != nil {
 		return h.UnsubscribeKeepaliveF(ctx, nodeID)
 	}
 	return h.GetSuper().UnsubscribeKeepalive(ctx, nodeID)
 }
 
-func (h *Gateway) PublishKeepaliveRequest(ctx context.Context, nodeID *shared.NodeID) error {
+func (h *Gateway) PublishKeepaliveRequest(ctx context.Context, nodeID *types.NodeID) error {
 	if h.PublishKeepaliveRequestF != nil {
 		return h.PublishKeepaliveRequestF(ctx, nodeID)
 	}
 	return h.GetSuper().PublishKeepaliveRequest(ctx, nodeID)
 }
 
-func (h *Gateway) SubscribeSignal(ctx context.Context, nodeID *shared.NodeID) error {
+func (h *Gateway) SubscribeSignal(ctx context.Context, nodeID *types.NodeID) error {
 	if h.SubscribeSignalF != nil {
 		return h.SubscribeSignalF(ctx, nodeID)
 	}
 	return h.GetSuper().SubscribeSignal(ctx, nodeID)
 }
 
-func (h *Gateway) UnsubscribeSignal(ctx context.Context, nodeID *shared.NodeID) error {
+func (h *Gateway) UnsubscribeSignal(ctx context.Context, nodeID *types.NodeID) error {
 	if h.UnsubscribeSignalF != nil {
 		return h.UnsubscribeSignalF(ctx, nodeID)
 	}

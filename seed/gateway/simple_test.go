@@ -22,29 +22,29 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
-	"github.com/llamerada-jp/colonio/internal/shared"
 	"github.com/llamerada-jp/colonio/seed/misc"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
+	"github.com/llamerada-jp/colonio/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type HandlerHelper struct {
 	t                       *testing.T
-	HandleUnassignNodeF     func(ctx context.Context, nodeID *shared.NodeID) error
-	HandleKeepaliveRequestF func(ctx context.Context, nodeID *shared.NodeID) error
+	HandleUnassignNodeF     func(ctx context.Context, nodeID *types.NodeID) error
+	HandleKeepaliveRequestF func(ctx context.Context, nodeID *types.NodeID) error
 	HandleSignalF           func(ctx context.Context, signal *proto.Signal, relayToNext bool) error
 }
 
 var _ Handler = &HandlerHelper{}
 
-func (h *HandlerHelper) HandleUnassignNode(ctx context.Context, nodeID *shared.NodeID) error {
+func (h *HandlerHelper) HandleUnassignNode(ctx context.Context, nodeID *types.NodeID) error {
 	h.t.Helper()
 	require.NotNil(h.t, h.HandleUnassignNodeF)
 	return h.HandleUnassignNodeF(ctx, nodeID)
 }
 
-func (h *HandlerHelper) HandleKeepaliveRequest(ctx context.Context, nodeID *shared.NodeID) error {
+func (h *HandlerHelper) HandleKeepaliveRequest(ctx context.Context, nodeID *types.NodeID) error {
 	h.t.Helper()
 	require.NotNil(h.t, h.HandleKeepaliveRequestF)
 	return h.HandleKeepaliveRequestF(ctx, nodeID)
@@ -57,14 +57,14 @@ func (h *HandlerHelper) HandleSignal(ctx context.Context, signal *proto.Signal, 
 }
 
 func TestSimpleGateway_AssignNode_UnassignNode(t *testing.T) {
-	nodeIDs := make([]*shared.NodeID, 2)
+	nodeIDs := make([]*types.NodeID, 2)
 	var err error
 
 	called := false
 	sg := NewSimpleGateway(testUtil.Logger(t),
 		&HandlerHelper{
 			t: t,
-			HandleUnassignNodeF: func(ctx context.Context, n *shared.NodeID) error {
+			HandleUnassignNodeF: func(ctx context.Context, n *types.NodeID) error {
 				t.Helper()
 				assert.Equal(t, *nodeIDs[0], *n)
 				called = true
@@ -148,7 +148,7 @@ func TestSimpleGateway_GetNodesByRange(t *testing.T) {
 		}, nil).(*SimpleGateway)
 
 	nodeIDs := testUtil.UniqueNodeIDs(8)
-	shared.SortNodeIDs(nodeIDs)
+	types.SortNodeIDs(nodeIDs)
 
 	for i, id := range nodeIDs {
 		if i%2 == 0 {
@@ -162,44 +162,44 @@ func TestSimpleGateway_GetNodesByRange(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		backward    *shared.NodeID
-		frontward   *shared.NodeID
+		backward    *types.NodeID
+		frontward   *types.NodeID
 		expectError bool
-		expected    []*shared.NodeID
+		expected    []*types.NodeID
 	}{
 		{
 			name:      "normal 1",
 			backward:  nodeIDs[0],
 			frontward: nodeIDs[4],
-			expected:  []*shared.NodeID{nodeIDs[0], nodeIDs[2], nodeIDs[4]},
+			expected:  []*types.NodeID{nodeIDs[0], nodeIDs[2], nodeIDs[4]},
 		},
 		{
 			name:      "normal 2",
 			backward:  nodeIDs[7],
 			frontward: nodeIDs[5],
-			expected:  []*shared.NodeID{nodeIDs[0], nodeIDs[2], nodeIDs[4]},
+			expected:  []*types.NodeID{nodeIDs[0], nodeIDs[2], nodeIDs[4]},
 		},
 		{
 			name:      "normal 3",
 			backward:  nodeIDs[6],
 			frontward: nodeIDs[2],
-			expected:  []*shared.NodeID{nodeIDs[6], nodeIDs[0], nodeIDs[2]},
+			expected:  []*types.NodeID{nodeIDs[6], nodeIDs[0], nodeIDs[2]},
 		},
 		{
 			name:      "just one node",
 			backward:  nodeIDs[2],
 			frontward: nodeIDs[2],
-			expected:  []*shared.NodeID{nodeIDs[2]},
+			expected:  []*types.NodeID{nodeIDs[2]},
 		},
 		{
 			name:      "empty range",
 			backward:  nodeIDs[3],
 			frontward: nodeIDs[3],
-			expected:  []*shared.NodeID{},
+			expected:  []*types.NodeID{},
 		},
 		{
 			name:     "all nodes",
-			expected: []*shared.NodeID{nodeIDs[0], nodeIDs[2], nodeIDs[4], nodeIDs[6]},
+			expected: []*types.NodeID{nodeIDs[0], nodeIDs[2], nodeIDs[4], nodeIDs[6]},
 		},
 		{
 			name:        "invalid range 1",
@@ -300,7 +300,7 @@ func TestSimpleGateway_PublishKeepaliveRequest(t *testing.T) {
 	sg := NewSimpleGateway(testUtil.Logger(t),
 		&HandlerHelper{
 			t: t,
-			HandleKeepaliveRequestF: func(ctx context.Context, nodeID *shared.NodeID) error {
+			HandleKeepaliveRequestF: func(ctx context.Context, nodeID *types.NodeID) error {
 				t.Helper()
 				callCount += 1
 				assert.Equal(t, *nodeIDs[0], *nodeID)
@@ -418,11 +418,11 @@ func TestSimpleGateway_UnsubscribeSignal(t *testing.T) {
 
 func TestSimpleGateway_PublishSignal(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(2)
-	shared.SortNodeIDs(nodeIDs)
+	types.SortNodeIDs(nodeIDs)
 
 	tests := []struct {
 		name              string
-		dstNodeID         *shared.NodeID
+		dstNodeID         *types.NodeID
 		relayToNext       bool
 		expectedCallCount int
 		expectedWaiting   []int
@@ -466,7 +466,7 @@ func TestSimpleGateway_PublishSignal(t *testing.T) {
 					HandleSignalF: func(ctx context.Context, signal *proto.Signal, relayToNext bool) error {
 						t.Helper()
 						callCount += 1
-						dstNodeID, err := shared.NewNodeIDFromProto(signal.GetDstNodeId())
+						dstNodeID, err := types.NewNodeIDFromProto(signal.GetDstNodeId())
 						require.NoError(t, err)
 						assert.Equal(t, tt.dstNodeID, dstNodeID)
 						assert.Equal(t, tt.relayToNext, relayToNext)
@@ -487,7 +487,7 @@ func TestSimpleGateway_PublishSignal(t *testing.T) {
 
 			err := sg.PublishSignal(t.Context(), &proto.Signal{
 				DstNodeId: tt.dstNodeID.Proto(),
-				SrcNodeId: shared.NewRandomNodeID().Proto(),
+				SrcNodeId: types.NewRandomNodeID().Proto(),
 				Content:   &proto.Signal_Answer{},
 			}, tt.relayToNext)
 			require.NoError(t, err)
