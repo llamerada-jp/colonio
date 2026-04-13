@@ -39,13 +39,17 @@ func NewInfrastructure(transferer *transferer.Transferer) Infrastructure {
 }
 
 func (i *infrastructureImpl) sendSectorInformation(dst *types.NodeID, tailAddress *types.NodeID) {
+	var protoTailAddress *proto.NodeID
+	if tailAddress != nil {
+		protoTailAddress = tailAddress.Proto()
+	}
 	i.transferer.RequestOneWay(
 		dst,
 		networkTypes.PacketModeExplicit|networkTypes.PacketModeNoRetry,
 		&proto.PacketContent{
 			Content: &proto.PacketContent_SectorInformation{
 				SectorInformation: &proto.SectorInformation{
-					TailAddress: tailAddress.Proto(),
+					TailAddress: protoTailAddress,
 				},
 			},
 		},

@@ -26,7 +26,7 @@ import (
 )
 
 type sectorInformationEntry struct {
-	tailAddress types.NodeID
+	tailAddress *types.NodeID
 	timestamp   time.Time
 }
 
@@ -150,8 +150,11 @@ func (b *Broker) GetFrontwardState() (*types.NodeID, *types.NodeID) {
 
 	if entry, ok := b.siEntries[b.frontwardNodeID]; ok {
 		fwd := b.frontwardNodeID
-		ta := entry.tailAddress
-		return &fwd, &ta
+		if entry.tailAddress != nil {
+			ta := *entry.tailAddress
+			return &fwd, &ta
+		}
+		return &fwd, nil
 	}
 
 	return nil, nil
@@ -168,7 +171,7 @@ func (b *Broker) processSectorInformation(param *sectorInformationParam) {
 	defer b.mtx.Unlock()
 
 	b.siEntries[*param.srcNodeID] = sectorInformationEntry{
-		tailAddress: *param.tailAddress,
+		tailAddress: param.tailAddress,
 		timestamp:   time.Now(),
 	}
 }

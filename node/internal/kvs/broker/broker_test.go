@@ -37,7 +37,7 @@ const (
 
 type sendRecord struct {
 	dst         types.NodeID
-	tailAddress types.NodeID
+	tailAddress *types.NodeID
 }
 
 type mockInfrastructure struct {
@@ -50,11 +50,7 @@ var _ Infrastructure = &mockInfrastructure{}
 func (m *mockInfrastructure) sendSectorInformation(dst *types.NodeID, tailAddress *types.NodeID) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	var ta types.NodeID
-	if tailAddress != nil {
-		ta = *tailAddress
-	}
-	m.records = append(m.records, sendRecord{dst: *dst, tailAddress: ta})
+	m.records = append(m.records, sendRecord{dst: *dst, tailAddress: tailAddress})
 }
 
 func (m *mockInfrastructure) getRecords() []sendRecord {
@@ -118,29 +114,44 @@ func TestBroker_Start_StopsOnCtxCancel(t *testing.T) {
 }
 
 func TestBroker_sendSectorInformation_SkippedOnSameValues(t *testing.T) {
-	infra := &mockInfrastructure{}
-	nodeIDs := testUtil.UniqueNodeIDs(3)
-	b := newTestBroker(t, loopInterval, infra)
+	tests := []struct {
+		name        string
+		nilTailAddr bool
+	}{
+		{"NonNilTailAddress", false},
+		{"NilTailAddress", true},
+	}
 
-	b.Start(t.Context(), nodeIDs[0])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			infra := &mockInfrastructure{}
+			nodeIDs := testUtil.UniqueNodeIDs(3)
+			b := newTestBroker(t, loopInterval, infra)
 
-	backward := []*types.NodeID{nodeIDs[1]}
-	tailAddr := nodeIDs[2]
-	b.UpdateTailAddress(tailAddr)
-	b.UpdateNextNodeIDs(backward, nil)
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.GreaterOrEqual(c, len(infra.getRecords()), 1)
-	}, time.Second, 10*time.Millisecond)
+			b.Start(t.Context(), nodeIDs[0])
 
-	infra.resetRecords()
+			backward := []*types.NodeID{nodeIDs[1]}
+			var tailAddr *types.NodeID
+			if !tt.nilTailAddr {
+				tailAddr = nodeIDs[2]
+			}
+			b.UpdateTailAddress(tailAddr)
+			b.UpdateNextNodeIDs(backward, nil)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.GreaterOrEqual(c, len(infra.getRecords()), 1)
+			}, time.Second, 10*time.Millisecond)
 
-	// set the same values again
-	b.UpdateNextNodeIDs(backward, nil)
-	b.UpdateTailAddress(tailAddr)
+			infra.resetRecords()
 
-	// no signal should fire, wait a bit and confirm no sends
-	time.Sleep(immediateDuration)
-	assert.Empty(t, infra.getRecords())
+			// set the same values again
+			b.UpdateNextNodeIDs(backward, nil)
+			b.UpdateTailAddress(tailAddr)
+
+			// no signal should fire, wait a bit and confirm no sends
+			time.Sleep(immediateDuration)
+			assert.Empty(t, infra.getRecords())
+		})
+	}
 }
 
 func TestBroker_sendSectorInformation_EmptyBackward(t *testing.T) {
@@ -158,32 +169,47 @@ func TestBroker_sendSectorInformation_EmptyBackward(t *testing.T) {
 }
 
 func TestBroker_UpdateNextNodeIDs_TriggersSend(t *testing.T) {
-	infra := &mockInfrastructure{}
-	nodeIDs := testUtil.UniqueNodeIDs(3)
-	b := newTestBroker(t, loopInterval, infra)
+	tests := []struct {
+		name        string
+		nilTailAddr bool
+	}{
+		{"NonNilTailAddress", false},
+		{"NilTailAddress", true},
+	}
 
-	b.Start(t.Context(), nodeIDs[0])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			infra := &mockInfrastructure{}
+			nodeIDs := testUtil.UniqueNodeIDs(3)
+			b := newTestBroker(t, loopInterval, infra)
 
-	tailAddr := nodeIDs[2]
-	b.UpdateTailAddress(tailAddr)
-	// wait for signal-triggered send
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		// no backward nodes yet, so no sends expected from tailAddress update
-		assert.Empty(c, infra.getRecords())
-	}, time.Second, 10*time.Millisecond)
+			b.Start(t.Context(), nodeIDs[0])
 
-	infra.resetRecords()
-	backward := []*types.NodeID{nodeIDs[1]}
-	b.UpdateNextNodeIDs(backward, nil)
+			var tailAddr *types.NodeID
+			if !tt.nilTailAddr {
+				tailAddr = nodeIDs[2]
+			}
+			b.UpdateTailAddress(tailAddr)
+			// wait for signal-triggered send
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				// no backward nodes yet, so no sends expected from tailAddress update
+				assert.Empty(c, infra.getRecords())
+			}, time.Second, 10*time.Millisecond)
 
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		records := infra.getRecords()
-		assert.Len(c, records, 1)
-		if len(records) == 1 {
-			assert.Equal(c, *nodeIDs[1], records[0].dst)
-			assert.Equal(c, *tailAddr, records[0].tailAddress)
-		}
-	}, time.Second, 10*time.Millisecond)
+			infra.resetRecords()
+			backward := []*types.NodeID{nodeIDs[1]}
+			b.UpdateNextNodeIDs(backward, nil)
+
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				records := infra.getRecords()
+				assert.Len(c, records, 1)
+				if len(records) == 1 {
+					assert.Equal(c, *nodeIDs[1], records[0].dst)
+					assert.Equal(c, tailAddr, records[0].tailAddress)
+				}
+			}, time.Second, 10*time.Millisecond)
+		})
+	}
 }
 
 func TestBroker_UpdateNextNodeIDs_FrontwardStored(t *testing.T) {
@@ -221,47 +247,77 @@ func TestBroker_UpdateNextNodeIDs_EmptyFrontward(t *testing.T) {
 }
 
 func TestBroker_UpdateTailAddress_TriggersSend(t *testing.T) {
-	infra := &mockInfrastructure{}
-	nodeIDs := testUtil.UniqueNodeIDs(3)
-	b := newTestBroker(t, loopInterval, infra)
+	tests := []struct {
+		name         string
+		nilFinalTail bool
+	}{
+		{"NonNilTailAddress", false},
+		{"NilTailAddress", true},
+	}
 
-	b.Start(t.Context(), nodeIDs[0])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			infra := &mockInfrastructure{}
+			nodeIDs := testUtil.UniqueNodeIDs(4)
+			b := newTestBroker(t, loopInterval, infra)
 
-	backward := []*types.NodeID{nodeIDs[1]}
-	b.UpdateNextNodeIDs(backward, nil)
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.GreaterOrEqual(c, len(infra.getRecords()), 1)
-	}, time.Second, 10*time.Millisecond)
+			b.Start(t.Context(), nodeIDs[0])
 
-	infra.resetRecords()
-	tailAddr := nodeIDs[2]
-	b.UpdateTailAddress(tailAddr)
+			backward := []*types.NodeID{nodeIDs[1]}
+			if tt.nilFinalTail {
+				// Set non-nil initial to detect the change to nil.
+				b.UpdateTailAddress(nodeIDs[2])
+			}
+			b.UpdateNextNodeIDs(backward, nil)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.GreaterOrEqual(c, len(infra.getRecords()), 1)
+			}, time.Second, 10*time.Millisecond)
 
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		records := infra.getRecords()
-		assert.Len(c, records, 1)
-		if len(records) == 1 {
-			assert.Equal(c, *nodeIDs[1], records[0].dst)
-			assert.Equal(c, *tailAddr, records[0].tailAddress)
-		}
-	}, time.Second, 10*time.Millisecond)
+			infra.resetRecords()
+			var finalTail *types.NodeID
+			if !tt.nilFinalTail {
+				finalTail = nodeIDs[3]
+			}
+			b.UpdateTailAddress(finalTail)
+
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				records := infra.getRecords()
+				assert.Len(c, records, 1)
+				if len(records) == 1 {
+					assert.Equal(c, *nodeIDs[1], records[0].dst)
+					assert.Equal(c, finalTail, records[0].tailAddress)
+				}
+			}, time.Second, 10*time.Millisecond)
+		})
+	}
 }
 
 func TestBroker_GetFrontwardState(t *testing.T) {
 	tests := []struct {
-		name         string
-		useSameSrc   bool // whether processSectorInformation src matches frontward
-		expectNonNil bool
+		name           string
+		useSameSrc     bool
+		nilTailAddress bool
+		expectFwd      bool
+		expectTail     bool
 	}{
 		{
-			name:         "ReturnsMatchingEntry",
-			useSameSrc:   true,
-			expectNonNil: true,
+			name:       "ReturnsMatchingEntry",
+			useSameSrc: true,
+			expectFwd:  true,
+			expectTail: true,
 		},
 		{
-			name:         "NoMatchingEntry",
-			useSameSrc:   false,
-			expectNonNil: false,
+			name:           "NilTailAddress",
+			useSameSrc:     true,
+			nilTailAddress: true,
+			expectFwd:      true,
+			expectTail:     false,
+		},
+		{
+			name:       "NoMatchingEntry",
+			useSameSrc: false,
+			expectFwd:  false,
+			expectTail: false,
 		},
 	}
 
@@ -280,20 +336,26 @@ func TestBroker_GetFrontwardState(t *testing.T) {
 			if !tt.useSameSrc {
 				srcID = nodeIDs[2]
 			}
-			tailAddr := nodeIDs[3]
+			var tailAddr *types.NodeID
+			if !tt.nilTailAddress {
+				tailAddr = nodeIDs[3]
+			}
 			b.processSectorInformation(&sectorInformationParam{
 				srcNodeID:   srcID,
 				tailAddress: tailAddr,
 			})
 
 			fwd, tail := b.GetFrontwardState()
-			if tt.expectNonNil {
+			if tt.expectFwd {
 				assert.NotNil(t, fwd)
-				assert.NotNil(t, tail)
 				assert.Equal(t, *frontwardID, *fwd)
-				assert.Equal(t, *tailAddr, *tail)
 			} else {
 				assert.Nil(t, fwd)
+			}
+			if tt.expectTail {
+				assert.NotNil(t, tail)
+				assert.Equal(t, *tailAddr, *tail)
+			} else {
 				assert.Nil(t, tail)
 			}
 		})
@@ -323,25 +385,53 @@ func TestBroker_GetFrontwardState_ExpiredEntry(t *testing.T) {
 }
 
 func TestBroker_processSectorInformation_Overwrite(t *testing.T) {
-	infra := &mockInfrastructure{}
-	nodeIDs := testUtil.UniqueNodeIDs(4)
-	b := newTestBroker(t, loopInterval, infra)
+	tests := []struct {
+		name             string
+		firstNilTailAddr bool
+		finalNilTailAddr bool
+	}{
+		{"NonNilToNonNil", false, false},
+		{"NonNilToNil", false, true},
+		{"NilToNonNil", true, false},
+	}
 
-	b.Start(t.Context(), nodeIDs[0])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			infra := &mockInfrastructure{}
+			nodeIDs := testUtil.UniqueNodeIDs(4)
+			b := newTestBroker(t, loopInterval, infra)
 
-	srcID := nodeIDs[1]
-	b.UpdateNextNodeIDs(nil, []*types.NodeID{srcID})
+			b.Start(t.Context(), nodeIDs[0])
 
-	b.processSectorInformation(&sectorInformationParam{
-		srcNodeID:   srcID,
-		tailAddress: nodeIDs[2],
-	})
-	b.processSectorInformation(&sectorInformationParam{
-		srcNodeID:   srcID,
-		tailAddress: nodeIDs[3],
-	})
+			srcID := nodeIDs[1]
+			b.UpdateNextNodeIDs(nil, []*types.NodeID{srcID})
 
-	fwd, tail := b.GetFrontwardState()
-	assert.NotNil(t, fwd)
-	assert.Equal(t, *nodeIDs[3], *tail)
+			var firstTailAddr *types.NodeID
+			if !tt.firstNilTailAddr {
+				firstTailAddr = nodeIDs[2]
+			}
+			var finalTailAddr *types.NodeID
+			if !tt.finalNilTailAddr {
+				finalTailAddr = nodeIDs[3]
+			}
+
+			b.processSectorInformation(&sectorInformationParam{
+				srcNodeID:   srcID,
+				tailAddress: firstTailAddr,
+			})
+			b.processSectorInformation(&sectorInformationParam{
+				srcNodeID:   srcID,
+				tailAddress: finalTailAddr,
+			})
+
+			fwd, tail := b.GetFrontwardState()
+			assert.NotNil(t, fwd)
+			if tt.finalNilTailAddr {
+				assert.Nil(t, tail)
+			} else {
+				assert.NotNil(t, tail)
+				assert.Equal(t, *finalTailAddr, *tail)
+			}
+		})
+	}
 }

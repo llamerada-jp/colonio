@@ -50,10 +50,14 @@ func NewGateway(logger *slog.Logger, t *transferer.Transferer, usecase usecase) 
 
 func (g *Gateway) recvSectorInformation(packet *networkTypes.Packet) {
 	content := packet.Content.GetSectorInformation()
-	tailAddress, err := types.NewNodeIDFromProto(content.TailAddress)
-	if err != nil {
-		g.logger.Warn("Failed to create NodeID from proto", "error", err, "nodeID", content.TailAddress)
-		return
+	var tailAddress *types.NodeID
+	if content.TailAddress != nil {
+		var err error
+		tailAddress, err = types.NewNodeIDFromProto(content.TailAddress)
+		if err != nil {
+			g.logger.Warn("Failed to create NodeID from proto", "error", err, "nodeID", content.TailAddress)
+			return
+		}
 	}
 
 	g.usecase.processSectorInformation(&sectorInformationParam{
