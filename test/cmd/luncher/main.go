@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
@@ -51,6 +52,9 @@ var cmd = &cobra.Command{
 
 		opts := append(chromedp.DefaultExecAllocatorOptions[:],
 			chromedp.Flag("ignore-certificate-errors", "1"),
+			// Extend the timeout for reading Chrome's DevTools WebSocket URL,
+			// as CI environments may be slow to start the browser.
+			chromedp.WSURLReadTimeout(60*time.Second),
 		)
 		allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 		defer cancel()
