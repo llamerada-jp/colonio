@@ -271,6 +271,13 @@ func (w *webRTCLinkNative) updateICE(ice string) error {
 }
 
 func (w *webRTCLinkNative) send(data []byte) error {
+	w.mtx.RLock()
+	defer w.mtx.RUnlock()
+
+	if !w.active {
+		return fmt.Errorf("link is not active")
+	}
+
 	if err := w.dataChannel.Send(data); err != nil {
 		return fmt.Errorf("failed to send data: %s", err)
 	}
