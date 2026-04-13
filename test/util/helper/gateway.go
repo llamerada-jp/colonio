@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
@@ -30,6 +31,7 @@ type Gateway struct {
 	Logger       *slog.Logger
 	Seed         gateway.Handler
 	NodeIDs      []*types.NodeID
+	superOnce    sync.Once
 	superGateway gateway.Gateway
 
 	AssignNodeF              func(ctx context.Context, lifespan time.Time) (*types.NodeID, error)
@@ -64,9 +66,9 @@ func (h *Gateway) GetSuper() gateway.Gateway {
 		}
 	}
 
-	if h.superGateway == nil {
+	h.superOnce.Do(func() {
 		h.superGateway = gateway.NewSimpleGateway(h.Logger, h.Seed, nodeIDGenerator)
-	}
+	})
 	return h.superGateway
 }
 
