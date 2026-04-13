@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
@@ -66,7 +67,7 @@ type routeInfo1D struct {
 	nodeID            *types.NodeID
 	firstNeighborhood *types.NodeID
 	level             int
-	scoreBySend       int
+	scoreBySend       int64
 }
 
 type routing1D struct {
@@ -186,7 +187,7 @@ func (r *routing1D) getNextStep(packet *networkTypes.Packet) *types.NodeID {
 	candidate := last
 	for _, info := range r.routeInfos {
 		if packet.DstNodeID.Smaller(info.nodeID) {
-			candidate.scoreBySend += 1
+			atomic.AddInt64(&candidate.scoreBySend, 1)
 			return candidate.firstNeighborhood
 		}
 		candidate = info
@@ -343,7 +344,7 @@ func (r *routing1D) getConnections() (map[types.NodeID]struct{}, map[types.NodeI
 			continue
 		}
 
-		candidatesByLevel[routeInfo.level][*routeInfo.nodeID] = routeInfo.scoreBySend
+		candidatesByLevel[routeInfo.level][*routeInfo.nodeID] = int(atomic.LoadInt64(&routeInfo.scoreBySend))
 	}
 
 	for level := 0; level < levelRangesCount; level++ {
@@ -538,16 +539,19 @@ func (r *routing1D) normalizeScore() {
 		connectedInfo.scoreByRecv = int(float64(connectedInfo.scoreByRecv) * rate)
 	}
 
-	sum = 0
+	// scoreBySend is modified via atomic.AddInt64 under RLock in getNextStep,
+	// but here we access it directly because normalizeScore is always called
+	// under the exclusive Lock, which prevents any concurrent RLock holders.
+	var sum64 int64
 	for _, routeInfo := range r.routeInfos {
-		sum += routeInfo.scoreBySend
+		sum64 += routeInfo.scoreBySend
 	}
 	rate = float64(1)
-	if sum >= 1024*1024 {
-		rate = float64(1024*1024) / float64(sum)
+	if sum64 >= 1024*1024 {
+		rate = float64(1024*1024) / float64(sum64)
 	}
 	for _, routeInfo := range r.routeInfos {
-		routeInfo.scoreBySend = int(float64(routeInfo.scoreBySend) * rate)
+		routeInfo.scoreBySend = int64(float64(routeInfo.scoreBySend) * rate)
 	}
 }
 
