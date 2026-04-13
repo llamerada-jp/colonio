@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -125,16 +126,28 @@ func CompareNodeIDsUnordered(a, b []*types.NodeID) bool {
 }
 
 type testingLogWriter struct {
-	t *testing.T
+	mu   sync.Mutex
+	t    *testing.T
+	done bool
 }
 
 func (w *testingLogWriter) Write(p []byte) (n int, err error) {
-	w.t.Log(string(p))
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.done {
+		w.t.Log(string(p))
+	}
 	return len(p), nil
 }
 
+func (w *testingLogWriter) close() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.done = true
+}
+
 func Logger(t *testing.T) *slog.Logger {
-	return slog.New(slog.NewTextHandler(&testingLogWriter{
-		t: t,
-	}, &slog.HandlerOptions{}))
+	w := &testingLogWriter{t: t}
+	t.Cleanup(w.close)
+	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{}))
 }
