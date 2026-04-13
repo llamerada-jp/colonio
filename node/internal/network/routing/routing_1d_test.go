@@ -348,11 +348,11 @@ func TestRouting1D_countRecvPacket(t *testing.T) {
 
 	r1d.countRecvPacket(nodeIDs[1])
 	assert.Equal(t, 2, r1d.neighborhoodInfos[*nodeIDs[1]].scoreByRecv)
-	assert.Equal(t, 3, r1d.routeInfos[0].scoreBySend)
+	assert.Equal(t, int64(3), r1d.routeInfos[0].scoreBySend)
 
 	r1d.countRecvPacket(nodeIDs[2])
 	assert.Equal(t, 2, r1d.neighborhoodInfos[*nodeIDs[1]].scoreByRecv)
-	assert.Equal(t, 3, r1d.routeInfos[0].scoreBySend)
+	assert.Equal(t, int64(3), r1d.routeInfos[0].scoreBySend)
 }
 
 func TestRouting1D_recvRoutingPacket(t *testing.T) {
@@ -1090,13 +1090,13 @@ func TestRouting1D_normalizeScore(t *testing.T) {
 			}
 			r1d.routeInfos = append(r1d.routeInfos, &routeInfo1D{
 				nodeID:      nodeIDs[i],
-				scoreBySend: score,
+				scoreBySend: int64(score),
 			})
 		}
 		r1d.normalizeScore()
 		for i, nodeID := range nodeIDs {
 			assert.Equal(t, tt.expect[i], r1d.neighborhoodInfos[*nodeID].scoreByRecv)
-			assert.Equal(t, tt.expect[i], r1d.routeInfos[i].scoreBySend)
+			assert.Equal(t, int64(tt.expect[i]), r1d.routeInfos[i].scoreBySend)
 		}
 	}
 }
