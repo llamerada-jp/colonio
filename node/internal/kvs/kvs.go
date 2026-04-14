@@ -24,10 +24,10 @@ import (
 
 	"github.com/google/uuid"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/node/internal/kvs/activation"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/broker"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/sector"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/sector/consensus"
-	"github.com/llamerada-jp/colonio/node/internal/kvs/state"
 	"github.com/llamerada-jp/colonio/node/observation"
 	"github.com/llamerada-jp/colonio/types"
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
@@ -53,12 +53,12 @@ type Config struct {
 	Logger                  *slog.Logger
 	EnableRaftLogging       bool
 	Handler                 Handler
-	ConsensusInfrastructure consensus.Infrastructure
-	KvsState                *state.State
+	Outbound                OutboundPort
+	ConsensusOutbound       consensus.OutboundPort
+	ActivationResolver      *activation.Resolver
 	SectorInformationBroker *broker.Broker
-	KvsInfrastructure       KvsInfrastructure
 	Observation             observation.Caller
-	Store                   kvsTypes.KvsStore
+	Store                   kvsTypes.Store
 }
 
 type memberStateEntry struct {
@@ -71,12 +71,12 @@ type KVS struct {
 	raftLogger              raft.Logger
 	ctx                     context.Context
 	handler                 Handler
-	infrastructure          KvsInfrastructure
-	consensusInfrastructure consensus.Infrastructure
-	kvsState                *state.State
+	outbound                OutboundPort
+	consensusOutbound       consensus.OutboundPort
+	activationResolver      *activation.Resolver
 	sectorInformationBroker *broker.Broker
 	observation             observation.Caller
-	store                   kvsTypes.KvsStore
+	store                   kvsTypes.Store
 	localNodeID             *types.NodeID
 	mtx                     sync.RWMutex // for sectors, hostingSector, memberStates
 	sectors                 map[kvsTypes.SectorKey]*sector.Sector
@@ -90,10 +90,10 @@ func NewKVS(conf *Config) *KVS {
 	k := &KVS{
 		logger:                  conf.Logger,
 		handler:                 conf.Handler,
-		infrastructure:          conf.KvsInfrastructure,
-		consensusInfrastructure: conf.ConsensusInfrastructure,
+		outbound:                conf.Outbound,
+		consensusOutbound:       conf.ConsensusOutbound,
 		sectorInformationBroker: conf.SectorInformationBroker,
-		kvsState:                conf.KvsState,
+		activationResolver:      conf.ActivationResolver,
 		observation:             conf.Observation,
 		store:                   conf.Store,
 		sectors:                 make(map[kvsTypes.SectorKey]*sector.Sector),
@@ -134,9 +134,9 @@ func (k *KVS) Start(ctx context.Context, localNodeID *types.NodeID) {
 	}()
 }
 
-func (k *KVS) Get(key string) chan *kvsTypes.KvsGetResult {
-	c := make(chan *kvsTypes.KvsGetResult, 1)
-	k.infrastructure.sendKvsOperation(&operationParam{
+func (k *KVS) Get(key string) chan *kvsTypes.GetResult {
+	c := make(chan *kvsTypes.GetResult, 1)
+	k.outbound.sendKvsOperation(&operationParam{
 		command: proto.KvsOperation_COMMAND_GET,
 		key:     key,
 		value:   nil,
@@ -144,7 +144,7 @@ func (k *KVS) Get(key string) chan *kvsTypes.KvsGetResult {
 			defer close(c)
 
 			if err != nil {
-				c <- &kvsTypes.KvsGetResult{
+				c <- &kvsTypes.GetResult{
 					Data: nil,
 					Err:  err,
 				}
@@ -154,19 +154,19 @@ func (k *KVS) Get(key string) chan *kvsTypes.KvsGetResult {
 			switch res.Error {
 			case proto.KvsOperationResponse_ERROR_NONE:
 				// ok
-				c <- &kvsTypes.KvsGetResult{
+				c <- &kvsTypes.GetResult{
 					Data: res.Value,
 					Err:  nil,
 				}
 
 			case proto.KvsOperationResponse_ERROR_NOT_FOUND:
-				c <- &kvsTypes.KvsGetResult{
+				c <- &kvsTypes.GetResult{
 					Data: nil,
 					Err:  fmt.Errorf("key not found: %s", key),
 				}
 
 			default:
-				c <- &kvsTypes.KvsGetResult{
+				c <- &kvsTypes.GetResult{
 					Data: nil,
 					Err:  fmt.Errorf("unknown error: %d", res.Error),
 				}
@@ -179,7 +179,7 @@ func (k *KVS) Get(key string) chan *kvsTypes.KvsGetResult {
 
 func (k *KVS) Set(key string, value []byte) chan error {
 	c := make(chan error, 1)
-	k.infrastructure.sendKvsOperation(&operationParam{
+	k.outbound.sendKvsOperation(&operationParam{
 		command: proto.KvsOperation_COMMAND_SET,
 		key:     key,
 		value:   value,
@@ -205,7 +205,7 @@ func (k *KVS) Set(key string, value []byte) chan error {
 
 func (k *KVS) Patch(key string, value []byte) chan error {
 	c := make(chan error, 1)
-	k.infrastructure.sendKvsOperation(&operationParam{
+	k.outbound.sendKvsOperation(&operationParam{
 		command: proto.KvsOperation_COMMAND_PATCH,
 		key:     key,
 		value:   value,
@@ -231,7 +231,7 @@ func (k *KVS) Patch(key string, value []byte) chan error {
 
 func (k *KVS) Delete(key string) chan error {
 	c := make(chan error, 1)
-	k.infrastructure.sendKvsOperation(&operationParam{
+	k.outbound.sendKvsOperation(&operationParam{
 		command: proto.KvsOperation_COMMAND_DELETE,
 		key:     key,
 		value:   nil,
@@ -334,7 +334,7 @@ func (k *KVS) getNodesToBeChanged(nextNodeIDs []*types.NodeID) ([]*types.NodeID,
 
 	toRemove := make(map[kvsTypes.SectorNo]struct{})
 	for sec, entry := range k.memberStates {
-		if entry.state == memberStateRemoving || sec == kvsTypes.KvsHostNodeSectorNo {
+		if entry.state == memberStateRemoving || sec == kvsTypes.HostNodeSectorNo {
 			continue
 		}
 		if _, ok := nextNodeIDMap[*entry.nodeID]; !ok {
@@ -350,10 +350,10 @@ func (k *KVS) hostSector(nextNodeIDs []*types.NodeID) {
 		panic("Failed to create new sector ID")
 	}
 
-	k.lastSectorNo = kvsTypes.KvsHostNodeSectorNo
+	k.lastSectorNo = kvsTypes.HostNodeSectorNo
 	members := make(map[kvsTypes.SectorNo]*types.NodeID)
-	members[kvsTypes.KvsHostNodeSectorNo] = k.localNodeID
-	k.memberStates[kvsTypes.KvsHostNodeSectorNo] = &memberStateEntry{
+	members[kvsTypes.HostNodeSectorNo] = k.localNodeID
+	k.memberStates[kvsTypes.HostNodeSectorNo] = &memberStateEntry{
 		nodeID: k.localNodeID,
 		state:  memberStateCreating,
 	}
@@ -371,7 +371,7 @@ func (k *KVS) hostSector(nextNodeIDs []*types.NodeID) {
 
 	sectorKey := &kvsTypes.SectorKey{
 		SectorID: kvsTypes.SectorID(sectorID),
-		SectorNo: kvsTypes.KvsHostNodeSectorNo,
+		SectorNo: kvsTypes.HostNodeSectorNo,
 	}
 	k.hostingSector = sectorKey
 	k.allocateSector(sectorKey, k.localNodeID, true, false, members)
@@ -385,16 +385,16 @@ func (k *KVS) allocateSector(
 	members map[kvsTypes.SectorNo]*types.NodeID,
 ) {
 	s := sector.NewSector(&sector.SectorConfig{
-		Logger:         k.logger,
-		RaftLogger:     k.raftLogger,
-		Handler:        k,
-		Infrastructure: k.consensusInfrastructure,
-		SectorKey:      sectorKey,
-		IsHosting:      isHosting,
-		Join:           append,
-		Members:        members,
-		Store:          k.store,
-		Head:           head,
+		Logger:     k.logger,
+		RaftLogger: k.raftLogger,
+		Handler:    k,
+		Outbound:   k.consensusOutbound,
+		SectorKey:  sectorKey,
+		IsHosting:  isHosting,
+		Join:       append,
+		Members:    members,
+		Store:      k.store,
+		Head:       head,
 	})
 
 	k.sectors[*sectorKey] = s
@@ -421,7 +421,7 @@ func (k *KVS) applyMemberSectors() error {
 
 func (k *KVS) sendSettingMessage() {
 	for sectorNo, ms := range k.memberStates {
-		if sectorNo == kvsTypes.KvsHostNodeSectorNo {
+		if sectorNo == kvsTypes.HostNodeSectorNo {
 			continue
 		}
 
@@ -431,7 +431,7 @@ func (k *KVS) sendSettingMessage() {
 
 		case memberStateCreating, memberStateAppending, memberStateConfiguredConsensus:
 			members := make(map[kvsTypes.SectorNo]*types.NodeID)
-			members[kvsTypes.KvsHostNodeSectorNo] = k.localNodeID
+			members[kvsTypes.HostNodeSectorNo] = k.localNodeID
 			for sn, ms := range k.memberStates {
 				members[sn] = ms.nodeID
 			}
@@ -443,7 +443,7 @@ func (k *KVS) sendSettingMessage() {
 				command = proto.SectorManageMember_COMMAND_APPEND
 			}
 
-			go k.infrastructure.sendSectorManageMember(&SectorManageMemberParam{
+			go k.outbound.sendSectorManageMember(&SectorManageMemberParam{
 				dstNodeID: ms.nodeID,
 				sectorID:  k.hostingSector.SectorID,
 				sectorNo:  sectorNo,
@@ -471,7 +471,7 @@ func (k *KVS) kvsOperate(command proto.KvsOperation_Command, key string, value [
 
 		e := proto.KvsOperationResponse_ERROR_NONE
 		if err != nil {
-			if err == kvsTypes.ErrorKvsStoreKeyNotFound {
+			if err == kvsTypes.ErrorStoreKeyNotFound {
 				e = proto.KvsOperationResponse_ERROR_NOT_FOUND
 			} else {
 				e = proto.KvsOperationResponse_ERROR_UNKNOWN
@@ -595,7 +595,7 @@ func (k *KVS) SectorAppendNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.
 		return
 	}
 
-	if sectorNo == kvsTypes.KvsHostNodeSectorNo {
+	if sectorNo == kvsTypes.HostNodeSectorNo {
 		if member.state == memberStateCreating {
 			member.state = memberStateNormal
 		} else {
@@ -642,14 +642,14 @@ func (k *KVS) getTailAddress() *types.NodeID {
 }
 
 func (k *KVS) activateSector() {
-	kvsState, err := k.kvsState.Get(k.ctx)
+	entireState, err := k.activationResolver.ResolveEntireState(k.ctx)
 	if err != nil {
 		k.logger.Warn("Failed to get KVS state", "error", err)
 		return
 	}
 
 	// other node might have already activated the sector, check the state again
-	if kvsState != types.KvsStateInactive {
+	if entireState != kvsTypes.ActivationStateInactive {
 		return
 	}
 

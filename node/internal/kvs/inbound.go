@@ -25,45 +25,43 @@ import (
 	networkTypes "github.com/llamerada-jp/colonio/types/network"
 )
 
-type kvsUsecase interface {
+type inboundPort interface {
 	kvsOperate(command proto.KvsOperation_Command, key string, value []byte) (proto.KvsOperationResponse_Error, []byte)
 	sectorManageMember(param *sectorManageMemberParam) error
 	sectorManageMemberResponse(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID, sectorNo kvsTypes.SectorNo)
 	processConsensusMessage(key kvsTypes.SectorKey, content *proto.ConsensusMessage)
 }
 
-var _ kvsUsecase = &KVS{}
+var _ inboundPort = &KVS{}
 
-type KvsGateway struct {
+type inboundAdapter struct {
 	logger     *slog.Logger
 	transferer *transferer.Transferer
-	usecase    kvsUsecase
+	core       inboundPort
 }
 
-func NewKvsGateway(l *slog.Logger, t *transferer.Transferer, u kvsUsecase) *KvsGateway {
-	g := &KvsGateway{
+func NewInbound(l *slog.Logger, t *transferer.Transferer, c inboundPort) {
+	i := &inboundAdapter{
 		logger:     l,
 		transferer: t,
-		usecase:    u,
+		core:       c,
 	}
 
-	transferer.SetRequestHandler[proto.PacketContent_KvsOperation](t, g.recvKvsOperation)
-	transferer.SetRequestHandler[proto.PacketContent_SectorManageMember](t, g.recvSectorManageMember)
-	transferer.SetRequestHandler[proto.PacketContent_SectorManageMemberResponse](t, g.recvSectorManageMemberResponse)
-	transferer.SetRequestHandler[proto.PacketContent_ConsensusMessage](t, g.recvConsensusMessage)
-
-	return g
+	transferer.SetRequestHandler[proto.PacketContent_KvsOperation](t, i.recvKvsOperation)
+	transferer.SetRequestHandler[proto.PacketContent_SectorManageMember](t, i.recvSectorManageMember)
+	transferer.SetRequestHandler[proto.PacketContent_SectorManageMemberResponse](t, i.recvSectorManageMemberResponse)
+	transferer.SetRequestHandler[proto.PacketContent_ConsensusMessage](t, i.recvConsensusMessage)
 }
 
-func (g *KvsGateway) recvKvsOperation(packet *networkTypes.Packet) {
+func (i *inboundAdapter) recvKvsOperation(packet *networkTypes.Packet) {
 	content := packet.Content.GetKvsOperation()
 	command := content.Command
 	key := content.Key
 	value := content.Value
 
-	errCode, resValue := g.usecase.kvsOperate(command, key, value)
+	errCode, resValue := i.core.kvsOperate(command, key, value)
 
-	g.transferer.Response(packet, &proto.PacketContent{
+	i.transferer.Response(packet, &proto.PacketContent{
 		Content: &proto.PacketContent_KvsOperationResponse{
 			KvsOperationResponse: &proto.KvsOperationResponse{
 				Error: errCode,
@@ -73,11 +71,11 @@ func (g *KvsGateway) recvKvsOperation(packet *networkTypes.Packet) {
 	})
 }
 
-func (g *KvsGateway) recvSectorManageMember(packet *networkTypes.Packet) {
+func (i *inboundAdapter) recvSectorManageMember(packet *networkTypes.Packet) {
 	content := packet.Content.GetSectorManageMember()
 	sectorID, err := kvsTypes.UnmarshalSectorID(content.SectorId)
 	if err != nil {
-		g.logger.Warn("Failed to parse promoter sectorID", "error", err)
+		i.logger.Warn("Failed to parse promoter sectorID", "error", err)
 		return
 	}
 	sectorNo := kvsTypes.SectorNo(content.SectorNo)
@@ -87,12 +85,12 @@ func (g *KvsGateway) recvSectorManageMember(packet *networkTypes.Packet) {
 		var err error
 		members[kvsTypes.SectorNo(sectorNo)], err = types.NewNodeIDFromProto(nodeID)
 		if err != nil {
-			g.logger.Warn("Failed to create NodeID from proto", "error", err, "nodeID", nodeID)
+			i.logger.Warn("Failed to create NodeID from proto", "error", err, "nodeID", nodeID)
 			return
 		}
 	}
 
-	if err := g.usecase.sectorManageMember(&sectorManageMemberParam{
+	if err := i.core.sectorManageMember(&sectorManageMemberParam{
 		command: command,
 		sectorKey: kvsTypes.SectorKey{
 			SectorID: sectorID,
@@ -101,12 +99,12 @@ func (g *KvsGateway) recvSectorManageMember(packet *networkTypes.Packet) {
 		head:    packet.SrcNodeID,
 		members: members,
 	}); err != nil {
-		g.logger.Warn("Failed to configure sector", "error", err)
+		i.logger.Warn("Failed to configure sector", "error", err)
 		return
 	}
 
 	// send response when the node is created or appended
-	g.transferer.RequestOneWay(
+	i.transferer.RequestOneWay(
 		packet.SrcNodeID,
 		networkTypes.PacketModeExplicit|networkTypes.PacketModeNoRetry,
 		&proto.PacketContent{
@@ -120,23 +118,23 @@ func (g *KvsGateway) recvSectorManageMember(packet *networkTypes.Packet) {
 	)
 }
 
-func (g *KvsGateway) recvSectorManageMemberResponse(packet *networkTypes.Packet) {
+func (i *inboundAdapter) recvSectorManageMemberResponse(packet *networkTypes.Packet) {
 	content := packet.Content.GetSectorManageMemberResponse()
 	sectorID, err := kvsTypes.UnmarshalSectorID(content.SectorId)
 	if err != nil {
-		g.logger.Warn("Failed to parse promoter NodeID", "error", err)
+		i.logger.Warn("Failed to parse promoter NodeID", "error", err)
 		return
 	}
 	sectorNo := kvsTypes.SectorNo(content.SectorNo)
 
-	g.usecase.sectorManageMemberResponse(packet.SrcNodeID, sectorID, sectorNo)
+	i.core.sectorManageMemberResponse(packet.SrcNodeID, sectorID, sectorNo)
 }
 
-func (g *KvsGateway) recvConsensusMessage(packet *networkTypes.Packet) {
+func (i *inboundAdapter) recvConsensusMessage(packet *networkTypes.Packet) {
 	content := packet.Content.GetConsensusMessage()
 	sectorID, err := kvsTypes.UnmarshalSectorID(content.SectorId)
 	if err != nil {
-		g.logger.Warn("Failed to parse promoter NodeID", "error", err)
+		i.logger.Warn("Failed to parse promoter NodeID", "error", err)
 		return
 	}
 
@@ -145,5 +143,5 @@ func (g *KvsGateway) recvConsensusMessage(packet *networkTypes.Packet) {
 		SectorNo: kvsTypes.SectorNo(content.SectorNo),
 	}
 
-	g.usecase.processConsensusMessage(sectorKey, content)
+	i.core.processConsensusMessage(sectorKey, content)
 }

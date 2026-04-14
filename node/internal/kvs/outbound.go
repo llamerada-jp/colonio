@@ -41,19 +41,19 @@ type SectorManageMemberParam struct {
 	members   map[kvsTypes.SectorNo]*types.NodeID
 }
 
-type KvsInfrastructure interface {
+type OutboundPort interface {
 	sendKvsOperation(param *operationParam)
 	sendSectorManageMember(param *SectorManageMemberParam)
 }
 
-type kvsInfrastructureImpl struct {
+type outboundAdapter struct {
 	transferer *transferer.Transferer
 }
 
-var _ KvsInfrastructure = &kvsInfrastructureImpl{}
+var _ OutboundPort = &outboundAdapter{}
 
-func NewKvsInfrastructure(transferer *transferer.Transferer) KvsInfrastructure {
-	return &kvsInfrastructureImpl{
+func NewOutbound(transferer *transferer.Transferer) OutboundPort {
+	return &outboundAdapter{
 		transferer: transferer,
 	}
 }
@@ -70,7 +70,7 @@ func (h *operationHandler) OnError(code constants.PacketErrorCode, message strin
 	h.receiver(nil, fmt.Errorf("packet error %d: %s", code, message))
 }
 
-func (i *kvsInfrastructureImpl) sendKvsOperation(param *operationParam) {
+func (i *outboundAdapter) sendKvsOperation(param *operationParam) {
 	dst := types.NewHashedNodeID([]byte(param.key))
 
 	content := &proto.PacketContent{
@@ -88,7 +88,7 @@ func (i *kvsInfrastructureImpl) sendKvsOperation(param *operationParam) {
 	})
 }
 
-func (i *kvsInfrastructureImpl) sendSectorManageMember(param *SectorManageMemberParam) {
+func (i *outboundAdapter) sendSectorManageMember(param *SectorManageMemberParam) {
 	members := make(map[uint64]*proto.NodeID)
 	for no, nid := range param.members {
 		members[uint64(no)] = nid.Proto()

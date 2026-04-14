@@ -27,6 +27,7 @@ import (
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/test/util/helper"
 	"github.com/llamerada-jp/colonio/types"
+	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -695,7 +696,7 @@ func (h *dummyGWHandler) HandleUnassignNode(ctx context.Context, nodeID *types.N
 	return nil
 }
 
-func TestController_StateKvs(t *testing.T) {
+func TestController_ResolveKvsActivation(t *testing.T) {
 	ctx := misc.NewLoggerContext(t.Context(), nil)
 	nodeIDs := testUtil.UniqueNodeIDs(3)
 
@@ -718,38 +719,38 @@ func TestController_StateKvs(t *testing.T) {
 	}
 
 	// The first node becomes a candidate.
-	state, err := c.StateKvs(ctx, nodeIDs[0], false)
+	state, err := c.ResolveKvsActivation(ctx, nodeIDs[0], false)
 	require.NoError(t, err)
-	assert.Equal(t, types.KvsStateInactive, state)
+	assert.Equal(t, kvsTypes.ActivationStateInactive, state)
 
 	// Next node tries to become a candidate but fails because the first node is already a candidate.
-	state, err = c.StateKvs(ctx, nodeIDs[1], false)
+	state, err = c.ResolveKvsActivation(ctx, nodeIDs[1], false)
 	require.NoError(t, err)
-	assert.Equal(t, types.KvsStateUnknown, state)
+	assert.Equal(t, kvsTypes.ActivationStateUnknown, state)
 
 	// The first node becomes offline.
 	err = c.UnassignNode(ctx, nodeIDs[0])
 	require.NoError(t, err)
 
 	// The second node becomes a candidate.
-	state, err = c.StateKvs(ctx, nodeIDs[1], false)
+	state, err = c.ResolveKvsActivation(ctx, nodeIDs[1], false)
 	require.NoError(t, err)
-	assert.Equal(t, types.KvsStateInactive, state)
+	assert.Equal(t, kvsTypes.ActivationStateInactive, state)
 
 	// The third node tries to become a candidate but fails because the second node is already a candidate.
-	state, err = c.StateKvs(ctx, nodeIDs[2], false)
+	state, err = c.ResolveKvsActivation(ctx, nodeIDs[2], false)
 	require.NoError(t, err)
-	assert.Equal(t, types.KvsStateUnknown, state)
+	assert.Equal(t, kvsTypes.ActivationStateUnknown, state)
 
 	// The second node becomes active.
-	state, err = c.StateKvs(ctx, nodeIDs[1], true)
+	state, err = c.ResolveKvsActivation(ctx, nodeIDs[1], true)
 	require.NoError(t, err)
-	assert.Equal(t, types.KvsStateActive, state)
+	assert.Equal(t, kvsTypes.ActivationStateActive, state)
 
 	// The third node knows that the entire KVS is already active.
-	state, err = c.StateKvs(ctx, nodeIDs[2], false)
+	state, err = c.ResolveKvsActivation(ctx, nodeIDs[2], false)
 	require.NoError(t, err)
-	assert.Equal(t, types.KvsStateActive, state)
+	assert.Equal(t, kvsTypes.ActivationStateActive, state)
 }
 
 func TestController_cleanup(t *testing.T) {

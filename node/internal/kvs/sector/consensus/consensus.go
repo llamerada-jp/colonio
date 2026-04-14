@@ -44,23 +44,23 @@ type Handler interface {
 }
 
 type Config struct {
-	Logger         *slog.Logger
-	RaftLogger     raft.Logger
-	Handler        Handler
-	Infrastructure Infrastructure
-	SectorKey      *kvsTypes.SectorKey
-	Join           bool
-	Members        map[kvsTypes.SectorNo]*types.NodeID
+	Logger     *slog.Logger
+	RaftLogger raft.Logger
+	Handler    Handler
+	Outbound   OutboundPort
+	SectorKey  *kvsTypes.SectorKey
+	Join       bool
+	Members    map[kvsTypes.SectorNo]*types.NodeID
 }
 
 type Consensus struct {
-	logger         *slog.Logger
-	handler        Handler
-	infrastructure Infrastructure
-	sectorKey      kvsTypes.SectorKey
-	ctx            context.Context
-	raftNode       raft.Node
-	raftStorage    *raft.MemoryStorage
+	logger      *slog.Logger
+	handler     Handler
+	outbound    OutboundPort
+	sectorKey   kvsTypes.SectorKey
+	ctx         context.Context
+	raftNode    raft.Node
+	raftStorage *raft.MemoryStorage
 
 	snapshotCatchUpEntriesN uint64
 	snapCount               uint64
@@ -74,11 +74,11 @@ type Consensus struct {
 
 func NewConsensus(config *Config) *Consensus {
 	n := &Consensus{
-		logger:         config.Logger,
-		handler:        config.Handler,
-		infrastructure: config.Infrastructure,
-		sectorKey:      *config.SectorKey,
-		raftStorage:    raft.NewMemoryStorage(),
+		logger:      config.Logger,
+		handler:     config.Handler,
+		outbound:    config.Outbound,
+		sectorKey:   *config.SectorKey,
+		raftStorage: raft.NewMemoryStorage(),
 
 		snapshotCatchUpEntriesN: 100,
 		snapCount:               1000,
@@ -240,7 +240,7 @@ func (n *Consensus) sendMessages(messages []raftpb.Message) error {
 			continue
 		}
 
-		n.infrastructure.sendConsensusMessage(
+		n.outbound.sendConsensusMessage(
 			dstNodeID,
 			&proto.ConsensusMessage{
 				SectorId: kvsTypes.MustMarshalSectorID(n.sectorKey.SectorID),

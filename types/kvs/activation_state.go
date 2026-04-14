@@ -19,10 +19,10 @@ import (
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 )
 
-type KvsState int
+type ActivationState int
 
 const (
-	KvsStateUnknown  = KvsState(proto.KvsState_KVS_STATE_UNKNOWN)
-	KvsStateActive   = KvsState(proto.KvsState_KVS_STATE_ACTIVE)
-	KvsStateInactive = KvsState(proto.KvsState_KVS_STATE_INACTIVE)
+	ActivationStateUnknown  = ActivationState(proto.KvsActivationState_KVS_ACTIVATION_STATE_UNKNOWN)
+	ActivationStateActive   = ActivationState(proto.KvsActivationState_KVS_ACTIVATION_STATE_ACTIVE)
+	ActivationStateInactive = ActivationState(proto.KvsActivationState_KVS_ACTIVATION_STATE_INACTIVE)
 )

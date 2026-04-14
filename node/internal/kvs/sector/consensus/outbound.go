@@ -22,24 +22,24 @@ import (
 	networkTypes "github.com/llamerada-jp/colonio/types/network"
 )
 
-type Infrastructure interface {
+type OutboundPort interface {
 	sendConsensusMessage(dstNodeID *types.NodeID, message *proto.ConsensusMessage)
 }
 
-type infrastructureImpl struct {
+type outboundAdapter struct {
 	transferer *transferer.Transferer
 }
 
-var _ Infrastructure = &infrastructureImpl{}
+var _ OutboundPort = &outboundAdapter{}
 
-func NewInfrastructure(transferer *transferer.Transferer) Infrastructure {
-	return &infrastructureImpl{
+func NewOutbound(transferer *transferer.Transferer) OutboundPort {
+	return &outboundAdapter{
 		transferer: transferer,
 	}
 }
 
-func (i *infrastructureImpl) sendConsensusMessage(dstNodeID *types.NodeID, message *proto.ConsensusMessage) {
-	i.transferer.RequestOneWay(
+func (o *outboundAdapter) sendConsensusMessage(dstNodeID *types.NodeID, message *proto.ConsensusMessage) {
+	o.transferer.RequestOneWay(
 		dstNodeID,
 		networkTypes.PacketModeExplicit|networkTypes.PacketModeNoRetry,
 		&proto.PacketContent{

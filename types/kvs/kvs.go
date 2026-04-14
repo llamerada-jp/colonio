@@ -20,11 +20,11 @@ import (
 )
 
 var (
-	ErrorKvsStoreInvalidNodeKey = fmt.Errorf("invalid node key")
-	ErrorKvsStoreKeyNotFound    = fmt.Errorf("key not found")
+	ErrorStoreInvalidNodeKey = fmt.Errorf("invalid node key")
+	ErrorStoreKeyNotFound    = fmt.Errorf("key not found")
 )
 
-type KvsStore interface {
+type Store interface {
 	AllocateSector(sectorKey *SectorKey) error
 	ReleaseSector(sectorKey *SectorKey) error
 
@@ -34,7 +34,7 @@ type KvsStore interface {
 	Delete(sectorKey *SectorKey, key string) error
 }
 
-type KvsGetResult struct {
+type GetResult struct {
 	Data []byte
 	Err  error
 }

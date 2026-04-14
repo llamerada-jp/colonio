@@ -51,7 +51,7 @@ type kvsHandlerHelper struct {
 	isStable             bool
 	backwardNextNodeIDs  []*types.NodeID
 	frontwardNextNodeIDs []*types.NodeID
-	// KvsState is not used in this test yet
+	// SectorState is not used in this test yet
 }
 
 var _ Handler = &kvsHandlerHelper{}
@@ -70,10 +70,6 @@ func (h *kvsHandlerHelper) KvsGetStability() (bool, []*types.NodeID, []*types.No
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 	return h.isStable, h.backwardNextNodeIDs, h.frontwardNextNodeIDs
-}
-
-func (h *kvsHandlerHelper) KvsState(state types.KvsState) (types.KvsState, error) {
-	panic("not used in this test")
 }
 
 func TestKVS_getNodesToBeChanged(t *testing.T) {
@@ -96,7 +92,7 @@ func TestKVS_getNodesToBeChanged(t *testing.T) {
 		{
 			name: "new members",
 			memberStates: map[kvsTypes.SectorNo]*memberStateEntry{
-				kvsTypes.KvsHostNodeSectorNo: {
+				kvsTypes.HostNodeSectorNo: {
 					nodeID: nodeIDs[0],
 					state:  memberStateNormal,
 				},

@@ -19,7 +19,7 @@ service SeedService {
   }
   rpc PollSignal(PollSignalRequest) returns (stream PollSignalResponse) {
   }
-  rpc StateKvs(StateKvsRequest) returns (StateKvsResponse) {
+  rpc ResolveKvsActivation(ResolveKvsActivationRequest) returns (ResolveKvsActivationResponse) {
   }
 }
 
@@ -100,17 +100,17 @@ message PollSignalResponse {
   repeated Signal signals = 1;
 }
 
-enum KvsState {
+enum KvsActivationState {
   // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
-  KVS_STATE_UNKNOWN  = 0;
-  KVS_STATE_ACTIVE   = 1;
-  KVS_STATE_INACTIVE = 2;
+  KVS_ACTIVATION_STATE_UNKNOWN  = 0;
+  KVS_ACTIVATION_STATE_ACTIVE   = 1;
+  KVS_ACTIVATION_STATE_INACTIVE = 2;
 }
 
-message StateKvsRequest {
-  KvsState state = 1;
+message ResolveKvsActivationRequest {
+  KvsActivationState sector_state = 1;
 }
 
-message StateKvsResponse {
-  KvsState entire_state = 1;
+message ResolveKvsActivationResponse {
+  KvsActivationState entire_state = 1;
 }

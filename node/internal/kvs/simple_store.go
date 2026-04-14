@@ -21,19 +21,19 @@ import (
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 )
 
-type SimpleKvsStore struct {
+type SimpleStore struct {
 	stores map[kvsTypes.SectorKey]map[string][]byte
 }
 
-var _ kvsTypes.KvsStore = (*SimpleKvsStore)(nil)
+var _ kvsTypes.Store = (*SimpleStore)(nil)
 
-func NewSimpleKvsStore() *SimpleKvsStore {
-	return &SimpleKvsStore{
+func NewSimpleStore() *SimpleStore {
+	return &SimpleStore{
 		stores: make(map[kvsTypes.SectorKey]map[string][]byte),
 	}
 }
 
-func (s *SimpleKvsStore) AllocateSector(sectorKey *kvsTypes.SectorKey) error {
+func (s *SimpleStore) AllocateSector(sectorKey *kvsTypes.SectorKey) error {
 	if _, exists := s.stores[*sectorKey]; exists {
 		return fmt.Errorf("node already exists: %s", sectorKey.SectorID.String())
 	}
@@ -41,7 +41,7 @@ func (s *SimpleKvsStore) AllocateSector(sectorKey *kvsTypes.SectorKey) error {
 	return nil
 }
 
-func (s *SimpleKvsStore) ReleaseSector(sectorKey *kvsTypes.SectorKey) error {
+func (s *SimpleStore) ReleaseSector(sectorKey *kvsTypes.SectorKey) error {
 	if _, exists := s.stores[*sectorKey]; !exists {
 		return fmt.Errorf("node does not exist: %s", sectorKey.SectorID.String())
 	}
@@ -49,7 +49,7 @@ func (s *SimpleKvsStore) ReleaseSector(sectorKey *kvsTypes.SectorKey) error {
 	return nil
 }
 
-func (s *SimpleKvsStore) Set(sectorKey *kvsTypes.SectorKey, key string, value []byte) error {
+func (s *SimpleStore) Set(sectorKey *kvsTypes.SectorKey, key string, value []byte) error {
 	if value == nil {
 		return fmt.Errorf("value cannot be nil")
 	}
@@ -60,7 +60,7 @@ func (s *SimpleKvsStore) Set(sectorKey *kvsTypes.SectorKey, key string, value []
 	return nil
 }
 
-func (s *SimpleKvsStore) Get(sectorKey *kvsTypes.SectorKey, key string) ([]byte, error) {
+func (s *SimpleStore) Get(sectorKey *kvsTypes.SectorKey, key string) ([]byte, error) {
 	if _, exists := s.stores[*sectorKey]; !exists {
 		return nil, fmt.Errorf("node does not exist: %s", sectorKey.SectorID.String())
 	}
@@ -71,11 +71,11 @@ func (s *SimpleKvsStore) Get(sectorKey *kvsTypes.SectorKey, key string) ([]byte,
 	return value, nil
 }
 
-func (s *SimpleKvsStore) Patch(sectorKey *kvsTypes.SectorKey, key string, value []byte) error {
-	panic("Patch not implemented in SimpleKvsStore")
+func (s *SimpleStore) Patch(sectorKey *kvsTypes.SectorKey, key string, value []byte) error {
+	panic("Patch not implemented in SimpleStore")
 }
 
-func (s *SimpleKvsStore) Delete(sectorKey *kvsTypes.SectorKey, key string) error {
+func (s *SimpleStore) Delete(sectorKey *kvsTypes.SectorKey, key string) error {
 	if _, exists := s.stores[*sectorKey]; !exists {
 		return fmt.Errorf("node does not exist: %s", sectorKey.SectorID.String())
 	}

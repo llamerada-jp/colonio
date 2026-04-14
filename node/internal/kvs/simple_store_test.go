@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSimpleKvsStore_NewCluster(t *testing.T) {
+func TestSimpleStore_NewCluster(t *testing.T) {
 	sectorIDs := testUtil.UniqueSectorIDs(2)
 	sectorNos := testUtil.UniqueNumbersU[kvsTypes.SectorNo](2)
 
@@ -118,7 +118,7 @@ func TestSimpleKvsStore_NewCluster(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &SimpleKvsStore{
+			s := &SimpleStore{
 				stores: tt.stores,
 			}
 			err := s.AllocateSector(tt.sectorKey)
@@ -132,7 +132,7 @@ func TestSimpleKvsStore_NewCluster(t *testing.T) {
 	}
 }
 
-func TestSimpleKvsStore_DeleteCluster(t *testing.T) {
+func TestSimpleStore_DeleteCluster(t *testing.T) {
 	sectorIDs := testUtil.UniqueSectorIDs(2)
 	sectorNos := testUtil.UniqueNumbersU[kvsTypes.SectorNo](2)
 
@@ -204,7 +204,7 @@ func TestSimpleKvsStore_DeleteCluster(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &SimpleKvsStore{
+			s := &SimpleStore{
 				stores: tt.stores,
 			}
 			err := s.ReleaseSector(tt.sectorKey)
@@ -218,7 +218,7 @@ func TestSimpleKvsStore_DeleteCluster(t *testing.T) {
 	}
 }
 
-func TestSimpleKvsStore_Set(t *testing.T) {
+func TestSimpleStore_Set(t *testing.T) {
 	sectorIDs := testUtil.UniqueSectorIDs(2)
 	sectorNos := testUtil.UniqueNumbersU[kvsTypes.SectorNo](2)
 
@@ -362,7 +362,7 @@ func TestSimpleKvsStore_Set(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &SimpleKvsStore{
+			s := &SimpleStore{
 				stores: tt.stores,
 			}
 			err := s.Set(tt.sectorKey, tt.key, tt.value)
@@ -376,7 +376,7 @@ func TestSimpleKvsStore_Set(t *testing.T) {
 	}
 }
 
-func TestSimpleKvsStore_Get(t *testing.T) {
+func TestSimpleStore_Get(t *testing.T) {
 	sectorIDs := testUtil.UniqueSectorIDs(2)
 	sectorNos := testUtil.UniqueNumbersU[kvsTypes.SectorNo](2)
 
@@ -467,7 +467,7 @@ func TestSimpleKvsStore_Get(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &SimpleKvsStore{
+			s := &SimpleStore{
 				stores: tt.stores,
 			}
 			value, err := s.Get(tt.sectorKey, tt.key)
@@ -481,7 +481,7 @@ func TestSimpleKvsStore_Get(t *testing.T) {
 	}
 }
 
-func TestSimpleKvsStore_Delete(t *testing.T) {
+func TestSimpleStore_Delete(t *testing.T) {
 	sectorIDs := testUtil.UniqueSectorIDs(2)
 	sectorNos := testUtil.UniqueNumbersU[kvsTypes.SectorNo](2)
 
@@ -569,7 +569,7 @@ func TestSimpleKvsStore_Delete(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &SimpleKvsStore{
+			s := &SimpleStore{
 				stores: tt.stores,
 			}
 			err := s.Delete(tt.sectorKey, tt.key)

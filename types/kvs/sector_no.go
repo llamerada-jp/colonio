@@ -25,5 +25,5 @@ type SectorNo uint64
 const (
 	// Each Sector has one host node. The SectorNo of that node is fixed at 1.
 	// The host node does not necessarily match the Raft leader.
-	KvsHostNodeSectorNo = SectorNo(1)
+	HostNodeSectorNo = SectorNo(1)
 )

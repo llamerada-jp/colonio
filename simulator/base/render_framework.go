@@ -286,7 +286,7 @@ func (f *RenderFramework) gatherSectorInfo() []sectorInfo {
 		// convert sector record to sector info
 		var hostRecord *sectorRecord
 		for _, r := range records {
-			if r.sectorNo == kvsTypes.KvsHostNodeSectorNo {
+			if r.sectorNo == kvsTypes.HostNodeSectorNo {
 				hostRecord = &r
 				break
 			}

@@ -21,53 +21,53 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type KvsState int32
+type KvsActivationState int32
 
 const (
 	// buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
-	KvsState_KVS_STATE_UNKNOWN  KvsState = 0
-	KvsState_KVS_STATE_ACTIVE   KvsState = 1
-	KvsState_KVS_STATE_INACTIVE KvsState = 2
+	KvsActivationState_KVS_ACTIVATION_STATE_UNKNOWN  KvsActivationState = 0
+	KvsActivationState_KVS_ACTIVATION_STATE_ACTIVE   KvsActivationState = 1
+	KvsActivationState_KVS_ACTIVATION_STATE_INACTIVE KvsActivationState = 2
 )
 
-// Enum value maps for KvsState.
+// Enum value maps for KvsActivationState.
 var (
-	KvsState_name = map[int32]string{
-		0: "KVS_STATE_UNKNOWN",
-		1: "KVS_STATE_ACTIVE",
-		2: "KVS_STATE_INACTIVE",
+	KvsActivationState_name = map[int32]string{
+		0: "KVS_ACTIVATION_STATE_UNKNOWN",
+		1: "KVS_ACTIVATION_STATE_ACTIVE",
+		2: "KVS_ACTIVATION_STATE_INACTIVE",
 	}
-	KvsState_value = map[string]int32{
-		"KVS_STATE_UNKNOWN":  0,
-		"KVS_STATE_ACTIVE":   1,
-		"KVS_STATE_INACTIVE": 2,
+	KvsActivationState_value = map[string]int32{
+		"KVS_ACTIVATION_STATE_UNKNOWN":  0,
+		"KVS_ACTIVATION_STATE_ACTIVE":   1,
+		"KVS_ACTIVATION_STATE_INACTIVE": 2,
 	}
 )
 
-func (x KvsState) Enum() *KvsState {
-	p := new(KvsState)
+func (x KvsActivationState) Enum() *KvsActivationState {
+	p := new(KvsActivationState)
 	*p = x
 	return p
 }
 
-func (x KvsState) String() string {
+func (x KvsActivationState) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (KvsState) Descriptor() protoreflect.EnumDescriptor {
+func (KvsActivationState) Descriptor() protoreflect.EnumDescriptor {
 	return file_api_colonio_v1alpha_seed_proto_enumTypes[0].Descriptor()
 }
 
-func (KvsState) Type() protoreflect.EnumType {
+func (KvsActivationState) Type() protoreflect.EnumType {
 	return &file_api_colonio_v1alpha_seed_proto_enumTypes[0]
 }
 
-func (x KvsState) Number() protoreflect.EnumNumber {
+func (x KvsActivationState) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use KvsState.Descriptor instead.
-func (KvsState) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use KvsActivationState.Descriptor instead.
+func (KvsActivationState) EnumDescriptor() ([]byte, []int) {
 	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{0}
 }
 
@@ -900,27 +900,27 @@ func (x *PollSignalResponse) GetSignals() []*Signal {
 	return nil
 }
 
-type StateKvsRequest struct {
+type ResolveKvsActivationRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	State         KvsState               `protobuf:"varint,1,opt,name=state,proto3,enum=api.colonio.v1alpha.KvsState" json:"state,omitempty"`
+	SectorState   KvsActivationState     `protobuf:"varint,1,opt,name=sector_state,json=sectorState,proto3,enum=api.colonio.v1alpha.KvsActivationState" json:"sector_state,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *StateKvsRequest) Reset() {
-	*x = StateKvsRequest{}
+func (x *ResolveKvsActivationRequest) Reset() {
+	*x = ResolveKvsActivationRequest{}
 	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *StateKvsRequest) String() string {
+func (x *ResolveKvsActivationRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*StateKvsRequest) ProtoMessage() {}
+func (*ResolveKvsActivationRequest) ProtoMessage() {}
 
-func (x *StateKvsRequest) ProtoReflect() protoreflect.Message {
+func (x *ResolveKvsActivationRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -932,39 +932,39 @@ func (x *StateKvsRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use StateKvsRequest.ProtoReflect.Descriptor instead.
-func (*StateKvsRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ResolveKvsActivationRequest.ProtoReflect.Descriptor instead.
+func (*ResolveKvsActivationRequest) Descriptor() ([]byte, []int) {
 	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{16}
 }
 
-func (x *StateKvsRequest) GetState() KvsState {
+func (x *ResolveKvsActivationRequest) GetSectorState() KvsActivationState {
 	if x != nil {
-		return x.State
+		return x.SectorState
 	}
-	return KvsState_KVS_STATE_UNKNOWN
+	return KvsActivationState_KVS_ACTIVATION_STATE_UNKNOWN
 }
 
-type StateKvsResponse struct {
+type ResolveKvsActivationResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	EntireState   KvsState               `protobuf:"varint,1,opt,name=entire_state,json=entireState,proto3,enum=api.colonio.v1alpha.KvsState" json:"entire_state,omitempty"`
+	EntireState   KvsActivationState     `protobuf:"varint,1,opt,name=entire_state,json=entireState,proto3,enum=api.colonio.v1alpha.KvsActivationState" json:"entire_state,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *StateKvsResponse) Reset() {
-	*x = StateKvsResponse{}
+func (x *ResolveKvsActivationResponse) Reset() {
+	*x = ResolveKvsActivationResponse{}
 	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *StateKvsResponse) String() string {
+func (x *ResolveKvsActivationResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*StateKvsResponse) ProtoMessage() {}
+func (*ResolveKvsActivationResponse) ProtoMessage() {}
 
-func (x *StateKvsResponse) ProtoReflect() protoreflect.Message {
+func (x *ResolveKvsActivationResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_api_colonio_v1alpha_seed_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -976,16 +976,16 @@ func (x *StateKvsResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use StateKvsResponse.ProtoReflect.Descriptor instead.
-func (*StateKvsResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use ResolveKvsActivationResponse.ProtoReflect.Descriptor instead.
+func (*ResolveKvsActivationResponse) Descriptor() ([]byte, []int) {
 	return file_api_colonio_v1alpha_seed_proto_rawDescGZIP(), []int{17}
 }
 
-func (x *StateKvsResponse) GetEntireState() KvsState {
+func (x *ResolveKvsActivationResponse) GetEntireState() KvsActivationState {
 	if x != nil {
 		return x.EntireState
 	}
-	return KvsState_KVS_STATE_UNKNOWN
+	return KvsActivationState_KVS_ACTIVATION_STATE_UNKNOWN
 }
 
 var File_api_colonio_v1alpha_seed_proto protoreflect.FileDescriptor
@@ -1033,15 +1033,15 @@ const file_api_colonio_v1alpha_seed_proto_rawDesc = "" +
 	"\x12SendSignalResponse\"\x13\n" +
 	"\x11PollSignalRequest\"K\n" +
 	"\x12PollSignalResponse\x125\n" +
-	"\asignals\x18\x01 \x03(\v2\x1b.api.colonio.v1alpha.SignalR\asignals\"F\n" +
-	"\x0fStateKvsRequest\x123\n" +
-	"\x05state\x18\x01 \x01(\x0e2\x1d.api.colonio.v1alpha.KvsStateR\x05state\"T\n" +
-	"\x10StateKvsResponse\x12@\n" +
-	"\fentire_state\x18\x01 \x01(\x0e2\x1d.api.colonio.v1alpha.KvsStateR\ventireState*O\n" +
-	"\bKvsState\x12\x15\n" +
-	"\x11KVS_STATE_UNKNOWN\x10\x00\x12\x14\n" +
-	"\x10KVS_STATE_ACTIVE\x10\x01\x12\x16\n" +
-	"\x12KVS_STATE_INACTIVE\x10\x022\xcb\x05\n" +
+	"\asignals\x18\x01 \x03(\v2\x1b.api.colonio.v1alpha.SignalR\asignals\"i\n" +
+	"\x1bResolveKvsActivationRequest\x12J\n" +
+	"\fsector_state\x18\x01 \x01(\x0e2'.api.colonio.v1alpha.KvsActivationStateR\vsectorState\"j\n" +
+	"\x1cResolveKvsActivationResponse\x12J\n" +
+	"\fentire_state\x18\x01 \x01(\x0e2'.api.colonio.v1alpha.KvsActivationStateR\ventireState*z\n" +
+	"\x12KvsActivationState\x12 \n" +
+	"\x1cKVS_ACTIVATION_STATE_UNKNOWN\x10\x00\x12\x1f\n" +
+	"\x1bKVS_ACTIVATION_STATE_ACTIVE\x10\x01\x12!\n" +
+	"\x1dKVS_ACTIVATION_STATE_INACTIVE\x10\x022\xef\x05\n" +
 	"\vSeedService\x12_\n" +
 	"\n" +
 	"AssignNode\x12&.api.colonio.v1alpha.AssignNodeRequest\x1a'.api.colonio.v1alpha.AssignNodeResponse\"\x00\x12e\n" +
@@ -1051,8 +1051,8 @@ const file_api_colonio_v1alpha_seed_proto_rawDesc = "" +
 	"\n" +
 	"SendSignal\x12&.api.colonio.v1alpha.SendSignalRequest\x1a'.api.colonio.v1alpha.SendSignalResponse\"\x00\x12a\n" +
 	"\n" +
-	"PollSignal\x12&.api.colonio.v1alpha.PollSignalRequest\x1a'.api.colonio.v1alpha.PollSignalResponse\"\x000\x01\x12Y\n" +
-	"\bStateKvs\x12$.api.colonio.v1alpha.StateKvsRequest\x1a%.api.colonio.v1alpha.StateKvsResponse\"\x00B5Z3github.com/llamerada-jp/colonio/api/colonio/v1alphab\x06proto3"
+	"PollSignal\x12&.api.colonio.v1alpha.PollSignalRequest\x1a'.api.colonio.v1alpha.PollSignalResponse\"\x000\x01\x12}\n" +
+	"\x14ResolveKvsActivation\x120.api.colonio.v1alpha.ResolveKvsActivationRequest\x1a1.api.colonio.v1alpha.ResolveKvsActivationResponse\"\x00B5Z3github.com/llamerada-jp/colonio/api/colonio/v1alphab\x06proto3"
 
 var (
 	file_api_colonio_v1alpha_seed_proto_rawDescOnce sync.Once
@@ -1069,27 +1069,27 @@ func file_api_colonio_v1alpha_seed_proto_rawDescGZIP() []byte {
 var file_api_colonio_v1alpha_seed_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_api_colonio_v1alpha_seed_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_api_colonio_v1alpha_seed_proto_goTypes = []any{
-	(KvsState)(0),                      // 0: api.colonio.v1alpha.KvsState
-	(SignalOffer_Type)(0),              // 1: api.colonio.v1alpha.SignalOffer.Type
-	(*Signal)(nil),                     // 2: api.colonio.v1alpha.Signal
-	(*SignalOffer)(nil),                // 3: api.colonio.v1alpha.SignalOffer
-	(*SignalAnswer)(nil),               // 4: api.colonio.v1alpha.SignalAnswer
-	(*SignalICE)(nil),                  // 5: api.colonio.v1alpha.SignalICE
-	(*AssignNodeRequest)(nil),          // 6: api.colonio.v1alpha.AssignNodeRequest
-	(*AssignNodeResponse)(nil),         // 7: api.colonio.v1alpha.AssignNodeResponse
-	(*UnassignNodeRequest)(nil),        // 8: api.colonio.v1alpha.UnassignNodeRequest
-	(*UnassignNodeResponse)(nil),       // 9: api.colonio.v1alpha.UnassignNodeResponse
-	(*KeepaliveRequest)(nil),           // 10: api.colonio.v1alpha.KeepaliveRequest
-	(*KeepaliveResponse)(nil),          // 11: api.colonio.v1alpha.KeepaliveResponse
-	(*ReconcileNextNodesRequest)(nil),  // 12: api.colonio.v1alpha.ReconcileNextNodesRequest
-	(*ReconcileNextNodesResponse)(nil), // 13: api.colonio.v1alpha.ReconcileNextNodesResponse
-	(*SendSignalRequest)(nil),          // 14: api.colonio.v1alpha.SendSignalRequest
-	(*SendSignalResponse)(nil),         // 15: api.colonio.v1alpha.SendSignalResponse
-	(*PollSignalRequest)(nil),          // 16: api.colonio.v1alpha.PollSignalRequest
-	(*PollSignalResponse)(nil),         // 17: api.colonio.v1alpha.PollSignalResponse
-	(*StateKvsRequest)(nil),            // 18: api.colonio.v1alpha.StateKvsRequest
-	(*StateKvsResponse)(nil),           // 19: api.colonio.v1alpha.StateKvsResponse
-	(*NodeID)(nil),                     // 20: api.colonio.v1alpha.NodeID
+	(KvsActivationState)(0),              // 0: api.colonio.v1alpha.KvsActivationState
+	(SignalOffer_Type)(0),                // 1: api.colonio.v1alpha.SignalOffer.Type
+	(*Signal)(nil),                       // 2: api.colonio.v1alpha.Signal
+	(*SignalOffer)(nil),                  // 3: api.colonio.v1alpha.SignalOffer
+	(*SignalAnswer)(nil),                 // 4: api.colonio.v1alpha.SignalAnswer
+	(*SignalICE)(nil),                    // 5: api.colonio.v1alpha.SignalICE
+	(*AssignNodeRequest)(nil),            // 6: api.colonio.v1alpha.AssignNodeRequest
+	(*AssignNodeResponse)(nil),           // 7: api.colonio.v1alpha.AssignNodeResponse
+	(*UnassignNodeRequest)(nil),          // 8: api.colonio.v1alpha.UnassignNodeRequest
+	(*UnassignNodeResponse)(nil),         // 9: api.colonio.v1alpha.UnassignNodeResponse
+	(*KeepaliveRequest)(nil),             // 10: api.colonio.v1alpha.KeepaliveRequest
+	(*KeepaliveResponse)(nil),            // 11: api.colonio.v1alpha.KeepaliveResponse
+	(*ReconcileNextNodesRequest)(nil),    // 12: api.colonio.v1alpha.ReconcileNextNodesRequest
+	(*ReconcileNextNodesResponse)(nil),   // 13: api.colonio.v1alpha.ReconcileNextNodesResponse
+	(*SendSignalRequest)(nil),            // 14: api.colonio.v1alpha.SendSignalRequest
+	(*SendSignalResponse)(nil),           // 15: api.colonio.v1alpha.SendSignalResponse
+	(*PollSignalRequest)(nil),            // 16: api.colonio.v1alpha.PollSignalRequest
+	(*PollSignalResponse)(nil),           // 17: api.colonio.v1alpha.PollSignalResponse
+	(*ResolveKvsActivationRequest)(nil),  // 18: api.colonio.v1alpha.ResolveKvsActivationRequest
+	(*ResolveKvsActivationResponse)(nil), // 19: api.colonio.v1alpha.ResolveKvsActivationResponse
+	(*NodeID)(nil),                       // 20: api.colonio.v1alpha.NodeID
 }
 var file_api_colonio_v1alpha_seed_proto_depIdxs = []int32{
 	20, // 0: api.colonio.v1alpha.Signal.dst_node_id:type_name -> api.colonio.v1alpha.NodeID
@@ -1103,22 +1103,22 @@ var file_api_colonio_v1alpha_seed_proto_depIdxs = []int32{
 	20, // 8: api.colonio.v1alpha.ReconcileNextNodesRequest.disconnected_node_ids:type_name -> api.colonio.v1alpha.NodeID
 	2,  // 9: api.colonio.v1alpha.SendSignalRequest.signal:type_name -> api.colonio.v1alpha.Signal
 	2,  // 10: api.colonio.v1alpha.PollSignalResponse.signals:type_name -> api.colonio.v1alpha.Signal
-	0,  // 11: api.colonio.v1alpha.StateKvsRequest.state:type_name -> api.colonio.v1alpha.KvsState
-	0,  // 12: api.colonio.v1alpha.StateKvsResponse.entire_state:type_name -> api.colonio.v1alpha.KvsState
+	0,  // 11: api.colonio.v1alpha.ResolveKvsActivationRequest.sector_state:type_name -> api.colonio.v1alpha.KvsActivationState
+	0,  // 12: api.colonio.v1alpha.ResolveKvsActivationResponse.entire_state:type_name -> api.colonio.v1alpha.KvsActivationState
 	6,  // 13: api.colonio.v1alpha.SeedService.AssignNode:input_type -> api.colonio.v1alpha.AssignNodeRequest
 	8,  // 14: api.colonio.v1alpha.SeedService.UnassignNode:input_type -> api.colonio.v1alpha.UnassignNodeRequest
 	10, // 15: api.colonio.v1alpha.SeedService.Keepalive:input_type -> api.colonio.v1alpha.KeepaliveRequest
 	12, // 16: api.colonio.v1alpha.SeedService.ReconcileNextNodes:input_type -> api.colonio.v1alpha.ReconcileNextNodesRequest
 	14, // 17: api.colonio.v1alpha.SeedService.SendSignal:input_type -> api.colonio.v1alpha.SendSignalRequest
 	16, // 18: api.colonio.v1alpha.SeedService.PollSignal:input_type -> api.colonio.v1alpha.PollSignalRequest
-	18, // 19: api.colonio.v1alpha.SeedService.StateKvs:input_type -> api.colonio.v1alpha.StateKvsRequest
+	18, // 19: api.colonio.v1alpha.SeedService.ResolveKvsActivation:input_type -> api.colonio.v1alpha.ResolveKvsActivationRequest
 	7,  // 20: api.colonio.v1alpha.SeedService.AssignNode:output_type -> api.colonio.v1alpha.AssignNodeResponse
 	9,  // 21: api.colonio.v1alpha.SeedService.UnassignNode:output_type -> api.colonio.v1alpha.UnassignNodeResponse
 	11, // 22: api.colonio.v1alpha.SeedService.Keepalive:output_type -> api.colonio.v1alpha.KeepaliveResponse
 	13, // 23: api.colonio.v1alpha.SeedService.ReconcileNextNodes:output_type -> api.colonio.v1alpha.ReconcileNextNodesResponse
 	15, // 24: api.colonio.v1alpha.SeedService.SendSignal:output_type -> api.colonio.v1alpha.SendSignalResponse
 	17, // 25: api.colonio.v1alpha.SeedService.PollSignal:output_type -> api.colonio.v1alpha.PollSignalResponse
-	19, // 26: api.colonio.v1alpha.SeedService.StateKvs:output_type -> api.colonio.v1alpha.StateKvsResponse
+	19, // 26: api.colonio.v1alpha.SeedService.ResolveKvsActivation:output_type -> api.colonio.v1alpha.ResolveKvsActivationResponse
 	20, // [20:27] is the sub-list for method output_type
 	13, // [13:20] is the sub-list for method input_type
 	13, // [13:13] is the sub-list for extension type_name

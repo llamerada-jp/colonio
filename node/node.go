@@ -25,9 +25,9 @@ import (
 
 	"github.com/llamerada-jp/colonio/node/internal/geometry"
 	"github.com/llamerada-jp/colonio/node/internal/kvs"
+	"github.com/llamerada-jp/colonio/node/internal/kvs/activation"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/broker"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/sector/consensus"
-	"github.com/llamerada-jp/colonio/node/internal/kvs/state"
 	"github.com/llamerada-jp/colonio/node/internal/messaging"
 	"github.com/llamerada-jp/colonio/node/internal/network"
 	"github.com/llamerada-jp/colonio/node/internal/network/node_accessor"
@@ -63,7 +63,7 @@ type Node interface {
 	GetLocalNodeID() string
 	UpdateLocalPosition(x, y float64) error
 	// kvs
-	KvsGet(key string) chan *kvsTypes.KvsGetResult
+	KvsGet(key string) chan *kvsTypes.GetResult
 	KvsSet(key string, value []byte) chan error
 	KvsPatch(key string, value []byte) chan error
 	KvsDelete(key string) chan error
@@ -91,7 +91,7 @@ type Config struct {
 	PacketHopLimit uint
 
 	// KvsStore is an actual data store for KVS.
-	KvsStore kvsTypes.KvsStore
+	KvsStore kvsTypes.Store
 
 	// CacheLifetime is the lifetime of the cache. The spread algorithm is
 	// so simple that the same packet may be received multiple times;
@@ -154,7 +154,7 @@ func WithPlaneGeometry(xMin, xMax, yMin, yMax float64) ConfigSetter {
 	}
 }
 
-func WithKvsStore(store kvsTypes.KvsStore) ConfigSetter {
+func WithKvsStore(store kvsTypes.Store) ConfigSetter {
 	return func(c *Config) {
 		c.KvsStore = store
 	}
@@ -216,7 +216,7 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 	}
 
 	if config.KvsStore == nil {
-		config.KvsStore = kvs.NewSimpleKvsStore()
+		config.KvsStore = kvs.NewSimpleStore()
 	}
 
 	impl := &colonioImpl{
@@ -265,8 +265,8 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 	}
 	impl.network = net
 
-	kvsState := state.NewState(&state.Config{
-		Infrastructure: state.NewInfrastructure(net.GetSeedClient()),
+	activationResolver := activation.NewResolver(&activation.Config{
+		Outbound: activation.NewOutbound(net.GetSeedClient()),
 	})
 
 	siBroker := broker.NewBroker(&broker.Config{
@@ -280,14 +280,14 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 		Logger:                  config.Logger,
 		EnableRaftLogging:       config.EnableRaftLogging,
 		Handler:                 impl,
-		KvsInfrastructure:       kvs.NewKvsInfrastructure(net.GetTransferer()),
-		ConsensusInfrastructure: consensus.NewInfrastructure(net.GetTransferer()),
+		Outbound:                kvs.NewOutbound(net.GetTransferer()),
+		ConsensusOutbound:       consensus.NewOutbound(net.GetTransferer()),
 		SectorInformationBroker: siBroker,
-		KvsState:                kvsState,
+		ActivationResolver:      activationResolver,
 		Observation:             config.ObservationHandler,
 		Store:                   config.KvsStore,
 	})
-	kvs.NewKvsGateway(impl.logger, net.GetTransferer(), impl.kvs)
+	kvs.NewInbound(impl.logger, net.GetTransferer(), impl.kvs)
 
 	impl.messaging = messaging.NewMessaging(&messaging.Config{
 		Logger:     config.Logger,
@@ -353,7 +353,7 @@ func (c *colonioImpl) KvsGetStability() (bool, []*types.NodeID, []*types.NodeID)
 	return c.network.GetStability()
 }
 
-func (c *colonioImpl) KvsGet(key string) chan *kvsTypes.KvsGetResult {
+func (c *colonioImpl) KvsGet(key string) chan *kvsTypes.GetResult {
 	return c.kvs.Get(key)
 }
 

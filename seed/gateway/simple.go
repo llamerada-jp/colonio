@@ -291,7 +291,7 @@ func (h *SimpleGateway) PublishSignal(ctx context.Context, signal *proto.Signal,
 	return nil
 }
 
-func (h *SimpleGateway) SetKvsState(ctx context.Context, nodeID *types.NodeID, active bool) error {
+func (h *SimpleGateway) SetKvsSectorState(ctx context.Context, nodeID *types.NodeID, active bool) error {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 

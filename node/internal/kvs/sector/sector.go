@@ -36,16 +36,16 @@ type SectorHandler interface {
 }
 
 type SectorConfig struct {
-	Logger         *slog.Logger
-	RaftLogger     raft.Logger
-	Handler        SectorHandler
-	Infrastructure consensus.Infrastructure
-	SectorKey      *kvsTypes.SectorKey
-	IsHosting      bool
-	Join           bool
-	Members        map[kvsTypes.SectorNo]*types.NodeID
-	Store          kvsTypes.KvsStore
-	Head           *types.NodeID
+	Logger     *slog.Logger
+	RaftLogger raft.Logger
+	Handler    SectorHandler
+	Outbound   consensus.OutboundPort
+	SectorKey  *kvsTypes.SectorKey
+	IsHosting  bool
+	Join       bool
+	Members    map[kvsTypes.SectorNo]*types.NodeID
+	Store      kvsTypes.Store
+	Head       *types.NodeID
 }
 
 type SectorInfo struct {
@@ -73,13 +73,13 @@ func NewSector(config *SectorConfig) *Sector {
 	}
 
 	sector.consensus = consensus.NewConsensus(&consensus.Config{
-		Logger:         config.Logger,
-		RaftLogger:     config.RaftLogger,
-		Handler:        sector,
-		Infrastructure: config.Infrastructure,
-		SectorKey:      config.SectorKey,
-		Join:           config.Join,
-		Members:        config.Members,
+		Logger:     config.Logger,
+		RaftLogger: config.RaftLogger,
+		Handler:    sector,
+		Outbound:   config.Outbound,
+		SectorKey:  config.SectorKey,
+		Join:       config.Join,
+		Members:    config.Members,
 	})
 
 	sector.operator = operator.NewOperator(&operator.Config{
@@ -116,13 +116,6 @@ func (s *Sector) RemoveNode(sectorNo kvsTypes.SectorNo) {
 		panic("only host sector can remove node")
 	}
 	s.consensus.RemoveNode(sectorNo)
-}
-
-func (s *Sector) GetTail() *types.NodeID {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
-	return s.tail
 }
 
 func (s *Sector) GetTailAddress() *types.NodeID {

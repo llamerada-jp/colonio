@@ -76,14 +76,14 @@ func (h *consensusHandlerHelper) ConsensusApplySnapshot(snapshot []byte) error {
 	return h.consensusApplySnapshotF(snapshot)
 }
 
-type consensusInfrastructureHelper struct {
+type consensusOutboundHelper struct {
 	t                     *testing.T
 	sendConsensusMessageF func(dstNodeID *types.NodeID, message *proto.ConsensusMessage)
 }
 
-var _ Infrastructure = &consensusInfrastructureHelper{}
+var _ OutboundPort = &consensusOutboundHelper{}
 
-func (h *consensusInfrastructureHelper) sendConsensusMessage(dstNodeID *types.NodeID, message *proto.ConsensusMessage) {
+func (h *consensusOutboundHelper) sendConsensusMessage(dstNodeID *types.NodeID, message *proto.ConsensusMessage) {
 	h.t.Helper()
 	require.NotNil(h.t, h.sendConsensusMessageF)
 	h.sendConsensusMessageF(dstNodeID, message)
@@ -112,7 +112,7 @@ func TestConsensus(t *testing.T) {
 	node0Stopped := false
 	receivedProposals := make([][]*proto.ConsensusProposal, sectorCount)
 	handlers := make([]*consensusHandlerHelper, sectorCount)
-	infrastructures := make([]*consensusInfrastructureHelper, sectorCount)
+	outbound := make([]*consensusOutboundHelper, sectorCount)
 	for i := 0; i < sectorCount; i++ {
 		handlers[i] = &consensusHandlerHelper{
 			t: t,
@@ -145,7 +145,7 @@ func TestConsensus(t *testing.T) {
 			},
 		}
 
-		infrastructures[i] = &consensusInfrastructureHelper{
+		outbound[i] = &consensusOutboundHelper{
 			t: t,
 			sendConsensusMessageF: func(dstNodeID *types.NodeID, message *proto.ConsensusMessage) {
 				assert.Equal(t, message.SectorId, kvsTypes.MustMarshalSectorID(sectorID))
@@ -173,9 +173,9 @@ func TestConsensus(t *testing.T) {
 
 		for i := 0; i < initialMemberCount; i++ {
 			consensuses[i] = NewConsensus(&Config{
-				Logger:         testUtil.Logger(t),
-				Handler:        handlers[i],
-				Infrastructure: infrastructures[i],
+				Logger:   testUtil.Logger(t),
+				Handler:  handlers[i],
+				Outbound: outbound[i],
 				SectorKey: &kvsTypes.SectorKey{
 					SectorID: sectorID,
 					SectorNo: sectorNos[i],
@@ -233,9 +233,9 @@ func TestConsensus(t *testing.T) {
 		}
 
 		consensuses[additionalNodeIdx] = NewConsensus(&Config{
-			Logger:         testUtil.Logger(t),
-			Handler:        handlers[additionalNodeIdx],
-			Infrastructure: infrastructures[additionalNodeIdx],
+			Logger:   testUtil.Logger(t),
+			Handler:  handlers[additionalNodeIdx],
+			Outbound: outbound[additionalNodeIdx],
 			SectorKey: &kvsTypes.SectorKey{
 				SectorID: sectorID,
 				SectorNo: sectorNos[additionalNodeIdx],

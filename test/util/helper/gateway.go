@@ -46,7 +46,7 @@ type Gateway struct {
 	SubscribeSignalF              func(ctx context.Context, nodeID *types.NodeID) error
 	UnsubscribeSignalF            func(ctx context.Context, nodeID *types.NodeID) error
 	PublishSignalF                func(ctx context.Context, signal *proto.Signal, relayToNext bool) error
-	SetKvsStateF                  func(ctx context.Context, nodeID *types.NodeID, active bool) error
+	SetKvsSectorStateF            func(ctx context.Context, nodeID *types.NodeID, active bool) error
 	ExistsKvsActiveNodeF          func(ctx context.Context) (bool, error)
 	SetKvsFirstActiveCandidateF   func(ctx context.Context, nodeID *types.NodeID) error
 	UnsetKvsFirstActiveCandidateF func(ctx context.Context) error
@@ -160,11 +160,11 @@ func (h *Gateway) PublishSignal(ctx context.Context, signal *proto.Signal, relay
 	return h.GetSuper().PublishSignal(ctx, signal, relayToNext)
 }
 
-func (h *Gateway) SetKvsState(ctx context.Context, nodeID *types.NodeID, active bool) error {
-	if h.SetKvsStateF != nil {
-		return h.SetKvsStateF(ctx, nodeID, active)
+func (h *Gateway) SetKvsSectorState(ctx context.Context, nodeID *types.NodeID, active bool) error {
+	if h.SetKvsSectorStateF != nil {
+		return h.SetKvsSectorStateF(ctx, nodeID, active)
 	}
-	return h.GetSuper().SetKvsState(ctx, nodeID, active)
+	return h.GetSuper().SetKvsSectorState(ctx, nodeID, active)
 }
 
 func (h *Gateway) ExistsKvsActiveNode(ctx context.Context) (bool, error) {

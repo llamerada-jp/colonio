@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package state
+package activation
 
 import (
 	"context"
@@ -23,38 +23,38 @@ import (
 	"connectrpc.com/connect"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	service "github.com/llamerada-jp/colonio/api/colonio/v1alpha/v1alphaconnect"
-	"github.com/llamerada-jp/colonio/types"
+	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 )
 
-type Infrastructure interface {
-	send(ctx context.Context, state types.KvsState) (types.KvsState, error)
+type OutboundPort interface {
+	send(ctx context.Context, state kvsTypes.ActivationState) (kvsTypes.ActivationState, error)
 }
 
-type infrastructureImpl struct {
+type outboundAdapter struct {
 	client service.SeedServiceClient
 }
 
-var _ Infrastructure = &infrastructureImpl{}
+var _ OutboundPort = &outboundAdapter{}
 
-func NewInfrastructure(client service.SeedServiceClient) Infrastructure {
-	return &infrastructureImpl{
+func NewOutbound(client service.SeedServiceClient) OutboundPort {
+	return &outboundAdapter{
 		client: client,
 	}
 }
 
-func (i *infrastructureImpl) send(ctx context.Context, state types.KvsState) (types.KvsState, error) {
-	res, err := i.client.StateKvs(ctx, &connect.Request[proto.StateKvsRequest]{
-		Msg: &proto.StateKvsRequest{
-			State: proto.KvsState(state),
+func (i *outboundAdapter) send(ctx context.Context, sectorState kvsTypes.ActivationState) (kvsTypes.ActivationState, error) {
+	res, err := i.client.ResolveKvsActivation(ctx, &connect.Request[proto.ResolveKvsActivationRequest]{
+		Msg: &proto.ResolveKvsActivationRequest{
+			SectorState: proto.KvsActivationState(sectorState),
 		},
 	})
 
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return types.KvsStateUnknown, nil
+			return kvsTypes.ActivationStateUnknown, nil
 		}
-		return types.KvsStateUnknown, fmt.Errorf("failed to set/get state KVS: %w", err)
+		return kvsTypes.ActivationStateUnknown, fmt.Errorf("failed to set/get state KVS: %w", err)
 	}
 
-	return types.KvsState(res.Msg.EntireState), nil
+	return kvsTypes.ActivationState(res.Msg.EntireState), nil
 }

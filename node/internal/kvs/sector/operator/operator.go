@@ -37,7 +37,7 @@ type Handler interface {
 type Config struct {
 	SectorKey *kvsTypes.SectorKey
 	Handler   Handler
-	Store     kvsTypes.KvsStore
+	Store     kvsTypes.Store
 	Head      *types.NodeID
 }
 
@@ -50,7 +50,7 @@ type Operator struct {
 	sectorKey kvsTypes.SectorKey
 	handler   Handler
 	mtx       sync.RWMutex
-	store     kvsTypes.KvsStore
+	store     kvsTypes.Store
 	head      types.NodeID
 	tail      *types.NodeID
 	readonly  *lock
