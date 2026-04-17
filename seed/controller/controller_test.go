@@ -257,6 +257,13 @@ func TestController_Keepalive(t *testing.T) {
 		assert.NotNil(c2, c.keepaliveChannels[*nodeIDs[0]])
 	}, 3*time.Second, 100*time.Millisecond)
 
+	// wait for the goroutine to complete its setup (UpdateNodeLifespan + SubscribeKeepalive)
+	assert.EventuallyWithT(t, func(c2 *assert.CollectT) {
+		mtx.Lock()
+		defer mtx.Unlock()
+		assert.GreaterOrEqual(c2, callCount, 2)
+	}, 3*time.Second, 100*time.Millisecond)
+
 	// If you request keepalive for the same node at the same time, an error will be returned.
 	_, err := c.Keepalive(ctx, nodeIDs[0])
 	assert.Error(t, err)
