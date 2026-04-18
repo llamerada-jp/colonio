@@ -103,6 +103,20 @@ func TestResolver_ResolveEntireState(t *testing.T) {
 			expectReceived: kvsTypes.ActivationStateActive,
 		},
 		{
+			name: "ZeroCacheTTLInvalidatesImmediately",
+			setup: func(s *Resolver) {
+				s.cacheTTL = 0
+				s.sectorState = kvsTypes.ActivationStateActive
+				s.entireState = kvsTypes.ActivationStateInactive
+				s.resolvedAt = time.Now()
+			},
+			returns:        []kvsTypes.ActivationState{kvsTypes.ActivationStateActive},
+			expectState:    kvsTypes.ActivationStateActive,
+			expectCalls:    []kvsTypes.ActivationState{kvsTypes.ActivationStateActive},
+			expectSent:     kvsTypes.ActivationStateActive,
+			expectReceived: kvsTypes.ActivationStateActive,
+		},
+		{
 			name:           "SendError",
 			setup:          func(_ *Resolver) {},
 			err:            errors.New("mock error"),
@@ -166,6 +180,18 @@ func TestResolver_SetSectorState(t *testing.T) {
 			expectReceived: kvsTypes.ActivationStateInactive,
 		},
 		{
+			name: "SameInactiveStateSkipsSend",
+			setup: func(s *Resolver) {
+				s.sectorState = kvsTypes.ActivationStateInactive
+				s.entireState = kvsTypes.ActivationStateActive
+				s.resolvedAt = time.Now()
+			},
+			setState:       kvsTypes.ActivationStateInactive,
+			expectCalls:    []kvsTypes.ActivationState{},
+			expectSent:     kvsTypes.ActivationStateInactive,
+			expectReceived: kvsTypes.ActivationStateActive,
+		},
+		{
 			name:           "StateChangeSends",
 			setup:          func(_ *Resolver) {},
 			setState:       kvsTypes.ActivationStateActive,
@@ -225,4 +251,32 @@ func TestResolver_SetSectorState_PanicsOnUnknown(t *testing.T) {
 	})
 
 	assert.Empty(t, outbound.getCalls())
+}
+
+func TestResolver_ResolveEntireState_ConcurrentCalls(t *testing.T) {
+	outbound := &mockInOutbound{
+		returns: []kvsTypes.ActivationState{
+			kvsTypes.ActivationStateActive,
+			kvsTypes.ActivationStateActive,
+			kvsTypes.ActivationStateActive,
+		},
+	}
+	s := NewResolver(&Config{Outbound: outbound, CacheTTL: time.Second})
+
+	done := make(chan bool, 10)
+	for i := 0; i < 10; i++ {
+		go func() {
+			_, err := s.ResolveEntireState(t.Context())
+			assert.NoError(t, err)
+			done <- true
+		}()
+	}
+
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+
+	// All 10 goroutines should result in only 1 outbound send due to mutex and caching
+	assert.Equal(t, 1, len(outbound.getCalls()))
+	assert.Equal(t, kvsTypes.ActivationStateInactive, outbound.getCalls()[0])
 }

@@ -275,8 +275,11 @@ func (k *KVS) subRoutine() {
 			k.activateSector()
 		}
 		return
+	} else {
+		if err := k.activationResolver.SetSectorState(k.ctx, kvsTypes.ActivationStateActive); err != nil {
+			k.logger.Warn("Failed to set sector state to active", "error", err)
+		}
 	}
-
 }
 
 func (k *KVS) manageMember(nextNodeIDs []*types.NodeID) bool {

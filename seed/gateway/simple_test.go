@@ -666,3 +666,56 @@ func TestSimpleGateway_UnsetKvsFirstActiveCandidate(t *testing.T) {
 		})
 	}
 }
+
+func TestSimpleGateway_SetKvsFirstActiveCandidate_ConcurrentCalls(t *testing.T) {
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
+
+	// Register nodes in the gateway first.
+	concurrency := 10
+	nodeIDs := testUtil.UniqueNodeIDs(concurrency)
+	sg.nodes = make(map[types.NodeID]*nodeEntry)
+	for _, id := range nodeIDs {
+		sg.nodes[*id] = &nodeEntry{
+			lifespan:          time.Now().Add(10 * time.Minute),
+			subscribingSignal: false,
+			waitingSignals:    make([]signalEntry, 0),
+		}
+	}
+
+	// Simulate 10 concurrent nodes trying to register as the first active candidate.
+	results := make(chan error, concurrency)
+	var wg sync.WaitGroup
+
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(nodeID *types.NodeID) {
+			defer wg.Done()
+			err := sg.SetKvsFirstActiveCandidate(t.Context(), nodeID)
+			results <- err
+		}(nodeIDs[i])
+	}
+
+	wg.Wait()
+	close(results)
+
+	// Count results: exactly 1 success, 9 AlreadySet errors.
+	successCount := 0
+	alreadySetCount := 0
+	for err := range results {
+		switch err {
+		case nil:
+			successCount++
+		case ErrKvsFirstActiveCandidateAlreadySet:
+			alreadySetCount++
+		default:
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	assert.Equal(t, 1, successCount, "exactly 1 node should succeed")
+	assert.Equal(t, concurrency-1, alreadySetCount, "remaining nodes should fail with AlreadySet")
+	assert.NotNil(t, sg.kvsFirstActiveCandidate, "candidate should be set after concurrent calls")
+}
