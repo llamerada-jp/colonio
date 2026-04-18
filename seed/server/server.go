@@ -295,13 +295,13 @@ func (c *Server) ResolveKvsActivation(ctx context.Context, request *connect.Requ
 
 	var active bool
 	switch request.Msg.GetSectorState() {
-	case proto.KvsActivationState_KVS_ACTIVATION_STATE_ACTIVE:
+	case proto.ResolveKvsActivationRequest_SECTOR_STATE_ACTIVE:
 		active = true
-	case proto.KvsActivationState_KVS_ACTIVATION_STATE_INACTIVE:
+	case proto.ResolveKvsActivationRequest_SECTOR_STATE_INACTIVE:
 		active = false
 	default:
 		logger.Warn("invalid KVS state", slog.Int("sector state", int(request.Msg.GetSectorState())))
-		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
+		return nil, connect.NewError(connect.CodeInvalidArgument, misc.ErrorByContext(ctx))
 	}
 
 	entireState, err := c.controller.ResolveKvsActivation(ctx, nodeID, active)
@@ -312,7 +312,7 @@ func (c *Server) ResolveKvsActivation(ctx context.Context, request *connect.Requ
 
 	return &connect.Response[proto.ResolveKvsActivationResponse]{
 		Msg: &proto.ResolveKvsActivationResponse{
-			EntireState: proto.KvsActivationState(entireState),
+			EntireState: proto.ResolveKvsActivationResponse_EntireState(entireState),
 		},
 	}, nil
 }

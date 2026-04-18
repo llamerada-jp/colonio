@@ -27,7 +27,7 @@ import (
 )
 
 type OutboundPort interface {
-	send(ctx context.Context, state kvsTypes.ActivationState) (kvsTypes.ActivationState, error)
+	send(ctx context.Context, state kvsTypes.SectorState) (kvsTypes.EntireState, error)
 }
 
 type outboundAdapter struct {
@@ -42,19 +42,19 @@ func NewOutbound(client service.SeedServiceClient) OutboundPort {
 	}
 }
 
-func (i *outboundAdapter) send(ctx context.Context, sectorState kvsTypes.ActivationState) (kvsTypes.ActivationState, error) {
-	res, err := i.client.ResolveKvsActivation(ctx, &connect.Request[proto.ResolveKvsActivationRequest]{
+func (o *outboundAdapter) send(ctx context.Context, sectorState kvsTypes.SectorState) (kvsTypes.EntireState, error) {
+	res, err := o.client.ResolveKvsActivation(ctx, &connect.Request[proto.ResolveKvsActivationRequest]{
 		Msg: &proto.ResolveKvsActivationRequest{
-			SectorState: proto.KvsActivationState(sectorState),
+			SectorState: proto.ResolveKvsActivationRequest_SectorState(sectorState),
 		},
 	})
 
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return kvsTypes.ActivationStateUnknown, nil
+			return kvsTypes.EntireStateUnknown, nil
 		}
-		return kvsTypes.ActivationStateUnknown, fmt.Errorf("failed to set/get state KVS: %w", err)
+		return kvsTypes.EntireStateUnknown, fmt.Errorf("failed to set/get state KVS: %w", err)
 	}
 
-	return kvsTypes.ActivationState(res.Msg.EntireState), nil
+	return kvsTypes.EntireState(res.Msg.EntireState), nil
 }

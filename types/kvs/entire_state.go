@@ -19,10 +19,10 @@ import (
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 )
 
-type ActivationState int
+type EntireState int
 
 const (
-	ActivationStateUnknown  = ActivationState(proto.KvsActivationState_KVS_ACTIVATION_STATE_UNKNOWN)
-	ActivationStateActive   = ActivationState(proto.KvsActivationState_KVS_ACTIVATION_STATE_ACTIVE)
-	ActivationStateInactive = ActivationState(proto.KvsActivationState_KVS_ACTIVATION_STATE_INACTIVE)
+	EntireStateUnknown  = EntireState(proto.ResolveKvsActivationResponse_ENTIRE_STATE_UNKNOWN)
+	EntireStateActive   = EntireState(proto.ResolveKvsActivationResponse_ENTIRE_STATE_ACTIVE)
+	EntireStateInactive = EntireState(proto.ResolveKvsActivationResponse_ENTIRE_STATE_INACTIVE)
 )

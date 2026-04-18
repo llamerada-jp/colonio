@@ -71,42 +71,42 @@ func (m *mockSeedServiceClient) ResolveKvsActivation(_ context.Context, _ *conne
 func TestOutbound_SuccessResponse(t *testing.T) {
 	mockClient := &mockSeedServiceClient{
 		response: &proto.ResolveKvsActivationResponse{
-			EntireState: proto.KvsActivationState_KVS_ACTIVATION_STATE_ACTIVE,
+			EntireState: proto.ResolveKvsActivationResponse_ENTIRE_STATE_ACTIVE,
 		},
 	}
 	outbound := NewOutbound(mockClient)
 
 	ctx := context.Background()
-	state, err := outbound.send(ctx, kvsTypes.ActivationStateInactive)
+	entireState, err := outbound.send(ctx, kvsTypes.SectorStateInactive)
 
 	require.NoError(t, err)
-	assert.Equal(t, kvsTypes.ActivationStateActive, state)
+	assert.Equal(t, kvsTypes.EntireStateActive, entireState)
 }
 
 func TestOutbound_ErrorHandling(t *testing.T) {
 	tests := []struct {
-		name           string
-		err            error
-		expectState    kvsTypes.ActivationState
-		expectErrorNil bool
+		name              string
+		err               error
+		expectEntireState kvsTypes.EntireState
+		expectErrorNil    bool
 	}{
 		{
-			name:           "ContextCanceled returns nil error",
-			err:            context.Canceled,
-			expectState:    kvsTypes.ActivationStateUnknown,
-			expectErrorNil: true,
+			name:              "ContextCanceled returns nil error",
+			err:               context.Canceled,
+			expectEntireState: kvsTypes.EntireStateUnknown,
+			expectErrorNil:    true,
 		},
 		{
-			name:           "ContextDeadlineExceeded returns nil error",
-			err:            context.DeadlineExceeded,
-			expectState:    kvsTypes.ActivationStateUnknown,
-			expectErrorNil: true,
+			name:              "ContextDeadlineExceeded returns nil error",
+			err:               context.DeadlineExceeded,
+			expectEntireState: kvsTypes.EntireStateUnknown,
+			expectErrorNil:    true,
 		},
 		{
-			name:           "OtherError returns wrapped error",
-			err:            errors.New("connection refused"),
-			expectState:    kvsTypes.ActivationStateUnknown,
-			expectErrorNil: false,
+			name:              "OtherError returns wrapped error",
+			err:               errors.New("connection refused"),
+			expectEntireState: kvsTypes.EntireStateUnknown,
+			expectErrorNil:    false,
 		},
 	}
 
@@ -118,9 +118,9 @@ func TestOutbound_ErrorHandling(t *testing.T) {
 			outbound := NewOutbound(mockClient)
 
 			ctx := context.Background()
-			state, err := outbound.send(ctx, kvsTypes.ActivationStateInactive)
+			entireState, err := outbound.send(ctx, kvsTypes.SectorStateInactive)
 
-			assert.Equal(t, tt.expectState, state)
+			assert.Equal(t, tt.expectEntireState, entireState)
 			if tt.expectErrorNil {
 				assert.NoError(t, err)
 			} else {
@@ -134,27 +134,27 @@ func TestOutbound_ErrorHandling(t *testing.T) {
 func TestOutbound_EnumConversion(t *testing.T) {
 	tests := []struct {
 		name          string
-		requestState  kvsTypes.ActivationState
-		responseState proto.KvsActivationState
-		expect        kvsTypes.ActivationState
+		requestState  kvsTypes.SectorState
+		responseState proto.ResolveKvsActivationResponse_EntireState
+		expect        kvsTypes.EntireState
 	}{
 		{
 			name:          "Inactive request Active response",
-			requestState:  kvsTypes.ActivationStateInactive,
-			responseState: proto.KvsActivationState_KVS_ACTIVATION_STATE_ACTIVE,
-			expect:        kvsTypes.ActivationStateActive,
+			requestState:  kvsTypes.SectorStateInactive,
+			responseState: proto.ResolveKvsActivationResponse_ENTIRE_STATE_ACTIVE,
+			expect:        kvsTypes.EntireStateActive,
 		},
 		{
 			name:          "Active request Inactive response",
-			requestState:  kvsTypes.ActivationStateActive,
-			responseState: proto.KvsActivationState_KVS_ACTIVATION_STATE_INACTIVE,
-			expect:        kvsTypes.ActivationStateInactive,
+			requestState:  kvsTypes.SectorStateActive,
+			responseState: proto.ResolveKvsActivationResponse_ENTIRE_STATE_INACTIVE,
+			expect:        kvsTypes.EntireStateInactive,
 		},
 		{
 			name:          "Inactive request Inactive response",
-			requestState:  kvsTypes.ActivationStateInactive,
-			responseState: proto.KvsActivationState_KVS_ACTIVATION_STATE_INACTIVE,
-			expect:        kvsTypes.ActivationStateInactive,
+			requestState:  kvsTypes.SectorStateInactive,
+			responseState: proto.ResolveKvsActivationResponse_ENTIRE_STATE_INACTIVE,
+			expect:        kvsTypes.EntireStateInactive,
 		},
 	}
 
@@ -168,10 +168,10 @@ func TestOutbound_EnumConversion(t *testing.T) {
 			outbound := NewOutbound(mockClient)
 
 			ctx := context.Background()
-			state, err := outbound.send(ctx, tt.requestState)
+			entireState, err := outbound.send(ctx, tt.requestState)
 
 			require.NoError(t, err)
-			assert.Equal(t, tt.expect, state)
+			assert.Equal(t, tt.expect, entireState)
 		})
 	}
 }

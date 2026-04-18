@@ -27,8 +27,8 @@ type Resolver struct {
 	mux         sync.Mutex
 	outbound    OutboundPort
 	cacheTTL    time.Duration
-	entireState kvsTypes.ActivationState // the latest state received from the seed
-	sectorState kvsTypes.ActivationState
+	entireState kvsTypes.EntireState // the latest state received from the seed
+	sectorState kvsTypes.SectorState
 	resolvedAt  time.Time
 }
 
@@ -40,12 +40,12 @@ type Config struct {
 func NewResolver(config *Config) *Resolver {
 	return &Resolver{
 		outbound:    config.Outbound,
-		sectorState: kvsTypes.ActivationStateUnknown,
+		sectorState: kvsTypes.SectorStateInactive,
 		cacheTTL:    config.CacheTTL,
 	}
 }
 
-func (s *Resolver) ResolveEntireState(ctx context.Context) (kvsTypes.ActivationState, error) {
+func (s *Resolver) ResolveEntireState(ctx context.Context) (kvsTypes.EntireState, error) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
@@ -54,15 +54,10 @@ func (s *Resolver) ResolveEntireState(ctx context.Context) (kvsTypes.ActivationS
 	}
 
 	if s.resolvedAt.IsZero() {
-		ss := s.sectorState
-		if ss == kvsTypes.ActivationStateUnknown {
-			ss = kvsTypes.ActivationStateInactive
-		}
-		rs, err := s.outbound.send(ctx, ss)
+		rs, err := s.outbound.send(ctx, s.sectorState)
 		if err != nil {
-			return kvsTypes.ActivationStateUnknown, err
+			return kvsTypes.EntireStateUnknown, err
 		}
-		s.sectorState = ss
 		s.entireState = rs
 		s.resolvedAt = time.Now()
 	}
@@ -70,15 +65,11 @@ func (s *Resolver) ResolveEntireState(ctx context.Context) (kvsTypes.ActivationS
 	return s.entireState, nil
 }
 
-func (s *Resolver) SetSectorState(ctx context.Context, state kvsTypes.ActivationState) error {
-	if state == kvsTypes.ActivationStateUnknown {
-		panic("logic error: state should not be SectorStateUnknown")
-	}
-
+func (s *Resolver) SetSectorState(ctx context.Context, state kvsTypes.SectorState) error {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
-	if s.sectorState == state {
+	if !s.resolvedAt.IsZero() && s.sectorState == state {
 		return nil
 	}
 

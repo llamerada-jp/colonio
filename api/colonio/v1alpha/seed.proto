@@ -27,9 +27,9 @@ message Signal {
   colonio.v1alpha.NodeID dst_node_id = 1;
   colonio.v1alpha.NodeID src_node_id = 2;
   oneof content {
-    SignalOffer offer   = 3;
+    SignalOffer  offer  = 3;
     SignalAnswer answer = 4;
-    SignalICE ice       = 5;
+    SignalICE    ice    = 5;
   }
 }
 
@@ -41,7 +41,7 @@ message SignalOffer {
   }
 
   uint32 offer_id = 1;
-  Type type       = 2;
+  Type   type     = 2;
   string sdp      = 3;
 }
 
@@ -52,16 +52,16 @@ message SignalAnswer {
 }
 
 message SignalICE {
-  uint32 offer_id      = 1;
-  repeated string ices = 2;
+  uint32          offer_id = 1;
+  repeated string ices     = 2;
 }
 
 message AssignNodeRequest {
 }
 
 message AssignNodeResponse {
-  colonio.v1alpha.NodeID node_id = 1;
-  bool is_alone                  = 2;
+  colonio.v1alpha.NodeID node_id  = 1;
+  bool                   is_alone = 2;
 }
 
 message UnassignNodeRequest {
@@ -100,17 +100,21 @@ message PollSignalResponse {
   repeated Signal signals = 1;
 }
 
-enum KvsActivationState {
-  // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
-  KVS_ACTIVATION_STATE_UNKNOWN  = 0;
-  KVS_ACTIVATION_STATE_ACTIVE   = 1;
-  KVS_ACTIVATION_STATE_INACTIVE = 2;
-}
-
 message ResolveKvsActivationRequest {
-  KvsActivationState sector_state = 1;
+  enum SectorState {
+    SECTOR_STATE_UNSPECIFIED = 0;
+    SECTOR_STATE_ACTIVE      = 1;
+    SECTOR_STATE_INACTIVE    = 2;
+  }
+  SectorState sector_state = 1;
 }
 
 message ResolveKvsActivationResponse {
-  KvsActivationState entire_state = 1;
+  enum EntireState {
+    // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+    ENTIRE_STATE_UNKNOWN  = 0;
+    ENTIRE_STATE_ACTIVE   = 1;
+    ENTIRE_STATE_INACTIVE = 2;
+  }
+  EntireState entire_state = 1;
 }

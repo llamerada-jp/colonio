@@ -276,7 +276,7 @@ func (k *KVS) subRoutine() {
 		}
 		return
 	} else {
-		if err := k.activationResolver.SetSectorState(k.ctx, kvsTypes.ActivationStateActive); err != nil {
+		if err := k.activationResolver.SetSectorState(k.ctx, kvsTypes.SectorStateActive); err != nil {
 			k.logger.Warn("Failed to set sector state to active", "error", err)
 		}
 	}
@@ -652,7 +652,7 @@ func (k *KVS) activateSector() {
 	}
 
 	// other node might have already activated the sector, check the state again
-	if entireState != kvsTypes.ActivationStateInactive {
+	if entireState != kvsTypes.EntireStateInactive {
 		return
 	}
 

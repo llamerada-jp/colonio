@@ -719,46 +719,46 @@ func TestController_ResolveKvsActivation(t *testing.T) {
 	}
 
 	// The first node becomes a candidate.
-	state, err := c.ResolveKvsActivation(ctx, nodeIDs[0], false)
+	entireState, err := c.ResolveKvsActivation(ctx, nodeIDs[0], false)
 	require.NoError(t, err)
-	assert.Equal(t, kvsTypes.ActivationStateInactive, state)
+	assert.Equal(t, kvsTypes.EntireStateInactive, entireState)
 
 	// Next node tries to become a candidate but fails because the first node is already a candidate.
-	state, err = c.ResolveKvsActivation(ctx, nodeIDs[1], false)
+	entireState, err = c.ResolveKvsActivation(ctx, nodeIDs[1], false)
 	require.NoError(t, err)
-	assert.Equal(t, kvsTypes.ActivationStateUnknown, state)
+	assert.Equal(t, kvsTypes.EntireStateUnknown, entireState)
 
 	// The first node becomes offline.
 	err = c.UnassignNode(ctx, nodeIDs[0])
 	require.NoError(t, err)
 
 	// The second node becomes a candidate.
-	state, err = c.ResolveKvsActivation(ctx, nodeIDs[1], false)
+	entireState, err = c.ResolveKvsActivation(ctx, nodeIDs[1], false)
 	require.NoError(t, err)
-	assert.Equal(t, kvsTypes.ActivationStateInactive, state)
+	assert.Equal(t, kvsTypes.EntireStateInactive, entireState)
 
 	// The third node tries to become a candidate but fails because the second node is already a candidate.
-	state, err = c.ResolveKvsActivation(ctx, nodeIDs[2], false)
+	entireState, err = c.ResolveKvsActivation(ctx, nodeIDs[2], false)
 	require.NoError(t, err)
-	assert.Equal(t, kvsTypes.ActivationStateUnknown, state)
+	assert.Equal(t, kvsTypes.EntireStateUnknown, entireState)
 
 	// The second node becomes active.
-	state, err = c.ResolveKvsActivation(ctx, nodeIDs[1], true)
+	entireState, err = c.ResolveKvsActivation(ctx, nodeIDs[1], true)
 	require.NoError(t, err)
-	assert.Equal(t, kvsTypes.ActivationStateActive, state)
+	assert.Equal(t, kvsTypes.EntireStateActive, entireState)
 
 	// The third node knows that the entire KVS is already active.
-	state, err = c.ResolveKvsActivation(ctx, nodeIDs[2], false)
+	entireState, err = c.ResolveKvsActivation(ctx, nodeIDs[2], false)
 	require.NoError(t, err)
-	assert.Equal(t, kvsTypes.ActivationStateActive, state)
+	assert.Equal(t, kvsTypes.EntireStateActive, entireState)
 	// When the active node (node 1) goes offline, the candidate should be cleared.
 	err = c.UnassignNode(ctx, nodeIDs[1])
 	require.NoError(t, err)
 
 	// The third node should now be able to become a new candidate since the previous candidate was cleared.
-	state, err = c.ResolveKvsActivation(ctx, nodeIDs[2], false)
+	entireState, err = c.ResolveKvsActivation(ctx, nodeIDs[2], false)
 	require.NoError(t, err)
-	assert.Equal(t, kvsTypes.ActivationStateInactive, state)
+	assert.Equal(t, kvsTypes.EntireStateInactive, entireState)
 }
 
 func TestController_cleanup(t *testing.T) {

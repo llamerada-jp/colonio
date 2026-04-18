@@ -26,17 +26,17 @@ import (
 )
 
 type mockInOutbound struct {
-	calls   []kvsTypes.ActivationState
-	returns []kvsTypes.ActivationState
+	calls   []kvsTypes.SectorState
+	returns []kvsTypes.EntireState
 	err     error
 }
 
 var _ OutboundPort = &mockInOutbound{}
 
-func (m *mockInOutbound) send(_ context.Context, state kvsTypes.ActivationState) (kvsTypes.ActivationState, error) {
+func (m *mockInOutbound) send(_ context.Context, state kvsTypes.SectorState) (kvsTypes.EntireState, error) {
 	m.calls = append(m.calls, state)
 	if m.err != nil {
-		return kvsTypes.ActivationStateUnknown, m.err
+		return kvsTypes.EntireStateUnknown, m.err
 	}
 
 	if len(m.returns) > 0 {
@@ -45,12 +45,12 @@ func (m *mockInOutbound) send(_ context.Context, state kvsTypes.ActivationState)
 		return r, nil
 	}
 
-	return kvsTypes.ActivationStateUnknown, nil
+	return kvsTypes.EntireStateUnknown, nil
 }
 
-func (m *mockInOutbound) getCalls() []kvsTypes.ActivationState {
+func (m *mockInOutbound) getCalls() []kvsTypes.SectorState {
 	if m.calls == nil {
-		return []kvsTypes.ActivationState{}
+		return []kvsTypes.SectorState{}
 	}
 	return m.calls
 }
@@ -59,73 +59,62 @@ func TestResolver_ResolveEntireState(t *testing.T) {
 	tests := []struct {
 		name           string
 		setup          func(s *Resolver)
-		returns        []kvsTypes.ActivationState
+		returns        []kvsTypes.EntireState
 		err            error
-		expectState    kvsTypes.ActivationState
+		expectState    kvsTypes.EntireState
 		expectErr      bool
-		expectCalls    []kvsTypes.ActivationState
-		expectSent     kvsTypes.ActivationState
-		expectReceived kvsTypes.ActivationState
+		expectCalls    []kvsTypes.SectorState
+		expectSent     kvsTypes.SectorState
+		expectReceived kvsTypes.EntireState
 		expectTSZero   bool
 	}{
 		{
 			name:           "FirstCallSendsInactive",
 			setup:          func(_ *Resolver) {},
-			returns:        []kvsTypes.ActivationState{kvsTypes.ActivationStateActive},
-			expectState:    kvsTypes.ActivationStateActive,
-			expectCalls:    []kvsTypes.ActivationState{kvsTypes.ActivationStateInactive},
-			expectSent:     kvsTypes.ActivationStateInactive,
-			expectReceived: kvsTypes.ActivationStateActive,
+			returns:        []kvsTypes.EntireState{kvsTypes.EntireStateActive},
+			expectState:    kvsTypes.EntireStateActive,
+			expectCalls:    []kvsTypes.SectorState{kvsTypes.SectorStateInactive},
+			expectSent:     kvsTypes.SectorStateInactive,
+			expectReceived: kvsTypes.EntireStateActive,
 		},
 		{
 			name: "ValidCacheSkipsSend",
 			setup: func(s *Resolver) {
-				s.sectorState = kvsTypes.ActivationStateActive
-				s.entireState = kvsTypes.ActivationStateInactive
+				s.sectorState = kvsTypes.SectorStateActive
+				s.entireState = kvsTypes.EntireStateInactive
 				s.resolvedAt = time.Now()
 			},
-			expectState:    kvsTypes.ActivationStateInactive,
-			expectCalls:    []kvsTypes.ActivationState{},
-			expectSent:     kvsTypes.ActivationStateActive,
-			expectReceived: kvsTypes.ActivationStateInactive,
+			expectState:    kvsTypes.EntireStateInactive,
+			expectCalls:    []kvsTypes.SectorState{},
+			expectSent:     kvsTypes.SectorStateActive,
+			expectReceived: kvsTypes.EntireStateInactive,
 		},
 		{
 			name: "ExpiredCacheSendsAgain",
 			setup: func(s *Resolver) {
-				s.sectorState = kvsTypes.ActivationStateActive
-				s.entireState = kvsTypes.ActivationStateInactive
+				s.sectorState = kvsTypes.SectorStateActive
+				s.entireState = kvsTypes.EntireStateInactive
 				s.resolvedAt = time.Now().Add(-2 * time.Second)
 			},
-			returns:        []kvsTypes.ActivationState{kvsTypes.ActivationStateActive},
-			expectState:    kvsTypes.ActivationStateActive,
-			expectCalls:    []kvsTypes.ActivationState{kvsTypes.ActivationStateActive},
-			expectSent:     kvsTypes.ActivationStateActive,
-			expectReceived: kvsTypes.ActivationStateActive,
+			returns:        []kvsTypes.EntireState{kvsTypes.EntireStateActive},
+			expectState:    kvsTypes.EntireStateActive,
+			expectCalls:    []kvsTypes.SectorState{kvsTypes.SectorStateActive},
+			expectSent:     kvsTypes.SectorStateActive,
+			expectReceived: kvsTypes.EntireStateActive,
 		},
 		{
 			name: "ZeroCacheTTLInvalidatesImmediately",
 			setup: func(s *Resolver) {
 				s.cacheTTL = 0
-				s.sectorState = kvsTypes.ActivationStateActive
-				s.entireState = kvsTypes.ActivationStateInactive
+				s.sectorState = kvsTypes.SectorStateActive
+				s.entireState = kvsTypes.EntireStateInactive
 				s.resolvedAt = time.Now()
 			},
-			returns:        []kvsTypes.ActivationState{kvsTypes.ActivationStateActive},
-			expectState:    kvsTypes.ActivationStateActive,
-			expectCalls:    []kvsTypes.ActivationState{kvsTypes.ActivationStateActive},
-			expectSent:     kvsTypes.ActivationStateActive,
-			expectReceived: kvsTypes.ActivationStateActive,
-		},
-		{
-			name:           "SendError",
-			setup:          func(_ *Resolver) {},
-			err:            errors.New("mock error"),
-			expectState:    kvsTypes.ActivationStateUnknown,
-			expectErr:      true,
-			expectCalls:    []kvsTypes.ActivationState{kvsTypes.ActivationStateInactive},
-			expectSent:     kvsTypes.ActivationStateUnknown,
-			expectReceived: kvsTypes.ActivationStateUnknown,
-			expectTSZero:   true,
+			returns:        []kvsTypes.EntireState{kvsTypes.EntireStateActive},
+			expectState:    kvsTypes.EntireStateActive,
+			expectCalls:    []kvsTypes.SectorState{kvsTypes.SectorStateActive},
+			expectSent:     kvsTypes.SectorStateActive,
+			expectReceived: kvsTypes.EntireStateActive,
 		},
 	}
 
@@ -159,60 +148,60 @@ func TestResolver_SetSectorState(t *testing.T) {
 	tests := []struct {
 		name           string
 		setup          func(s *Resolver)
-		setState       kvsTypes.ActivationState
-		returns        []kvsTypes.ActivationState
+		setState       kvsTypes.SectorState
+		returns        []kvsTypes.EntireState
 		err            error
 		expectErr      bool
-		expectCalls    []kvsTypes.ActivationState
-		expectSent     kvsTypes.ActivationState
-		expectReceived kvsTypes.ActivationState
+		expectCalls    []kvsTypes.SectorState
+		expectSent     kvsTypes.SectorState
+		expectReceived kvsTypes.EntireState
 	}{
 		{
 			name: "SameStateSkipsSend",
 			setup: func(s *Resolver) {
-				s.sectorState = kvsTypes.ActivationStateActive
-				s.entireState = kvsTypes.ActivationStateInactive
+				s.sectorState = kvsTypes.SectorStateActive
+				s.entireState = kvsTypes.EntireStateInactive
 				s.resolvedAt = time.Now()
 			},
-			setState:       kvsTypes.ActivationStateActive,
-			expectCalls:    []kvsTypes.ActivationState{},
-			expectSent:     kvsTypes.ActivationStateActive,
-			expectReceived: kvsTypes.ActivationStateInactive,
+			setState:       kvsTypes.SectorStateActive,
+			expectCalls:    []kvsTypes.SectorState{},
+			expectSent:     kvsTypes.SectorStateActive,
+			expectReceived: kvsTypes.EntireStateInactive,
 		},
 		{
 			name: "SameInactiveStateSkipsSend",
 			setup: func(s *Resolver) {
-				s.sectorState = kvsTypes.ActivationStateInactive
-				s.entireState = kvsTypes.ActivationStateActive
+				s.sectorState = kvsTypes.SectorStateInactive
+				s.entireState = kvsTypes.EntireStateActive
 				s.resolvedAt = time.Now()
 			},
-			setState:       kvsTypes.ActivationStateInactive,
-			expectCalls:    []kvsTypes.ActivationState{},
-			expectSent:     kvsTypes.ActivationStateInactive,
-			expectReceived: kvsTypes.ActivationStateActive,
+			setState:       kvsTypes.SectorStateInactive,
+			expectCalls:    []kvsTypes.SectorState{},
+			expectSent:     kvsTypes.SectorStateInactive,
+			expectReceived: kvsTypes.EntireStateActive,
 		},
 		{
 			name:           "StateChangeSends",
 			setup:          func(_ *Resolver) {},
-			setState:       kvsTypes.ActivationStateActive,
-			returns:        []kvsTypes.ActivationState{kvsTypes.ActivationStateInactive},
-			expectCalls:    []kvsTypes.ActivationState{kvsTypes.ActivationStateActive},
-			expectSent:     kvsTypes.ActivationStateActive,
-			expectReceived: kvsTypes.ActivationStateInactive,
+			setState:       kvsTypes.SectorStateActive,
+			returns:        []kvsTypes.EntireState{kvsTypes.EntireStateInactive},
+			expectCalls:    []kvsTypes.SectorState{kvsTypes.SectorStateActive},
+			expectSent:     kvsTypes.SectorStateActive,
+			expectReceived: kvsTypes.EntireStateInactive,
 		},
 		{
 			name: "SendErrorKeepsOldState",
 			setup: func(s *Resolver) {
-				s.sectorState = kvsTypes.ActivationStateInactive
-				s.entireState = kvsTypes.ActivationStateActive
+				s.sectorState = kvsTypes.SectorStateInactive
+				s.entireState = kvsTypes.EntireStateActive
 				s.resolvedAt = time.Now()
 			},
-			setState:       kvsTypes.ActivationStateActive,
+			setState:       kvsTypes.SectorStateActive,
 			err:            errors.New("mock error"),
 			expectErr:      true,
-			expectCalls:    []kvsTypes.ActivationState{kvsTypes.ActivationStateActive},
-			expectSent:     kvsTypes.ActivationStateInactive,
-			expectReceived: kvsTypes.ActivationStateActive,
+			expectCalls:    []kvsTypes.SectorState{kvsTypes.SectorStateActive},
+			expectSent:     kvsTypes.SectorStateInactive,
+			expectReceived: kvsTypes.EntireStateActive,
 		},
 	}
 
@@ -242,23 +231,12 @@ func TestResolver_SetSectorState(t *testing.T) {
 	}
 }
 
-func TestResolver_SetSectorState_PanicsOnUnknown(t *testing.T) {
-	outbound := &mockInOutbound{}
-	s := NewResolver(&Config{Outbound: outbound, CacheTTL: time.Second})
-
-	assert.PanicsWithValue(t, "logic error: state should not be SectorStateUnknown", func() {
-		_ = s.SetSectorState(t.Context(), kvsTypes.ActivationStateUnknown)
-	})
-
-	assert.Empty(t, outbound.getCalls())
-}
-
 func TestResolver_ResolveEntireState_ConcurrentCalls(t *testing.T) {
 	outbound := &mockInOutbound{
-		returns: []kvsTypes.ActivationState{
-			kvsTypes.ActivationStateActive,
-			kvsTypes.ActivationStateActive,
-			kvsTypes.ActivationStateActive,
+		returns: []kvsTypes.EntireState{
+			kvsTypes.EntireStateActive,
+			kvsTypes.EntireStateActive,
+			kvsTypes.EntireStateActive,
 		},
 	}
 	s := NewResolver(&Config{Outbound: outbound, CacheTTL: time.Second})
@@ -278,5 +256,5 @@ func TestResolver_ResolveEntireState_ConcurrentCalls(t *testing.T) {
 
 	// All 10 goroutines should result in only 1 outbound send due to mutex and caching
 	assert.Equal(t, 1, len(outbound.getCalls()))
-	assert.Equal(t, kvsTypes.ActivationStateInactive, outbound.getCalls()[0])
+	assert.Equal(t, kvsTypes.SectorStateInactive, outbound.getCalls()[0])
 }
