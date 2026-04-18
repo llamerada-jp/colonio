@@ -33,7 +33,10 @@ type Resolver struct {
 }
 
 type Config struct {
+	// Outbound sends local sector state to the seed and receives entire state.
 	Outbound OutboundPort
+	// CacheTTL controls how long resolved entire state is reused.
+	// CacheTTL=0 means always expired (no cache reuse).
 	CacheTTL time.Duration
 }
 
@@ -49,7 +52,8 @@ func (s *Resolver) ResolveEntireState(ctx context.Context) (kvsTypes.EntireState
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
-	if time.Since(s.resolvedAt) > s.cacheTTL {
+	// TTL=0 means "always expired" so the cache is never reused.
+	if time.Since(s.resolvedAt) >= s.cacheTTL {
 		s.resolvedAt = time.Time{}
 	}
 
