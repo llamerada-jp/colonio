@@ -314,7 +314,9 @@ func (r *routing2D) neighborNodeIDChanged() bool {
 		}
 
 		for i, h := range triangulation.Halfedges {
-			if h <= i {
+			// h == -1 indicates a boundary edge on the convex hull, which has no opposite half-edge.
+			// For non-boundary edges, skip if already processed (h <= i) to avoid duplicates.
+			if h != -1 && h <= i {
 				continue
 			}
 			p1 := &pointSlice[triangulation.Triangles[i]]
