@@ -25,7 +25,6 @@ import (
 	"github.com/google/uuid"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/activation"
-	"github.com/llamerada-jp/colonio/node/internal/kvs/broker"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/sector"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/sector/consensus"
 	"github.com/llamerada-jp/colonio/node/observation"
@@ -50,15 +49,14 @@ type Handler interface {
 }
 
 type Config struct {
-	Logger                  *slog.Logger
-	EnableRaftLogging       bool
-	Handler                 Handler
-	Outbound                OutboundPort
-	ConsensusOutbound       consensus.OutboundPort
-	ActivationResolver      *activation.Resolver
-	SectorInformationBroker *broker.Broker
-	Observation             observation.Caller
-	Store                   kvsTypes.Store
+	Logger             *slog.Logger
+	EnableRaftLogging  bool
+	Handler            Handler
+	Outbound           OutboundPort
+	ConsensusOutbound  consensus.OutboundPort
+	ActivationResolver *activation.Resolver
+	Observation        observation.Caller
+	Store              kvsTypes.Store
 }
 
 type memberStateEntry struct {
@@ -67,37 +65,35 @@ type memberStateEntry struct {
 }
 
 type KVS struct {
-	logger                  *slog.Logger
-	raftLogger              raft.Logger
-	ctx                     context.Context
-	handler                 Handler
-	outbound                OutboundPort
-	consensusOutbound       consensus.OutboundPort
-	activationResolver      *activation.Resolver
-	sectorInformationBroker *broker.Broker
-	observation             observation.Caller
-	store                   kvsTypes.Store
-	localNodeID             *types.NodeID
-	mtx                     sync.RWMutex // for sectors, hostingSector, memberStates
-	sectors                 map[kvsTypes.SectorKey]*sector.Sector
-	sectorUpdated           bool // for observation
-	hostingSector           *kvsTypes.SectorKey
-	lastSectorNo            kvsTypes.SectorNo
-	memberStates            map[kvsTypes.SectorNo]*memberStateEntry
+	logger             *slog.Logger
+	raftLogger         raft.Logger
+	ctx                context.Context
+	handler            Handler
+	outbound           OutboundPort
+	consensusOutbound  consensus.OutboundPort
+	activationResolver *activation.Resolver
+	observation        observation.Caller
+	store              kvsTypes.Store
+	localNodeID        *types.NodeID
+	mtx                sync.RWMutex // for sectors, hostingSector, memberStates
+	sectors            map[kvsTypes.SectorKey]*sector.Sector
+	sectorUpdated      bool // for observation
+	hostingSector      *kvsTypes.SectorKey
+	lastSectorNo       kvsTypes.SectorNo
+	memberStates       map[kvsTypes.SectorNo]*memberStateEntry
 }
 
 func NewKVS(conf *Config) *KVS {
 	k := &KVS{
-		logger:                  conf.Logger,
-		handler:                 conf.Handler,
-		outbound:                conf.Outbound,
-		consensusOutbound:       conf.ConsensusOutbound,
-		sectorInformationBroker: conf.SectorInformationBroker,
-		activationResolver:      conf.ActivationResolver,
-		observation:             conf.Observation,
-		store:                   conf.Store,
-		sectors:                 make(map[kvsTypes.SectorKey]*sector.Sector),
-		memberStates:            make(map[kvsTypes.SectorNo]*memberStateEntry),
+		logger:             conf.Logger,
+		handler:            conf.Handler,
+		outbound:           conf.Outbound,
+		consensusOutbound:  conf.ConsensusOutbound,
+		activationResolver: conf.ActivationResolver,
+		observation:        conf.Observation,
+		store:              conf.Store,
+		sectors:            make(map[kvsTypes.SectorKey]*sector.Sector),
+		memberStates:       make(map[kvsTypes.SectorNo]*memberStateEntry),
 	}
 
 	if conf.EnableRaftLogging {
@@ -112,8 +108,6 @@ func NewKVS(conf *Config) *KVS {
 func (k *KVS) Start(ctx context.Context, localNodeID *types.NodeID) {
 	k.localNodeID = localNodeID
 	k.ctx = ctx
-
-	k.sectorInformationBroker.Start(ctx, localNodeID)
 
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
@@ -261,14 +255,12 @@ func (k *KVS) subRoutine() {
 		return
 	}
 	nextNodeIDs := append(backwardNextNodeIDs, frontwardNextNodeIDs...)
-	k.sectorInformationBroker.UpdateNextNodeIDs(backwardNextNodeIDs, frontwardNextNodeIDs)
 
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
 
 	sectorIsStable := k.manageMember(nextNodeIDs)
 	tailAddress := k.getTailAddress()
-	k.sectorInformationBroker.UpdateTailAddress(tailAddress)
 	if tailAddress == nil {
 		// Haven't activated sector yet, try to activate if the sector is stable.
 		if sectorIsStable {

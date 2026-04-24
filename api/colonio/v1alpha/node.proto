@@ -43,9 +43,8 @@ message PacketContent {
     KvsOperationResponse kvs_operation_response = 31;
 
     ConsensusMessage           consensus_message             = 40;
-    SectorInformation          sector_information            = 41;
-    SectorManageMember         sector_manage_member          = 42;
-    SectorManageMemberResponse sector_manage_member_response = 43;
+    SectorManageMember         sector_manage_member          = 41;
+    SectorManageMemberResponse sector_manage_member_response = 42;
 
     Spread              spread                = 50;
     SpreadKnock         spread_knock          = 51;
@@ -113,10 +112,6 @@ message ConsensusMessage {
   bytes  sector_id = 1;
   uint64 sector_no = 2;
   bytes  message   = 3;
-}
-
-message SectorInformation {
-  NodeID tail_address = 1;
 }
 
 message SectorManageMember {

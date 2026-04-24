@@ -26,7 +26,6 @@ import (
 	"github.com/llamerada-jp/colonio/node/internal/geometry"
 	"github.com/llamerada-jp/colonio/node/internal/kvs"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/activation"
-	"github.com/llamerada-jp/colonio/node/internal/kvs/broker"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/sector/consensus"
 	"github.com/llamerada-jp/colonio/node/internal/messaging"
 	"github.com/llamerada-jp/colonio/node/internal/network"
@@ -269,23 +268,15 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 		Outbound: activation.NewOutbound(net.GetSeedClient()),
 	})
 
-	siBroker := broker.NewBroker(&broker.Config{
-		Logger:   config.Logger,
-		Outbound: broker.NewOutbound(net.GetTransferer()),
-		Interval: 60 * time.Second,
-	})
-	broker.NewInbound(impl.logger, net.GetTransferer(), siBroker)
-
 	impl.kvs = kvs.NewKVS(&kvs.Config{
-		Logger:                  config.Logger,
-		EnableRaftLogging:       config.EnableRaftLogging,
-		Handler:                 impl,
-		Outbound:                kvs.NewOutbound(net.GetTransferer()),
-		ConsensusOutbound:       consensus.NewOutbound(net.GetTransferer()),
-		SectorInformationBroker: siBroker,
-		ActivationResolver:      activationResolver,
-		Observation:             config.ObservationHandler,
-		Store:                   config.KvsStore,
+		Logger:             config.Logger,
+		EnableRaftLogging:  config.EnableRaftLogging,
+		Handler:            impl,
+		Outbound:           kvs.NewOutbound(net.GetTransferer()),
+		ConsensusOutbound:  consensus.NewOutbound(net.GetTransferer()),
+		ActivationResolver: activationResolver,
+		Observation:        config.ObservationHandler,
+		Store:              config.KvsStore,
 	})
 	kvs.NewInbound(impl.logger, net.GetTransferer(), impl.kvs)
 
