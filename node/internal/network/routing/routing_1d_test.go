@@ -479,7 +479,7 @@ func TestRouting1D_getConnections(t *testing.T) {
 		} else {
 			largerNodeIDs = append(largerNodeIDs, nodeID)
 		}
-		if isBetween(nodeID, localNodeID, oppositeNodeID) {
+		if oppositeNodeID.IsBetween(nodeID, localNodeID) {
 			frontwardNodeIDs = append(frontwardNodeIDs, nodeID)
 		} else {
 			backwardNodeIDs = append(backwardNodeIDs, nodeID)
@@ -1145,6 +1145,6 @@ func TestRouting1D_isBetween(t *testing.T) {
 	for i, tt := range tests {
 		t.Logf("test %d", i)
 
-		assert.Equal(t, tt.expect, isBetween(tt.a, tt.b, tt.target))
+		assert.Equal(t, tt.expect, tt.target.IsBetween(tt.a, tt.b))
 	}
 }

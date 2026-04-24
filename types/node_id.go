@@ -183,6 +183,20 @@ func (n *NodeID) Compare(o *NodeID) int {
 	return 1
 }
 
+func (n *NodeID) IsBetween(back, front *NodeID) bool {
+	if back.Equal(front) {
+		panic("back and front should be different")
+	}
+
+	// back < front : back <= target && target < front
+	if back.Smaller(front) {
+		return !n.Smaller(back) && n.Smaller(front)
+	}
+
+	// back > front : back <= target || target < front
+	return !n.Smaller(back) || n.Smaller(front)
+}
+
 func (n *NodeID) Add(o *NodeID) *NodeID {
 	if n.t != typeNormal || o.t != typeNormal {
 		panic("invalid node id type for `Add`")

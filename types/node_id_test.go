@@ -309,6 +309,87 @@ func TestNodeID_Compare(t *testing.T) {
 	}
 }
 
+func TestNodeID_IsBetween(t *testing.T) {
+	tests := []struct {
+		target      *NodeID
+		back        *NodeID
+		front       *NodeID
+		expect      bool
+		shouldPanic bool
+	}{
+		{
+			target: NewNormalNodeID(0, 5),
+			back:   NewNormalNodeID(0, 3),
+			front:  NewNormalNodeID(0, 7),
+			expect: true,
+		},
+		{
+			target: NewNormalNodeID(0, 3),
+			back:   NewNormalNodeID(0, 3),
+			front:  NewNormalNodeID(0, 7),
+			expect: true,
+		},
+		{
+			target: NewNormalNodeID(0, 7),
+			back:   NewNormalNodeID(0, 3),
+			front:  NewNormalNodeID(0, 7),
+			expect: false,
+		},
+		{
+			target: NewNormalNodeID(0, 2),
+			back:   NewNormalNodeID(0, 3),
+			front:  NewNormalNodeID(0, 7),
+			expect: false,
+		},
+		{
+			target: NewNormalNodeID(0, 10),
+			back:   NewNormalNodeID(0, 9),
+			front:  NewNormalNodeID(0, 2),
+			expect: true,
+		},
+		{
+			target: NewNormalNodeID(0, 1),
+			back:   NewNormalNodeID(0, 9),
+			front:  NewNormalNodeID(0, 2),
+			expect: true,
+		},
+		{
+			target: NewNormalNodeID(0, 9),
+			back:   NewNormalNodeID(0, 9),
+			front:  NewNormalNodeID(0, 2),
+			expect: true,
+		},
+		{
+			target: NewNormalNodeID(0, 2),
+			back:   NewNormalNodeID(0, 9),
+			front:  NewNormalNodeID(0, 2),
+			expect: false,
+		},
+		{
+			target: NewNormalNodeID(0, 5),
+			back:   NewNormalNodeID(0, 9),
+			front:  NewNormalNodeID(0, 2),
+			expect: false,
+		},
+		{
+			target:      NewNormalNodeID(0, 9),
+			back:        NewNormalNodeID(0, 9),
+			front:       NewNormalNodeID(0, 9),
+			shouldPanic: true,
+		},
+	}
+
+	for _, tt := range tests {
+		if tt.shouldPanic {
+			assert.Panics(t, func() {
+				tt.target.IsBetween(tt.back, tt.front)
+			})
+		} else {
+			assert.Equal(t, tt.expect, tt.target.IsBetween(tt.back, tt.front))
+		}
+	}
+}
+
 func TestNodeID_Add(t *testing.T) {
 	tests := []struct {
 		a      *NodeID
