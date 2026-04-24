@@ -86,17 +86,6 @@ func (s *Operator) Delete(key string) error {
 	panic("delete not implemented")
 }
 
-func (s *Operator) GetRange() (types.NodeID, *types.NodeID) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
-	if s.tail != nil {
-		tail := *s.tail
-		return s.head, &tail
-	}
-	return s.head, nil
-}
-
 func (s *Operator) SetRange(tail types.NodeID) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()

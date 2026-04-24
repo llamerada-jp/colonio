@@ -27,9 +27,10 @@ import (
 
 type inboundPort interface {
 	kvsOperate(command proto.KvsOperation_Command, key string, value []byte) (proto.KvsOperationResponse_Error, []byte)
+	processConsensusMessage(key kvsTypes.SectorKey, content *proto.ConsensusMessage)
 	sectorManageMember(param *sectorManageMemberParam) error
 	sectorManageMemberResponse(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID, sectorNo kvsTypes.SectorNo)
-	processConsensusMessage(key kvsTypes.SectorKey, content *proto.ConsensusMessage)
+	sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID, withImport bool) bool
 }
 
 var _ inboundPort = &KVS{}
@@ -48,9 +49,10 @@ func NewInbound(l *slog.Logger, t *transferer.Transferer, c inboundPort) {
 	}
 
 	transferer.SetRequestHandler[proto.PacketContent_KvsOperation](t, i.recvKvsOperation)
+	transferer.SetRequestHandler[proto.PacketContent_ConsensusMessage](t, i.recvConsensusMessage)
 	transferer.SetRequestHandler[proto.PacketContent_SectorManageMember](t, i.recvSectorManageMember)
 	transferer.SetRequestHandler[proto.PacketContent_SectorManageMemberResponse](t, i.recvSectorManageMemberResponse)
-	transferer.SetRequestHandler[proto.PacketContent_ConsensusMessage](t, i.recvConsensusMessage)
+	transferer.SetRequestHandler[proto.PacketContent_SectorActivate](t, i.recvSectorActivate)
 }
 
 func (i *inboundAdapter) recvKvsOperation(packet *networkTypes.Packet) {
@@ -69,6 +71,22 @@ func (i *inboundAdapter) recvKvsOperation(packet *networkTypes.Packet) {
 			},
 		},
 	})
+}
+
+func (i *inboundAdapter) recvConsensusMessage(packet *networkTypes.Packet) {
+	content := packet.Content.GetConsensusMessage()
+	sectorID, err := kvsTypes.UnmarshalSectorID(content.SectorId)
+	if err != nil {
+		i.logger.Warn("Failed to parse promoter NodeID", "error", err)
+		return
+	}
+
+	sectorKey := kvsTypes.SectorKey{
+		SectorID: sectorID,
+		SectorNo: kvsTypes.SectorNo(content.SectorNo),
+	}
+
+	i.core.processConsensusMessage(sectorKey, content)
 }
 
 func (i *inboundAdapter) recvSectorManageMember(packet *networkTypes.Packet) {
@@ -130,18 +148,22 @@ func (i *inboundAdapter) recvSectorManageMemberResponse(packet *networkTypes.Pac
 	i.core.sectorManageMemberResponse(packet.SrcNodeID, sectorID, sectorNo)
 }
 
-func (i *inboundAdapter) recvConsensusMessage(packet *networkTypes.Packet) {
-	content := packet.Content.GetConsensusMessage()
+func (i *inboundAdapter) recvSectorActivate(packet *networkTypes.Packet) {
+	content := packet.Content.GetSectorActivate()
 	sectorID, err := kvsTypes.UnmarshalSectorID(content.SectorId)
 	if err != nil {
 		i.logger.Warn("Failed to parse promoter NodeID", "error", err)
 		return
 	}
+	withImport := content.WithImport
 
-	sectorKey := kvsTypes.SectorKey{
-		SectorID: sectorID,
-		SectorNo: kvsTypes.SectorNo(content.SectorNo),
-	}
+	success := i.core.sectorActivate(packet.SrcNodeID, sectorID, withImport)
 
-	i.core.processConsensusMessage(sectorKey, content)
+	i.transferer.Response(packet, &proto.PacketContent{
+		Content: &proto.PacketContent_SectorActivateResponse{
+			SectorActivateResponse: &proto.SectorActivateResponse{
+				Success: success,
+			},
+		},
+	})
 }

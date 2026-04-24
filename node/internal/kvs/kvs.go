@@ -75,12 +75,13 @@ type KVS struct {
 	observation        observation.Caller
 	store              kvsTypes.Store
 	localNodeID        *types.NodeID
-	mtx                sync.RWMutex // for sectors, hostingSector, memberStates
+	mtx                sync.RWMutex // for sectors, hostingSectorKey, memberStates
 	sectors            map[kvsTypes.SectorKey]*sector.Sector
 	sectorUpdated      bool // for observation
-	hostingSector      *kvsTypes.SectorKey
+	hostingSectorKey   *kvsTypes.SectorKey
 	lastSectorNo       kvsTypes.SectorNo
 	memberStates       map[kvsTypes.SectorNo]*memberStateEntry
+	mtxFrontward       sync.Mutex // for activating frontward sector
 }
 
 func NewKVS(conf *Config) *KVS {
@@ -256,18 +257,30 @@ func (k *KVS) subRoutine() {
 	}
 	nextNodeIDs := append(backwardNextNodeIDs, frontwardNextNodeIDs...)
 
-	k.mtx.Lock()
-	defer k.mtx.Unlock()
-
 	sectorIsStable := k.manageMember(nextNodeIDs)
-	tailAddress := k.getTailAddress()
-	if tailAddress == nil {
-		// Haven't activated sector yet, try to activate if the sector is stable.
-		if sectorIsStable {
-			k.activateSector()
+
+	hostingSector := k.sectors[*k.hostingSectorKey]
+	hostingSectorIsActive := hostingSector.GetTailAddress() != nil
+	frontwardNodeExists, frontwardSector := k.getFrontwardSector(frontwardNextNodeIDs)
+
+	if !hostingSectorIsActive && sectorIsStable {
+		entireState, err := k.activationResolver.ResolveEntireState(k.ctx)
+		if err != nil {
+			k.logger.Warn("Failed to get sector entire state", "error", err)
+			return
 		}
+
+		// other node might have already activated the sector, check the state again
+		if entireState != kvsTypes.EntireStateInactive {
+			return
+		}
+
+		// Haven't activated sector yet, try to activate if the sector is stable.
+		k.activateHostingSector(frontwardNextNodeIDs)
 		return
-	} else {
+	}
+
+	if hostingSectorIsActive {
 		if err := k.activationResolver.SetSectorState(k.ctx, kvsTypes.SectorStateActive); err != nil {
 			k.logger.Warn("Failed to set sector state to active", "error", err)
 		}
@@ -275,7 +288,7 @@ func (k *KVS) subRoutine() {
 }
 
 func (k *KVS) manageMember(nextNodeIDs []*types.NodeID) bool {
-	if k.hostingSector == nil {
+	if k.hostingSectorKey == nil {
 		k.hostSector(nextNodeIDs)
 	}
 
@@ -368,7 +381,7 @@ func (k *KVS) hostSector(nextNodeIDs []*types.NodeID) {
 		SectorID: kvsTypes.SectorID(sectorID),
 		SectorNo: kvsTypes.HostNodeSectorNo,
 	}
-	k.hostingSector = sectorKey
+	k.hostingSectorKey = sectorKey
 	k.allocateSector(sectorKey, k.localNodeID, true, false, members)
 }
 
@@ -399,7 +412,7 @@ func (k *KVS) allocateSector(
 }
 
 func (k *KVS) applyMemberSectors() error {
-	sector := k.sectors[*k.hostingSector]
+	sector := k.sectors[*k.hostingSectorKey]
 
 	for sectorNo, member := range k.memberStates {
 		switch member.state {
@@ -440,7 +453,7 @@ func (k *KVS) sendSettingMessage() {
 
 			go k.outbound.sendSectorManageMember(&SectorManageMemberParam{
 				dstNodeID: ms.nodeID,
-				sectorID:  k.hostingSector.SectorID,
+				sectorID:  k.hostingSectorKey.SectorID,
 				sectorNo:  sectorNo,
 				command:   command,
 				members:   members,
@@ -451,13 +464,13 @@ func (k *KVS) sendSettingMessage() {
 
 func (k *KVS) kvsOperate(command proto.KvsOperation_Command, key string, value []byte) (proto.KvsOperationResponse_Error, []byte) {
 	k.mtx.RLock()
-	if k.hostingSector == nil {
+	if k.hostingSectorKey == nil {
 		k.mtx.RUnlock()
 		k.logger.Debug("preparing hosting sector")
 		return proto.KvsOperationResponse_ERROR_PREPARING, nil
 	}
 
-	operator := k.sectors[*k.hostingSector].GetOperator()
+	operator := k.sectors[*k.hostingSectorKey].GetOperator()
 	k.mtx.RUnlock()
 
 	switch command {
@@ -536,7 +549,7 @@ func (k *KVS) sectorManageMemberResponse(srcNodeID *types.NodeID, sectorID kvsTy
 	defer k.mtx.Unlock()
 
 	// ignore response if it does not match the current node
-	if k.hostingSector == nil || k.hostingSector.SectorID != sectorID {
+	if k.hostingSectorKey == nil || k.hostingSectorKey.SectorID != sectorID {
 		return
 	}
 
@@ -552,6 +565,35 @@ func (k *KVS) sectorManageMemberResponse(srcNodeID *types.NodeID, sectorID kvsTy
 			k.logger.Warn("Unexpected state for Raft config response", "sectorNo", sectorNo, "state", entry.state, "nodeID", srcNodeID.String())
 		}
 	}
+}
+
+func (k *KVS) sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID, withImport bool) bool {
+	k.mtx.Lock()
+	defer k.mtx.Unlock()
+
+	// ignore if it does not match the current node
+	if k.hostingSectorKey == nil || k.hostingSectorKey.SectorID != sectorID {
+		return false
+	}
+
+	// skip if there isn't hosing sector
+	hostingSector, ok := k.sectors[*k.hostingSectorKey]
+	if !ok {
+		return false
+	}
+
+	// already activated
+	if hostingSector.GetTailAddress() != nil {
+		return true
+	}
+
+	nodeIsStable, _, frontwardNextNodeIDs := k.handler.KvsGetStability()
+	if !nodeIsStable {
+		return false
+	}
+	k.activateHostingSector(frontwardNextNodeIDs)
+
+	return true
 }
 
 func (k *KVS) processConsensusMessage(key kvsTypes.SectorKey, message *proto.ConsensusMessage) {
@@ -572,7 +614,7 @@ func (k *KVS) SectorError(sectorKey *kvsTypes.SectorKey, err error) {
 }
 
 func (k *KVS) SectorAppendNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {
-	if k.hostingSector == nil || *sectorKey != *k.hostingSector {
+	if k.hostingSectorKey == nil || *sectorKey != *k.hostingSectorKey {
 		return
 	}
 
@@ -621,7 +663,7 @@ func (k *KVS) SectorRemoveNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.
 		return
 	}
 
-	if k.hostingSector != nil && *sectorKey == *k.hostingSector {
+	if k.hostingSectorKey != nil && *sectorKey == *k.hostingSectorKey {
 		delete(k.memberStates, sectorNo)
 	}
 
@@ -631,31 +673,67 @@ func (k *KVS) SectorRemoveNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.
 	go sector.Stop()
 }
 
-func (k *KVS) getTailAddress() *types.NodeID {
-	sector := k.sectors[*k.hostingSector]
-	return sector.GetTailAddress()
+func (k *KVS) activateHostingSector(frontwardNextNodeIDs []*types.NodeID) {
+	// local node is stable and other nodes are not exist
+	if len(frontwardNextNodeIDs) == 0 {
+		if len(k.sectors) != 0 {
+			k.logger.Warn("No frontward node but sectors exist")
+			return
+		}
+		hostingSector := k.sectors[*k.hostingSectorKey]
+		hostingSector.Activate(*k.localNodeID)
+		return
+	}
+
+	var candidate *sector.Sector
+	frontwardNodeID := frontwardNextNodeIDs[0]
+	for sectorKey, sector := range k.sectors {
+		sectorHead := sector.GetHeadAddress()
+		if sectorHead.Equal(k.localNodeID) {
+			continue
+		}
+		if sectorHead.Equal(frontwardNodeID) {
+			if candidate == nil || sectorKey.SectorNo > candidate.GetKey().SectorNo {
+				candidate = sector
+			}
+		}
+
+		if sectorHead.IsBetween(k.localNodeID, frontwardNodeID) {
+			return
+		}
+	}
+	if candidate == nil {
+		return
+	}
+
+	hostingSector := k.sectors[*k.hostingSectorKey]
+	hostingSector.Activate(*candidate.GetHeadAddress())
 }
 
-func (k *KVS) activateSector() {
-	entireState, err := k.activationResolver.ResolveEntireState(k.ctx)
-	if err != nil {
-		k.logger.Warn("Failed to get KVS state", "error", err)
+func (k *KVS) activateFrontwardSector(hostingSector, frontwardSector *sector.Sector) {
+	// Frontward sector has already been activated.
+	if frontwardSector.GetTailAddress() != nil {
 		return
 	}
 
-	// other node might have already activated the sector, check the state again
-	if entireState != kvsTypes.EntireStateInactive {
+	// Frontward sector is not adjacent.
+	if !hostingSector.GetTailAddress().Equal(frontwardSector.GetHeadAddress()) {
 		return
 	}
 
-	frontwardAddress, _ := k.sectorInformationBroker.GetFrontwardState()
-	// haven't got frontward address yet, wait for next subRoutine
-	if frontwardAddress == nil {
+	// lock to avoid multiple activation for frontward sector at the same time.
+	locked := k.mtxFrontward.TryLock()
+	if !locked {
 		return
 	}
-
-	sector := k.sectors[*k.hostingSector]
-	sector.Activate(*frontwardAddress)
+	go func() {
+		defer k.mtxFrontward.Unlock()
+		k.outbound.sendSectorActivate(&SectorActivateParam{
+			dstNodeID:  frontwardSector.GetHeadAddress(),
+			sectorID:   frontwardSector.GetKey().SectorID,
+			withImport: false,
+		})
+	}()
 }
 
 func (k *KVS) takeObservation() {
@@ -668,13 +746,14 @@ func (k *KVS) takeObservation() {
 
 	sectorInfos := make(map[kvsTypes.SectorKey]*observation.SectorInfo)
 	for sectorKey, sector := range k.sectors {
-		sectorInfo := sector.GetInfo()
+		headAddress := sector.GetHeadAddress()
+		tailAddress := sector.GetTailAddress()
 		tail := ""
-		if sectorInfo.Tail != nil {
-			tail = sectorInfo.Tail.String()
+		if tailAddress != nil {
+			tail = tailAddress.String()
 		}
 		sectorInfos[sectorKey] = &observation.SectorInfo{
-			Head: sectorInfo.Head.String(),
+			Head: headAddress.String(),
 			Tail: tail,
 		}
 	}

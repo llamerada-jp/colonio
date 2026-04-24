@@ -118,6 +118,14 @@ func (s *Sector) RemoveNode(sectorNo kvsTypes.SectorNo) {
 	s.consensus.RemoveNode(sectorNo)
 }
 
+func (s *Sector) GetKey() kvsTypes.SectorKey {
+	return s.sectorKey
+}
+
+func (s *Sector) GetHeadAddress() *types.NodeID {
+	return &s.head
+}
+
 func (s *Sector) GetTailAddress() *types.NodeID {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
@@ -141,14 +149,6 @@ func (s *Sector) Activate(tail types.NodeID) {
 
 func (s *Sector) GetOperator() operator.Operations {
 	return s.operator
-}
-
-func (s *Sector) GetInfo() SectorInfo {
-	head, tail := s.operator.GetRange()
-	return SectorInfo{
-		Head: &head,
-		Tail: tail,
-	}
 }
 
 func (s *Sector) ConsensusError(err error) {
@@ -182,8 +182,8 @@ func (s *Sector) processActivateProposal(activate *proto.Activate) {
 		return
 	}
 
-	s.tail = tail
 	s.operator.SetRange(*tail)
+	s.tail = tail
 }
 
 func (s *Sector) ConsensusAppendNode(sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {

@@ -26,6 +26,10 @@ import (
 	networkTypes "github.com/llamerada-jp/colonio/types/network"
 )
 
+var (
+	ErrSectorActivateFailed = fmt.Errorf("failed to activate sector")
+)
+
 type operationParam struct {
 	command  proto.KvsOperation_Command
 	key      string
@@ -41,9 +45,16 @@ type SectorManageMemberParam struct {
 	members   map[kvsTypes.SectorNo]*types.NodeID
 }
 
+type SectorActivateParam struct {
+	dstNodeID  *types.NodeID
+	sectorID   kvsTypes.SectorID
+	withImport bool
+}
+
 type OutboundPort interface {
 	sendKvsOperation(param *operationParam)
 	sendSectorManageMember(param *SectorManageMemberParam)
+	sendSectorActivate(param *SectorActivateParam) error
 }
 
 type outboundAdapter struct {
@@ -108,4 +119,40 @@ func (o *outboundAdapter) sendSectorManageMember(param *SectorManageMemberParam)
 			},
 		},
 	)
+}
+
+type sectorActivateHandler struct {
+	c chan error
+}
+
+func (h *sectorActivateHandler) OnResponse(packet *networkTypes.Packet) {
+	success := packet.Content.GetSectorActivateResponse().GetSuccess()
+	if success {
+		h.c <- nil
+	} else {
+		h.c <- ErrSectorActivateFailed
+	}
+}
+
+func (h *sectorActivateHandler) OnError(code constants.PacketErrorCode, message string) {
+	h.c <- fmt.Errorf("failed to activate sector: packet error %d: %s", code, message)
+}
+
+func (o *outboundAdapter) sendSectorActivate(param *SectorActivateParam) error {
+	c := make(chan error, 1)
+	o.transferer.Request(param.dstNodeID, networkTypes.PacketModeExplicit,
+		&proto.PacketContent{
+			Content: &proto.PacketContent_SectorActivate{
+				SectorActivate: &proto.SectorActivate{
+					SectorId:   kvsTypes.MustMarshalSectorID(param.sectorID),
+					WithImport: param.withImport,
+				},
+			},
+		},
+		&sectorActivateHandler{
+			c: c,
+		},
+	)
+
+	return <-c
 }
