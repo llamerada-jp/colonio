@@ -22,28 +22,28 @@ import (
 	networkTypes "github.com/llamerada-jp/colonio/types/network"
 )
 
-type Infrastructure interface {
+type OutboundPort interface {
 	sendSectorInformation(dst *types.NodeID, tailAddress *types.NodeID)
 }
 
-type infrastructureImpl struct {
+type outboundAdapter struct {
 	transferer *transferer.Transferer
 }
 
-var _ Infrastructure = &infrastructureImpl{}
+var _ OutboundPort = &outboundAdapter{}
 
-func NewInfrastructure(transferer *transferer.Transferer) Infrastructure {
-	return &infrastructureImpl{
+func NewOutbound(transferer *transferer.Transferer) OutboundPort {
+	return &outboundAdapter{
 		transferer: transferer,
 	}
 }
 
-func (i *infrastructureImpl) sendSectorInformation(dst *types.NodeID, tailAddress *types.NodeID) {
+func (o *outboundAdapter) sendSectorInformation(dst *types.NodeID, tailAddress *types.NodeID) {
 	var protoTailAddress *proto.NodeID
 	if tailAddress != nil {
 		protoTailAddress = tailAddress.Proto()
 	}
-	i.transferer.RequestOneWay(
+	o.transferer.RequestOneWay(
 		dst,
 		networkTypes.PacketModeExplicit|networkTypes.PacketModeNoRetry,
 		&proto.PacketContent{

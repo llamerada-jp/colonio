@@ -40,43 +40,43 @@ type sendRecord struct {
 	tailAddress *types.NodeID
 }
 
-type mockInfrastructure struct {
+type mockOutbound struct {
 	mtx     sync.Mutex
 	records []sendRecord
 }
 
-var _ Infrastructure = &mockInfrastructure{}
+var _ OutboundPort = &mockOutbound{}
 
-func (m *mockInfrastructure) sendSectorInformation(dst *types.NodeID, tailAddress *types.NodeID) {
+func (m *mockOutbound) sendSectorInformation(dst *types.NodeID, tailAddress *types.NodeID) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.records = append(m.records, sendRecord{dst: *dst, tailAddress: tailAddress})
 }
 
-func (m *mockInfrastructure) getRecords() []sendRecord {
+func (m *mockOutbound) getRecords() []sendRecord {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	return m.records
 }
 
-func (m *mockInfrastructure) resetRecords() {
+func (m *mockOutbound) resetRecords() {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.records = nil
 }
 
-func newTestBroker(t *testing.T, interval time.Duration, infra *mockInfrastructure) *Broker {
+func newTestBroker(t *testing.T, interval time.Duration, outbound *mockOutbound) *Broker {
 	return NewBroker(&Config{
-		Logger:         testUtil.Logger(t),
-		Infrastructure: infra,
-		Interval:       interval,
+		Logger:   testUtil.Logger(t),
+		Outbound: outbound,
+		Interval: interval,
 	})
 }
 
 func TestBroker_Start_PeriodicSend(t *testing.T) {
-	infra := &mockInfrastructure{}
+	outbound := &mockOutbound{}
 	nodeIDs := testUtil.UniqueNodeIDs(3)
-	b := newTestBroker(t, loopInterval, infra)
+	b := newTestBroker(t, loopInterval, outbound)
 
 	b.Start(t.Context(), nodeIDs[0])
 
@@ -87,14 +87,14 @@ func TestBroker_Start_PeriodicSend(t *testing.T) {
 
 	// wait for at least 3 sends (signal + timer fires)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.GreaterOrEqual(c, len(infra.getRecords()), 3)
+		assert.GreaterOrEqual(c, len(outbound.getRecords()), 3)
 	}, 2*time.Second, 50*time.Millisecond)
 }
 
 func TestBroker_Start_StopsOnCtxCancel(t *testing.T) {
-	infra := &mockInfrastructure{}
+	outbound := &mockOutbound{}
 	nodeIDs := testUtil.UniqueNodeIDs(2)
-	b := newTestBroker(t, loopInterval, infra)
+	b := newTestBroker(t, loopInterval, outbound)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	b.Start(ctx, nodeIDs[0])
@@ -102,15 +102,15 @@ func TestBroker_Start_StopsOnCtxCancel(t *testing.T) {
 	backward := []*types.NodeID{nodeIDs[1]}
 	b.UpdateNextNodeIDs(backward, nil)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.GreaterOrEqual(c, len(infra.getRecords()), 1)
+		assert.GreaterOrEqual(c, len(outbound.getRecords()), 1)
 	}, time.Second, 10*time.Millisecond)
 
 	cancel()
-	infra.resetRecords()
+	outbound.resetRecords()
 
 	// after cancel, no more sends should happen
 	time.Sleep(noFireDuration)
-	assert.Empty(t, infra.getRecords())
+	assert.Empty(t, outbound.getRecords())
 }
 
 func TestBroker_sendSectorInformation_SkippedOnSameValues(t *testing.T) {
@@ -124,9 +124,9 @@ func TestBroker_sendSectorInformation_SkippedOnSameValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			infra := &mockInfrastructure{}
+			outbound := &mockOutbound{}
 			nodeIDs := testUtil.UniqueNodeIDs(3)
-			b := newTestBroker(t, loopInterval, infra)
+			b := newTestBroker(t, loopInterval, outbound)
 
 			b.Start(t.Context(), nodeIDs[0])
 
@@ -138,10 +138,10 @@ func TestBroker_sendSectorInformation_SkippedOnSameValues(t *testing.T) {
 			b.UpdateTailAddress(tailAddr)
 			b.UpdateNextNodeIDs(backward, nil)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				assert.GreaterOrEqual(c, len(infra.getRecords()), 1)
+				assert.GreaterOrEqual(c, len(outbound.getRecords()), 1)
 			}, time.Second, 10*time.Millisecond)
 
-			infra.resetRecords()
+			outbound.resetRecords()
 
 			// set the same values again
 			b.UpdateNextNodeIDs(backward, nil)
@@ -149,15 +149,15 @@ func TestBroker_sendSectorInformation_SkippedOnSameValues(t *testing.T) {
 
 			// no signal should fire, wait a bit and confirm no sends
 			time.Sleep(immediateDuration)
-			assert.Empty(t, infra.getRecords())
+			assert.Empty(t, outbound.getRecords())
 		})
 	}
 }
 
 func TestBroker_sendSectorInformation_EmptyBackward(t *testing.T) {
-	infra := &mockInfrastructure{}
+	outbound := &mockOutbound{}
 	nodeIDs := testUtil.UniqueNodeIDs(2)
-	b := newTestBroker(t, loopInterval, infra)
+	b := newTestBroker(t, loopInterval, outbound)
 
 	b.Start(t.Context(), nodeIDs[0])
 
@@ -165,7 +165,7 @@ func TestBroker_sendSectorInformation_EmptyBackward(t *testing.T) {
 
 	// backward is empty, so no sends even after timer fires
 	time.Sleep(noFireDuration)
-	assert.Empty(t, infra.getRecords())
+	assert.Empty(t, outbound.getRecords())
 }
 
 func TestBroker_UpdateNextNodeIDs_TriggersSend(t *testing.T) {
@@ -179,9 +179,9 @@ func TestBroker_UpdateNextNodeIDs_TriggersSend(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			infra := &mockInfrastructure{}
+			outbound := &mockOutbound{}
 			nodeIDs := testUtil.UniqueNodeIDs(3)
-			b := newTestBroker(t, loopInterval, infra)
+			b := newTestBroker(t, loopInterval, outbound)
 
 			b.Start(t.Context(), nodeIDs[0])
 
@@ -193,15 +193,15 @@ func TestBroker_UpdateNextNodeIDs_TriggersSend(t *testing.T) {
 			// wait for signal-triggered send
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				// no backward nodes yet, so no sends expected from tailAddress update
-				assert.Empty(c, infra.getRecords())
+				assert.Empty(c, outbound.getRecords())
 			}, time.Second, 10*time.Millisecond)
 
-			infra.resetRecords()
+			outbound.resetRecords()
 			backward := []*types.NodeID{nodeIDs[1]}
 			b.UpdateNextNodeIDs(backward, nil)
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				records := infra.getRecords()
+				records := outbound.getRecords()
 				assert.Len(c, records, 1)
 				if len(records) == 1 {
 					assert.Equal(c, *nodeIDs[1], records[0].dst)
@@ -213,9 +213,9 @@ func TestBroker_UpdateNextNodeIDs_TriggersSend(t *testing.T) {
 }
 
 func TestBroker_UpdateNextNodeIDs_FrontwardStored(t *testing.T) {
-	infra := &mockInfrastructure{}
+	outbound := &mockOutbound{}
 	nodeIDs := testUtil.UniqueNodeIDs(4)
-	b := newTestBroker(t, loopInterval, infra)
+	b := newTestBroker(t, loopInterval, outbound)
 
 	b.Start(t.Context(), nodeIDs[0])
 
@@ -228,9 +228,9 @@ func TestBroker_UpdateNextNodeIDs_FrontwardStored(t *testing.T) {
 }
 
 func TestBroker_UpdateNextNodeIDs_EmptyFrontward(t *testing.T) {
-	infra := &mockInfrastructure{}
+	outbound := &mockOutbound{}
 	nodeIDs := testUtil.UniqueNodeIDs(3)
-	b := newTestBroker(t, loopInterval, infra)
+	b := newTestBroker(t, loopInterval, outbound)
 
 	b.Start(t.Context(), nodeIDs[0])
 
@@ -257,9 +257,9 @@ func TestBroker_UpdateTailAddress_TriggersSend(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			infra := &mockInfrastructure{}
+			outbound := &mockOutbound{}
 			nodeIDs := testUtil.UniqueNodeIDs(4)
-			b := newTestBroker(t, loopInterval, infra)
+			b := newTestBroker(t, loopInterval, outbound)
 
 			b.Start(t.Context(), nodeIDs[0])
 
@@ -270,10 +270,10 @@ func TestBroker_UpdateTailAddress_TriggersSend(t *testing.T) {
 			}
 			b.UpdateNextNodeIDs(backward, nil)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				assert.GreaterOrEqual(c, len(infra.getRecords()), 1)
+				assert.GreaterOrEqual(c, len(outbound.getRecords()), 1)
 			}, time.Second, 10*time.Millisecond)
 
-			infra.resetRecords()
+			outbound.resetRecords()
 			var finalTail *types.NodeID
 			if !tt.nilFinalTail {
 				finalTail = nodeIDs[3]
@@ -281,7 +281,7 @@ func TestBroker_UpdateTailAddress_TriggersSend(t *testing.T) {
 			b.UpdateTailAddress(finalTail)
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				records := infra.getRecords()
+				records := outbound.getRecords()
 				assert.Len(c, records, 1)
 				if len(records) == 1 {
 					assert.Equal(c, *nodeIDs[1], records[0].dst)
@@ -323,9 +323,9 @@ func TestBroker_GetFrontwardState(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			infra := &mockInfrastructure{}
+			outbound := &mockOutbound{}
 			nodeIDs := testUtil.UniqueNodeIDs(4)
-			b := newTestBroker(t, loopInterval, infra)
+			b := newTestBroker(t, loopInterval, outbound)
 
 			b.Start(t.Context(), nodeIDs[0])
 
@@ -363,9 +363,9 @@ func TestBroker_GetFrontwardState(t *testing.T) {
 }
 
 func TestBroker_GetFrontwardState_ExpiredEntry(t *testing.T) {
-	infra := &mockInfrastructure{}
+	outbound := &mockOutbound{}
 	nodeIDs := testUtil.UniqueNodeIDs(3)
-	b := newTestBroker(t, loopInterval, infra)
+	b := newTestBroker(t, loopInterval, outbound)
 
 	b.Start(t.Context(), nodeIDs[0])
 
@@ -397,9 +397,9 @@ func TestBroker_processSectorInformation_Overwrite(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			infra := &mockInfrastructure{}
+			outbound := &mockOutbound{}
 			nodeIDs := testUtil.UniqueNodeIDs(4)
-			b := newTestBroker(t, loopInterval, infra)
+			b := newTestBroker(t, loopInterval, outbound)
 
 			b.Start(t.Context(), nodeIDs[0])
 

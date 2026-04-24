@@ -32,7 +32,7 @@ type sectorInformationEntry struct {
 
 type Broker struct {
 	logger          *slog.Logger
-	infrastructure  Infrastructure
+	outbound        OutboundPort
 	interval        time.Duration
 	signal          chan struct{}
 	localNodeID     *types.NodeID
@@ -44,18 +44,18 @@ type Broker struct {
 }
 
 type Config struct {
-	Logger         *slog.Logger
-	Infrastructure Infrastructure
-	Interval       time.Duration
+	Logger   *slog.Logger
+	Outbound OutboundPort
+	Interval time.Duration
 }
 
 func NewBroker(config *Config) *Broker {
 	return &Broker{
-		logger:         config.Logger,
-		infrastructure: config.Infrastructure,
-		interval:       config.Interval,
-		signal:         make(chan struct{}, 1),
-		siEntries:      make(map[types.NodeID]sectorInformationEntry),
+		logger:    config.Logger,
+		outbound:  config.Outbound,
+		interval:  config.Interval,
+		signal:    make(chan struct{}, 1),
+		siEntries: make(map[types.NodeID]sectorInformationEntry),
 	}
 }
 
@@ -92,7 +92,7 @@ func (b *Broker) sendSectorInformation() {
 	defer b.mtx.Unlock()
 
 	for _, dst := range b.backwardNodeIDs {
-		b.infrastructure.sendSectorInformation(dst, b.tailAddress)
+		b.outbound.sendSectorInformation(dst, b.tailAddress)
 	}
 }
 
@@ -165,7 +165,7 @@ type sectorInformationParam struct {
 	tailAddress *types.NodeID
 }
 
-// Called from gateway.
+// Called from inbound.
 func (b *Broker) processSectorInformation(param *sectorInformationParam) {
 	b.mtx.Lock()
 	defer b.mtx.Unlock()

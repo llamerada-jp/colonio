@@ -270,11 +270,11 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 	})
 
 	siBroker := broker.NewBroker(&broker.Config{
-		Logger:         config.Logger,
-		Infrastructure: broker.NewInfrastructure(net.GetTransferer()),
-		Interval:       60 * time.Second,
+		Logger:   config.Logger,
+		Outbound: broker.NewOutbound(net.GetTransferer()),
+		Interval: 60 * time.Second,
 	})
-	broker.NewGateway(impl.logger, net.GetTransferer(), siBroker)
+	broker.NewInbound(impl.logger, net.GetTransferer(), siBroker)
 
 	impl.kvs = kvs.NewKVS(&kvs.Config{
 		Logger:                  config.Logger,

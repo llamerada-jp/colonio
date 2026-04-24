@@ -24,43 +24,43 @@ import (
 	networkTypes "github.com/llamerada-jp/colonio/types/network"
 )
 
-type usecase interface {
+type inboundPort interface {
 	processSectorInformation(param *sectorInformationParam)
 }
 
-var _ usecase = &Broker{}
+var _ inboundPort = &Broker{}
 
-type Gateway struct {
+type inboundAdapter struct {
 	logger     *slog.Logger
 	transferer *transferer.Transferer
-	usecase    usecase
+	core       inboundPort
 }
 
-func NewGateway(logger *slog.Logger, t *transferer.Transferer, usecase usecase) *Gateway {
-	g := &Gateway{
+func NewInbound(logger *slog.Logger, t *transferer.Transferer, core inboundPort) *inboundAdapter {
+	i := &inboundAdapter{
 		logger:     logger,
 		transferer: t,
-		usecase:    usecase,
+		core:       core,
 	}
 
-	transferer.SetRequestHandler[proto.PacketContent_SectorInformation](t, g.recvSectorInformation)
+	transferer.SetRequestHandler[proto.PacketContent_SectorInformation](t, i.recvSectorInformation)
 
-	return g
+	return i
 }
 
-func (g *Gateway) recvSectorInformation(packet *networkTypes.Packet) {
+func (i *inboundAdapter) recvSectorInformation(packet *networkTypes.Packet) {
 	content := packet.Content.GetSectorInformation()
 	var tailAddress *types.NodeID
 	if content.TailAddress != nil {
 		var err error
 		tailAddress, err = types.NewNodeIDFromProto(content.TailAddress)
 		if err != nil {
-			g.logger.Warn("Failed to create NodeID from proto", "error", err, "nodeID", content.TailAddress)
+			i.logger.Warn("Failed to create NodeID from proto", "error", err, "nodeID", content.TailAddress)
 			return
 		}
 	}
 
-	g.usecase.processSectorInformation(&sectorInformationParam{
+	i.core.processSectorInformation(&sectorInformationParam{
 		srcNodeID:   packet.SrcNodeID,
 		tailAddress: tailAddress,
 	})

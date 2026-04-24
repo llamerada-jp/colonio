@@ -70,7 +70,7 @@ func (h *operationHandler) OnError(code constants.PacketErrorCode, message strin
 	h.receiver(nil, fmt.Errorf("packet error %d: %s", code, message))
 }
 
-func (i *outboundAdapter) sendKvsOperation(param *operationParam) {
+func (o *outboundAdapter) sendKvsOperation(param *operationParam) {
 	dst := types.NewHashedNodeID([]byte(param.key))
 
 	content := &proto.PacketContent{
@@ -83,18 +83,18 @@ func (i *outboundAdapter) sendKvsOperation(param *operationParam) {
 		},
 	}
 
-	i.transferer.Request(dst, networkTypes.PacketModeNone, content, &operationHandler{
+	o.transferer.Request(dst, networkTypes.PacketModeNone, content, &operationHandler{
 		receiver: param.receiver,
 	})
 }
 
-func (i *outboundAdapter) sendSectorManageMember(param *SectorManageMemberParam) {
+func (o *outboundAdapter) sendSectorManageMember(param *SectorManageMemberParam) {
 	members := make(map[uint64]*proto.NodeID)
 	for no, nid := range param.members {
 		members[uint64(no)] = nid.Proto()
 	}
 
-	i.transferer.RequestOneWay(
+	o.transferer.RequestOneWay(
 		param.dstNodeID,
 		networkTypes.PacketModeExplicit|networkTypes.PacketModeNoRetry,
 		&proto.PacketContent{
