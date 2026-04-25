@@ -22,26 +22,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/activation"
+	"github.com/llamerada-jp/colonio/node/internal/kvs/hosting"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/sector"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/sector/consensus"
 	"github.com/llamerada-jp/colonio/node/observation"
 	"github.com/llamerada-jp/colonio/types"
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	"go.etcd.io/raft/v3"
-)
-
-type memberState int
-
-const (
-	memberStateNormal              memberState = iota
-	memberStateCreating                        // Creating a new Sector cluster with initial members
-	memberStateAppending                       // Appending a new member to the existing Sector
-	memberStateConfiguredNode                  // Configured node member but not yet joined to the Sector
-	memberStateConfiguredConsensus             // Get consensus of Sector but not configured to the node
-	memberStateRemoving
 )
 
 type Handler interface {
@@ -55,13 +44,9 @@ type Config struct {
 	Outbound           OutboundPort
 	ConsensusOutbound  consensus.OutboundPort
 	ActivationResolver *activation.Resolver
+	HostingManager     *hosting.Manager
 	Observation        observation.Caller
 	Store              kvsTypes.Store
-}
-
-type memberStateEntry struct {
-	nodeID *types.NodeID
-	state  memberState
 }
 
 type KVS struct {
@@ -72,15 +57,13 @@ type KVS struct {
 	outbound           OutboundPort
 	consensusOutbound  consensus.OutboundPort
 	activationResolver *activation.Resolver
+	hostingManager     *hosting.Manager
 	observation        observation.Caller
 	store              kvsTypes.Store
 	localNodeID        *types.NodeID
-	mtx                sync.RWMutex // for sectors, hostingSectorKey, memberStates
+	mtx                sync.RWMutex // for sectors, hostingManager, sectorUpdated
 	sectors            map[kvsTypes.SectorKey]*sector.Sector
-	sectorUpdated      bool // for observation
-	hostingSectorKey   *kvsTypes.SectorKey
-	lastSectorNo       kvsTypes.SectorNo
-	memberStates       map[kvsTypes.SectorNo]*memberStateEntry
+	sectorUpdated      bool       // for observation
 	mtxFrontward       sync.Mutex // for activating frontward sector
 }
 
@@ -91,10 +74,10 @@ func NewKVS(conf *Config) *KVS {
 		outbound:           conf.Outbound,
 		consensusOutbound:  conf.ConsensusOutbound,
 		activationResolver: conf.ActivationResolver,
+		hostingManager:     conf.HostingManager,
 		observation:        conf.Observation,
 		store:              conf.Store,
 		sectors:            make(map[kvsTypes.SectorKey]*sector.Sector),
-		memberStates:       make(map[kvsTypes.SectorNo]*memberStateEntry),
 	}
 
 	if conf.EnableRaftLogging {
@@ -109,6 +92,8 @@ func NewKVS(conf *Config) *KVS {
 func (k *KVS) Start(ctx context.Context, localNodeID *types.NodeID) {
 	k.localNodeID = localNodeID
 	k.ctx = ctx
+
+	k.hostingManager.Start(k, localNodeID)
 
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
@@ -257,11 +242,12 @@ func (k *KVS) subRoutine() {
 	}
 	nextNodeIDs := append(backwardNextNodeIDs, frontwardNextNodeIDs...)
 
-	sectorIsStable := k.manageMember(nextNodeIDs)
+	sectorIsStable := k.hostingManager.ManageMember(nextNodeIDs)
 
-	hostingSector := k.sectors[*k.hostingSectorKey]
+	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
+	hostingSector := k.sectors[*hostingSectorKey]
 	hostingSectorIsActive := hostingSector.GetTailAddress() != nil
-	frontwardNodeExists, frontwardSector := k.getFrontwardSector(frontwardNextNodeIDs)
+	// frontwardNodeExists, frontwardSector := k.getFrontwardSector(frontwardNextNodeIDs)
 
 	if !hostingSectorIsActive && sectorIsStable {
 		entireState, err := k.activationResolver.ResolveEntireState(k.ctx)
@@ -285,104 +271,6 @@ func (k *KVS) subRoutine() {
 			k.logger.Warn("Failed to set sector state to active", "error", err)
 		}
 	}
-}
-
-func (k *KVS) manageMember(nextNodeIDs []*types.NodeID) bool {
-	if k.hostingSectorKey == nil {
-		k.hostSector(nextNodeIDs)
-	}
-
-	toAppend, toRemove := k.getNodesToBeChanged(nextNodeIDs)
-	for _, nodeID := range toAppend {
-		k.lastSectorNo++
-		k.memberStates[k.lastSectorNo] = &memberStateEntry{
-			nodeID: nodeID,
-			state:  memberStateAppending,
-		}
-	}
-	for sec := range toRemove {
-		k.memberStates[sec].state = memberStateRemoving
-	}
-
-	if err := k.applyMemberSectors(); err != nil {
-		k.logger.Warn("Failed to apply Raft config", "error", err)
-	}
-
-	k.sendSettingMessage()
-
-	// check if all members are in normal state
-	for state := range k.memberStates {
-		if k.memberStates[state].state != memberStateNormal {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (k *KVS) getNodesToBeChanged(nextNodeIDs []*types.NodeID) ([]*types.NodeID, map[kvsTypes.SectorNo]struct{}) {
-	nextNodeIDMap := make(map[types.NodeID]struct{})
-	for _, nodeID := range nextNodeIDs {
-		nextNodeIDMap[*nodeID] = struct{}{}
-	}
-
-	toAppend := make([]*types.NodeID, 0)
-	memberMap := make(map[types.NodeID]kvsTypes.SectorNo)
-	for sec, entry := range k.memberStates {
-		if entry.state == memberStateRemoving {
-			continue
-		}
-		memberMap[*entry.nodeID] = sec
-	}
-	for nodeID := range nextNodeIDMap {
-		if _, ok := memberMap[nodeID]; !ok {
-			toAppend = append(toAppend, &nodeID)
-		}
-	}
-
-	toRemove := make(map[kvsTypes.SectorNo]struct{})
-	for sec, entry := range k.memberStates {
-		if entry.state == memberStateRemoving || sec == kvsTypes.HostNodeSectorNo {
-			continue
-		}
-		if _, ok := nextNodeIDMap[*entry.nodeID]; !ok {
-			toRemove[sec] = struct{}{}
-		}
-	}
-	return toAppend, toRemove
-}
-
-func (k *KVS) hostSector(nextNodeIDs []*types.NodeID) {
-	sectorID, err := uuid.NewV7()
-	if err != nil {
-		panic("Failed to create new sector ID")
-	}
-
-	k.lastSectorNo = kvsTypes.HostNodeSectorNo
-	members := make(map[kvsTypes.SectorNo]*types.NodeID)
-	members[kvsTypes.HostNodeSectorNo] = k.localNodeID
-	k.memberStates[kvsTypes.HostNodeSectorNo] = &memberStateEntry{
-		nodeID: k.localNodeID,
-		state:  memberStateCreating,
-	}
-	for _, nodeID := range nextNodeIDs {
-		if nodeID.Equal(k.localNodeID) {
-			panic("localNodeID found in nextNodeIDs")
-		}
-		k.lastSectorNo++
-		members[k.lastSectorNo] = nodeID
-		k.memberStates[k.lastSectorNo] = &memberStateEntry{
-			nodeID: nodeID,
-			state:  memberStateCreating,
-		}
-	}
-
-	sectorKey := &kvsTypes.SectorKey{
-		SectorID: kvsTypes.SectorID(sectorID),
-		SectorNo: kvsTypes.HostNodeSectorNo,
-	}
-	k.hostingSectorKey = sectorKey
-	k.allocateSector(sectorKey, k.localNodeID, true, false, members)
 }
 
 func (k *KVS) allocateSector(
@@ -411,66 +299,16 @@ func (k *KVS) allocateSector(
 	s.Start(k.ctx)
 }
 
-func (k *KVS) applyMemberSectors() error {
-	sector := k.sectors[*k.hostingSectorKey]
-
-	for sectorNo, member := range k.memberStates {
-		switch member.state {
-		case memberStateAppending:
-			sector.AppendNode(sectorNo, member.nodeID)
-
-		case memberStateRemoving:
-			sector.RemoveNode(sectorNo)
-		}
-	}
-
-	return nil
-}
-
-func (k *KVS) sendSettingMessage() {
-	for sectorNo, ms := range k.memberStates {
-		if sectorNo == kvsTypes.HostNodeSectorNo {
-			continue
-		}
-
-		switch ms.state {
-		case memberStateNormal, memberStateRemoving, memberStateConfiguredNode:
-			continue
-
-		case memberStateCreating, memberStateAppending, memberStateConfiguredConsensus:
-			members := make(map[kvsTypes.SectorNo]*types.NodeID)
-			members[kvsTypes.HostNodeSectorNo] = k.localNodeID
-			for sn, ms := range k.memberStates {
-				members[sn] = ms.nodeID
-			}
-
-			var command proto.SectorManageMember_Command
-			if ms.state == memberStateCreating {
-				command = proto.SectorManageMember_COMMAND_CREATE
-			} else { // memberStateAppending
-				command = proto.SectorManageMember_COMMAND_APPEND
-			}
-
-			go k.outbound.sendSectorManageMember(&SectorManageMemberParam{
-				dstNodeID: ms.nodeID,
-				sectorID:  k.hostingSectorKey.SectorID,
-				sectorNo:  sectorNo,
-				command:   command,
-				members:   members,
-			})
-		}
-	}
-}
-
 func (k *KVS) kvsOperate(command proto.KvsOperation_Command, key string, value []byte) (proto.KvsOperationResponse_Error, []byte) {
 	k.mtx.RLock()
-	if k.hostingSectorKey == nil {
+	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
+	if hostingSectorKey == nil {
 		k.mtx.RUnlock()
 		k.logger.Debug("preparing hosting sector")
 		return proto.KvsOperationResponse_ERROR_PREPARING, nil
 	}
 
-	operator := k.sectors[*k.hostingSectorKey].GetOperator()
+	operator := k.sectors[*hostingSectorKey].GetOperator()
 	k.mtx.RUnlock()
 
 	switch command {
@@ -544,40 +382,19 @@ func (k *KVS) sectorManageMember(param *sectorManageMemberParam) error {
 	return nil
 }
 
-func (k *KVS) sectorManageMemberResponse(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID, sectorNo kvsTypes.SectorNo) {
-	k.mtx.Lock()
-	defer k.mtx.Unlock()
-
-	// ignore response if it does not match the current node
-	if k.hostingSectorKey == nil || k.hostingSectorKey.SectorID != sectorID {
-		return
-	}
-
-	if entry, ok := k.memberStates[sectorNo]; ok && entry.nodeID.Equal(srcNodeID) {
-		switch entry.state {
-		case memberStateCreating, memberStateAppending:
-			entry.state = memberStateConfiguredNode
-		case memberStateConfiguredConsensus:
-			entry.state = memberStateNormal
-		case memberStateNormal, memberStateConfiguredNode:
-			// do nothing
-		default:
-			k.logger.Warn("Unexpected state for Raft config response", "sectorNo", sectorNo, "state", entry.state, "nodeID", srcNodeID.String())
-		}
-	}
-}
-
 func (k *KVS) sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID, withImport bool) bool {
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
 
+	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
+
 	// ignore if it does not match the current node
-	if k.hostingSectorKey == nil || k.hostingSectorKey.SectorID != sectorID {
+	if hostingSectorKey == nil || hostingSectorKey.SectorID != sectorID {
 		return false
 	}
 
 	// skip if there isn't hosing sector
-	hostingSector, ok := k.sectors[*k.hostingSectorKey]
+	hostingSector, ok := k.sectors[*hostingSectorKey]
 	if !ok {
 		return false
 	}
@@ -614,41 +431,10 @@ func (k *KVS) SectorError(sectorKey *kvsTypes.SectorKey, err error) {
 }
 
 func (k *KVS) SectorAppendNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {
-	if k.hostingSectorKey == nil || *sectorKey != *k.hostingSectorKey {
-		return
-	}
-
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
 
-	member, ok := k.memberStates[sectorNo]
-	// unknown
-	if !ok {
-		k.logger.Warn("Unknown sectorNo for appending", "sectorNo", sectorNo, "nodeID", nodeID)
-		k.memberStates[sectorNo] = &memberStateEntry{
-			nodeID: nodeID,
-			state:  memberStateRemoving,
-		}
-		return
-	}
-
-	if sectorNo == kvsTypes.HostNodeSectorNo {
-		if member.state == memberStateCreating {
-			member.state = memberStateNormal
-		} else {
-			k.logger.Warn("Unexpected state for host node", "sectorNo", sectorNo, "state", member.state, "nodeID", nodeID)
-		}
-		return
-	}
-
-	switch member.state {
-	case memberStateCreating, memberStateAppending:
-		member.state = memberStateConfiguredConsensus
-	case memberStateConfiguredNode:
-		member.state = memberStateNormal
-	default:
-		k.logger.Warn("Unexpected state for appending node", "sectorNo", sectorNo, "state", member.state, "nodeID", nodeID)
-	}
+	k.hostingManager.OnSectorAppendNode(sectorKey, sectorNo, nodeID)
 }
 
 func (k *KVS) SectorRemoveNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo) {
@@ -663,9 +449,7 @@ func (k *KVS) SectorRemoveNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.
 		return
 	}
 
-	if k.hostingSectorKey != nil && *sectorKey == *k.hostingSectorKey {
-		delete(k.memberStates, sectorNo)
-	}
+	k.hostingManager.OnSectorRemoveNode(sectorKey, sectorNo)
 
 	delete(k.sectors, targetKey)
 	k.sectorUpdated = true
@@ -673,14 +457,46 @@ func (k *KVS) SectorRemoveNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.
 	go sector.Stop()
 }
 
+// AllocateSector implements hosting.SectorHandler.
+func (k *KVS) AllocateSector(sectorKey *kvsTypes.SectorKey, head *types.NodeID, isHosting bool, join bool, members map[kvsTypes.SectorNo]*types.NodeID) {
+	k.allocateSector(sectorKey, head, isHosting, join, members)
+}
+
+// ApplyAppendNode implements hosting.SectorHandler.
+func (k *KVS) ApplyAppendNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {
+	if s, ok := k.sectors[sectorKey]; ok {
+		s.AppendNode(sectorNo, nodeID)
+	}
+}
+
+// ApplyRemoveNode implements hosting.SectorHandler.
+func (k *KVS) ApplyRemoveNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo) {
+	if s, ok := k.sectors[sectorKey]; ok {
+		s.RemoveNode(sectorNo)
+	}
+}
+
+// SendSectorManageMember implements hosting.OutboundPort.
+func (k *KVS) SendSectorManageMember(param *hosting.SectorManageMemberParam) {
+	k.outbound.sendSectorManageMember(&SectorManageMemberParam{
+		dstNodeID: param.DstNodeID,
+		sectorID:  param.SectorID,
+		sectorNo:  param.SectorNo,
+		command:   param.Command,
+		members:   param.Members,
+	})
+}
+
 func (k *KVS) activateHostingSector(frontwardNextNodeIDs []*types.NodeID) {
+	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
+
 	// local node is stable and other nodes are not exist
 	if len(frontwardNextNodeIDs) == 0 {
 		if len(k.sectors) != 0 {
 			k.logger.Warn("No frontward node but sectors exist")
 			return
 		}
-		hostingSector := k.sectors[*k.hostingSectorKey]
+		hostingSector := k.sectors[*hostingSectorKey]
 		hostingSector.Activate(*k.localNodeID)
 		return
 	}
@@ -706,7 +522,7 @@ func (k *KVS) activateHostingSector(frontwardNextNodeIDs []*types.NodeID) {
 		return
 	}
 
-	hostingSector := k.sectors[*k.hostingSectorKey]
+	hostingSector := k.sectors[*hostingSectorKey]
 	hostingSector.Activate(*candidate.GetHeadAddress())
 }
 

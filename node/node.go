@@ -26,6 +26,7 @@ import (
 	"github.com/llamerada-jp/colonio/node/internal/geometry"
 	"github.com/llamerada-jp/colonio/node/internal/kvs"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/activation"
+	"github.com/llamerada-jp/colonio/node/internal/kvs/hosting"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/sector/consensus"
 	"github.com/llamerada-jp/colonio/node/internal/messaging"
 	"github.com/llamerada-jp/colonio/node/internal/network"
@@ -268,6 +269,12 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 		Outbound: activation.NewOutbound(net.GetSeedClient()),
 	})
 
+	hostingManager := hosting.NewManager(&hosting.Config{
+		Logger:   config.Logger,
+		Outbound: hosting.NewOutbound(net.GetTransferer()),
+	})
+	hosting.SetupInbound(impl.logger, net.GetTransferer(), hostingManager)
+
 	impl.kvs = kvs.NewKVS(&kvs.Config{
 		Logger:             config.Logger,
 		EnableRaftLogging:  config.EnableRaftLogging,
@@ -275,10 +282,11 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 		Outbound:           kvs.NewOutbound(net.GetTransferer()),
 		ConsensusOutbound:  consensus.NewOutbound(net.GetTransferer()),
 		ActivationResolver: activationResolver,
+		HostingManager:     hostingManager,
 		Observation:        config.ObservationHandler,
 		Store:              config.KvsStore,
 	})
-	kvs.NewInbound(impl.logger, net.GetTransferer(), impl.kvs)
+	kvs.SetupInbound(impl.logger, net.GetTransferer(), impl.kvs)
 
 	impl.messaging = messaging.NewMessaging(&messaging.Config{
 		Logger:     config.Logger,
