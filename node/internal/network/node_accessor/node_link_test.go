@@ -182,13 +182,16 @@ func TestNodeLinkNormal(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// check packet
-	assert.True(t, received.DstNodeID.Equal(packet.DstNodeID))
-	assert.True(t, received.SrcNodeID.Equal(packet.SrcNodeID))
-	assert.Equal(t, received.ID, packet.ID)
-	assert.Equal(t, received.HopCount, packet.HopCount)
-	assert.Equal(t, received.Mode, packet.Mode)
-	assert.Equal(t, received.Content.GetError().Code, packet.Content.GetError().Code)
-	assert.Equal(t, received.Content.GetError().Message, packet.Content.GetError().Message)
+	mtx.Lock()
+	receivedSnapshot := received
+	mtx.Unlock()
+	assert.True(t, receivedSnapshot.DstNodeID.Equal(packet.DstNodeID))
+	assert.True(t, receivedSnapshot.SrcNodeID.Equal(packet.SrcNodeID))
+	assert.Equal(t, receivedSnapshot.ID, packet.ID)
+	assert.Equal(t, receivedSnapshot.HopCount, packet.HopCount)
+	assert.Equal(t, receivedSnapshot.Mode, packet.Mode)
+	assert.Equal(t, receivedSnapshot.Content.GetError().Code, packet.Content.GetError().Code)
+	assert.Equal(t, receivedSnapshot.Content.GetError().Message, packet.Content.GetError().Message)
 
 	// disconnect
 	err = link1.disconnect()
@@ -199,8 +202,12 @@ func TestNodeLinkNormal(t *testing.T) {
 		assert.Equal(c, nodeLinkStateDisabled, link2.getLinkState())
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.Equal(t, state1, "OD")
-	assert.Equal(t, state2, "OD")
+	mtx.Lock()
+	state1Snapshot := state1
+	state2Snapshot := state2
+	mtx.Unlock()
+	assert.Equal(t, state1Snapshot, "OD")
+	assert.Equal(t, state2Snapshot, "OD")
 }
 
 func TestNodeLinkTimeout(t *testing.T) {
@@ -539,7 +546,10 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 				defer mtx.Unlock()
 				assert.Len(c, received, len(tc.packets))
 			}, 10*time.Second, 100*time.Millisecond)
-			assert.True(t, packetEqual(received, tc.packets))
+			mtx.Lock()
+			receivedSnapshot := append([]*networkTypes.Packet(nil), received...)
+			mtx.Unlock()
+			assert.True(t, packetEqual(receivedSnapshot, tc.packets))
 		})
 	}
 
@@ -567,7 +577,10 @@ func TestNodeLinkPacketBaseBytes(t *testing.T) {
 		defer mtx.Unlock()
 		assert.Len(c, received, 500)
 	}, 10*time.Second, 100*time.Millisecond)
-	assert.True(t, packetEqual(received, send))
+	mtx.Lock()
+	receivedSnapshot := append([]*networkTypes.Packet(nil), received...)
+	mtx.Unlock()
+	assert.True(t, packetEqual(receivedSnapshot, send))
 }
 
 func genRandomPacket(siz uint) *networkTypes.Packet {

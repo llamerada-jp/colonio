@@ -184,12 +184,16 @@ func TestRequestAndResponse(t *testing.T) {
 		assert.Len(c, packets, 1)
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.True(t, dstNodeID.Equal(packets[0].DstNodeID))
-	assert.True(t, localNodeID.Equal(packets[0].SrcNodeID))
-	assert.NotEqual(t, 0, packets[0].ID)
-	assert.Equal(t, uint32(0), packets[0].HopCount)
-	assert.Equal(t, networkTypes.PacketModeExplicit, packets[0].Mode)
-	assert.IsType(t, &proto.PacketContent_SpreadKnock{}, packets[0].Content.Content)
+	mtx.Lock()
+	packet0Snapshot := packets[0]
+	mtx.Unlock()
+
+	assert.True(t, dstNodeID.Equal(packet0Snapshot.DstNodeID))
+	assert.True(t, localNodeID.Equal(packet0Snapshot.SrcNodeID))
+	assert.NotEqual(t, 0, packet0Snapshot.ID)
+	assert.Equal(t, uint32(0), packet0Snapshot.HopCount)
+	assert.Equal(t, networkTypes.PacketModeExplicit, packet0Snapshot.Mode)
+	assert.IsType(t, &proto.PacketContent_SpreadKnock{}, packet0Snapshot.Content.Content)
 
 	// Wait for trying to send packet.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -198,15 +202,20 @@ func TestRequestAndResponse(t *testing.T) {
 		assert.Len(c, packets, 2)
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.True(t, dstNodeID.Equal(packets[1].DstNodeID))
-	assert.True(t, localNodeID.Equal(packets[1].SrcNodeID))
-	assert.Equal(t, packets[0].ID, packets[1].ID)
-	assert.Equal(t, uint32(0), packets[1].HopCount)
-	assert.Equal(t, networkTypes.PacketModeExplicit, packets[1].Mode)
-	assert.IsType(t, &proto.PacketContent_SpreadKnock{}, packets[1].Content.Content)
+	mtx.Lock()
+	packet0Snapshot = packets[0]
+	packet1Snapshot := packets[1]
+	mtx.Unlock()
+
+	assert.True(t, dstNodeID.Equal(packet1Snapshot.DstNodeID))
+	assert.True(t, localNodeID.Equal(packet1Snapshot.SrcNodeID))
+	assert.Equal(t, packet0Snapshot.ID, packet1Snapshot.ID)
+	assert.Equal(t, uint32(0), packet1Snapshot.HopCount)
+	assert.Equal(t, networkTypes.PacketModeExplicit, packet1Snapshot.Mode)
+	assert.IsType(t, &proto.PacketContent_SpreadKnock{}, packet1Snapshot.Content.Content)
 
 	// send response
-	transferer.Response(packets[0], &proto.PacketContent{
+	transferer.Response(packet0Snapshot, &proto.PacketContent{
 		Content: &proto.PacketContent_SpreadRelay{},
 	})
 
@@ -215,7 +224,11 @@ func TestRequestAndResponse(t *testing.T) {
 		defer mtx.Unlock()
 		assert.Len(c, packets, 3)
 	}, 10*time.Second, 100*time.Millisecond)
-	transferer.Receive(packets[2])
+
+	mtx.Lock()
+	packet2Snapshot := packets[2]
+	mtx.Unlock()
+	transferer.Receive(packet2Snapshot)
 
 	// Wait for the response packet to be sent.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -224,12 +237,16 @@ func TestRequestAndResponse(t *testing.T) {
 		assert.NotNil(c, responsePacket)
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.True(t, localNodeID.Equal(responsePacket.DstNodeID))
-	assert.True(t, localNodeID.Equal(responsePacket.SrcNodeID))
-	assert.Equal(t, packets[0].ID, responsePacket.ID)
-	assert.Equal(t, uint32(0), responsePacket.HopCount)
-	assert.Equal(t, networkTypes.PacketModeResponse|networkTypes.PacketModeExplicit|networkTypes.PacketModeOneWay, responsePacket.Mode)
-	assert.IsType(t, &proto.PacketContent_SpreadRelay{}, responsePacket.Content.Content)
+	mtx.Lock()
+	responsePacketSnapshot := responsePacket
+	mtx.Unlock()
+
+	assert.True(t, localNodeID.Equal(responsePacketSnapshot.DstNodeID))
+	assert.True(t, localNodeID.Equal(responsePacketSnapshot.SrcNodeID))
+	assert.Equal(t, packet0Snapshot.ID, responsePacketSnapshot.ID)
+	assert.Equal(t, uint32(0), responsePacketSnapshot.HopCount)
+	assert.Equal(t, networkTypes.PacketModeResponse|networkTypes.PacketModeExplicit|networkTypes.PacketModeOneWay, responsePacketSnapshot.Mode)
+	assert.IsType(t, &proto.PacketContent_SpreadRelay{}, responsePacketSnapshot.Content.Content)
 
 	// request record is removed
 	assert.Len(t, transferer.requestRecord, 0)
@@ -269,12 +286,16 @@ func TestRequestOneWay(t *testing.T) {
 		assert.NotNil(c, packet)
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.True(t, dstNodeID.Equal(packet.DstNodeID))
-	assert.True(t, localNodeID.Equal(packet.SrcNodeID))
-	assert.NotEqual(t, 0, packet.ID)
-	assert.Equal(t, uint32(0), packet.HopCount)
-	assert.Equal(t, networkTypes.PacketModeExplicit|networkTypes.PacketModeOneWay, packet.Mode)
-	assert.IsType(t, &proto.PacketContent_SpreadKnock{}, packet.Content.Content)
+	mtx.Lock()
+	packetSnapshot := packet
+	mtx.Unlock()
+
+	assert.True(t, dstNodeID.Equal(packetSnapshot.DstNodeID))
+	assert.True(t, localNodeID.Equal(packetSnapshot.SrcNodeID))
+	assert.NotEqual(t, 0, packetSnapshot.ID)
+	assert.Equal(t, uint32(0), packetSnapshot.HopCount)
+	assert.Equal(t, networkTypes.PacketModeExplicit|networkTypes.PacketModeOneWay, packetSnapshot.Mode)
+	assert.IsType(t, &proto.PacketContent_SpreadKnock{}, packetSnapshot.Content.Content)
 
 	// request record is not created
 	assert.Len(t, transferer.requestRecord, 0)
@@ -326,8 +347,12 @@ func TestTimeout(t *testing.T) {
 		assert.True(c, hasError)
 	}, 10*time.Second, 100*time.Millisecond)
 
+	mtx.Lock()
+	packetCountSnapshot := packetCount
+	mtx.Unlock()
+
 	// the first packet + retry 3 times
-	assert.Equal(t, 4, packetCount)
+	assert.Equal(t, 4, packetCountSnapshot)
 	// request record is removed after timeout
 	assert.Len(t, transferer.requestRecord, 0)
 }
