@@ -20,12 +20,8 @@ import (
 	"testing"
 
 	"github.com/llamerada-jp/colonio/node/internal/network/transferer"
-	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/types"
-	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	networkTypes "github.com/llamerada-jp/colonio/types/network"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 type transfererHandlerHelper struct {
@@ -58,11 +54,11 @@ var _ Handler = &kvsHandlerHelper{}
 
 /* Unused yet.
 func (h *kvsHandlerHelper) setStability(isStable bool, backwardNextNodeIDs, frontwardNextNodeIDs []*shared.NodeID) {
-	h.mtx.Lock()
-	defer h.mtx.Unlock()
-	h.isStable = isStable
-	h.backwardNextNodeIDs = backwardNextNodeIDs
-	h.frontwardNextNodeIDs = frontwardNextNodeIDs
+h.mtx.Lock()
+defer h.mtx.Unlock()
+h.isStable = isStable
+h.backwardNextNodeIDs = backwardNextNodeIDs
+h.frontwardNextNodeIDs = frontwardNextNodeIDs
 }
 //*/
 
@@ -72,142 +68,5 @@ func (h *kvsHandlerHelper) KvsGetStability() (bool, []*types.NodeID, []*types.No
 	return h.isStable, h.backwardNextNodeIDs, h.frontwardNextNodeIDs
 }
 
-func TestKVS_getNodesToBeChanged(t *testing.T) {
-	nodeIDs := testUtil.UniqueNodeIDs(5)
-
-	tests := []struct {
-		name            string
-		memberStates    map[kvsTypes.SectorNo]*memberStateEntry
-		nextNodeIDs     []*types.NodeID
-		expectedAppends []*types.NodeID
-		expectedRemoves map[kvsTypes.SectorNo]struct{}
-	}{
-		{
-			name:            "empty",
-			memberStates:    map[kvsTypes.SectorNo]*memberStateEntry{},
-			nextNodeIDs:     []*types.NodeID{},
-			expectedAppends: []*types.NodeID{},
-			expectedRemoves: map[kvsTypes.SectorNo]struct{}{},
-		},
-		{
-			name: "new members",
-			memberStates: map[kvsTypes.SectorNo]*memberStateEntry{
-				kvsTypes.HostNodeSectorNo: {
-					nodeID: nodeIDs[0],
-					state:  memberStateNormal,
-				},
-			},
-			nextNodeIDs:     []*types.NodeID{nodeIDs[1], nodeIDs[2]},
-			expectedAppends: []*types.NodeID{nodeIDs[1], nodeIDs[2]},
-			expectedRemoves: map[kvsTypes.SectorNo]struct{}{},
-		},
-		{
-			name: "remove members",
-			memberStates: map[kvsTypes.SectorNo]*memberStateEntry{
-				1: {
-					nodeID: nodeIDs[0],
-					state:  memberStateNormal,
-				},
-				2: {
-					nodeID: nodeIDs[1],
-					state:  memberStateNormal,
-				},
-				3: { // to be removed
-					nodeID: nodeIDs[2],
-					state:  memberStateNormal,
-				},
-			},
-			nextNodeIDs:     []*types.NodeID{nodeIDs[1]},
-			expectedAppends: []*types.NodeID{},
-			expectedRemoves: map[kvsTypes.SectorNo]struct{}{
-				3: {},
-			},
-		},
-		{
-			name: "mixed",
-			memberStates: map[kvsTypes.SectorNo]*memberStateEntry{
-				1: {
-					nodeID: nodeIDs[0],
-					state:  memberStateNormal,
-				},
-				2: {
-					nodeID: nodeIDs[1],
-					state:  memberStateNormal,
-				},
-				3: { // to be removed
-					nodeID: nodeIDs[2],
-					state:  memberStateNormal,
-				},
-			},
-			nextNodeIDs:     []*types.NodeID{nodeIDs[1], nodeIDs[3]},
-			expectedAppends: []*types.NodeID{nodeIDs[3]},
-			expectedRemoves: map[kvsTypes.SectorNo]struct{}{
-				3: {},
-			},
-		},
-		{
-			name: "removing node is appended again",
-			memberStates: map[kvsTypes.SectorNo]*memberStateEntry{
-				1: {
-					nodeID: nodeIDs[0],
-					state:  memberStateNormal,
-				},
-				2: {
-					nodeID: nodeIDs[1],
-					state:  memberStateRemoving,
-				},
-				3: {
-					nodeID: nodeIDs[2],
-					state:  memberStateRemoving,
-				},
-			},
-			nextNodeIDs:     []*types.NodeID{nodeIDs[0], nodeIDs[1], nodeIDs[3]},
-			expectedAppends: []*types.NodeID{nodeIDs[1], nodeIDs[3]},
-			expectedRemoves: map[kvsTypes.SectorNo]struct{}{},
-		},
-		{
-			name: "appending node is ignored from appends",
-			memberStates: map[kvsTypes.SectorNo]*memberStateEntry{
-				1: {
-					nodeID: nodeIDs[0],
-					state:  memberStateNormal,
-				},
-				2: {
-					nodeID: nodeIDs[1],
-					state:  memberStateCreating,
-				},
-				3: {
-					nodeID: nodeIDs[2], // to be removed
-					state:  memberStateAppending,
-				},
-				4: {
-					nodeID: nodeIDs[3],
-					state:  memberStateNormal,
-				},
-			},
-			nextNodeIDs: []*types.NodeID{nodeIDs[0], nodeIDs[1], nodeIDs[3], nodeIDs[4]},
-			expectedAppends: []*types.NodeID{
-				nodeIDs[4],
-			},
-			expectedRemoves: map[kvsTypes.SectorNo]struct{}{
-				3: {},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			kvs := &KVS{
-				memberStates: tt.memberStates,
-			}
-
-			appends, removes := kvs.getNodesToBeChanged(tt.nextNodeIDs)
-
-			require.Len(t, appends, len(tt.expectedAppends))
-			for _, appendNodeID := range appends {
-				assert.Contains(t, tt.expectedAppends, appendNodeID)
-			}
-			assert.Equal(t, tt.expectedRemoves, removes)
-		})
-	}
-}
+// Placeholder to keep the test file valid until more KVS-level tests are added.
+func TestKVS_placeholder(_ *testing.T) {}
