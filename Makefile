@@ -45,6 +45,14 @@ test: build-js build-test
 	# e2e tests for wasm
 	go run ./test/cmd/luncher/ -d ./test/dist -j ./output/
 
+GO_TEST_FLAGS ?= -v -count=1 -race
+TEST_PKGS ?= ./node/... ./seed/...
+TEST_RUN_ARG := $(if $(TEST_RUN),-run $(TEST_RUN),)
+
+.PHONY: test-unit
+test-unit:
+	go test $(GO_TEST_FLAGS) $(TEST_RUN_ARG) $(TEST_PKGS)
+
 .PHONY: generate-cert
 generate-cert:
 	openssl req -x509 -out localhost.crt -keyout localhost.key \
