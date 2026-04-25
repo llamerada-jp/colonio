@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package api.colonio.v1alpha;
+
+import "api/colonio/v1alpha/core.proto";
+
+option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
+
+message ConsensusProposal {
+  oneof content {
+    Activate  activate  = 1;
+    Operation operation = 2;
+  }
+}
+
+message Activate {
+  colonio.v1alpha.NodeID tail = 1;
+}
+
+message Operation {
+  enum Command {
+    // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+    COMMAND_IMPORT = 0;
+    COMMAND_GET    = 1;
+    COMMAND_SET    = 2;
+    COMMAND_PATCH  = 3;
+    COMMAND_DELETE = 4;
+  }
+
+  Command command      = 1;
+  uint32  operation_id = 2;
+  string  key          = 3;
+  bytes   value        = 4;
+}

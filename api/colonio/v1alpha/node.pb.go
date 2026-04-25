@@ -21,6 +21,159 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type KvsOperation_Command int32
+
+const (
+	// buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+	KvsOperation_COMMAND_GET    KvsOperation_Command = 0
+	KvsOperation_COMMAND_SET    KvsOperation_Command = 1
+	KvsOperation_COMMAND_PATCH  KvsOperation_Command = 2
+	KvsOperation_COMMAND_DELETE KvsOperation_Command = 3
+)
+
+// Enum value maps for KvsOperation_Command.
+var (
+	KvsOperation_Command_name = map[int32]string{
+		0: "COMMAND_GET",
+		1: "COMMAND_SET",
+		2: "COMMAND_PATCH",
+		3: "COMMAND_DELETE",
+	}
+	KvsOperation_Command_value = map[string]int32{
+		"COMMAND_GET":    0,
+		"COMMAND_SET":    1,
+		"COMMAND_PATCH":  2,
+		"COMMAND_DELETE": 3,
+	}
+)
+
+func (x KvsOperation_Command) Enum() *KvsOperation_Command {
+	p := new(KvsOperation_Command)
+	*p = x
+	return p
+}
+
+func (x KvsOperation_Command) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (KvsOperation_Command) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_colonio_v1alpha_node_proto_enumTypes[0].Descriptor()
+}
+
+func (KvsOperation_Command) Type() protoreflect.EnumType {
+	return &file_api_colonio_v1alpha_node_proto_enumTypes[0]
+}
+
+func (x KvsOperation_Command) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use KvsOperation_Command.Descriptor instead.
+func (KvsOperation_Command) EnumDescriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{9, 0}
+}
+
+type KvsOperationResponse_Error int32
+
+const (
+	// buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+	KvsOperationResponse_ERROR_NONE      KvsOperationResponse_Error = 0
+	KvsOperationResponse_ERROR_UNKNOWN   KvsOperationResponse_Error = 1
+	KvsOperationResponse_ERROR_PREPARING KvsOperationResponse_Error = 2
+	KvsOperationResponse_ERROR_NOT_FOUND KvsOperationResponse_Error = 3 // used for GET
+)
+
+// Enum value maps for KvsOperationResponse_Error.
+var (
+	KvsOperationResponse_Error_name = map[int32]string{
+		0: "ERROR_NONE",
+		1: "ERROR_UNKNOWN",
+		2: "ERROR_PREPARING",
+		3: "ERROR_NOT_FOUND",
+	}
+	KvsOperationResponse_Error_value = map[string]int32{
+		"ERROR_NONE":      0,
+		"ERROR_UNKNOWN":   1,
+		"ERROR_PREPARING": 2,
+		"ERROR_NOT_FOUND": 3,
+	}
+)
+
+func (x KvsOperationResponse_Error) Enum() *KvsOperationResponse_Error {
+	p := new(KvsOperationResponse_Error)
+	*p = x
+	return p
+}
+
+func (x KvsOperationResponse_Error) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (KvsOperationResponse_Error) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_colonio_v1alpha_node_proto_enumTypes[1].Descriptor()
+}
+
+func (KvsOperationResponse_Error) Type() protoreflect.EnumType {
+	return &file_api_colonio_v1alpha_node_proto_enumTypes[1]
+}
+
+func (x KvsOperationResponse_Error) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use KvsOperationResponse_Error.Descriptor instead.
+func (KvsOperationResponse_Error) EnumDescriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{10, 0}
+}
+
+type SectorManageMember_Command int32
+
+const (
+	// buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+	SectorManageMember_COMMAND_CREATE SectorManageMember_Command = 0
+	SectorManageMember_COMMAND_APPEND SectorManageMember_Command = 1
+)
+
+// Enum value maps for SectorManageMember_Command.
+var (
+	SectorManageMember_Command_name = map[int32]string{
+		0: "COMMAND_CREATE",
+		1: "COMMAND_APPEND",
+	}
+	SectorManageMember_Command_value = map[string]int32{
+		"COMMAND_CREATE": 0,
+		"COMMAND_APPEND": 1,
+	}
+)
+
+func (x SectorManageMember_Command) Enum() *SectorManageMember_Command {
+	p := new(SectorManageMember_Command)
+	*p = x
+	return p
+}
+
+func (x SectorManageMember_Command) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SectorManageMember_Command) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_colonio_v1alpha_node_proto_enumTypes[2].Descriptor()
+}
+
+func (SectorManageMember_Command) Type() protoreflect.EnumType {
+	return &file_api_colonio_v1alpha_node_proto_enumTypes[2]
+}
+
+func (x SectorManageMember_Command) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SectorManageMember_Command.Descriptor instead.
+func (SectorManageMember_Command) EnumDescriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{12, 0}
+}
+
 // node-node packet container
 // Or use an empty message as a ping to cancel the timeout.
 type NodePackets struct {
@@ -214,6 +367,13 @@ type PacketContent struct {
 	//	*PacketContent_Routing
 	//	*PacketContent_Messaging
 	//	*PacketContent_MessagingResponse
+	//	*PacketContent_KvsOperation
+	//	*PacketContent_KvsOperationResponse
+	//	*PacketContent_ConsensusMessage
+	//	*PacketContent_SectorManageMember
+	//	*PacketContent_SectorManageMemberResponse
+	//	*PacketContent_SectorActivate
+	//	*PacketContent_SectorActivateResponse
 	//	*PacketContent_Spread
 	//	*PacketContent_SpreadKnock
 	//	*PacketContent_SpreadKnockResponse
@@ -297,6 +457,69 @@ func (x *PacketContent) GetMessagingResponse() *MessagingResponse {
 	return nil
 }
 
+func (x *PacketContent) GetKvsOperation() *KvsOperation {
+	if x != nil {
+		if x, ok := x.Content.(*PacketContent_KvsOperation); ok {
+			return x.KvsOperation
+		}
+	}
+	return nil
+}
+
+func (x *PacketContent) GetKvsOperationResponse() *KvsOperationResponse {
+	if x != nil {
+		if x, ok := x.Content.(*PacketContent_KvsOperationResponse); ok {
+			return x.KvsOperationResponse
+		}
+	}
+	return nil
+}
+
+func (x *PacketContent) GetConsensusMessage() *ConsensusMessage {
+	if x != nil {
+		if x, ok := x.Content.(*PacketContent_ConsensusMessage); ok {
+			return x.ConsensusMessage
+		}
+	}
+	return nil
+}
+
+func (x *PacketContent) GetSectorManageMember() *SectorManageMember {
+	if x != nil {
+		if x, ok := x.Content.(*PacketContent_SectorManageMember); ok {
+			return x.SectorManageMember
+		}
+	}
+	return nil
+}
+
+func (x *PacketContent) GetSectorManageMemberResponse() *SectorManageMemberResponse {
+	if x != nil {
+		if x, ok := x.Content.(*PacketContent_SectorManageMemberResponse); ok {
+			return x.SectorManageMemberResponse
+		}
+	}
+	return nil
+}
+
+func (x *PacketContent) GetSectorActivate() *SectorActivate {
+	if x != nil {
+		if x, ok := x.Content.(*PacketContent_SectorActivate); ok {
+			return x.SectorActivate
+		}
+	}
+	return nil
+}
+
+func (x *PacketContent) GetSectorActivateResponse() *SectorActivateResponse {
+	if x != nil {
+		if x, ok := x.Content.(*PacketContent_SectorActivateResponse); ok {
+			return x.SectorActivateResponse
+		}
+	}
+	return nil
+}
+
 func (x *PacketContent) GetSpread() *Spread {
 	if x != nil {
 		if x, ok := x.Content.(*PacketContent_Spread); ok {
@@ -362,6 +585,34 @@ type PacketContent_MessagingResponse struct {
 	MessagingResponse *MessagingResponse `protobuf:"bytes,21,opt,name=messaging_response,json=messagingResponse,proto3,oneof"`
 }
 
+type PacketContent_KvsOperation struct {
+	KvsOperation *KvsOperation `protobuf:"bytes,30,opt,name=kvs_operation,json=kvsOperation,proto3,oneof"`
+}
+
+type PacketContent_KvsOperationResponse struct {
+	KvsOperationResponse *KvsOperationResponse `protobuf:"bytes,31,opt,name=kvs_operation_response,json=kvsOperationResponse,proto3,oneof"`
+}
+
+type PacketContent_ConsensusMessage struct {
+	ConsensusMessage *ConsensusMessage `protobuf:"bytes,40,opt,name=consensus_message,json=consensusMessage,proto3,oneof"`
+}
+
+type PacketContent_SectorManageMember struct {
+	SectorManageMember *SectorManageMember `protobuf:"bytes,41,opt,name=sector_manage_member,json=sectorManageMember,proto3,oneof"`
+}
+
+type PacketContent_SectorManageMemberResponse struct {
+	SectorManageMemberResponse *SectorManageMemberResponse `protobuf:"bytes,42,opt,name=sector_manage_member_response,json=sectorManageMemberResponse,proto3,oneof"`
+}
+
+type PacketContent_SectorActivate struct {
+	SectorActivate *SectorActivate `protobuf:"bytes,43,opt,name=sector_activate,json=sectorActivate,proto3,oneof"`
+}
+
+type PacketContent_SectorActivateResponse struct {
+	SectorActivateResponse *SectorActivateResponse `protobuf:"bytes,44,opt,name=sector_activate_response,json=sectorActivateResponse,proto3,oneof"`
+}
+
 type PacketContent_Spread struct {
 	Spread *Spread `protobuf:"bytes,50,opt,name=spread,proto3,oneof"`
 }
@@ -389,6 +640,20 @@ func (*PacketContent_Routing) isPacketContent_Content() {}
 func (*PacketContent_Messaging) isPacketContent_Content() {}
 
 func (*PacketContent_MessagingResponse) isPacketContent_Content() {}
+
+func (*PacketContent_KvsOperation) isPacketContent_Content() {}
+
+func (*PacketContent_KvsOperationResponse) isPacketContent_Content() {}
+
+func (*PacketContent_ConsensusMessage) isPacketContent_Content() {}
+
+func (*PacketContent_SectorManageMember) isPacketContent_Content() {}
+
+func (*PacketContent_SectorManageMemberResponse) isPacketContent_Content() {}
+
+func (*PacketContent_SectorActivate) isPacketContent_Content() {}
+
+func (*PacketContent_SectorActivateResponse) isPacketContent_Content() {}
 
 func (*PacketContent_Spread) isPacketContent_Content() {}
 
@@ -655,6 +920,395 @@ func (x *MessagingResponse) GetResponse() []byte {
 	return nil
 }
 
+// for kvs and consensus module
+type KvsOperation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Command       KvsOperation_Command   `protobuf:"varint,1,opt,name=command,proto3,enum=api.colonio.v1alpha.KvsOperation_Command" json:"command,omitempty"`
+	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	Value         []byte                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"` // used for SET and PATCH
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KvsOperation) Reset() {
+	*x = KvsOperation{}
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KvsOperation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KvsOperation) ProtoMessage() {}
+
+func (x *KvsOperation) ProtoReflect() protoreflect.Message {
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KvsOperation.ProtoReflect.Descriptor instead.
+func (*KvsOperation) Descriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *KvsOperation) GetCommand() KvsOperation_Command {
+	if x != nil {
+		return x.Command
+	}
+	return KvsOperation_COMMAND_GET
+}
+
+func (x *KvsOperation) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *KvsOperation) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+type KvsOperationResponse struct {
+	state         protoimpl.MessageState     `protogen:"open.v1"`
+	Error         KvsOperationResponse_Error `protobuf:"varint,1,opt,name=error,proto3,enum=api.colonio.v1alpha.KvsOperationResponse_Error" json:"error,omitempty"`
+	Value         []byte                     `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"` // used for GET
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KvsOperationResponse) Reset() {
+	*x = KvsOperationResponse{}
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KvsOperationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KvsOperationResponse) ProtoMessage() {}
+
+func (x *KvsOperationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KvsOperationResponse.ProtoReflect.Descriptor instead.
+func (*KvsOperationResponse) Descriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *KvsOperationResponse) GetError() KvsOperationResponse_Error {
+	if x != nil {
+		return x.Error
+	}
+	return KvsOperationResponse_ERROR_NONE
+}
+
+func (x *KvsOperationResponse) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+type ConsensusMessage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SectorId      []byte                 `protobuf:"bytes,1,opt,name=sector_id,json=sectorId,proto3" json:"sector_id,omitempty"`
+	SectorNo      uint64                 `protobuf:"varint,2,opt,name=sector_no,json=sectorNo,proto3" json:"sector_no,omitempty"`
+	Message       []byte                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConsensusMessage) Reset() {
+	*x = ConsensusMessage{}
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConsensusMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConsensusMessage) ProtoMessage() {}
+
+func (x *ConsensusMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConsensusMessage.ProtoReflect.Descriptor instead.
+func (*ConsensusMessage) Descriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ConsensusMessage) GetSectorId() []byte {
+	if x != nil {
+		return x.SectorId
+	}
+	return nil
+}
+
+func (x *ConsensusMessage) GetSectorNo() uint64 {
+	if x != nil {
+		return x.SectorNo
+	}
+	return 0
+}
+
+func (x *ConsensusMessage) GetMessage() []byte {
+	if x != nil {
+		return x.Message
+	}
+	return nil
+}
+
+type SectorManageMember struct {
+	state         protoimpl.MessageState     `protogen:"open.v1"`
+	SectorId      []byte                     `protobuf:"bytes,1,opt,name=sector_id,json=sectorId,proto3" json:"sector_id,omitempty"`
+	SectorNo      uint64                     `protobuf:"varint,2,opt,name=sector_no,json=sectorNo,proto3" json:"sector_no,omitempty"`
+	Command       SectorManageMember_Command `protobuf:"varint,3,opt,name=command,proto3,enum=api.colonio.v1alpha.SectorManageMember_Command" json:"command,omitempty"`
+	Members       map[uint64]*NodeID         `protobuf:"bytes,4,rep,name=members,proto3" json:"members,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SectorManageMember) Reset() {
+	*x = SectorManageMember{}
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SectorManageMember) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SectorManageMember) ProtoMessage() {}
+
+func (x *SectorManageMember) ProtoReflect() protoreflect.Message {
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SectorManageMember.ProtoReflect.Descriptor instead.
+func (*SectorManageMember) Descriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *SectorManageMember) GetSectorId() []byte {
+	if x != nil {
+		return x.SectorId
+	}
+	return nil
+}
+
+func (x *SectorManageMember) GetSectorNo() uint64 {
+	if x != nil {
+		return x.SectorNo
+	}
+	return 0
+}
+
+func (x *SectorManageMember) GetCommand() SectorManageMember_Command {
+	if x != nil {
+		return x.Command
+	}
+	return SectorManageMember_COMMAND_CREATE
+}
+
+func (x *SectorManageMember) GetMembers() map[uint64]*NodeID {
+	if x != nil {
+		return x.Members
+	}
+	return nil
+}
+
+type SectorManageMemberResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SectorId      []byte                 `protobuf:"bytes,1,opt,name=sector_id,json=sectorId,proto3" json:"sector_id,omitempty"`
+	SectorNo      uint64                 `protobuf:"varint,2,opt,name=sector_no,json=sectorNo,proto3" json:"sector_no,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SectorManageMemberResponse) Reset() {
+	*x = SectorManageMemberResponse{}
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SectorManageMemberResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SectorManageMemberResponse) ProtoMessage() {}
+
+func (x *SectorManageMemberResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SectorManageMemberResponse.ProtoReflect.Descriptor instead.
+func (*SectorManageMemberResponse) Descriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *SectorManageMemberResponse) GetSectorId() []byte {
+	if x != nil {
+		return x.SectorId
+	}
+	return nil
+}
+
+func (x *SectorManageMemberResponse) GetSectorNo() uint64 {
+	if x != nil {
+		return x.SectorNo
+	}
+	return 0
+}
+
+type SectorActivate struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SectorId      []byte                 `protobuf:"bytes,1,opt,name=sector_id,json=sectorId,proto3" json:"sector_id,omitempty"`
+	WithImport    bool                   `protobuf:"varint,2,opt,name=with_import,json=withImport,proto3" json:"with_import,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SectorActivate) Reset() {
+	*x = SectorActivate{}
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SectorActivate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SectorActivate) ProtoMessage() {}
+
+func (x *SectorActivate) ProtoReflect() protoreflect.Message {
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SectorActivate.ProtoReflect.Descriptor instead.
+func (*SectorActivate) Descriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *SectorActivate) GetSectorId() []byte {
+	if x != nil {
+		return x.SectorId
+	}
+	return nil
+}
+
+func (x *SectorActivate) GetWithImport() bool {
+	if x != nil {
+		return x.WithImport
+	}
+	return false
+}
+
+type SectorActivateResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SectorActivateResponse) Reset() {
+	*x = SectorActivateResponse{}
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SectorActivateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SectorActivateResponse) ProtoMessage() {}
+
+func (x *SectorActivateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SectorActivateResponse.ProtoReflect.Descriptor instead.
+func (*SectorActivateResponse) Descriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *SectorActivateResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
 // for spread module
 type Spread struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -671,7 +1325,7 @@ type Spread struct {
 
 func (x *Spread) Reset() {
 	*x = Spread{}
-	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[9]
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -683,7 +1337,7 @@ func (x *Spread) String() string {
 func (*Spread) ProtoMessage() {}
 
 func (x *Spread) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[9]
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -696,7 +1350,7 @@ func (x *Spread) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Spread.ProtoReflect.Descriptor instead.
 func (*Spread) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{9}
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Spread) GetSource() *NodeID {
@@ -759,7 +1413,7 @@ type SpreadKnock struct {
 
 func (x *SpreadKnock) Reset() {
 	*x = SpreadKnock{}
-	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[10]
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -771,7 +1425,7 @@ func (x *SpreadKnock) String() string {
 func (*SpreadKnock) ProtoMessage() {}
 
 func (x *SpreadKnock) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[10]
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -784,7 +1438,7 @@ func (x *SpreadKnock) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpreadKnock.ProtoReflect.Descriptor instead.
 func (*SpreadKnock) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{10}
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *SpreadKnock) GetCenter() *Coordinate {
@@ -817,7 +1471,7 @@ type SpreadKnockResponse struct {
 
 func (x *SpreadKnockResponse) Reset() {
 	*x = SpreadKnockResponse{}
-	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[11]
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -829,7 +1483,7 @@ func (x *SpreadKnockResponse) String() string {
 func (*SpreadKnockResponse) ProtoMessage() {}
 
 func (x *SpreadKnockResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[11]
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -842,7 +1496,7 @@ func (x *SpreadKnockResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpreadKnockResponse.ProtoReflect.Descriptor instead.
 func (*SpreadKnockResponse) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{11}
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *SpreadKnockResponse) GetAccept() bool {
@@ -867,7 +1521,7 @@ type SpreadRelay struct {
 
 func (x *SpreadRelay) Reset() {
 	*x = SpreadRelay{}
-	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[12]
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -879,7 +1533,7 @@ func (x *SpreadRelay) String() string {
 func (*SpreadRelay) ProtoMessage() {}
 
 func (x *SpreadRelay) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[12]
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -892,7 +1546,7 @@ func (x *SpreadRelay) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpreadRelay.ProtoReflect.Descriptor instead.
 func (*SpreadRelay) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{12}
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *SpreadRelay) GetSource() *NodeID {
@@ -953,7 +1607,7 @@ type SpreadRelayResponse struct {
 
 func (x *SpreadRelayResponse) Reset() {
 	*x = SpreadRelayResponse{}
-	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[13]
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -965,7 +1619,7 @@ func (x *SpreadRelayResponse) String() string {
 func (*SpreadRelayResponse) ProtoMessage() {}
 
 func (x *SpreadRelayResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[13]
+	mi := &file_api_colonio_v1alpha_node_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -978,7 +1632,7 @@ func (x *SpreadRelayResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpreadRelayResponse.ProtoReflect.Descriptor instead.
 func (*SpreadRelayResponse) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{13}
+	return file_api_colonio_v1alpha_node_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SpreadRelayResponse) GetSuccess() bool {
@@ -1005,13 +1659,21 @@ const file_api_colonio_v1alpha_node_proto_rawDesc = "" +
 	"\x04head\x18\x01 \x01(\v2#.api.colonio.v1alpha.NodePacketHeadR\x04head\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\rR\x02id\x12\x14\n" +
 	"\x05index\x18\x03 \x01(\rR\x05index\x12\x18\n" +
-	"\acontent\x18\x04 \x01(\fR\acontent\"\xa6\x05\n" +
+	"\acontent\x18\x04 \x01(\fR\acontent\"\xb5\n" +
+	"\n" +
 	"\rPacketContent\x122\n" +
 	"\x05error\x18\x01 \x01(\v2\x1a.api.colonio.v1alpha.ErrorH\x00R\x05error\x128\n" +
 	"\arouting\x18\n" +
 	" \x01(\v2\x1c.api.colonio.v1alpha.RoutingH\x00R\arouting\x12>\n" +
 	"\tmessaging\x18\x14 \x01(\v2\x1e.api.colonio.v1alpha.MessagingH\x00R\tmessaging\x12W\n" +
-	"\x12messaging_response\x18\x15 \x01(\v2&.api.colonio.v1alpha.MessagingResponseH\x00R\x11messagingResponse\x125\n" +
+	"\x12messaging_response\x18\x15 \x01(\v2&.api.colonio.v1alpha.MessagingResponseH\x00R\x11messagingResponse\x12H\n" +
+	"\rkvs_operation\x18\x1e \x01(\v2!.api.colonio.v1alpha.KvsOperationH\x00R\fkvsOperation\x12a\n" +
+	"\x16kvs_operation_response\x18\x1f \x01(\v2).api.colonio.v1alpha.KvsOperationResponseH\x00R\x14kvsOperationResponse\x12T\n" +
+	"\x11consensus_message\x18( \x01(\v2%.api.colonio.v1alpha.ConsensusMessageH\x00R\x10consensusMessage\x12[\n" +
+	"\x14sector_manage_member\x18) \x01(\v2'.api.colonio.v1alpha.SectorManageMemberH\x00R\x12sectorManageMember\x12t\n" +
+	"\x1dsector_manage_member_response\x18* \x01(\v2/.api.colonio.v1alpha.SectorManageMemberResponseH\x00R\x1asectorManageMemberResponse\x12N\n" +
+	"\x0fsector_activate\x18+ \x01(\v2#.api.colonio.v1alpha.SectorActivateH\x00R\x0esectorActivate\x12g\n" +
+	"\x18sector_activate_response\x18, \x01(\v2+.api.colonio.v1alpha.SectorActivateResponseH\x00R\x16sectorActivateResponse\x125\n" +
 	"\x06spread\x182 \x01(\v2\x1b.api.colonio.v1alpha.SpreadH\x00R\x06spread\x12E\n" +
 	"\fspread_knock\x183 \x01(\v2 .api.colonio.v1alpha.SpreadKnockH\x00R\vspreadKnock\x12^\n" +
 	"\x15spread_knock_response\x184 \x01(\v2(.api.colonio.v1alpha.SpreadKnockResponseH\x00R\x13spreadKnockResponse\x12E\n" +
@@ -1034,7 +1696,49 @@ const file_api_colonio_v1alpha_node_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\fR\amessage\"/\n" +
 	"\x11MessagingResponse\x12\x1a\n" +
-	"\bresponse\x18\x01 \x01(\fR\bresponse\"\xd6\x01\n" +
+	"\bresponse\x18\x01 \x01(\fR\bresponse\"\xcf\x01\n" +
+	"\fKvsOperation\x12C\n" +
+	"\acommand\x18\x01 \x01(\x0e2).api.colonio.v1alpha.KvsOperation.CommandR\acommand\x12\x10\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x03 \x01(\fR\x05value\"R\n" +
+	"\aCommand\x12\x0f\n" +
+	"\vCOMMAND_GET\x10\x00\x12\x0f\n" +
+	"\vCOMMAND_SET\x10\x01\x12\x11\n" +
+	"\rCOMMAND_PATCH\x10\x02\x12\x12\n" +
+	"\x0eCOMMAND_DELETE\x10\x03\"\xc9\x01\n" +
+	"\x14KvsOperationResponse\x12E\n" +
+	"\x05error\x18\x01 \x01(\x0e2/.api.colonio.v1alpha.KvsOperationResponse.ErrorR\x05error\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value\"T\n" +
+	"\x05Error\x12\x0e\n" +
+	"\n" +
+	"ERROR_NONE\x10\x00\x12\x11\n" +
+	"\rERROR_UNKNOWN\x10\x01\x12\x13\n" +
+	"\x0fERROR_PREPARING\x10\x02\x12\x13\n" +
+	"\x0fERROR_NOT_FOUND\x10\x03\"f\n" +
+	"\x10ConsensusMessage\x12\x1b\n" +
+	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1b\n" +
+	"\tsector_no\x18\x02 \x01(\x04R\bsectorNo\x12\x18\n" +
+	"\amessage\x18\x03 \x01(\fR\amessage\"\xf5\x02\n" +
+	"\x12SectorManageMember\x12\x1b\n" +
+	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1b\n" +
+	"\tsector_no\x18\x02 \x01(\x04R\bsectorNo\x12I\n" +
+	"\acommand\x18\x03 \x01(\x0e2/.api.colonio.v1alpha.SectorManageMember.CommandR\acommand\x12N\n" +
+	"\amembers\x18\x04 \x03(\v24.api.colonio.v1alpha.SectorManageMember.MembersEntryR\amembers\x1aW\n" +
+	"\fMembersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\x04R\x03key\x121\n" +
+	"\x05value\x18\x02 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x05value:\x028\x01\"1\n" +
+	"\aCommand\x12\x12\n" +
+	"\x0eCOMMAND_CREATE\x10\x00\x12\x12\n" +
+	"\x0eCOMMAND_APPEND\x10\x01\"V\n" +
+	"\x1aSectorManageMemberResponse\x12\x1b\n" +
+	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1b\n" +
+	"\tsector_no\x18\x02 \x01(\x04R\bsectorNo\"N\n" +
+	"\x0eSectorActivate\x12\x1b\n" +
+	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1f\n" +
+	"\vwith_import\x18\x02 \x01(\bR\n" +
+	"withImport\"2\n" +
+	"\x16SectorActivateResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"\xd6\x01\n" +
 	"\x06Spread\x123\n" +
 	"\x06source\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x06source\x127\n" +
 	"\x06center\x18\x02 \x01(\v2\x1f.api.colonio.v1alpha.CoordinateR\x06center\x12\f\n" +
@@ -1072,54 +1776,78 @@ func file_api_colonio_v1alpha_node_proto_rawDescGZIP() []byte {
 	return file_api_colonio_v1alpha_node_proto_rawDescData
 }
 
-var file_api_colonio_v1alpha_node_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_api_colonio_v1alpha_node_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_api_colonio_v1alpha_node_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_api_colonio_v1alpha_node_proto_goTypes = []any{
-	(*NodePackets)(nil),         // 0: api.colonio.v1alpha.NodePackets
-	(*NodePacketHead)(nil),      // 1: api.colonio.v1alpha.NodePacketHead
-	(*NodePacket)(nil),          // 2: api.colonio.v1alpha.NodePacket
-	(*PacketContent)(nil),       // 3: api.colonio.v1alpha.PacketContent
-	(*Error)(nil),               // 4: api.colonio.v1alpha.Error
-	(*RoutingNodeRecord)(nil),   // 5: api.colonio.v1alpha.RoutingNodeRecord
-	(*Routing)(nil),             // 6: api.colonio.v1alpha.Routing
-	(*Messaging)(nil),           // 7: api.colonio.v1alpha.Messaging
-	(*MessagingResponse)(nil),   // 8: api.colonio.v1alpha.MessagingResponse
-	(*Spread)(nil),              // 9: api.colonio.v1alpha.Spread
-	(*SpreadKnock)(nil),         // 10: api.colonio.v1alpha.SpreadKnock
-	(*SpreadKnockResponse)(nil), // 11: api.colonio.v1alpha.SpreadKnockResponse
-	(*SpreadRelay)(nil),         // 12: api.colonio.v1alpha.SpreadRelay
-	(*SpreadRelayResponse)(nil), // 13: api.colonio.v1alpha.SpreadRelayResponse
-	nil,                         // 14: api.colonio.v1alpha.Routing.NodeRecordsEntry
-	(*NodeID)(nil),              // 15: api.colonio.v1alpha.NodeID
-	(*Coordinate)(nil),          // 16: api.colonio.v1alpha.Coordinate
+	(KvsOperation_Command)(0),          // 0: api.colonio.v1alpha.KvsOperation.Command
+	(KvsOperationResponse_Error)(0),    // 1: api.colonio.v1alpha.KvsOperationResponse.Error
+	(SectorManageMember_Command)(0),    // 2: api.colonio.v1alpha.SectorManageMember.Command
+	(*NodePackets)(nil),                // 3: api.colonio.v1alpha.NodePackets
+	(*NodePacketHead)(nil),             // 4: api.colonio.v1alpha.NodePacketHead
+	(*NodePacket)(nil),                 // 5: api.colonio.v1alpha.NodePacket
+	(*PacketContent)(nil),              // 6: api.colonio.v1alpha.PacketContent
+	(*Error)(nil),                      // 7: api.colonio.v1alpha.Error
+	(*RoutingNodeRecord)(nil),          // 8: api.colonio.v1alpha.RoutingNodeRecord
+	(*Routing)(nil),                    // 9: api.colonio.v1alpha.Routing
+	(*Messaging)(nil),                  // 10: api.colonio.v1alpha.Messaging
+	(*MessagingResponse)(nil),          // 11: api.colonio.v1alpha.MessagingResponse
+	(*KvsOperation)(nil),               // 12: api.colonio.v1alpha.KvsOperation
+	(*KvsOperationResponse)(nil),       // 13: api.colonio.v1alpha.KvsOperationResponse
+	(*ConsensusMessage)(nil),           // 14: api.colonio.v1alpha.ConsensusMessage
+	(*SectorManageMember)(nil),         // 15: api.colonio.v1alpha.SectorManageMember
+	(*SectorManageMemberResponse)(nil), // 16: api.colonio.v1alpha.SectorManageMemberResponse
+	(*SectorActivate)(nil),             // 17: api.colonio.v1alpha.SectorActivate
+	(*SectorActivateResponse)(nil),     // 18: api.colonio.v1alpha.SectorActivateResponse
+	(*Spread)(nil),                     // 19: api.colonio.v1alpha.Spread
+	(*SpreadKnock)(nil),                // 20: api.colonio.v1alpha.SpreadKnock
+	(*SpreadKnockResponse)(nil),        // 21: api.colonio.v1alpha.SpreadKnockResponse
+	(*SpreadRelay)(nil),                // 22: api.colonio.v1alpha.SpreadRelay
+	(*SpreadRelayResponse)(nil),        // 23: api.colonio.v1alpha.SpreadRelayResponse
+	nil,                                // 24: api.colonio.v1alpha.Routing.NodeRecordsEntry
+	nil,                                // 25: api.colonio.v1alpha.SectorManageMember.MembersEntry
+	(*NodeID)(nil),                     // 26: api.colonio.v1alpha.NodeID
+	(*Coordinate)(nil),                 // 27: api.colonio.v1alpha.Coordinate
 }
 var file_api_colonio_v1alpha_node_proto_depIdxs = []int32{
-	2,  // 0: api.colonio.v1alpha.NodePackets.packets:type_name -> api.colonio.v1alpha.NodePacket
-	15, // 1: api.colonio.v1alpha.NodePacketHead.dst_node_id:type_name -> api.colonio.v1alpha.NodeID
-	15, // 2: api.colonio.v1alpha.NodePacketHead.src_node_id:type_name -> api.colonio.v1alpha.NodeID
-	1,  // 3: api.colonio.v1alpha.NodePacket.head:type_name -> api.colonio.v1alpha.NodePacketHead
-	4,  // 4: api.colonio.v1alpha.PacketContent.error:type_name -> api.colonio.v1alpha.Error
-	6,  // 5: api.colonio.v1alpha.PacketContent.routing:type_name -> api.colonio.v1alpha.Routing
-	7,  // 6: api.colonio.v1alpha.PacketContent.messaging:type_name -> api.colonio.v1alpha.Messaging
-	8,  // 7: api.colonio.v1alpha.PacketContent.messaging_response:type_name -> api.colonio.v1alpha.MessagingResponse
-	9,  // 8: api.colonio.v1alpha.PacketContent.spread:type_name -> api.colonio.v1alpha.Spread
-	10, // 9: api.colonio.v1alpha.PacketContent.spread_knock:type_name -> api.colonio.v1alpha.SpreadKnock
-	11, // 10: api.colonio.v1alpha.PacketContent.spread_knock_response:type_name -> api.colonio.v1alpha.SpreadKnockResponse
-	12, // 11: api.colonio.v1alpha.PacketContent.spread_relay:type_name -> api.colonio.v1alpha.SpreadRelay
-	13, // 12: api.colonio.v1alpha.PacketContent.spread_relay_response:type_name -> api.colonio.v1alpha.SpreadRelayResponse
-	16, // 13: api.colonio.v1alpha.RoutingNodeRecord.r2d_position:type_name -> api.colonio.v1alpha.Coordinate
-	16, // 14: api.colonio.v1alpha.Routing.r2d_position:type_name -> api.colonio.v1alpha.Coordinate
-	14, // 15: api.colonio.v1alpha.Routing.node_records:type_name -> api.colonio.v1alpha.Routing.NodeRecordsEntry
-	15, // 16: api.colonio.v1alpha.Spread.source:type_name -> api.colonio.v1alpha.NodeID
-	16, // 17: api.colonio.v1alpha.Spread.center:type_name -> api.colonio.v1alpha.Coordinate
-	16, // 18: api.colonio.v1alpha.SpreadKnock.center:type_name -> api.colonio.v1alpha.Coordinate
-	15, // 19: api.colonio.v1alpha.SpreadRelay.source:type_name -> api.colonio.v1alpha.NodeID
-	16, // 20: api.colonio.v1alpha.SpreadRelay.center:type_name -> api.colonio.v1alpha.Coordinate
-	5,  // 21: api.colonio.v1alpha.Routing.NodeRecordsEntry.value:type_name -> api.colonio.v1alpha.RoutingNodeRecord
-	22, // [22:22] is the sub-list for method output_type
-	22, // [22:22] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	5,  // 0: api.colonio.v1alpha.NodePackets.packets:type_name -> api.colonio.v1alpha.NodePacket
+	26, // 1: api.colonio.v1alpha.NodePacketHead.dst_node_id:type_name -> api.colonio.v1alpha.NodeID
+	26, // 2: api.colonio.v1alpha.NodePacketHead.src_node_id:type_name -> api.colonio.v1alpha.NodeID
+	4,  // 3: api.colonio.v1alpha.NodePacket.head:type_name -> api.colonio.v1alpha.NodePacketHead
+	7,  // 4: api.colonio.v1alpha.PacketContent.error:type_name -> api.colonio.v1alpha.Error
+	9,  // 5: api.colonio.v1alpha.PacketContent.routing:type_name -> api.colonio.v1alpha.Routing
+	10, // 6: api.colonio.v1alpha.PacketContent.messaging:type_name -> api.colonio.v1alpha.Messaging
+	11, // 7: api.colonio.v1alpha.PacketContent.messaging_response:type_name -> api.colonio.v1alpha.MessagingResponse
+	12, // 8: api.colonio.v1alpha.PacketContent.kvs_operation:type_name -> api.colonio.v1alpha.KvsOperation
+	13, // 9: api.colonio.v1alpha.PacketContent.kvs_operation_response:type_name -> api.colonio.v1alpha.KvsOperationResponse
+	14, // 10: api.colonio.v1alpha.PacketContent.consensus_message:type_name -> api.colonio.v1alpha.ConsensusMessage
+	15, // 11: api.colonio.v1alpha.PacketContent.sector_manage_member:type_name -> api.colonio.v1alpha.SectorManageMember
+	16, // 12: api.colonio.v1alpha.PacketContent.sector_manage_member_response:type_name -> api.colonio.v1alpha.SectorManageMemberResponse
+	17, // 13: api.colonio.v1alpha.PacketContent.sector_activate:type_name -> api.colonio.v1alpha.SectorActivate
+	18, // 14: api.colonio.v1alpha.PacketContent.sector_activate_response:type_name -> api.colonio.v1alpha.SectorActivateResponse
+	19, // 15: api.colonio.v1alpha.PacketContent.spread:type_name -> api.colonio.v1alpha.Spread
+	20, // 16: api.colonio.v1alpha.PacketContent.spread_knock:type_name -> api.colonio.v1alpha.SpreadKnock
+	21, // 17: api.colonio.v1alpha.PacketContent.spread_knock_response:type_name -> api.colonio.v1alpha.SpreadKnockResponse
+	22, // 18: api.colonio.v1alpha.PacketContent.spread_relay:type_name -> api.colonio.v1alpha.SpreadRelay
+	23, // 19: api.colonio.v1alpha.PacketContent.spread_relay_response:type_name -> api.colonio.v1alpha.SpreadRelayResponse
+	27, // 20: api.colonio.v1alpha.RoutingNodeRecord.r2d_position:type_name -> api.colonio.v1alpha.Coordinate
+	27, // 21: api.colonio.v1alpha.Routing.r2d_position:type_name -> api.colonio.v1alpha.Coordinate
+	24, // 22: api.colonio.v1alpha.Routing.node_records:type_name -> api.colonio.v1alpha.Routing.NodeRecordsEntry
+	0,  // 23: api.colonio.v1alpha.KvsOperation.command:type_name -> api.colonio.v1alpha.KvsOperation.Command
+	1,  // 24: api.colonio.v1alpha.KvsOperationResponse.error:type_name -> api.colonio.v1alpha.KvsOperationResponse.Error
+	2,  // 25: api.colonio.v1alpha.SectorManageMember.command:type_name -> api.colonio.v1alpha.SectorManageMember.Command
+	25, // 26: api.colonio.v1alpha.SectorManageMember.members:type_name -> api.colonio.v1alpha.SectorManageMember.MembersEntry
+	26, // 27: api.colonio.v1alpha.Spread.source:type_name -> api.colonio.v1alpha.NodeID
+	27, // 28: api.colonio.v1alpha.Spread.center:type_name -> api.colonio.v1alpha.Coordinate
+	27, // 29: api.colonio.v1alpha.SpreadKnock.center:type_name -> api.colonio.v1alpha.Coordinate
+	26, // 30: api.colonio.v1alpha.SpreadRelay.source:type_name -> api.colonio.v1alpha.NodeID
+	27, // 31: api.colonio.v1alpha.SpreadRelay.center:type_name -> api.colonio.v1alpha.Coordinate
+	8,  // 32: api.colonio.v1alpha.Routing.NodeRecordsEntry.value:type_name -> api.colonio.v1alpha.RoutingNodeRecord
+	26, // 33: api.colonio.v1alpha.SectorManageMember.MembersEntry.value:type_name -> api.colonio.v1alpha.NodeID
+	34, // [34:34] is the sub-list for method output_type
+	34, // [34:34] is the sub-list for method input_type
+	34, // [34:34] is the sub-list for extension type_name
+	34, // [34:34] is the sub-list for extension extendee
+	0,  // [0:34] is the sub-list for field type_name
 }
 
 func init() { file_api_colonio_v1alpha_node_proto_init() }
@@ -1133,6 +1861,13 @@ func file_api_colonio_v1alpha_node_proto_init() {
 		(*PacketContent_Routing)(nil),
 		(*PacketContent_Messaging)(nil),
 		(*PacketContent_MessagingResponse)(nil),
+		(*PacketContent_KvsOperation)(nil),
+		(*PacketContent_KvsOperationResponse)(nil),
+		(*PacketContent_ConsensusMessage)(nil),
+		(*PacketContent_SectorManageMember)(nil),
+		(*PacketContent_SectorManageMemberResponse)(nil),
+		(*PacketContent_SectorActivate)(nil),
+		(*PacketContent_SectorActivateResponse)(nil),
 		(*PacketContent_Spread)(nil),
 		(*PacketContent_SpreadKnock)(nil),
 		(*PacketContent_SpreadKnockResponse)(nil),
@@ -1144,13 +1879,14 @@ func file_api_colonio_v1alpha_node_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_colonio_v1alpha_node_proto_rawDesc), len(file_api_colonio_v1alpha_node_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   15,
+			NumEnums:      3,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_api_colonio_v1alpha_node_proto_goTypes,
 		DependencyIndexes: file_api_colonio_v1alpha_node_proto_depIdxs,
+		EnumInfos:         file_api_colonio_v1alpha_node_proto_enumTypes,
 		MessageInfos:      file_api_colonio_v1alpha_node_proto_msgTypes,
 	}.Build()
 	File_api_colonio_v1alpha_node_proto = out.File

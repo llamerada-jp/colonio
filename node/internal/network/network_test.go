@@ -117,7 +117,7 @@ func TestNetwork(t *testing.T) {
 
 	// can be online only one node
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		st, _ := networks[0].GetStability()
+		st, _, _ := networks[0].GetStability()
 		assert.True(c, networks[0].IsOnline())
 		assert.True(c, st)
 	}, 60*time.Second, 1*time.Second)
@@ -148,7 +148,7 @@ func TestNetwork(t *testing.T) {
 	// all nodes should be online
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		for _, network := range networks {
-			st, _ := network.GetStability()
+			st, _, _ := network.GetStability()
 			assert.True(c, network.IsOnline())
 			assert.True(c, st)
 		}
@@ -205,7 +205,7 @@ func TestNetwork(t *testing.T) {
 
 		for _, network := range networks {
 			assert.True(t, network.IsOnline())
-			st, _ := network.GetStability()
+			st, _, _ := network.GetStability()
 			assert.True(t, st)
 		}
 		assert.Len(c, receivedPackets, 2)
@@ -217,8 +217,10 @@ func TestNetwork(t *testing.T) {
 	})
 	for i, network := range networks {
 		nodeID := nodeIDs[i]
-		_, nextNodeIDs := network.GetStability()
-		assert.Len(t, nextNodeIDs, 4)
+		_, backwardNextNodeIDs, frontwardNextNodeIDs := network.GetStability()
+		assert.Len(t, backwardNextNodeIDs, 2)
+		assert.Len(t, frontwardNextNodeIDs, 2)
+		nextNodeIDs := append(backwardNextNodeIDs, frontwardNextNodeIDs...)
 
 		j := slices.IndexFunc(sortedNodeIDs, func(id *types.NodeID) bool {
 			return nodeID.Equal(id)

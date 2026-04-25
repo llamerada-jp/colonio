@@ -149,6 +149,10 @@ func (sa *SeedAccessor) Start(ctx context.Context) (*types.NodeID, error) {
 	return sa.localNodeID, nil
 }
 
+func (sa *SeedAccessor) GetClient() service.SeedServiceClient {
+	return sa.client
+}
+
 // IsAlone indicates whether the node is the only one online of the seed.
 func (sa *SeedAccessor) IsAlone() bool {
 	sa.mtx.RLock()
