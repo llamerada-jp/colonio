@@ -275,7 +275,6 @@ func (s *Sector) Extend(newTail types.NodeID) {
 		}
 		s.cond.Wait()
 	}
-	return
 }
 
 func (s *Sector) Migrate(to *Sector) error {
@@ -568,9 +567,7 @@ func (s *Sector) ConsensusApplyProposal(proposal *proto.ConsensusProposal) error
 	}
 
 	if activate := proposal.GetActivate(); activate != nil {
-		if err := s.processActivateProposal(activate); err != nil {
-			return err
-		}
+		return s.processActivateProposal(activate)
 	}
 	if s.tail == nil { // Not activated yet.
 		return nil
@@ -633,7 +630,7 @@ func (s *Sector) processTerminateProposal() error {
 	s.terminated = true
 	s.stopped = true
 
-	s.handler.SectorTerminated(&s.sectorKey)
+	go s.handler.SectorTerminated(&s.sectorKey)
 	return nil
 }
 
