@@ -38,7 +38,7 @@ type Handler interface {
 	ConsensusError(err error)
 	ConsensusAppendNode(sectorNo kvsTypes.SectorNo, nodeID *types.NodeID)
 	ConsensusRemoveNode(sectorNo kvsTypes.SectorNo)
-	ConsensusApplyProposal(proposal *proto.ConsensusProposal)
+	ConsensusApplyProposal(proposal *proto.ConsensusProposal) error
 	ConsensusGetSnapshot() ([]byte, error)
 	ConsensusApplySnapshot(snapshot []byte) error
 }
@@ -340,7 +340,9 @@ func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
 	}
 
 	for _, proposal := range proposals {
-		n.handler.ConsensusApplyProposal(proposal)
+		if err := n.handler.ConsensusApplyProposal(proposal); err != nil {
+			return err
+		}
 	}
 
 	return nil

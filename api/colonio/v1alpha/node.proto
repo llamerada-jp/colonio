@@ -47,6 +47,8 @@ message PacketContent {
     SectorManageMemberResponse sector_manage_member_response = 42;
     SectorActivate             sector_activate               = 43;
     SectorActivateResponse     sector_activate_response      = 44;
+    SectorPrepareSplit         sector_prepare_split          = 45;
+    SectorPrepareSplitResponse sector_prepare_split_response = 46;
 
     Spread              spread                = 50;
     SpreadKnock         spread_knock          = 51;
@@ -135,11 +137,18 @@ message SectorManageMemberResponse {
 }
 
 message SectorActivate          {
-  bytes sector_id   = 1;
-  bool  with_import = 2;
+  bytes sector_id = 1;
 }
 
 message SectorActivateResponse     {
+  bool success = 1;
+}
+
+message SectorPrepareSplit {
+  bytes sector_id = 1;
+}
+
+message SectorPrepareSplitResponse {
   bool success = 1;
 }
 

@@ -29,7 +29,8 @@ type inboundPort interface {
 	kvsOperate(command proto.KvsOperation_Command, key string, value []byte) (proto.KvsOperationResponse_Error, []byte)
 	processConsensusMessage(key kvsTypes.SectorKey, content *proto.ConsensusMessage)
 	sectorManageMember(param *sectorManageMemberParam) error
-	sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID, withImport bool) bool
+	sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID) bool
+	sectorPrepareSplit(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID) bool
 }
 
 var _ inboundPort = &KVS{}
@@ -51,6 +52,7 @@ func SetupInbound(l *slog.Logger, t *transferer.Transferer, c inboundPort) {
 	transferer.SetRequestHandler[proto.PacketContent_ConsensusMessage](t, i.recvConsensusMessage)
 	transferer.SetRequestHandler[proto.PacketContent_SectorManageMember](t, i.recvSectorManageMember)
 	transferer.SetRequestHandler[proto.PacketContent_SectorActivate](t, i.recvSectorActivate)
+	transferer.SetRequestHandler[proto.PacketContent_SectorPrepareSplit](t, i.recvSectorPrepareSplit)
 }
 
 func (i *inboundAdapter) recvKvsOperation(packet *networkTypes.Packet) {
@@ -141,13 +143,31 @@ func (i *inboundAdapter) recvSectorActivate(packet *networkTypes.Packet) {
 		i.logger.Warn("Failed to parse promoter NodeID", "error", err)
 		return
 	}
-	withImport := content.WithImport
 
-	success := i.core.sectorActivate(packet.SrcNodeID, sectorID, withImport)
+	success := i.core.sectorActivate(packet.SrcNodeID, sectorID)
 
 	i.transferer.Response(packet, &proto.PacketContent{
 		Content: &proto.PacketContent_SectorActivateResponse{
 			SectorActivateResponse: &proto.SectorActivateResponse{
+				Success: success,
+			},
+		},
+	})
+}
+
+func (i *inboundAdapter) recvSectorPrepareSplit(packet *networkTypes.Packet) {
+	content := packet.Content.GetSectorPrepareSplit()
+	sectorID, err := kvsTypes.UnmarshalSectorID(content.SectorId)
+	if err != nil {
+		i.logger.Warn("Failed to parse promoter NodeID", "error", err)
+		return
+	}
+
+	success := i.core.sectorPrepareSplit(packet.SrcNodeID, sectorID)
+
+	i.transferer.Response(packet, &proto.PacketContent{
+		Content: &proto.PacketContent_SectorPrepareSplitResponse{
+			SectorPrepareSplitResponse: &proto.SectorPrepareSplitResponse{
 				Success: success,
 			},
 		},

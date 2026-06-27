@@ -267,6 +267,7 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 
 	activationResolver := activation.NewResolver(&activation.Config{
 		Outbound: activation.NewOutbound(net.GetSeedClient()),
+		CacheTTL: 1 * time.Minute,
 	})
 
 	hostingManager := hosting.NewManager(&hosting.Config{

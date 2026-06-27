@@ -8,8 +8,15 @@ option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
 
 message ConsensusProposal {
   oneof content {
-    Activate  activate  = 1;
-    Operation operation = 2;
+    Activate       activate         = 1;
+    Terminate      terminate        = 2;
+    Extend         extend           = 3;
+    PreCommitSplit pre_commit_split = 4;
+    CommitSplit    commit_split     = 5;
+    PrepareMerge   prepare_merge    = 6;
+    CommitMerge    commit_merge     = 7;
+    Import         import           = 8;
+    Operation      operation        = 9;
   }
 }
 
@@ -17,14 +24,44 @@ message Activate {
   colonio.v1alpha.NodeID tail = 1;
 }
 
+message Terminate {
+}
+
+message Extend {
+  colonio.v1alpha.NodeID tail = 1;
+}
+
+message PreCommitSplit {
+  colonio.v1alpha.NodeID tail = 1;
+}
+
+message CommitSplit {
+  colonio.v1alpha.NodeID tail = 1;
+}
+
+message PrepareMerge {
+  colonio.v1alpha.NodeID handler = 1;
+}
+
+message CommitMerge {
+  colonio.v1alpha.NodeID tail = 1;
+}
+
+message Import {
+  message Record {
+    string key   = 1;
+    bytes  value = 2;
+  }
+  repeated Record records = 1;
+}
+
 message Operation {
   enum Command {
     // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
-    COMMAND_IMPORT = 0;
-    COMMAND_GET    = 1;
-    COMMAND_SET    = 2;
-    COMMAND_PATCH  = 3;
-    COMMAND_DELETE = 4;
+    COMMAND_GET    = 0;
+    COMMAND_SET    = 1;
+    COMMAND_PATCH  = 2;
+    COMMAND_DELETE = 3;
   }
 
   Command command      = 1;
