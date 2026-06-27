@@ -51,18 +51,22 @@ type Config struct {
 }
 
 type KVS struct {
-	logger                    *slog.Logger
-	raftLogger                raft.Logger
-	ctx                       context.Context
-	handler                   Handler
-	outbound                  OutboundPort
-	consensusOutbound         consensus.OutboundPort
-	activationResolver        *activation.Resolver
-	hostingManager            *hosting.Manager
-	observation               observation.Caller
-	store                     kvsTypes.Store
-	localNodeID               *types.NodeID
-	mtx                       sync.RWMutex // for sectors, hostingManager, sectorUpdated
+	logger             *slog.Logger
+	raftLogger         raft.Logger
+	ctx                context.Context
+	handler            Handler
+	outbound           OutboundPort
+	consensusOutbound  consensus.OutboundPort
+	activationResolver *activation.Resolver
+	hostingManager     *hosting.Manager
+	observation        observation.Caller
+	store              kvsTypes.Store
+	localNodeID        *types.NodeID
+	// mtx protects sectors, sectorUpdated.
+	// Lock order: hosting.Manager's lock may be held when acquiring k.mtx
+	// (Manager calls back into KVS), so never call into hostingManager
+	// while holding k.mtx.
+	mtx                       sync.RWMutex
 	sectors                   map[kvsTypes.SectorKey]*sector.Sector
 	mtxOperateSectors         sync.Mutex
 	proposedSplittingNodeID   *types.NodeID
@@ -239,16 +243,20 @@ func (k *KVS) Delete(key string) chan error {
 }
 
 func (k *KVS) kvsOperate(command proto.KvsOperation_Command, key string, value []byte) (proto.KvsOperationResponse_Error, []byte) {
-	k.mtx.RLock()
 	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
 	if hostingSectorKey == nil {
-		k.mtx.RUnlock()
-		k.logger.Debug("preparing hosting sector")
+		k.logger.Debug("preparing hosting sector key")
 		return proto.KvsOperationResponse_ERROR_PREPARING, nil
 	}
 
-	operator := k.sectors[*hostingSectorKey].GetOperator()
+	k.mtx.RLock()
+	hostingSector := k.sectors[*hostingSectorKey]
 	k.mtx.RUnlock()
+	if hostingSector == nil {
+		k.logger.Debug("preparing hosting sector")
+		return proto.KvsOperationResponse_ERROR_PREPARING, nil
+	}
+	operator := hostingSector.GetOperator()
 
 	switch command {
 	case proto.KvsOperation_COMMAND_GET:
@@ -316,9 +324,15 @@ func (k *KVS) subRoutine() {
 		defer k.mtxOperateSectors.Unlock()
 
 		hostingSectorKey := k.hostingManager.GetHostingSectorKey()
+		if hostingSectorKey == nil {
+			return
+		}
 		k.mtx.RLock()
 		hostingSector := k.sectors[*hostingSectorKey]
 		k.mtx.RUnlock()
+		if hostingSector == nil {
+			return
+		}
 
 		k.operateSectors(hostingSector, nextNodeIDs, frontwardNextNodeID, sectorIsStable)
 	}()
@@ -424,6 +438,7 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 func (k *KVS) getFrontwardCondition(frontwardNextNodeID *types.NodeID) (*sector.Sector, bool) {
 	var frontwardNextSector *sector.Sector
 	var minimumSector *sector.Sector
+	k.mtx.RLock()
 	for _, sector := range k.sectors {
 		if sector.GetHeadAddress().Equal(k.localNodeID) {
 			continue
@@ -439,6 +454,7 @@ func (k *KVS) getFrontwardCondition(frontwardNextNodeID *types.NodeID) (*sector.
 			}
 		}
 	}
+	k.mtx.RUnlock()
 	if frontwardNextSector == nil {
 		frontwardNextSector = minimumSector
 	}
@@ -516,9 +532,6 @@ func (k *KVS) sectorManageMember(param *sectorManageMemberParam) error {
 }
 
 func (k *KVS) sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID) bool {
-	k.mtx.Lock()
-	defer k.mtx.Unlock()
-
 	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
 
 	// ignore if it does not match the current node
@@ -527,7 +540,9 @@ func (k *KVS) sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID
 	}
 
 	// skip if there isn't hosing sector
+	k.mtx.RLock()
 	hostingSector, ok := k.sectors[*hostingSectorKey]
+	k.mtx.RUnlock()
 	if !ok {
 		return false
 	}
@@ -630,9 +645,6 @@ func (k *KVS) SectorError(sectorKey *kvsTypes.SectorKey, err error) {
 }
 
 func (k *KVS) SectorAppendNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {
-	k.mtx.Lock()
-	defer k.mtx.Unlock()
-
 	k.hostingManager.OnSectorAppendNode(sectorKey, sectorNo, nodeID)
 }
 
