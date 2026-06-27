@@ -41,6 +41,8 @@ func NewOutbound(transferer *transferer.Transferer) OutboundPort {
 func (o *outboundAdapter) sendConsensusMessage(dstNodeID *types.NodeID, message *proto.ConsensusMessage) {
 	o.transferer.RequestOneWay(
 		dstNodeID,
+		// Expect raft to retry, so the PacketModeNoRetry option is enabled.
+		// If you enable Retry, be sure to verify its effectiveness through experimentation.
 		networkTypes.PacketModeExplicit|networkTypes.PacketModeNoRetry,
 		&proto.PacketContent{
 			Content: &proto.PacketContent_ConsensusMessage{
