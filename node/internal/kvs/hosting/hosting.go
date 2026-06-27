@@ -43,9 +43,9 @@ type MemberStateEntry struct {
 
 // SectorHandler is implemented by KVS to perform sector operations on behalf of the Manager.
 type SectorHandler interface {
-	AllocateSector(sectorKey *kvsTypes.SectorKey, head *types.NodeID, isHosting bool, join bool, members map[kvsTypes.SectorNo]*types.NodeID)
-	ApplyAppendNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo, nodeID *types.NodeID)
-	ApplyRemoveNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo)
+	HostingAllocateSector(sectorKey *kvsTypes.SectorKey, head *types.NodeID, isHosting bool, join bool, members map[kvsTypes.SectorNo]*types.NodeID)
+	HostingApplyAppendNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo, nodeID *types.NodeID)
+	HostingApplyRemoveNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo)
 }
 
 // OutboundPort is implemented by KVS to send messages to remote nodes.
@@ -201,6 +201,16 @@ func (m *Manager) OnSectorRemoveNode(sectorKey *kvsTypes.SectorKey, sectorNo kvs
 	}
 }
 
+func (m *Manager) OnSectorTerminated(sectorKey *kvsTypes.SectorKey) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	if m.hostingSectorKey != nil && *sectorKey == *m.hostingSectorKey {
+		m.hostingSectorKey = nil
+		m.lastSectorNo = 0
+		m.memberStates = make(map[kvsTypes.SectorNo]*MemberStateEntry)
+	}
+}
+
 func (m *Manager) initHostSector(nextNodeIDs []*types.NodeID) {
 	sectorID, err := uuid.NewV7()
 	if err != nil {
@@ -231,7 +241,7 @@ func (m *Manager) initHostSector(nextNodeIDs []*types.NodeID) {
 		SectorNo: kvsTypes.HostNodeSectorNo,
 	}
 	m.hostingSectorKey = sectorKey
-	m.handler.AllocateSector(sectorKey, m.localNodeID, true, false, members)
+	m.handler.HostingAllocateSector(sectorKey, m.localNodeID, true, false, members)
 }
 
 func (m *Manager) getNodesToBeChanged(nextNodeIDs []*types.NodeID) ([]*types.NodeID, map[kvsTypes.SectorNo]struct{}) {
@@ -270,9 +280,9 @@ func (m *Manager) applyMemberSectors() {
 	for sectorNo, member := range m.memberStates {
 		switch member.State {
 		case MemberStateAppending:
-			m.handler.ApplyAppendNode(*m.hostingSectorKey, sectorNo, member.NodeID)
+			m.handler.HostingApplyAppendNode(*m.hostingSectorKey, sectorNo, member.NodeID)
 		case MemberStateRemoving:
-			m.handler.ApplyRemoveNode(*m.hostingSectorKey, sectorNo)
+			m.handler.HostingApplyRemoveNode(*m.hostingSectorKey, sectorNo)
 		}
 	}
 }

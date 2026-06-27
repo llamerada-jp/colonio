@@ -46,15 +46,20 @@ type SectorManageMemberParam struct {
 }
 
 type SectorActivateParam struct {
-	dstNodeID  *types.NodeID
-	sectorID   kvsTypes.SectorID
-	withImport bool
+	dstNodeID *types.NodeID
+	sectorID  kvsTypes.SectorID
+}
+
+type SectorSplitParam struct {
+	dstNodeID *types.NodeID
+	sectorID  kvsTypes.SectorID
 }
 
 type OutboundPort interface {
 	sendKvsOperation(param *operationParam)
 	sendSectorManageMember(param *SectorManageMemberParam)
-	sendSectorActivate(param *SectorActivateParam) error
+	sendSectorActivate(param *SectorActivateParam) chan error
+	sendSectorPrepareSplit(param *SectorSplitParam) chan error
 }
 
 type outboundAdapter struct {
@@ -138,14 +143,13 @@ func (h *sectorActivateHandler) OnError(code constants.PacketErrorCode, message 
 	h.c <- fmt.Errorf("failed to activate sector: packet error %d: %s", code, message)
 }
 
-func (o *outboundAdapter) sendSectorActivate(param *SectorActivateParam) error {
+func (o *outboundAdapter) sendSectorActivate(param *SectorActivateParam) chan error {
 	c := make(chan error, 1)
 	o.transferer.Request(param.dstNodeID, networkTypes.PacketModeExplicit,
 		&proto.PacketContent{
 			Content: &proto.PacketContent_SectorActivate{
 				SectorActivate: &proto.SectorActivate{
-					SectorId:   kvsTypes.MustMarshalSectorID(param.sectorID),
-					WithImport: param.withImport,
+					SectorId: kvsTypes.MustMarshalSectorID(param.sectorID),
 				},
 			},
 		},
@@ -154,5 +158,40 @@ func (o *outboundAdapter) sendSectorActivate(param *SectorActivateParam) error {
 		},
 	)
 
-	return <-c
+	return c
+}
+
+type sectorSplitHandler struct {
+	c chan error
+}
+
+func (h *sectorSplitHandler) OnResponse(packet *networkTypes.Packet) {
+	success := packet.Content.GetSectorPrepareSplitResponse().GetSuccess()
+	if success {
+		h.c <- nil
+	} else {
+		h.c <- fmt.Errorf("failed to split sector: response indicates failure")
+	}
+}
+
+func (h *sectorSplitHandler) OnError(code constants.PacketErrorCode, message string) {
+	h.c <- fmt.Errorf("failed to split sector: packet error %d: %s", code, message)
+}
+
+func (o *outboundAdapter) sendSectorPrepareSplit(param *SectorSplitParam) chan error {
+	c := make(chan error, 1)
+	o.transferer.Request(param.dstNodeID, networkTypes.PacketModeExplicit,
+		&proto.PacketContent{
+			Content: &proto.PacketContent_SectorPrepareSplit{
+				SectorPrepareSplit: &proto.SectorPrepareSplit{
+					SectorId: kvsTypes.MustMarshalSectorID(param.sectorID),
+				},
+			},
+		},
+		&sectorSplitHandler{
+			c: c,
+		},
+	)
+
+	return c
 }

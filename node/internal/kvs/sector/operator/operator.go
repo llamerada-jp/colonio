@@ -41,21 +41,15 @@ type Config struct {
 	Head      *types.NodeID
 }
 
-type lock struct {
-	coordinator uint64
-	address     *types.NodeID
-}
-
 type Operator struct {
-	sectorKey kvsTypes.SectorKey
-	handler   Handler
-	mtx       sync.RWMutex
-	store     kvsTypes.Store
-	head      types.NodeID
-	tail      *types.NodeID
-	readonly  *lock
-	blocked   *lock
-	keys      map[string]any
+	sectorKey        kvsTypes.SectorKey
+	handler          Handler
+	mtx              sync.RWMutex
+	store            kvsTypes.Store
+	head             types.NodeID
+	tail             *types.NodeID
+	splittingAddress *types.NodeID
+	keys             map[string]any
 }
 
 var _ Operations = &Operator{}
@@ -86,23 +80,88 @@ func (s *Operator) Delete(key string) error {
 	panic("delete not implemented")
 }
 
-func (s *Operator) SetRange(tail types.NodeID) {
+func (s *Operator) SetRange(tail types.NodeID) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
+	if s.tail == nil || s.tail.Smaller(&tail) {
+		s.tail = &tail
+		return nil
+	}
+
+	// Delete records in the range (tail, s.tail].
+	for key := range s.keys {
+		keyHash := types.NewHashedNodeID([]byte(key))
+		if !keyHash.IsBetween(&tail, s.tail) {
+			continue
+		}
+		if err := s.store.Delete(&s.sectorKey, key); err != nil {
+			return err
+		}
+		delete(s.keys, key)
+	}
+
 	s.tail = &tail
+	return nil
 }
 
-func (s *Operator) ApplyProposal(command *proto.Operation) {
+func (s *Operator) ClearRange() {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	s.tail = nil
+}
+
+func (s *Operator) SetSplitting(address *types.NodeID) {
+	s.mtx.Lock()
+	s.splittingAddress = address
+	s.mtx.Unlock()
+
+	if address == nil {
+		return
+	}
+
+	// TODO: Wait for all proposed operations to be applied frontward from splittingTail.
+}
+
+func (s *Operator) ApplyProposal(command *proto.Operation) error {
 	panic("apply not implemented")
 }
 
-func (s *Operator) ExportRecords(head, tail *types.NodeID) []byte {
-	panic("export not implemented")
+func (s *Operator) ExportRecords(head, tail *types.NodeID) (map[string][]byte, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	records := make(map[string][]byte)
+
+	for key := range s.keys {
+		keyHash := types.NewHashedNodeID([]byte(key))
+		if !keyHash.IsBetween(head, tail) {
+			continue
+		}
+
+		value, err := s.store.Get(&s.sectorKey, key)
+		if err != nil {
+			return nil, err
+		}
+		records[key] = value
+	}
+
+	return records, nil
 }
 
-func (s *Operator) ImportRecords(data []byte) error {
-	panic("import not implemented")
+func (s *Operator) ImportRecords(records map[string][]byte) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	for key, value := range records {
+		if err := s.store.Set(&s.sectorKey, key, value); err != nil {
+			return err
+		}
+		s.keys[key] = struct{}{}
+	}
+
+	return nil
 }
 
 func (s *Operator) ExportSnapshot() ([]byte, error) {

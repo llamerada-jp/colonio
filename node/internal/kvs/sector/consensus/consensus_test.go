@@ -33,7 +33,7 @@ type consensusHandlerHelper struct {
 	consensusErrorF         func(err error)
 	consensusAppendNodeF    func(sectorNo kvsTypes.SectorNo, nodeID *types.NodeID)
 	consensusRemoveNodeF    func(sectorNo kvsTypes.SectorNo)
-	consensusApplyProposalF func(proposal *proto.ConsensusProposal)
+	consensusApplyProposalF func(proposal *proto.ConsensusProposal) error
 	consensusGetSnapshotF   func() ([]byte, error)
 	consensusApplySnapshotF func(snapshot []byte) error
 }
@@ -46,10 +46,10 @@ func (h *consensusHandlerHelper) ConsensusError(err error) {
 	h.consensusErrorF(err)
 }
 
-func (h *consensusHandlerHelper) ConsensusApplyProposal(proposal *proto.ConsensusProposal) {
+func (h *consensusHandlerHelper) ConsensusApplyProposal(proposal *proto.ConsensusProposal) error {
 	h.t.Helper()
 	require.NotNil(h.t, h.consensusApplyProposalF)
-	h.consensusApplyProposalF(proposal)
+	return h.consensusApplyProposalF(proposal)
 }
 
 func (h *consensusHandlerHelper) ConsensusAppendNode(sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {
@@ -138,10 +138,11 @@ func TestConsensus(t *testing.T) {
 				})
 			},
 
-			consensusApplyProposalF: func(proposal *proto.ConsensusProposal) {
+			consensusApplyProposalF: func(proposal *proto.ConsensusProposal) error {
 				mtx.Lock()
 				defer mtx.Unlock()
 				receivedProposals[i] = append(receivedProposals[i], proposal)
+				return nil
 			},
 		}
 

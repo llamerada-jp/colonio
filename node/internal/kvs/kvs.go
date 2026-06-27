@@ -50,21 +50,23 @@ type Config struct {
 }
 
 type KVS struct {
-	logger             *slog.Logger
-	raftLogger         raft.Logger
-	ctx                context.Context
-	handler            Handler
-	outbound           OutboundPort
-	consensusOutbound  consensus.OutboundPort
-	activationResolver *activation.Resolver
-	hostingManager     *hosting.Manager
-	observation        observation.Caller
-	store              kvsTypes.Store
-	localNodeID        *types.NodeID
-	mtx                sync.RWMutex // for sectors, hostingManager, sectorUpdated
-	sectors            map[kvsTypes.SectorKey]*sector.Sector
-	sectorUpdated      bool       // for observation
-	mtxFrontward       sync.Mutex // for activating frontward sector
+	logger                    *slog.Logger
+	raftLogger                raft.Logger
+	ctx                       context.Context
+	handler                   Handler
+	outbound                  OutboundPort
+	consensusOutbound         consensus.OutboundPort
+	activationResolver        *activation.Resolver
+	hostingManager            *hosting.Manager
+	observation               observation.Caller
+	store                     kvsTypes.Store
+	localNodeID               *types.NodeID
+	mtx                       sync.RWMutex // for sectors, hostingManager, sectorUpdated
+	sectors                   map[kvsTypes.SectorKey]*sector.Sector
+	sectorUpdated             bool // for observation
+	mtxOperateSectors         sync.Mutex
+	proposedSplittingNodeID   *types.NodeID
+	proposedSplittingSectorID *kvsTypes.SectorID
 }
 
 func NewKVS(conf *Config) *KVS {
@@ -235,70 +237,6 @@ func (k *KVS) Delete(key string) chan error {
 	return c
 }
 
-func (k *KVS) subRoutine() {
-	nodeIsStable, backwardNextNodeIDs, frontwardNextNodeIDs := k.handler.KvsGetStability()
-	if !nodeIsStable {
-		return
-	}
-	nextNodeIDs := append(backwardNextNodeIDs, frontwardNextNodeIDs...)
-
-	sectorIsStable := k.hostingManager.ManageMember(nextNodeIDs)
-
-	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
-	hostingSector := k.sectors[*hostingSectorKey]
-	hostingSectorIsActive := hostingSector.GetTailAddress() != nil
-	// frontwardNodeExists, frontwardSector := k.getFrontwardSector(frontwardNextNodeIDs)
-
-	if !hostingSectorIsActive && sectorIsStable {
-		entireState, err := k.activationResolver.ResolveEntireState(k.ctx)
-		if err != nil {
-			k.logger.Warn("Failed to get sector entire state", "error", err)
-			return
-		}
-
-		// other node might have already activated the sector, check the state again
-		if entireState != kvsTypes.EntireStateInactive {
-			return
-		}
-
-		// Haven't activated sector yet, try to activate if the sector is stable.
-		k.activateHostingSector(frontwardNextNodeIDs)
-		return
-	}
-
-	if hostingSectorIsActive {
-		if err := k.activationResolver.SetSectorState(k.ctx, kvsTypes.SectorStateActive); err != nil {
-			k.logger.Warn("Failed to set sector state to active", "error", err)
-		}
-	}
-}
-
-func (k *KVS) allocateSector(
-	sectorKey *kvsTypes.SectorKey,
-	head *types.NodeID,
-	isHosting bool,
-	append bool,
-	members map[kvsTypes.SectorNo]*types.NodeID,
-) {
-	s := sector.NewSector(&sector.SectorConfig{
-		Logger:     k.logger,
-		RaftLogger: k.raftLogger,
-		Handler:    k,
-		Outbound:   k.consensusOutbound,
-		SectorKey:  sectorKey,
-		IsHosting:  isHosting,
-		Join:       append,
-		Members:    members,
-		Store:      k.store,
-		Head:       head,
-	})
-
-	k.sectors[*sectorKey] = s
-	k.sectorUpdated = true
-
-	s.Start(k.ctx)
-}
-
 func (k *KVS) kvsOperate(command proto.KvsOperation_Command, key string, value []byte) (proto.KvsOperationResponse_Error, []byte) {
 	k.mtx.RLock()
 	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
@@ -354,6 +292,193 @@ func (k *KVS) kvsOperate(command proto.KvsOperation_Command, key string, value [
 	}
 }
 
+func (k *KVS) subRoutine() {
+	nodeIsStable, backwardNextNodeIDs, frontwardNextNodeIDs := k.handler.KvsGetStability()
+	if !nodeIsStable {
+		return
+	}
+	// The first element of frontwardNextNodeIDs is the next node in the frontward direction.
+	nextNodeIDs := append(frontwardNextNodeIDs, backwardNextNodeIDs...)
+	var frontwardNextNodeID *types.NodeID
+	if len(nextNodeIDs) > 0 {
+		frontwardNextNodeID = nextNodeIDs[0]
+	}
+
+	sectorIsStable := k.hostingManager.ManageMember(nextNodeIDs)
+
+	// Try to operate sectors by one thread to avoid race.
+	locked := k.mtxOperateSectors.TryLock()
+	if !locked {
+		return
+	}
+	go func() {
+		defer k.mtxOperateSectors.Unlock()
+
+		hostingSectorKey := k.hostingManager.GetHostingSectorKey()
+		k.mtx.RLock()
+		hostingSector := k.sectors[*hostingSectorKey]
+		k.mtx.RUnlock()
+
+		k.operateSectors(hostingSector, nextNodeIDs, frontwardNextNodeID, sectorIsStable)
+	}()
+}
+
+func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.NodeID, frontwardNextNodeID *types.NodeID, sectorIsStable bool) {
+	if !k.proposedSplitRoutine(hostingSector, nextNodeIDs) {
+		return
+	}
+
+	hostingSectorIsActive := false
+	if hostingSector.GetTailAddress() != nil {
+		hostingSectorIsActive = true
+	}
+	hostingSectorState := kvsTypes.SectorStateInactive
+	if hostingSectorIsActive {
+		hostingSectorState = kvsTypes.SectorStateActive
+	}
+	if err := k.activationResolver.SetSectorState(k.ctx, hostingSectorState); err != nil {
+		k.logger.Warn("Failed to set sector state to active", "error", err)
+	}
+
+	// If there is any management proposal, skip operating sectors until the proposal is resolved
+	// because the proposal may change the condition of sectors.
+	if hostingSector.HasManagementProposal() {
+		return
+	}
+
+	if !hostingSectorIsActive {
+		if sectorIsStable {
+			// Haven't activated sector yet, try to activate if the sector is stable.
+			k.activateHostingSector(hostingSector, nextNodeIDs, true)
+		}
+		return
+	}
+
+	frontwardNextSector, frontwardNodeMatch := k.getFrontwardCondition(frontwardNextNodeID)
+	// Skip until the frontward sector will be created.
+	if frontwardNextSector == nil {
+		return
+	}
+
+	hostingSectorTail := hostingSector.GetTailAddress()
+
+	// The sector is inactive.
+	if frontwardNextSector.GetTailAddress() == nil {
+		if !frontwardNodeMatch {
+			// Terminate the frontward sector.
+			frontwardNextSector.Terminate()
+			return
+		}
+
+		switch frontwardNextSector.GetHeadAddress().Compare(hostingSectorTail) {
+		case -1: // frontwardNextSector.GetHeadAddress() < hostingSectorTail
+			// Split hosting sector and make frontward next sector active.
+			k.splitSector(hostingSector, frontwardNextSector)
+		case 0: // frontwardNextSector.GetHeadAddress() == hostingSectorTail
+			// Activate frontward next sector.
+			k.activateFrontwardSector(frontwardNextSector)
+		case 1: // frontwardNextSector.GetHeadAddress() > hostingSectorTail
+			// Extend hosing sector to frontward next sector.
+			hostingSector.Extend(*frontwardNextSector.GetHeadAddress())
+		}
+		return
+	}
+
+	// The sector is active & frontward node is not match.
+	if !frontwardNodeMatch {
+		switch frontwardNextSector.GetHeadAddress().Compare(hostingSectorTail) {
+		case -1: // frontwardNextSector.GetHeadAddress() < hostingSectorTail
+			// Terminate both of hosting sector and frontward next sector.
+			hostingSector.Terminate()
+			frontwardNextSector.Terminate()
+		default: // frontwardNextSector.GetHeadAddress() >= hostingSectorTail
+			// Merge the hosting sector with frontward sector and delete the frontward sector.
+			k.mergeSector(hostingSector, frontwardNextSector)
+		}
+		return
+	}
+
+	switch frontwardNextSector.GetHeadAddress().Compare(hostingSectorTail) {
+	case -1: // frontwardNextSector.GetHeadAddress() < hostingSectorTail
+		// Terminate both of hosting sector and frontward next sector.
+		hostingSector.Terminate()
+		frontwardNextSector.Terminate()
+	case 0: // frontwardNextSector.GetHeadAddress() == hostingSectorTail
+		// Just a normal case, nothing to do.
+	case 1: // frontwardNextSector.GetHeadAddress() > hostingSectorTail
+		// Extend hosing sector to frontward next sector.
+		hostingSector.Extend(*frontwardNextSector.GetHeadAddress())
+	}
+}
+
+// getFrontwardCondition returns the frontward next sector and whether the frontward next node is match or not.
+func (k *KVS) getFrontwardCondition(frontwardNextNodeID *types.NodeID) (*sector.Sector, bool) {
+	var frontwardNextSector *sector.Sector
+	var minimumSector *sector.Sector
+	for _, sector := range k.sectors {
+		if sector.GetHeadAddress().Equal(k.localNodeID) {
+			continue
+		}
+		// find the frontward sector if exists, otherwise find the minimum sector.
+		if k.localNodeID.Smaller(sector.GetHeadAddress()) {
+			if frontwardNextSector == nil || sector.GetHeadAddress().Smaller(frontwardNextSector.GetHeadAddress()) {
+				frontwardNextSector = sector
+			}
+		} else {
+			if minimumSector == nil || sector.GetHeadAddress().Smaller(minimumSector.GetHeadAddress()) {
+				minimumSector = sector
+			}
+		}
+	}
+	if frontwardNextSector == nil {
+		frontwardNextSector = minimumSector
+	}
+
+	// local node is stable and other nodes are not exist
+	if frontwardNextNodeID == nil {
+		// if there is any sector, not match
+		return frontwardNextSector, frontwardNextSector == nil
+	}
+
+	if frontwardNextSector == nil {
+		return nil, false
+	}
+
+	if frontwardNextSector.GetHeadAddress().IsBetween(k.localNodeID, frontwardNextNodeID) {
+		return frontwardNextSector, false
+	} else if frontwardNextSector.GetHeadAddress().Equal(frontwardNextNodeID) {
+		return frontwardNextSector, true
+	} else {
+		return nil, false
+	}
+}
+
+func (k *KVS) allocateSector(
+	sectorKey *kvsTypes.SectorKey,
+	head *types.NodeID,
+	isHosting bool,
+	append bool,
+	members map[kvsTypes.SectorNo]*types.NodeID,
+) {
+	s := sector.NewSector(&sector.SectorConfig{
+		Logger:     k.logger,
+		RaftLogger: k.raftLogger,
+		Handler:    k,
+		Outbound:   k.consensusOutbound,
+		SectorKey:  sectorKey,
+		IsHosting:  isHosting,
+		Join:       append,
+		Members:    members,
+		Store:      k.store,
+		Head:       head,
+	})
+
+	k.sectors[*sectorKey] = s
+	k.sectorUpdated = true
+
+	s.Start(k.ctx)
+}
+
 type sectorManageMemberParam struct {
 	command   proto.SectorManageMember_Command
 	sectorKey kvsTypes.SectorKey
@@ -382,7 +507,7 @@ func (k *KVS) sectorManageMember(param *sectorManageMemberParam) error {
 	return nil
 }
 
-func (k *KVS) sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID, withImport bool) bool {
+func (k *KVS) sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID) bool {
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
 
@@ -408,9 +533,69 @@ func (k *KVS) sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID
 	if !nodeIsStable {
 		return false
 	}
-	k.activateHostingSector(frontwardNextNodeIDs)
+	k.activateHostingSector(hostingSector, frontwardNextNodeIDs, false)
 
 	return true
+}
+
+func (k *KVS) sectorPrepareSplit(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID) bool {
+	locked := k.mtxOperateSectors.TryLock()
+	if !locked {
+		return false
+	}
+	defer k.mtxOperateSectors.Unlock()
+
+	if k.proposedSplittingNodeID.Equal(srcNodeID) &&
+		k.proposedSplittingSectorID != nil && *k.proposedSplittingSectorID == sectorID {
+		return true
+	}
+
+	if k.proposedSplittingNodeID != nil ||
+		k.hostingManager.GetHostingSectorKey().SectorID != sectorID {
+		return false
+	}
+
+	k.proposedSplittingNodeID = srcNodeID
+	k.proposedSplittingSectorID = &sectorID
+
+	return true
+}
+
+// proposedSplitRoutine is called periodically to check whether the proposed splitting can be finished or not.
+// it returns true if the proposed splitting is finished or there is no proposed splitting, otherwise false.
+func (k *KVS) proposedSplitRoutine(hostingSector *sector.Sector, nextNodeIDs []*types.NodeID) bool {
+	if k.proposedSplittingNodeID == nil {
+		return true
+	}
+
+	// split is proposed but the hosting sector is changed, cancel the proposed splitting.
+	if hostingSector.GetKey().SectorID != *k.proposedSplittingSectorID {
+		k.proposedSplittingNodeID = nil
+		k.proposedSplittingSectorID = nil
+		return true
+	}
+
+	proposedNodeExists := false
+	for _, n := range nextNodeIDs {
+		if n.Equal(k.proposedSplittingNodeID) {
+			proposedNodeExists = true
+			break
+		}
+	}
+	// If the proposed node is not exist, terminate the hosting sector
+	// because the proposed splitting cannot be finished.
+	if !proposedNodeExists {
+		hostingSector.Terminate()
+	}
+
+	// Finish splitting normally.
+	if hostingSector.GetTailAddress() != nil {
+		k.proposedSplittingNodeID = nil
+		k.proposedSplittingSectorID = nil
+		return true
+	}
+
+	return false
 }
 
 func (k *KVS) processConsensusMessage(key kvsTypes.SectorKey, message *proto.ConsensusMessage) {
@@ -438,8 +623,11 @@ func (k *KVS) SectorAppendNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.
 }
 
 func (k *KVS) SectorRemoveNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo) {
+	k.hostingManager.OnSectorRemoveNode(sectorKey, sectorNo)
+
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
+
 	targetKey := kvsTypes.SectorKey{
 		SectorID: sectorKey.SectorID,
 		SectorNo: sectorNo,
@@ -449,29 +637,51 @@ func (k *KVS) SectorRemoveNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.
 		return
 	}
 
-	k.hostingManager.OnSectorRemoveNode(sectorKey, sectorNo)
-
 	delete(k.sectors, targetKey)
 	k.sectorUpdated = true
 
 	go sector.Stop()
 }
 
-// AllocateSector implements hosting.SectorHandler.
-func (k *KVS) AllocateSector(sectorKey *kvsTypes.SectorKey, head *types.NodeID, isHosting bool, join bool, members map[kvsTypes.SectorNo]*types.NodeID) {
+func (k *KVS) SectorTerminated(sectorKey *kvsTypes.SectorKey) {
+	k.hostingManager.OnSectorTerminated(sectorKey)
+
+	k.mtx.Lock()
+	defer k.mtx.Unlock()
+
+	sector, ok := k.sectors[*sectorKey]
+	if !ok {
+		return
+	}
+
+	go sector.Stop()
+	delete(k.sectors, *sectorKey)
+	k.sectorUpdated = true
+}
+
+// HostingAllocateSector implements hosting.SectorHandler.
+func (k *KVS) HostingAllocateSector(sectorKey *kvsTypes.SectorKey, head *types.NodeID, isHosting bool, join bool, members map[kvsTypes.SectorNo]*types.NodeID) {
+	k.mtx.Lock()
+	defer k.mtx.Unlock()
 	k.allocateSector(sectorKey, head, isHosting, join, members)
 }
 
-// ApplyAppendNode implements hosting.SectorHandler.
-func (k *KVS) ApplyAppendNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {
-	if s, ok := k.sectors[sectorKey]; ok {
+// HostingApplyAppendNode implements hosting.SectorHandler.
+func (k *KVS) HostingApplyAppendNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {
+	k.mtx.RLock()
+	s, ok := k.sectors[sectorKey]
+	k.mtx.RUnlock()
+	if ok {
 		s.AppendNode(sectorNo, nodeID)
 	}
 }
 
-// ApplyRemoveNode implements hosting.SectorHandler.
-func (k *KVS) ApplyRemoveNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo) {
-	if s, ok := k.sectors[sectorKey]; ok {
+// HostingApplyRemoveNode implements hosting.SectorHandler.
+func (k *KVS) HostingApplyRemoveNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo) {
+	k.mtx.RLock()
+	s, ok := k.sectors[sectorKey]
+	k.mtx.RUnlock()
+	if ok {
 		s.RemoveNode(sectorNo)
 	}
 }
@@ -487,16 +697,28 @@ func (k *KVS) SendSectorManageMember(param *hosting.SectorManageMemberParam) {
 	})
 }
 
-func (k *KVS) activateHostingSector(frontwardNextNodeIDs []*types.NodeID) {
-	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
+func (k *KVS) activateHostingSector(hostingSector *sector.Sector, frontwardNextNodeIDs []*types.NodeID, checkEntireState bool) {
+	if checkEntireState {
+		entireState, err := k.activationResolver.ResolveEntireState(k.ctx)
+		if err != nil {
+			k.logger.Warn("Failed to get sector entire state", "error", err)
+			return
+		}
+
+		// other node might have already activated the sector, check the state again
+		if entireState != kvsTypes.EntireStateInactive {
+			return
+		}
+	}
 
 	// local node is stable and other nodes are not exist
 	if len(frontwardNextNodeIDs) == 0 {
+		k.mtx.RLock()
+		defer k.mtx.RUnlock()
 		if len(k.sectors) != 0 {
 			k.logger.Warn("No frontward node but sectors exist")
 			return
 		}
-		hostingSector := k.sectors[*hostingSectorKey]
 		hostingSector.Activate(*k.localNodeID)
 		return
 	}
@@ -522,34 +744,67 @@ func (k *KVS) activateHostingSector(frontwardNextNodeIDs []*types.NodeID) {
 		return
 	}
 
-	hostingSector := k.sectors[*hostingSectorKey]
 	hostingSector.Activate(*candidate.GetHeadAddress())
 }
 
-func (k *KVS) activateFrontwardSector(hostingSector, frontwardSector *sector.Sector) {
-	// Frontward sector has already been activated.
-	if frontwardSector.GetTailAddress() != nil {
+func (k *KVS) activateFrontwardSector(frontwardNextSector *sector.Sector) {
+	cErr := k.outbound.sendSectorActivate(&SectorActivateParam{
+		dstNodeID: frontwardNextSector.GetHeadAddress(),
+		sectorID:  frontwardNextSector.GetKey().SectorID,
+	})
+	if err := <-cErr; err != nil {
+		k.logger.Warn("Failed to activate frontward sector", "error", err)
+	}
+}
+
+func (k *KVS) splitSector(hostingSector, frontwardNextSector *sector.Sector) {
+	cErr := k.outbound.sendSectorPrepareSplit(&SectorSplitParam{
+		dstNodeID: frontwardNextSector.GetHeadAddress(),
+		sectorID:  frontwardNextSector.GetKey().SectorID,
+	})
+	if err := <-cErr; err != nil {
+		k.logger.Warn("Failed to split sector", "error", err)
+		return
+	}
+	frontwardNewTail := hostingSector.GetTailAddress()
+
+	if err := hostingSector.Migrate(frontwardNextSector); err != nil {
+		frontwardNextSector.Terminate()
+		k.logger.Warn("Failed to migrate sector", "error", err)
 		return
 	}
 
-	// Frontward sector is not adjacent.
-	if !hostingSector.GetTailAddress().Equal(frontwardSector.GetHeadAddress()) {
+	if err := hostingSector.PreCommitSplit(frontwardNextSector.GetHeadAddress()); err != nil {
+		frontwardNextSector.Terminate()
+		k.logger.Warn("Failed to pre commit split", "error", err)
 		return
 	}
 
-	// lock to avoid multiple activation for frontward sector at the same time.
-	locked := k.mtxFrontward.TryLock()
-	if !locked {
+	if err := frontwardNextSector.CommitSplit(frontwardNewTail); err != nil {
+		frontwardNextSector.Terminate()
+		k.logger.Warn("Failed to commit split", "error", err)
 		return
 	}
-	go func() {
-		defer k.mtxFrontward.Unlock()
-		k.outbound.sendSectorActivate(&SectorActivateParam{
-			dstNodeID:  frontwardSector.GetHeadAddress(),
-			sectorID:   frontwardSector.GetKey().SectorID,
-			withImport: false,
-		})
-	}()
+}
+
+func (k *KVS) mergeSector(hostingSector, frontwardNextSector *sector.Sector) {
+	if err := frontwardNextSector.PrepareMerge(k.localNodeID); err != nil {
+		k.logger.Warn("Failed to prepare merge", "error", err)
+		return
+	}
+
+	newTail := frontwardNextSector.GetTailAddress()
+
+	if err := hostingSector.Merge(frontwardNextSector); err != nil {
+		k.logger.Warn("Failed to merge sector", "error", err)
+		return
+	}
+
+	frontwardNextSector.Terminate()
+
+	if err := hostingSector.CommitMerge(newTail); err != nil {
+		k.logger.Warn("Failed to commit merge", "error", err)
+	}
 }
 
 func (k *KVS) takeObservation() {
