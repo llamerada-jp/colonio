@@ -17,6 +17,7 @@ package kvs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -612,7 +613,13 @@ func (k *KVS) processConsensusMessage(key kvsTypes.SectorKey, message *proto.Con
 }
 
 func (k *KVS) SectorError(sectorKey *kvsTypes.SectorKey, err error) {
-	panic(fmt.Sprintf("raftNodeError not implemented: %s", err))
+	// TODO: It may be necessary to identify the cause of the error and stop the node.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return // shutting down
+	}
+	k.logger.Error("sector error",
+		"sectorKey", sectorKey.String(),
+		"error", err)
 }
 
 func (k *KVS) SectorAppendNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {
