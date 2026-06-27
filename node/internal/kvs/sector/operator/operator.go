@@ -84,7 +84,8 @@ func (s *Operator) SetRange(tail types.NodeID) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	if s.tail == nil || s.tail.Smaller(&tail) {
+	// tail address is not changed or expanded, so no need to delete records.
+	if s.tail == nil || s.tail.Equal(&tail) || s.tail.IsBetween(&s.head, &tail) {
 		s.tail = &tail
 		return nil
 	}

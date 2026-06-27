@@ -371,14 +371,17 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 			return
 		}
 
-		switch frontwardNextSector.GetHeadAddress().Compare(hostingSectorTail) {
-		case -1: // frontwardNextSector.GetHeadAddress() < hostingSectorTail
-			// Split hosting sector and make frontward next sector active.
-			k.splitSector(hostingSector, frontwardNextSector)
-		case 0: // frontwardNextSector.GetHeadAddress() == hostingSectorTail
+		switch {
+		case frontwardNextSector.GetHeadAddress().Equal(hostingSectorTail):
+			// frontwardNextSector.GetHeadAddress() == hostingSectorTail
 			// Activate frontward next sector.
 			k.activateFrontwardSector(frontwardNextSector)
-		case 1: // frontwardNextSector.GetHeadAddress() > hostingSectorTail
+		case frontwardNextSector.GetHeadAddress().IsBetween(k.localNodeID, hostingSectorTail):
+			// frontwardNextSector.GetHeadAddress() is inside the hosting sector range [local, hostingSectorTail)
+			// Split hosting sector and make frontward next sector active.
+			k.splitSector(hostingSector, frontwardNextSector)
+		default:
+			// frontwardNextSector.GetHeadAddress() is outside the hosting sector range (past hostingSectorTail on the ring)
 			// Extend hosing sector to frontward next sector.
 			hostingSector.Extend(*frontwardNextSector.GetHeadAddress())
 		}
@@ -387,26 +390,31 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 
 	// The sector is active & frontward node is not match.
 	if !frontwardNodeMatch {
-		switch frontwardNextSector.GetHeadAddress().Compare(hostingSectorTail) {
-		case -1: // frontwardNextSector.GetHeadAddress() < hostingSectorTail
+		switch {
+		case frontwardNextSector.GetHeadAddress().IsBetween(k.localNodeID, hostingSectorTail):
+			// frontwardNextSector.GetHeadAddress() is inside the hosting sector range [local, hostingSectorTail)
 			// Terminate both of hosting sector and frontward next sector.
 			hostingSector.Terminate()
 			frontwardNextSector.Terminate()
-		default: // frontwardNextSector.GetHeadAddress() >= hostingSectorTail
+		default:
+			// frontwardNextSector.GetHeadAddress() is at or past hostingSectorTail on the ring
 			// Merge the hosting sector with frontward sector and delete the frontward sector.
 			k.mergeSector(hostingSector, frontwardNextSector)
 		}
 		return
 	}
 
-	switch frontwardNextSector.GetHeadAddress().Compare(hostingSectorTail) {
-	case -1: // frontwardNextSector.GetHeadAddress() < hostingSectorTail
+	switch {
+	case frontwardNextSector.GetHeadAddress().Equal(hostingSectorTail):
+		// frontwardNextSector.GetHeadAddress() == hostingSectorTail
+		// Just a normal case, nothing to do.
+	case frontwardNextSector.GetHeadAddress().IsBetween(k.localNodeID, hostingSectorTail):
+		// frontwardNextSector.GetHeadAddress() is inside the hosting sector range [local, hostingSectorTail)
 		// Terminate both of hosting sector and frontward next sector.
 		hostingSector.Terminate()
 		frontwardNextSector.Terminate()
-	case 0: // frontwardNextSector.GetHeadAddress() == hostingSectorTail
-		// Just a normal case, nothing to do.
-	case 1: // frontwardNextSector.GetHeadAddress() > hostingSectorTail
+	default:
+		// frontwardNextSector.GetHeadAddress() is past hostingSectorTail on the ring
 		// Extend hosing sector to frontward next sector.
 		hostingSector.Extend(*frontwardNextSector.GetHeadAddress())
 	}

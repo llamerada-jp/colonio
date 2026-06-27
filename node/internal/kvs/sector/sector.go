@@ -374,7 +374,7 @@ func (s *Sector) CommitMerge(newTail *types.NodeID) error {
 	}
 
 	s.mtx.Lock()
-	if newTail.Smaller(s.tail) {
+	if newTail.IsBetween(&s.head, s.tail) {
 		panic("newTail should be greater than or equal to current tail")
 	}
 	s.proposalCommittingMerge = newTail
