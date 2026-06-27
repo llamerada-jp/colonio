@@ -1,0 +1,6 @@
+/**/states/
+/**/*.toolbox/
+/**/*.out
+/**/*.old
+/**/*_TTrace_*.tla
+/**/*_TTrace_*.bin
