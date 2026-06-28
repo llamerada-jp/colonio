@@ -64,10 +64,10 @@ type KVS struct {
 	localNodeID               *types.NodeID
 	mtx                       sync.RWMutex // for sectors, hostingManager, sectorUpdated
 	sectors                   map[kvsTypes.SectorKey]*sector.Sector
-	sectorUpdated             bool // for observation
 	mtxOperateSectors         sync.Mutex
 	proposedSplittingNodeID   *types.NodeID
 	proposedSplittingSectorID *kvsTypes.SectorID
+	observationSectorInfo     map[kvsTypes.SectorKey]*observation.SectorInfo
 }
 
 func NewKVS(conf *Config) *KVS {
@@ -483,7 +483,6 @@ func (k *KVS) allocateSector(
 	})
 
 	k.sectors[*sectorKey] = s
-	k.sectorUpdated = true
 
 	s.Start(k.ctx)
 }
@@ -653,7 +652,6 @@ func (k *KVS) SectorRemoveNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.
 	}
 
 	delete(k.sectors, targetKey)
-	k.sectorUpdated = true
 
 	go sector.Stop()
 }
@@ -671,7 +669,6 @@ func (k *KVS) SectorTerminated(sectorKey *kvsTypes.SectorKey) {
 
 	go sector.Stop()
 	delete(k.sectors, *sectorKey)
-	k.sectorUpdated = true
 }
 
 // HostingAllocateSector implements hosting.SectorHandler.
@@ -823,15 +820,15 @@ func (k *KVS) mergeSector(hostingSector, frontwardNextSector *sector.Sector) {
 }
 
 func (k *KVS) takeObservation() {
-	k.mtx.RLock()
-	defer k.mtx.RUnlock()
-	if !k.sectorUpdated {
-		return
+	k.mtx.Lock()
+	sectors := make(map[kvsTypes.SectorKey]*sector.Sector, len(k.sectors))
+	for sectorKey, s := range k.sectors {
+		sectors[sectorKey] = s
 	}
-	k.sectorUpdated = false
+	k.mtx.Unlock()
 
 	sectorInfos := make(map[kvsTypes.SectorKey]*observation.SectorInfo)
-	for sectorKey, sector := range k.sectors {
+	for sectorKey, sector := range sectors {
 		headAddress := sector.GetHeadAddress()
 		tailAddress := sector.GetTailAddress()
 		tail := ""
@@ -844,5 +841,26 @@ func (k *KVS) takeObservation() {
 		}
 	}
 
-	k.observation.ChangeKvsSectors(sectorInfos)
+	if k.updatedSectorInfo(k.observationSectorInfo, sectorInfos) {
+		k.observationSectorInfo = sectorInfos
+		k.observation.ChangeKvsSectors(sectorInfos)
+	}
+}
+
+func (k *KVS) updatedSectorInfo(a, b map[kvsTypes.SectorKey]*observation.SectorInfo) bool {
+	if len(a) != len(b) {
+		return true
+	}
+
+	for key, infoA := range a {
+		infoB, ok := b[key]
+		if !ok {
+			return true
+		}
+		if infoA.Head != infoB.Head || infoA.Tail != infoB.Tail {
+			return true
+		}
+	}
+
+	return false
 }

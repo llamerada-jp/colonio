@@ -223,11 +223,17 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 		logger: config.Logger,
 	}
 
+	// This workaround allows `if observation != nil` checks in observation handlers.
+	var observation observation.Caller
+	if config.ObservationHandler != nil {
+		observation = config.ObservationHandler
+	}
+
 	// create network module
 	net, err := network.NewNetwork(&network.Config{
 		Logger:           config.Logger,
 		Handler:          impl,
-		Observation:      config.ObservationHandler,
+		Observation:      observation,
 		CoordinateSystem: config.CoordinateSystem,
 		HttpClient:       config.HttpClient,
 		SeedURL:          config.SeedURL,
@@ -284,7 +290,7 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 		ConsensusOutbound:  consensus.NewOutbound(net.GetTransferer()),
 		ActivationResolver: activationResolver,
 		HostingManager:     hostingManager,
-		Observation:        config.ObservationHandler,
+		Observation:        observation,
 		Store:              config.KvsStore,
 	})
 	kvs.SetupInbound(impl.logger, net.GetTransferer(), impl.kvs)
