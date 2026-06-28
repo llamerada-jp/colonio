@@ -397,6 +397,9 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 		default:
 			// frontwardNextSector.GetHeadAddress() is outside the hosting sector range (past hostingSectorTail on the ring)
 			// Extend hosing sector to frontward next sector.
+			if k.hasActiveSectorHeadInRange(hostingSectorTail, frontwardNextSector.GetHeadAddress()) {
+				return
+			}
 			hostingSector.Extend(*frontwardNextSector.GetHeadAddress())
 		}
 		return
@@ -430,6 +433,9 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 	default:
 		// frontwardNextSector.GetHeadAddress() is past hostingSectorTail on the ring
 		// Extend hosing sector to frontward next sector.
+		if k.hasActiveSectorHeadInRange(hostingSectorTail, frontwardNextSector.GetHeadAddress()) {
+			return
+		}
 		hostingSector.Extend(*frontwardNextSector.GetHeadAddress())
 	}
 }
@@ -476,6 +482,26 @@ func (k *KVS) getFrontwardCondition(frontwardNextNodeID *types.NodeID) (*sector.
 	} else {
 		return nil, false
 	}
+}
+
+// hasActiveSectorHeadInRange checks whether any active sector's head exists in the range (from, to) on the ring.
+// This guard prevents Extend from creating an overlap with an already-active sector when the local
+// sector-store view (k.sectors) is stale relative to routing. Without this, TerminateB would
+// eventually resolve the overlap, but this proactive check avoids the transient inconsistency.
+// (Derived from TLA+ KvsSectorSepView: Extend precondition \A other \in Actives : ~IsBetween(other, n, newTail))
+func (k *KVS) hasActiveSectorHeadInRange(from, to *types.NodeID) bool {
+	k.mtx.RLock()
+	defer k.mtx.RUnlock()
+	for _, s := range k.sectors {
+		head := s.GetHeadAddress()
+		if head.Equal(k.localNodeID) || head.Equal(to) {
+			continue
+		}
+		if s.GetTailAddress() != nil && head.IsBetween(from, to) {
+			return true
+		}
+	}
+	return false
 }
 
 func (k *KVS) allocateSector(
