@@ -757,10 +757,8 @@ panic せず黙って自己 append してしまうため、initHostSector と同
 
 改善候補（優先順）:
 
-1. **learner-first メンバーシップ**（設計変更・中）: 新メンバーを
-   `ConfChangeAddLearnerNode` で追加し、同期完了後に voter へ昇格する。
-   未同期 voter による quorum 毀損を構造的に防ぐ。etcd raft がネイティブに
-   対応しており、位相 2 対策の本命。
+1. ~~learner-first メンバーシップ~~ → **実装済み (2026-07-04)**。下記
+   「learner-first メンバーシップの実装」参照。
 2. **is_stable ゲートの緩和 / seed 律速の解消**（設計判断・中〜大): 不安定時も
    修復系操作（Extend / Terminate frontward）だけは許可する、あるいは
    is_stable の判定自体を安定化する。位相 1 対策。
@@ -772,6 +770,35 @@ panic せず黙って自己 append してしまうため、initHostSector と同
    `TestManager_ManageMember_panicsOnLocalNodeID`。
 5. しきい値調整は対症療法にしかならない（destroy を遅らせても quorum 喪失自体は
    解消しない）。
+
+#### learner-first メンバーシップの実装（2026-07-04, consensus.go）
+
+- **追加は learner から**: `consensus.AppendNode` は `ConfChangeAddLearnerNode` を
+  提案する。learner は quorum に入らないため、**未同期/死亡ノードの append が
+  グループの commit 能力を毀損しない**（run4 の破棄ストームの根本対策）。
+- **昇格はリーダーが自動判定**: `maybePromoteLearners`（1 秒周期）が、リーダー上で
+  `Progress[id].Match >= Commit` に達した learner を `ConfChangeAddNode` で
+  voter へ昇格する。死亡/停滞 learner は昇格されないまま残り、routing から
+  消えた時点で通常の RemoveNode 経路で除去される。
+- **冪等性ガード**: `AppendNode` は confState を確認し、既に learner/voter の
+  id には何も提案しない。リトライループが 3 秒ごとに再呼び出しする前提のため、
+  **voter に learner-add を再提案すると降格してしまう**ことへの防御でもある。
+- **hostingManager への通知は昇格時のみ**: `ConsensusAppendNode` は voter 昇格の
+  apply で発火する（learner 追加では発火しない）。メンバー状態機械にとって
+  「メンバーになった」= quorum に参加した、で意味が揃う。learner の間は
+  `proposalAppendingNodes` が pending のまま残るため、**強制破棄のバックストップ
+  からは ConfChange 系 pending を除外**した（健全なグループが learner の
+  追随待ちで破棄されないように）。
+- **スコープ**: append 経路のみ。グループ新規作成時の初期メンバーは従来どおり
+  voter で bootstrap する（`StartNode` の peers）。初期メンバーに死者が混ざる
+  「stillborn グループ」は従来どおり 30 秒の leaderless 破棄で掃除される。
+- 回帰テスト: `TestConsensus_learnerFirst_deadAppendKeepsQuorum`（dead append
+  でも commit 継続 = learner-first なしでは失敗する）/
+  `TestConsensus_learnerFirst_liveAppendPromoted`（追随後に昇格し通知が届く）/
+  `TestConsensus_checkQuorum_leaderStepsDown`（leader-without-quorum の降格）/
+  `TestSector_appendDeadNode_learnerKeepsQuorum`（sector 層での同性質。旧
+  `TestSector_forceTerminate_leaderWithoutQuorum` は「dead append で quorum が
+  壊れる」前提自体が learner-first で成立しなくなったため置き換え）。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加

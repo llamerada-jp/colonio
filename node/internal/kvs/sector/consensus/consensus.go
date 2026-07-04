@@ -20,6 +20,8 @@ import (
 	"errors"
 	"log/slog"
 	"maps"
+	"slices"
+	"sync"
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
@@ -36,6 +38,9 @@ const (
 	// leader exists. A leaderless (quorum-lost) group must not block the
 	// caller forever; the sector's retry loop re-proposes pending proposals.
 	proposeTimeout = 2 * time.Second
+	// promoteCheckTicks controls how often the leader checks whether learners
+	// have caught up and can be promoted to voters (in raft ticks).
+	promoteCheckTicks = 10
 )
 
 type Handler interface {
@@ -69,6 +74,10 @@ type Consensus struct {
 	snapshotCatchUpEntriesN uint64
 	snapCount               uint64
 
+	// mtx protects confState and members: both are written by the consensus
+	// loop goroutine (publishEntries / snapshot handling) and read from the
+	// AppendNode/RemoveNode goroutines spawned by the sector's retry loop.
+	mtx           sync.RWMutex
 	confState     raftpb.ConfState
 	snapshotIndex uint64
 	appliedIndex  uint64
@@ -131,6 +140,7 @@ func (n *Consensus) Start(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(raftTickDuration)
 		defer ticker.Stop()
+		tickCount := 0
 
 		for {
 			select {
@@ -140,11 +150,18 @@ func (n *Consensus) Start(ctx context.Context) {
 
 			case <-ticker.C:
 				n.raftNode.Tick()
+				tickCount++
+				if tickCount >= promoteCheckTicks {
+					tickCount = 0
+					n.maybePromoteLearners()
+				}
 
 			case rd := <-n.raftNode.Ready():
 				if !raft.IsEmptySnap(rd.Snapshot) {
 					n.raftStorage.ApplySnapshot(rd.Snapshot)
+					n.mtx.Lock()
 					n.confState = rd.Snapshot.Metadata.ConfState
+					n.mtx.Unlock()
 					n.snapshotIndex = rd.Snapshot.Metadata.Index
 					n.appliedIndex = rd.Snapshot.Metadata.Index
 					n.handler.ConsensusApplySnapshot(rd.Snapshot.Data)
@@ -183,20 +200,84 @@ func (n *Consensus) Status() raft.Status {
 }
 
 // TODO: do append and remove in batch using ConfChangeV2
+//
+// AppendNode adds the node as a LEARNER first (learner-first membership): a
+// new member enters the quorum only after it has caught up with the log, so
+// appending unsynced or dead nodes can no longer break the group's quorum
+// (シミュレーション run4, 2026-07-04: join 波で未同期 voter が蓄積し quorum 喪失
+// → 強制破棄ストームとなるのを観測). Promotion to voter is proposed by the
+// current leader once the learner's Match reaches the commit index
+// (maybePromoteLearners). This method is re-invoked by the sector's retry
+// loop until the promotion is applied, so it must be idempotent: proposing
+// AddLearnerNode for an id that is already a voter would DEMOTE it, hence the
+// config check.
 func (n *Consensus) AppendNode(sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {
+	id := uint64(sectorNo)
+
+	n.mtx.RLock()
+	inConfig := slices.Contains(n.confState.Voters, id) ||
+		slices.Contains(n.confState.Learners, id)
+	n.mtx.RUnlock()
+	if inConfig {
+		// already a learner (waiting for promotion) or a voter
+		return
+	}
+
 	go func() {
 		if err := n.raftNode.ProposeConfChange(n.ctx, raftpb.ConfChangeV2{
 			Transition: raftpb.ConfChangeTransitionAuto,
 			Changes: []raftpb.ConfChangeSingle{{
-				Type:   raftpb.ConfChangeAddNode,
-				NodeID: uint64(sectorNo),
+				Type:   raftpb.ConfChangeAddLearnerNode,
+				NodeID: id,
 			}},
 			Context: []byte(nodeID.String()),
 		}); err != nil {
 			// TODO: handle error
-			n.logger.Error("Failed to propose conf change for adding node", "error", err)
+			n.logger.Error("Failed to propose conf change for adding learner", "error", err)
 		}
 	}()
+}
+
+// maybePromoteLearners promotes caught-up learners to voters. Runs on the
+// consensus loop; only the current leader can observe follower progress.
+// Dead or lagging learners are simply never promoted (and are removed later
+// by the membership manager when they drop out of the routing view), so they
+// never affect the quorum.
+func (n *Consensus) maybePromoteLearners() {
+	status := n.raftNode.Status()
+	if status.RaftState != raft.StateLeader {
+		return
+	}
+
+	n.mtx.RLock()
+	learners := slices.Clone(n.confState.Learners)
+	contexts := make(map[uint64][]byte, len(learners))
+	for _, id := range learners {
+		if nodeID, ok := n.members[kvsTypes.SectorNo(id)]; ok {
+			contexts[id] = []byte(nodeID.String())
+		}
+	}
+	n.mtx.RUnlock()
+
+	for _, id := range learners {
+		pr, ok := status.Progress[id]
+		if !ok || status.Commit == 0 || pr.Match < status.Commit {
+			continue
+		}
+
+		go func(id uint64, context []byte) {
+			if err := n.raftNode.ProposeConfChange(n.ctx, raftpb.ConfChangeV2{
+				Transition: raftpb.ConfChangeTransitionAuto,
+				Changes: []raftpb.ConfChangeSingle{{
+					Type:   raftpb.ConfChangeAddNode,
+					NodeID: id,
+				}},
+				Context: context,
+			}); err != nil {
+				n.logger.Error("Failed to propose conf change for promoting learner", "error", err)
+			}
+		}(id, contexts[id])
+	}
 }
 
 func (n *Consensus) RemoveNode(sectorNo kvsTypes.SectorNo) {
@@ -291,33 +372,12 @@ func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
 			if err := cc.Unmarshal(entry.Data); err != nil {
 				return err
 			}
+			n.mtx.Lock()
 			n.confState = *n.raftNode.ApplyConfChange(cc)
+			n.mtx.Unlock()
 
-			switch cc.Type {
-			case raftpb.ConfChangeAddNode:
-				var nodeID *types.NodeID
-				if len(cc.Context) != 0 {
-					var err error
-					nodeID, err = types.NewNodeIDFromString(string(cc.Context))
-					if err != nil {
-						return err
-					}
-					n.members[kvsTypes.SectorNo(cc.NodeID)] = nodeID
-				} else {
-					var ok bool
-					nodeID, ok = n.members[kvsTypes.SectorNo(cc.NodeID)]
-					if !ok {
-						return errors.New("missing node ID in conf change")
-					}
-				}
-				n.handler.ConsensusAppendNode(kvsTypes.SectorNo(cc.NodeID), nodeID)
-
-			case raftpb.ConfChangeRemoveNode:
-				delete(n.members, kvsTypes.SectorNo(cc.NodeID))
-				n.handler.ConsensusRemoveNode(kvsTypes.SectorNo(cc.NodeID))
-
-			default:
-				n.logger.Warn("Unknown conf change type", "type", cc.Type)
+			if err := n.applyConfChangeSingle(cc.Type, cc.NodeID, cc.Context); err != nil {
+				return err
 			}
 
 		case raftpb.EntryConfChangeV2:
@@ -325,35 +385,14 @@ func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
 			if err := cc2.Unmarshal(entry.Data); err != nil {
 				return err
 			}
+			n.mtx.Lock()
 			n.confState = *n.raftNode.ApplyConfChange(cc2)
+			n.mtx.Unlock()
 
 			for _, change := range cc2.Changes {
-				switch change.Type {
-				case raftpb.ConfChangeAddNode:
-					var nodeID *types.NodeID
-					// TODO: Context is used for both AddNode and RemoveNode, but it is only needed for AddNode. We should separate the context for AddNode and RemoveNode in ConfChangeV2.
-					if len(cc2.Context) != 0 {
-						var err error
-						nodeID, err = types.NewNodeIDFromString(string(cc2.Context))
-						if err != nil {
-							return err
-						}
-						n.members[kvsTypes.SectorNo(change.NodeID)] = nodeID
-					} else {
-						var ok bool
-						nodeID, ok = n.members[kvsTypes.SectorNo(change.NodeID)]
-						if !ok {
-							return errors.New("missing node ID in conf change")
-						}
-					}
-					n.handler.ConsensusAppendNode(kvsTypes.SectorNo(change.NodeID), nodeID)
-
-				case raftpb.ConfChangeRemoveNode:
-					delete(n.members, kvsTypes.SectorNo(change.NodeID))
-					n.handler.ConsensusRemoveNode(kvsTypes.SectorNo(change.NodeID))
-
-				default:
-					n.logger.Warn("Unknown conf change type", "type", change.Type)
+				// TODO: Context is used for both AddNode and RemoveNode, but it is only needed for AddNode. We should separate the context for AddNode and RemoveNode in ConfChangeV2.
+				if err := n.applyConfChangeSingle(change.Type, change.NodeID, cc2.Context); err != nil {
+					return err
 				}
 			}
 		}
@@ -371,6 +410,61 @@ func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
 		if err := n.handler.ConsensusApplyProposal(proposal); err != nil {
 			n.logger.Error("Failed to apply committed proposal", "error", err)
 		}
+	}
+
+	return nil
+}
+
+// applyConfChangeSingle updates the member table and notifies the handler for
+// one applied conf change. Learner additions only register the nodeID for
+// message delivery; the handler (membership manager) is notified when the
+// member is promoted to voter, so a member counts as "appended" only once it
+// participates in the quorum.
+func (n *Consensus) applyConfChangeSingle(ccType raftpb.ConfChangeType, id uint64, context []byte) error {
+	sectorNo := kvsTypes.SectorNo(id)
+
+	switch ccType {
+	case raftpb.ConfChangeAddLearnerNode:
+		if len(context) != 0 {
+			nodeID, err := types.NewNodeIDFromString(string(context))
+			if err != nil {
+				return err
+			}
+			n.mtx.Lock()
+			n.members[sectorNo] = nodeID
+			n.mtx.Unlock()
+		}
+
+	case raftpb.ConfChangeAddNode:
+		var nodeID *types.NodeID
+		if len(context) != 0 {
+			var err error
+			nodeID, err = types.NewNodeIDFromString(string(context))
+			if err != nil {
+				return err
+			}
+			n.mtx.Lock()
+			n.members[sectorNo] = nodeID
+			n.mtx.Unlock()
+		} else {
+			var ok bool
+			n.mtx.RLock()
+			nodeID, ok = n.members[sectorNo]
+			n.mtx.RUnlock()
+			if !ok {
+				return errors.New("missing node ID in conf change")
+			}
+		}
+		n.handler.ConsensusAppendNode(sectorNo, nodeID)
+
+	case raftpb.ConfChangeRemoveNode:
+		n.mtx.Lock()
+		delete(n.members, sectorNo)
+		n.mtx.Unlock()
+		n.handler.ConsensusRemoveNode(sectorNo)
+
+	default:
+		n.logger.Warn("Unknown conf change type", "type", ccType)
 	}
 
 	return nil

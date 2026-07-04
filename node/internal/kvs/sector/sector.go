@@ -278,6 +278,12 @@ func (s *Sector) HasManagementProposal() bool {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
+	return s.hasManagementProposalLocked()
+}
+
+// hasManagementProposalLocked reports whether a (non conf-change) management
+// proposal is pending. Call with s.mtx held.
+func (s *Sector) hasManagementProposalLocked() bool {
 	return s.proposalActivating != nil ||
 		s.proposalExtending != nil ||
 		s.proposalImporting != nil ||
@@ -815,7 +821,12 @@ func (s *Sector) terminateLocked() error {
 func (s *Sector) checkQuorumLoss() {
 	s.mtx.RLock()
 	inactive := s.stopped || s.terminated
-	hasPending := len(s.pendingProposalNames()) > 0
+	// Conf-change pendings (appendNodes/removeNodes) are excluded from the
+	// destroy backstop: with learner-first membership an append legitimately
+	// stays pending while the learner catches up (or, for a dead learner,
+	// until the membership manager removes it via the routing view), and a
+	// healthy but idle group must not be destroyed for it.
+	hasPending := s.proposalTerminating || s.hasManagementProposalLocked()
 	s.mtx.RUnlock()
 	if inactive {
 		return

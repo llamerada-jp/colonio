@@ -261,15 +261,15 @@ func TestSector_terminate_inactiveSector(t *testing.T) {
 	require.True(t, s.terminated)
 }
 
-// TestSector_forceTerminate_leaderWithoutQuorum reproduces the stall observed
-// in the simulator (2026-07-04, node.log): the hosting node is the raft LEADER
-// of its own group and the other members died. Proposals enter the leader's
-// log but can never commit, and without CheckQuorum the leader never steps
-// down, so Status().Lead != 0 and the leaderless detection never fires. The
-// combination of CheckQuorum (leader steps down without a quorum of active
-// followers) and the pending-without-progress backstop must destroy the
-// replica anyway.
-func TestSector_forceTerminate_leaderWithoutQuorum(t *testing.T) {
+// TestSector_appendDeadNode_learnerKeepsQuorum verifies learner-first
+// membership at the sector level (シミュレーション run4, 2026-07-04): appending
+// a dead (or not-yet-synced) node must not enter it into the quorum. Before
+// learner-first, this exact sequence made the single-voter group grow to an
+// unreachable 2/2 quorum: the leader could no longer commit anything (the
+// leader-without-quorum stall) and the sector had to be force-terminated.
+// Now the dead node stays a learner, the quorum remains 1, and the group
+// keeps committing.
+func TestSector_appendDeadNode_learnerKeepsQuorum(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -290,22 +290,19 @@ func TestSector_forceTerminate_leaderWithoutQuorum(t *testing.T) {
 		return s.consensus.Status().Lead != 0
 	}, 10*time.Second, 100*time.Millisecond)
 
-	// grow the config with a dead member: the conf change still commits with
-	// the single-voter quorum, after which the quorum is 2/2 and unreachable
+	// the dead member is added as a learner and never promoted
 	s.AppendNode(kvsTypes.SectorNo(2), deadNodeID)
+
+	// the group must still be able to commit with the single-voter quorum
+	s.Activate(*deadNodeID)
 	require.Eventually(t, func() bool {
-		s.mtx.RLock()
-		defer s.mtx.RUnlock()
-		return len(s.proposalAppendingNodes) == 0
+		return s.GetTailAddress() != nil
 	}, 10*time.Second, 100*time.Millisecond)
 
-	// this proposal enters the leader's log but can never commit
-	s.Activate(*deadNodeID)
-
-	require.Eventually(t, func() bool {
-		return handler.terminatedCount() > 0
-	}, 15*time.Second, 100*time.Millisecond)
-	require.Nil(t, s.GetTailAddress()) // the activate must not have been applied
+	// the healthy group must not be destroyed even though the learner append
+	// stays pending (conf-change pendings are excluded from the backstop)
+	time.Sleep(4 * time.Second)
+	require.Equal(t, 0, handler.terminatedCount())
 }
 
 // TestSector_import_timeoutOnQuorumLoss covers the splitSector hang found in

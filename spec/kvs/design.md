@@ -70,11 +70,12 @@ README「シミュレーション再実行での発見」参照）。
 恒久停止バグの解消後、律速要因は churn 下のメンバーシップ管理に移った
 （詳細は README「シミュレーション run 4」参照）。
 
-- **未同期 voter による quorum 毀損**: 新メンバーは追加直後（ログ同期完了前）から
-  quorum 計算に入るため、join 波でメンバー入れ替えが続くとグループが本物の
-  quorum 喪失に落ち、強制破棄→再作成→チェーン再活性化のコストを払い続ける。
-  対策候補は learner-first メンバーシップ（`ConfChangeAddLearnerNode` で追加し
-  同期後に voter 昇格）。
+- ~~未同期 voter による quorum 毀損~~ → **learner-first メンバーシップで対策済み
+  (2026-07-04)**: 追加メンバーは learner として参加し、リーダーがログ追随
+  （Match ≥ Commit）を確認してから voter へ昇格する。未同期/死亡ノードの
+  append は quorum に影響しない。昇格前の learner はメンバー状態機械上
+  「追加完了」にならず、routing から消えれば通常経路で除去される。
+  初期メンバー（グループ bootstrap）は従来どおり voter（スコープ外）。
 - **is_stable ゲートによる修復凍結**: `subRoutine` は is_stable でないと
   ManageMember / operateSectors に到達しないため、churn 中は穴の修復
   （Extend / terminate frontward）も止まる。修復系操作の許可条件の再検討が必要。
