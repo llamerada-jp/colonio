@@ -360,8 +360,16 @@ func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
 	}
 
 	for _, proposal := range proposals {
+		// Log-and-continue: these entries are already committed by the group,
+		// so a failed apply must not abort the rest of the batch. Aborting
+		// silently skipped the remaining committed entries (including conf
+		// changes) because Advance() still ran, which left this member
+		// permanently diverged from the group state.
+		// (シミュレーション run3, 2026-07-04: 非冪等な apply が毒エントリー化し、
+		// 同一バッチの ConfChange 適用を巻き添えにして新メンバーが永久に
+		// 同期しない状態を観測)
 		if err := n.handler.ConsensusApplyProposal(proposal); err != nil {
-			return err
+			n.logger.Error("Failed to apply committed proposal", "error", err)
 		}
 	}
 

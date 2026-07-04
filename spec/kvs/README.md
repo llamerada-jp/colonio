@@ -268,6 +268,8 @@ MC_MaxChurn       == 1
 | 活性化の重なりガードが inactive レプリカも対象 | モデルの `ActivateFrontward` ガードは `\A other \in Actives` だが、Go の `activateHostingSector` は `k.sectors` の**全**セクター（inactive 含む）で `IsBetween` 判定していた | 停止したノードの inactive レプリカは誰も掃除しないため、`[local, frontward)` に死んだレプリカの head が残ると活性化が**永久にスキップ**され、チェーンがその点で停止（シミュレータ 231 ノード・ランダム停止で再現: active が 31 で停滞）。モデルでは Leave が Members/Actives から即座に除去するため「離脱ノードの inactive レプリカ残留」が表現されず検出不能だった |
 | `applyProposals` が `s.mtx.RLock` 保持中にブロックする `raftNode.Propose` を呼ぶ (2026-07-04 発見) | etcd raft の `Propose` はリーダー不在の間ブロックし続けるため、quorum 喪失グループでは retry ループが RLock を握ったまま停止する | 後続の write lock（timeout 後の proposal クリア、強制破棄、`Terminate` 等）が全て永久に待たされ、**timeout を実装しても効かない**。修正: 提案を RLock 下で収集しロック解放後に Propose + `consensus.Propose` に有界 context (2s) を導入 |
 | inactive セクターへの Terminate の apply が完了不能 (2026-07-04 発見) | `processTerminateProposal` が `ReleaseSector` のエラーで `terminated` を立てずに return。inactive セクターは `AllocateSector` 未実行のため必ず失敗する | Terminate が「commit → apply 失敗 → 再提案」を永久に繰り返し、**健全なグループが quorum 喪失と同一の症状**（毎秒空振り）を示し活性化チェーンを恒久停止。commit が進み続けるため pending バックストップも発火しない。修正: terminate の apply を必ず完了させる + activate/import の AllocateSector を冪等化 |
+| explicit パケットの非宛先受理 → ゴーストレプリカ (2026-07-04 run3 発見) | `classifyPacket` はルートテーブルが自ノードを返すと explicit でも `Receive` していた | 死亡ノード宛の SectorManageMember / raft メッセージを別ノードが受理し、**同じ raft メンバー ID を複数の物理ノードが名乗る**。誤ノードへのデータ複製・本来メンバーの永久非同期・二重投票リスク。修正: explicit は宛先一致時のみ受理 |
+| apply エラーで committed entries のバッチが中断 (2026-07-04 run3 発見) | `publishEntries` が apply エラーで即 return するが `Advance()` は実行される | 同一バッチの残り committed entries が**適用されないまま消費**され、そのメンバーだけ状態が乖離。非冪等な `processCommitSplitProposal`（エラー返却 + proposal 未クリア → 3 秒ごと再提案）が毒エントリー化して恒常的にこれを誘発。修正: ログして継続 + CommitSplit apply の冪等化 |
 
 **教訓**: TLA+ のアクションは原子的にモデル化されるため、アクション「内部」の
 ロック取得順序はモデルの検証対象外。実装側は以下のロック規約で防ぐ
@@ -630,6 +632,69 @@ store は SimpleStore と同じ「未割り当ての解放はエラー」セマ�
    実際にはこの apply バグだった可能性が高い（inactive レプリカへの Terminate は
    常にこのバグを踏む）。純粋な quorum 喪失（import timeout が併発する形態）も
    併存するため、修正後の再実行で残存停滞を再分類する必要がある。
+
+#### シミュレーション run 3（terminate apply 修正後、2026-07-04）
+
+修正の効果を定量確認した:
+
+- terminate 空振りループは消滅（`terminate: release sector skipped` 594 件 =
+  旧コードで無限ループしていたケースが全て完了）
+- 強制破棄が 135 回発火、**全て leaderless 経路**（CheckQuorum によるリーダー降格が
+  機能。pending バックストップの出番なし）
+- 診断ログ（`== retry proposals` / `@@ force terminate`）は収集フィルタを通過
+
+それでも活性化は序盤（1 分で 37 activate）以降ほぼ停止（以後 7 分で 6）。
+残存停滞は 2 クラス:
+
+| クラス | 症状 | 分類 |
+|--------|------|------|
+| C: already-activated ループ（**新規**） | backward ノードが sectorActivate を毎秒送り続け、受信側は「already activated」を返し続ける（最長 128 秒 / 114 回）。受信側の hosting グループは健全（StateLeader・commit 前進中）だが、**送信側が持つ同グループのレプリカに tail が複製されず**、送信側の operateSectors が永遠に Activate ケースに留まる。受信側グループでは appendNodes/removeNodes の ConfChange が pending ⇄ 解消を振動しており、routing 不安定（`skip subRoutine: node is not stable` が毎分 1000 件超）によるメンバー追加/削除の往復で、送信側レプリカが スナップショット同期前に削除→再作成 を繰り返している疑い | 新規・要調査 |
+| B': stale active レプリカの重なりガード | 死亡ノードを head とする active レプリカが skip 1 を発動し続ける。ただし当該グループは**残存メンバーで quorum を維持**しており（リーダー健在）、強制破棄は（正しく）発火しない。head 不在のまま active であり続けるセクターを誰が畳むかという問題で、まさに TODO-2 のスコープ | TODO-2 |
+
+考察: クラス C は「ローカルレプリカの tail を frontward の活性状態の情報源にする」
+現設計の弱点（レプリカ同期がメンバーシップ churn に負ける）。sectorActivate 応答は
+成功を返しているため、応答を情報源として使う・レプリカ同期を待つ間の再送を抑制する等の
+選択肢があるが、tail 値自体は後続判定（extend/split）に必要なため応答だけでは足りない。
+メンバー ConfChange の振動（追加→削除→追加）自体の抑制も含めて要設計判断。
+
+#### run 3 深掘り: ゴーストレプリカと apply バッチ中断（2026-07-04, dump.json 解析）
+
+クラス C の root cause 調査（dump.json でグループ全メンバーのレプリカ推移を追跡）で、
+さらに 2 つの実装バグを発見・修正した。
+
+**1. ゴーストレプリカ（explicit パケットの非宛先受理）**
+
+dump.json 上で、**同じ sectorNo を複数の物理ノードが同時期に保持する**事例を多数観測
+（例: slot 5 を 8f31f085 と e6289d10、slot 12 を 80c35cb0 と 8eaacb67）。さらに
+死亡メンバーの slot が**リング上の遠いノードに tail 付きで出現**（= raft メンバーとして
+snapshot/log を受領しデータ複製まで受けた）する事例も確認（slot 2/3/6/9）。
+
+機構: `classifyPacket` は `GetNextStep1D` が自ノードを返すと explicit パケットでも
+`transferer.Receive` していた。ルートテーブルが一時的に他宛先を自ノードへ解決すると、
+死亡ノード宛に毎秒再送される `SectorManageMember` や raft メッセージを別ノードが
+受理し、**同じ raft メンバー ID を複数ノードが名乗る**。raft の前提（メンバー ID と
+プロセスの 1:1 対応）が破れ、誤ったデータ複製・応答の横取り（本来のノードが
+永久に同期しない）・二重投票のリスクを生む。
+→ 修正: explicit パケットは宛先一致時のみ受理（不一致は
+`== drop explicit packet` を出力して破棄）。
+
+**2. apply エラーによる committed entries のバッチ中断**
+
+`publishEntries` は apply エラーで即 return していたが、`Advance()` は実行されるため
+**同一 Ready バッチの残りの committed entries が適用されないまま消費**され、
+そのメンバーだけグループ状態から永久に乖離する。毒エントリー源として
+`processCommitSplitProposal` が非冪等（tail 設定済みでエラーを返し、かつ
+pending proposal をクリアしない → 3 秒ごと再提案 → 毎回 commit → 毎回 apply 失敗）
+であることも特定した。
+→ 修正: (a) publishEntries は apply エラーをログして継続（committed entry の適用は
+必ず完了する、の徹底）、(b) CommitSplit の apply を冪等化（既活性化は no-op +
+proposal クリア）。
+
+**検証**: クリーン条件（死亡メンバー入りグループへの空ログメンバー join）は
+単体テスト `TestConsensus_joinCatchesUpWithDeadMember` で正常動作を確認済み。
+クラス C の完全な再現（churn による孤児レプリカ + 非対称 routing ビュー）は
+再現条件が複雑なため、次回シミュレーションで `== drop explicit packet` の発火と
+already-activated ループの消長を観測して判定する。クラス B'（TODO-2）は未着手。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加

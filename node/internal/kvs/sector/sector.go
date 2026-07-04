@@ -931,8 +931,13 @@ func (s *Sector) processCommitSplitProposal(commitSplit *proto.CommitSplit) erro
 		return fmt.Errorf("failed to parse tail NodeID: %w", err)
 	}
 
+	// Idempotent no-op when already activated (e.g. a duplicated commit-split
+	// entry): the pending proposal must be cleared here, otherwise the retry
+	// loop re-proposes it every 3 seconds and each round trips
+	// commit → apply-failure, poisoning the apply path forever.
 	if s.tail != nil || s.proposalActivating != nil {
-		return fmt.Errorf("sector is already activated")
+		s.proposalCommittingSplit = nil
+		return nil
 	}
 
 	s.proposalCommittingSplit = nil
