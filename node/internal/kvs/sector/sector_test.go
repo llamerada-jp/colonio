@@ -17,6 +17,7 @@ package sector
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync"
@@ -91,12 +92,39 @@ func (h *sectorHandlerHelper) terminatedCount() int {
 	return len(h.terminated)
 }
 
-type storeHelper struct{}
+// storeHelper mimics SimpleStore's allocation semantics: releasing a sector
+// that was never allocated is an error (regression cover for the inactive
+// sector terminate stall).
+type storeHelper struct {
+	mtx       sync.Mutex
+	allocated map[kvsTypes.SectorKey]struct{}
+}
 
 var _ kvsTypes.Store = &storeHelper{}
 
-func (s *storeHelper) AllocateSector(sectorKey *kvsTypes.SectorKey) error { return nil }
-func (s *storeHelper) ReleaseSector(sectorKey *kvsTypes.SectorKey) error  { return nil }
+func (s *storeHelper) AllocateSector(sectorKey *kvsTypes.SectorKey) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	if s.allocated == nil {
+		s.allocated = make(map[kvsTypes.SectorKey]struct{})
+	}
+	if _, exists := s.allocated[*sectorKey]; exists {
+		return fmt.Errorf("sector already exists: %s", sectorKey.SectorID.String())
+	}
+	s.allocated[*sectorKey] = struct{}{}
+	return nil
+}
+
+func (s *storeHelper) ReleaseSector(sectorKey *kvsTypes.SectorKey) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	if _, exists := s.allocated[*sectorKey]; !exists {
+		return fmt.Errorf("sector does not exist: %s", sectorKey.SectorID.String())
+	}
+	delete(s.allocated, *sectorKey)
+	return nil
+}
+
 func (s *storeHelper) Get(sectorKey *kvsTypes.SectorKey, key string) ([]byte, error) {
 	return nil, kvsTypes.ErrorStoreKeyNotFound
 }
@@ -194,6 +222,43 @@ func TestSector_forceTerminate_notFiredWithLeader(t *testing.T) {
 	time.Sleep(4 * time.Second)
 	require.Equal(t, 0, handler.terminatedCount())
 	require.Nil(t, s.GetTailAddress()) // untouched, still inactive
+}
+
+// TestSector_terminate_inactiveSector reproduces the stall observed in the
+// simulator (2026-07-04, run 2): Terminate on an INACTIVE sector commits fine
+// (the group is healthy), but the apply handler used to bail out because
+// ReleaseSector fails for a store sector that was never allocated (allocation
+// happens on activate/import only). The terminate then never completed, and
+// the retry loop re-proposed it every 3 seconds forever — mimicking the
+// quorum-loss symptom on a healthy group and defeating the pending backstop
+// (each retry advances the commit index).
+func TestSector_terminate_inactiveSector(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+
+	handler := &sectorHandlerHelper{}
+	// healthy single-voter group; the sector stays inactive (no Activate)
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	s.Start(ctx)
+
+	require.Eventually(t, func() bool {
+		return s.consensus.Status().Lead != 0
+	}, 10*time.Second, 100*time.Millisecond)
+
+	s.Terminate()
+
+	require.Eventually(t, func() bool {
+		return handler.terminatedCount() > 0
+	}, 10*time.Second, 100*time.Millisecond)
+
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	require.True(t, s.terminated)
 }
 
 // TestSector_forceTerminate_leaderWithoutQuorum reproduces the stall observed

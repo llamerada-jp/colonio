@@ -267,6 +267,7 @@ MC_MaxChurn       == 1
 | `processTerminateProposal` の s→m/k エッジ | `s.mtx` 保持中に `SectorTerminated` ハンドラ（m.mtx, k.mtx）を呼ぶ | `applyMemberSectors` (m→s) と循環 |
 | 活性化の重なりガードが inactive レプリカも対象 | モデルの `ActivateFrontward` ガードは `\A other \in Actives` だが、Go の `activateHostingSector` は `k.sectors` の**全**セクター（inactive 含む）で `IsBetween` 判定していた | 停止したノードの inactive レプリカは誰も掃除しないため、`[local, frontward)` に死んだレプリカの head が残ると活性化が**永久にスキップ**され、チェーンがその点で停止（シミュレータ 231 ノード・ランダム停止で再現: active が 31 で停滞）。モデルでは Leave が Members/Actives から即座に除去するため「離脱ノードの inactive レプリカ残留」が表現されず検出不能だった |
 | `applyProposals` が `s.mtx.RLock` 保持中にブロックする `raftNode.Propose` を呼ぶ (2026-07-04 発見) | etcd raft の `Propose` はリーダー不在の間ブロックし続けるため、quorum 喪失グループでは retry ループが RLock を握ったまま停止する | 後続の write lock（timeout 後の proposal クリア、強制破棄、`Terminate` 等）が全て永久に待たされ、**timeout を実装しても効かない**。修正: 提案を RLock 下で収集しロック解放後に Propose + `consensus.Propose` に有界 context (2s) を導入 |
+| inactive セクターへの Terminate の apply が完了不能 (2026-07-04 発見) | `processTerminateProposal` が `ReleaseSector` のエラーで `terminated` を立てずに return。inactive セクターは `AllocateSector` 未実行のため必ず失敗する | Terminate が「commit → apply 失敗 → 再提案」を永久に繰り返し、**健全なグループが quorum 喪失と同一の症状**（毎秒空振り）を示し活性化チェーンを恒久停止。commit が進み続けるため pending バックストップも発火しない。修正: terminate の apply を必ず完了させる + activate/import の AllocateSector を冪等化 |
 
 **教訓**: TLA+ のアクションは原子的にモデル化されるため、アクション「内部」の
 ロック取得順序はモデルの検証対象外。実装側は以下のロック規約で防ぐ
@@ -581,36 +582,54 @@ TODO-3 / TODO-4 の Go 実装は 2026-07-04 に先行実装した（下記
 `TestSector_import_timeoutOnQuorumLoss` /
 `TestSector_import_unblockedByForceTerminate`。
 
-#### シミュレーション再実行での発見: leader-without-quorum（2026-07-04, simulator/node.log）
+#### シミュレーション再実行での発見（2026-07-04, simulator/node.log 2 回）
 
-上記実装の初版（リーダー不在検知のみ）でシミュレーションを再実行したところ、
-timeout+abort は機能した（import timeout 123 件、mtxOperateSectors の恒久ハングは
-消滅）が、**強制破棄が 9 分間で一度も発火せず**、活性化チェーンの停滞が残存した。
+**run 1（timeout+abort + リーダー不在検知のみ）**: timeout+abort は機能した
+（import timeout 123 件、mtxOperateSectors の恒久ハングは消滅）が、
+「proposer 死亡後の Terminate 空振り」型の停滞が残存し、強制破棄による回復も
+観測されなかった。当初これを **leader-without-quorum**（etcd raft は
+`CheckQuorum` なしでは quorum を失ったリーダーも降格せず、`Status().Lead ≠ 0`
+のままになる）が原因と推定し、`CheckQuorum: true` と pending バックストップを
+追加した（この検出ギャップ自体は単体テスト
+`TestSector_forceTerminate_leaderWithoutQuorum` で実在を実証済み。対処は妥当として維持）。
 
-原因: **etcd raft は `CheckQuorum` を有効にしない限り、フォロワーを全て失った
-リーダーも自発的に降格しない**。hosting ノード自身がグループのリーダーである場合、
-過半数が死んでも `Status().Lead == 自分 ≠ 0` のままで、提案はリーダーのログに
-入る（`Propose` は成功する）が commit だけが永久に進まない。さらにその
-リーダーが生きてハートビートを送り続けるため、他レプリカ（フォロワー）から見ても
-`Lead ≠ 0` となり、**どちら側でもリーダー不在検知が発火しない**。
+**run 2（CheckQuorum + バックストップ入り）**: 同型の停滞が残存
+（`proposedSplitRoutine: proposer left, terminate hosting sector` を最長 138 秒
+毎秒繰り返し、新 backward からの prepareSplit を拒否し続ける）。dump.json の
+セクター推移と突き合わせて真因を特定した:
 
-観測された停滞形態（いずれもこの機構に帰着）:
+> **Terminate は commit されていたが、apply が完了できていなかった。**
+> `processTerminateProposal` は `store.ReleaseSector` のエラーで `terminated` を
+> 立てずに return する。**inactive なセクターは `AllocateSector` を一度も呼んで
+> いない**（割り当ては activate/import 時のみ）ため ReleaseSector は必ず失敗し、
+> Terminate は「commit → apply 失敗 → 3 秒後に再提案 → 再 commit → 再失敗」を
+> 永久に繰り返す。グループは健全なので (a) リーダー不在検知は（正しく）発火せず、
+> (b) 再提案のたびに commit index が進むため pending バックストップも
+> リセットされ続ける。**quorum 喪失と同一の症状を健全なグループが示していた。**
 
-| 形態 | 症状 |
-|------|------|
-| prepareSplit 受諾スタック | proposer 死亡後、`proposedSplitRoutine` が Terminate を毎秒呼ぶが commit されず、新しい backward 隣接からの prepareSplit を「another proposal」で 4 分以上拒否し続ける |
-| split ライブロック | split 受諾 → Migrate の Import が 15 秒でタイムアウト → abort の Terminate も commit されず → 約 16 秒周期で同じ split を再試行 |
+修正（実装済み・回帰テスト `TestSector_terminate_inactiveSector`。テスト用
+store は SimpleStore と同じ「未割り当ての解放はエラー」セマンティクスを模倣）:
 
-対処（実装済み）: `CheckQuorum: true`（リーダーが election timeout 周期で
-過半数と疎通できないと降格 → 両側で `Lead == 0` になり既存検知が効く）に加え、
-raft 挙動の見落としに対して頑健なバックストップとして「pending proposal が
-commit 進捗なしに forcePendingDuration 継続」を破棄条件に追加した。
+- `terminateLocked`: ReleaseSector の失敗を「解放済み」として許容し、必ず完了する
+- `processActivateProposal` / `processImportProposal`: AllocateSector の
+  「既に割り当て済み」も許容（apply ハンドラの冪等化。apply がエラーを返すと
+  publishEntries が同一バッチの残り committed entries の適用まで中断する問題も回避）
 
-教訓: 「リーダー不在の継続」は quorum 喪失の十分条件ではない
-（TODO-4 で保留していた死亡判定基準の論点に対する実測の答え）。
-また、この実行では `## retry proposals` ログが行頭タイムスタンプなしのため
-ログ収集で欠落していた。行頭に time.Now() を付与済み（state/lead/term/commit が
-残っていれば StateLeader のまま停滞していることを直接確認できたはず）。
+教訓:
+
+1. **apply ハンドラは冪等かつ必ず完了することを規約とする**（アルゴリズム改善案 B
+   の実証）。apply 失敗ループは quorum 喪失と区別できない症状を作り、しかも
+   commit が進み続けるため「commit 停滞」ベースの検知の盲点に入る。
+2. **観測経路自体を検証してから結論を出す**。node.log の収集は `==` / `@@` を
+   含む行のみを残すフィルタがかかっており、`## force terminate` /
+   `## retry proposals` は 2 回の実行とも全て欠落していた。run 1 の
+   「強制破棄が発火しなかった」という判断はこのアーティファクトに部分的に
+   依存していた。診断ログは `@@ force terminate` / `== retry proposals` に
+   改名してフィルタを通るようにした（state/lead/term/commit 付き）。
+3. 2026-06〜07 に quorum 喪失へ帰属させた「Terminate 毎秒空振り」観測の一部は、
+   実際にはこの apply バグだった可能性が高い（inactive レプリカへの Terminate は
+   常にこのバグを踏む）。純粋な quorum 喪失（import timeout が併発する形態）も
+   併存するため、修正後の再実行で残存停滞を再分類する必要がある。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加
@@ -710,10 +729,11 @@ commit 進捗なしに forcePendingDuration 継続」を破棄条件に追加し
 > **実装済み (2026-07-04)** — 上記「quorum 喪失対策の実装」参照。死亡判定は
 > 「リーダー不在の継続」+「pending proposal の commit 停滞」の 2 系統
 > （routing 上の消失との組み合わせは未実装、しきい値実測後に再検討）。
-> 初版のリーダー不在のみの判定は leader-without-quorum を検出できないことが
-> シミュレーション再実行で判明し、CheckQuorum 有効化とバックストップを追加した
-> （上記「シミュレーション再実行での発見」参照）。
-> 誤判定時の安全性のモデル検証 (TODO-1 検証項目 3) は未実施。
+> 初版のリーダー不在のみの判定は leader-without-quorum（CheckQuorum なしでは
+> quorum を失ったリーダーが降格しない）を検出できないことを単体テストで実証し、
+> CheckQuorum 有効化とバックストップを追加した。なおシミュレーションで残存した
+> 停滞の真因は Terminate の apply バグだった（上記「シミュレーション再実行での
+> 発見」参照）。誤判定時の安全性のモデル検証 (TODO-1 検証項目 3) は未実施。
 
 - **背景**: 終了 (Terminate) 自体が raft commit を要する現構造では、quorum を
   失ったグループは**自分自身を終了することもできず**、誰にも消せない

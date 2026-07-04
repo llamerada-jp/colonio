@@ -545,9 +545,10 @@ func (s *Sector) applyProposals(retry bool) {
 	if retry {
 		if pending := s.pendingProposalNames(); len(pending) > 0 {
 			status := s.consensus.Status()
-			// keep the time.Now() prefix: the simulator's log collection drops
-			// lines that do not start with a timestamp
-			fmt.Println(time.Now(), s.head.String(), "## retry proposals", s.sectorKey.String(),
+			// the "==" marker is required: the simulator's log collection only
+			// keeps lines containing "==" or "@@" (2026-07-04 の 2 回の実行で
+			// "##" 行が全て欠落していたことが判明)
+			fmt.Println(time.Now(), s.head.String(), "== retry proposals", s.sectorKey.String(),
 				"pending", strings.Join(pending, ","),
 				"state", status.RaftState.String(), "lead", status.Lead, "term", status.Term,
 				"commit", status.Commit)
@@ -749,8 +750,11 @@ func (s *Sector) processActivateProposal(activate *proto.Activate) error {
 	}
 	s.tail = tail
 
+	// Tolerate an already-allocated store sector (e.g. allocated by a prior
+	// import): apply handlers must be idempotent, otherwise the failed apply
+	// aborts the remaining committed entries of the batch (publishEntries).
 	if err := s.store.AllocateSector(&s.sectorKey); err != nil {
-		return fmt.Errorf("failed to allocate sector: %w", err)
+		fmt.Println(time.Now(), s.head.String(), "@@ activate: allocate sector skipped:", err)
 	}
 	if err := s.operator.SetRange(*tail); err != nil {
 		return fmt.Errorf("failed to set range for activate: %w", err)
@@ -765,10 +769,21 @@ func (s *Sector) processTerminateProposal() error {
 
 // terminateLocked releases the sector resources and notifies the handler.
 // Call with s.mtx write-locked; the caller broadcasts s.cond after unlocking.
+//
+// Terminate must always complete once it runs: if it bails out before setting
+// terminated, the pending proposalTerminating is re-proposed every retry tick
+// and each round trips commit → apply-failure forever. An inactive sector was
+// never allocated in the store (AllocateSector runs on activate/import), so
+// ReleaseSector failing is the normal case there — treat the sector as already
+// released and keep going.
+// (シミュレーション 2026-07-04: inactive な hosting sector への Terminate が
+// ReleaseSector のエラーで完了できず、健全なグループなのに「Terminate 毎秒空振り」
+// という quorum 喪失と同じ症状を示し、活性化チェーンを恒久停止させた。
+// commit 自体は毎回進むため checkQuorumLoss の pending バックストップも発火しない)
 func (s *Sector) terminateLocked() error {
 	s.operator.ClearRange()
 	if err := s.store.ReleaseSector(&s.sectorKey); err != nil {
-		return err
+		fmt.Println(time.Now(), s.head.String(), "@@ terminate: release sector skipped:", err)
 	}
 
 	s.proposalActivating = nil
@@ -834,7 +849,7 @@ func (s *Sector) checkQuorumLoss() {
 		return
 	}
 
-	fmt.Println(time.Now(), s.head.String(), "## force terminate", s.sectorKey.String(), reason)
+	fmt.Println(time.Now(), s.head.String(), "@@ force terminate", s.sectorKey.String(), reason)
 
 	s.mtx.Lock()
 	var err error
@@ -882,8 +897,10 @@ func (s *Sector) processImportProposal(importProposal *proto.Import) error {
 
 	s.proposalImporting = nil
 
+	// Tolerate an already-allocated store sector (repeated import proposals):
+	// see processActivateProposal for why apply handlers must be idempotent.
 	if err := s.store.AllocateSector(&s.sectorKey); err != nil {
-		return fmt.Errorf("failed to allocate sector: %w", err)
+		fmt.Println(time.Now(), s.head.String(), "@@ import: allocate sector skipped:", err)
 	}
 	if err := s.operator.ImportRecords(records); err != nil {
 		return fmt.Errorf("failed to import records: %w", err)
