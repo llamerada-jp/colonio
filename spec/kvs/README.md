@@ -97,6 +97,12 @@ spec/kvs/
     一時的なセクター重複が発生し Terminate が発火する。
     CommitMerge は吸収対象が既に inactive の場合を冪等に処理。
     Raft リーダー選出・ログ複製・過半数合意は省略。
+  - **全モデル共通の暗黙の前提: 提案は必ず最終的に commit される**。
+    Raft 版でも Commit 系アクションに WF を付与しており、「グループが quorum を
+    失って提案が永久にペンディングになる」故障モードは表現できない
+    (さらに `Leave(n)` は `proposing[n] = "none"` を前提とするため、提案中の
+    離脱も起きない)。シミュレーション (2026-07-04) でこの前提が実装では
+    成立しないことが確認された。→ [TODO-1](#todo-1)
 - **パケット損失 / メッセージ順序入れ替え**: 省略
 - **sector メンバーシップ管理** (`hosting.Manager`): 省略（Members 集合で抽象化）
 - **ネットワーク遅延**:
@@ -284,7 +290,32 @@ MC_MaxChurn       == 1
 - Extend の重なりガード未実装（モデル修正 #6 の Go 側未反映、kvs.go の NOTE 参照）
   に起因するとみられる active セクターの重複が複数残存していた。
   TerminateB による修復は重複相手のレプリカを持たないと発火しないため、
-  非隣接ノード間の重複は解消されない。要追加対応。
+  非隣接ノード間の重複は解消されない。
+  → その後 `hasActiveSectorHeadInRange` (kvs.go) として実装済み。
+
+### シミュレーション解析からの追加知見（100 ノード・ランダム停止、2026-07-04）
+
+`simulator/logs.txt`（2 回の実行、2 回目はタイムスタンプ付き）の解析で、
+活性化チェーンの**恒久停止**を 2 クラス確認した。いずれも
+「**quorum を失った Raft グループは何も commit できない**」ことに起因し、
+上記のモデル前提（提案は必ず commit される）の外側で起きている。
+
+| クラス | 症状 | 機構 |
+|--------|------|------|
+| A: splitSector ハング（1 回目 9 ペア、2 回目 5 件） | hosting 側が `Migrate` から戻らず `mtxOperateSectors` を握ったまま、当該ノードのセクター管理が全停止。frontward 側は `proposedSplitting` を保持したまま待機 | `Migrate` 内の Import 提案が frontward 側グループの quorum 喪失で commit されない。グループが治癒して 23 秒後に回復した例もあるが、過半数喪失時は治癒に必要な ConfChange 自体が commit 不能で永久化 |
+| B: stale active レプリカ（1 回目のみ 2 件） | 離脱ノードを head とする **active な**レプリカが活性化の重なりガード (skip 1) を永久発動させ、チェーンがその点で停止 | レプリカの掃除 (`Terminate` / `SectorRemoveNode`) 自体が死んだグループの raft commit を要するため誰にも消せない。掃除経路は backward の hosting が active になった後にしか走らないという鶏卵もある |
+
+付随する観測:
+
+- **Terminate 自体が raft commit を要する**ため、quorum 喪失グループは自分自身を
+  終了することすらできない。「proposer 離脱を検知して Terminate」「frontward の
+  不一致レプリカを Terminate」がどちらも毎秒空振りし続けるケースを観測。
+- 2026-06 に修正した「重なりガードが inactive レプリカも対象」問題（前節の表参照）は、
+  active なレプリカが残留するケース（クラス B）では不十分だったことが判明。
+- 観測の詳細は `node/internal/kvs/kvs.go` / `node/internal/kvs/sector/sector.go` の
+  NOTE コメント (2026-07-04 付) に記録。`sector.go` の `applyProposals` に
+  リトライ時の Raft ステータス出力（`## retry proposals ... state/lead/term`）を
+  追加済みで、次回実行でリーダー不在を直接確認できる。
 
 ## アルゴリズム改善案（Go 実装側）
 
@@ -483,6 +514,8 @@ func (k *KVS) onAnyCommit() {
 
 ## 今後の TODO
 
+### 完了済み
+
 - [x] **routing ビューと sector-store を分離** → `KvsSectorSepView.tla` で実装済
 - [x] **Raft 合意の非原子性をモデル化** → `KvsSectorRaft.tla` で実装済
       - ActivateFrontward / Split を Propose → Commit の 2 ステップに分割
@@ -492,6 +525,103 @@ func (k *KVS) onAnyCommit() {
 - [x] **Merge も非原子化** → `KvsSectorRaft.tla` で ProposeMerge/CommitMerge に分割
       - MaxChurn=3 で TerminateB→CommitMerge 間のインターリーブバグ 2 件を発見・修正
       - TerminateA が MaxChurn=3 で初めて発火 (20回)
+
+### 未着手（2026-07-04 のシミュレーション解析より）
+
+推奨着手順は TODO-1 → TODO-2 → TODO-3/TODO-4（TODO-3/4 の実装は TODO-1 の
+検証結果を前提にする）。
+
+| # | 内容 | 種別 | 優先度 | 依存 |
+|---|------|------|--------|------|
+| [TODO-1](#todo-1) | quorum 喪失の故障モードを含む拡張モデル | モデル | 高 | なし |
+| [TODO-2](#todo-2) | stale active レプリカの掃除とガード緩和の検証 | モデル | 高 | TODO-1 と独立に着手可 |
+| [TODO-3](#todo-3) | セクター操作の timeout + abort | Go 実装 | 高 | TODO-1 の検証結果 |
+| [TODO-4](#todo-4) | quorum 喪失セクターのローカル強制破棄 | 設計 + Go 実装 | 高 | TODO-1 の検証結果 |
+
+<a id="todo-1"></a>
+#### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加
+
+- **背景**: 全モデルは「提案は必ず commit される」(Commit 系アクションに WF) を
+  前提としており、`Leave(n)` も `proposing[n] = "none"` を要求するため、
+  「グループメンバーの死亡により commit が永久に来ない」故障モードを表現できない。
+  シミュレーションでこの故障が活性化チェーン恒久停止の主因と確定した
+  （前述「シミュレーション解析 2026-07-04」クラス A）。
+- **内容**: `KvsSectorRaft.tla` をベースに拡張モデル（例: `KvsSectorFail.tla`）を追加する。
+  - `proposing[n]` が非決定的に "stuck" 状態へ遷移するアクションを追加し、
+    stuck した提案の Commit から公平性を外す。quorum やレプリカを精密に
+    モデル化する必要はなく、「commit が永久に来ないことがある」の抽象で十分。
+  - 回復アクションを追加する: `TimeoutAbort(n)`（提案を諦めて提案前状態に戻す）、
+    `LocalDestroy(n)`（raft を経由せず sector を破棄して inactive/absent 相当へ）。
+- **検証項目**:
+  1. 回復アクションを入れても safety（NoOverlapCommitted, ActiveFlagConsistent,
+     ValidRange）が保たれること。
+  2. 回復アクションに WF を付与すると EventuallyAllActive が復活すること。
+  3. `LocalDestroy` の誤発動（実際には commit 可能なグループを破棄）を許した
+     場合に safety が破れるか。破れるなら発動条件に何が必要かを特定する。
+- **関連**: `kvs.go` の `splitSector` / `mergeSector` / `proposedSplitRoutine` の
+  NOTE (2026-07-04)、`sector.go` の `Terminate` の NOTE。
+
+<a id="todo-2"></a>
+#### TODO-2: stale active レプリカの掃除とガード緩和の検証（クラス B）
+
+- **背景**: 離脱ノードを head とする active レプリカが `k.sectors` に残留すると、
+  活性化の重なりガード (Go の skip 1 / モデルの
+  `\A other \in Actives : ~IsBetween(other, f, ft)`) が永久発動する。
+  モデルでは `ForgetSActive` が「タダの」ローカルビュー更新 (WF 付き) だが、
+  Go では掃除自体が死んだグループの raft commit を要するためこの抽象が成立しない。
+  2026-06 の「inactive レプリカを除外」修正は active レプリカ残留には無力だった。
+- **内容**: SepView 版 / Raft 版で次のいずれか（または両方）を検証する。
+  - `ForgetSActive` を raft ゲート付き（stuck グループでは発火しない）に変えた場合、
+    liveness がどう壊れるかを確認し、問題を再現する。
+  - 修正案「head が rView に存在しない active エントリはガード対象外とする、
+    または強制 Forget できる」をモデル化し、safety が保たれるか検証する。
+- **検証項目**: NoOverlap 系不変式。特に「head が rView にない」はローカル観測に
+  すぎない（ルーティングの遅延で一時的に見えないだけ）ケースで、生きている
+  active セクターと重なる activate を許してしまわないか。
+- **関連**: `kvs.go` `activateHostingSector` の Overlap guard NOTE。
+  シミュレーション 1 回目で 2 件観測（再現はタイミング依存: 「activate 済み
+  ノードの死亡 + backward 隣接ノードが未 activate」の一致が必要）。
+
+<a id="todo-3"></a>
+#### TODO-3: セクター操作の timeout + abort（Go 実装）
+
+- **背景**: `sector.Sector` の `Import` / `PreCommitSplit` / `CommitSplit` /
+  `PrepareMerge` / `CommitMerge` / `Extend` は raft 適用まで `cond.Wait()` で
+  無期限ブロックする。`splitSector` がこの構造で `Migrate` 中にハングし、
+  `mtxOperateSectors` を握ったまま当該ノードのセクター管理を全停止させた。
+  モデルには `AbortProposal` があるが Go 実装に対応物がない。
+- **内容**:
+  - 上記のブロッキング操作にタイムアウトを導入し、期限超過でエラー復帰する。
+  - `splitSector` のタイムアウト時に frontward 側へ abort を伝え、
+    `proposedSplitting` 状態を解消する（相手側は proposer 監視だけでは不十分:
+    proposer が「生きているがハング」の場合に検知できないことを観測済み）。
+  - タイムアウト値は `applyProposals` の再提案間隔 (3 秒) との整合を考慮する。
+- **検証項目**: TODO-1 の `TimeoutAbort` の検証結果に従うこと。abort 後の再試行で
+  重複 split 提案（`sectorPrepareSplit` の受諾状態残留）が起きないこと。
+- **関連**: 「アルゴリズム改善案 A（proposing をセクター内蔵）」と親和性が高く、
+  同時に実施すると設計が単純になる可能性がある。
+
+<a id="todo-4"></a>
+#### TODO-4: quorum 喪失セクターのローカル強制破棄（設計 + Go 実装）
+
+- **背景**: 終了 (Terminate) 自体が raft commit を要する現構造では、quorum を
+  失ったグループは**自分自身を終了することもできず**、誰にも消せない
+  （シミュレーションで「Terminate 毎秒空振り」を複数経路で観測）。
+  raft を経由しない破棄の脱出経路がない限り、クラス A/B とも恒久停止は解消しない。
+- **内容**: 以下の設計判断と実装。
+  1. **死亡判定の基準**: リーダー不在 (`raft.Status().Lead == 0`) の継続時間か、
+     メンバーの routing 上の消失か、その組み合わせか。
+     `sector.go` の `## retry proposals` ログ（Raft ステータス付き）で実測してから
+     閾値を決める。
+  2. **誤判定時の安全性**: ネットワーク的に見えないだけで生きている quorum が
+     存在するケースで破棄しても safety が保たれるか → TODO-1 の検証項目 3 で確認。
+  3. **破棄後の再作成経路**: 破棄された hosting sector が hostingManager の
+     create/append で再作成され、通常の活性化フローに復帰すること。
+- **データ喪失について**: `design.md`「その他の性質」は過半数同時 offline による
+  データ喪失を既に許容しているため、強制破棄は設計方針と矛盾しない。
+  ただし現モデルはレコードを扱わないため、データ喪失の頻度・範囲の評価は
+  モデルでは答えが出ない（必要ならシミュレータで測定する）。
+- **関連**: `sector.go` `Terminate` の NOTE、`consensus.go` に `Status()` 追加済み。
 
 ## 再検証クイックリファレンス
 

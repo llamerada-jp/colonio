@@ -164,6 +164,11 @@ func (n *Consensus) Stop() {
 	n.raftNode.Stop()
 }
 
+// Status returns the current raft status for debugging.
+func (n *Consensus) Status() raft.Status {
+	return n.raftNode.Status()
+}
+
 // TODO: do append and remove in batch using ConfChangeV2
 func (n *Consensus) AppendNode(sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {
 	go func() {

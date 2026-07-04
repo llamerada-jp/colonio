@@ -32,6 +32,23 @@
 - sector のアドレスは基本的に被らないが、何らかの理由で被る可能性もある。被った場合のデータは信用できないため、被った sector は両方 terminate してデータを破棄する
 - sector を構成する node が同時に過半数 offline になる可能性もあるため、データが失われる可能性はある
 
+### 未解決の設計課題（2026-07-04）
+
+シミュレーション（100 ノード・ランダム停止）で、**quorum を失った raft グループは
+terminate を含む一切の提案を commit できず、sector が誰にも破棄できない状態に陥る**
+ことを確認した。この状態は activation チェーンを恒久停止させる。上記で許容している
+データ喪失とは別に、以下が未決である。
+
+- terminate が raft commit を前提とする現設計に対し、raft を経由しない
+  **ローカル強制破棄**の脱出経路を導入するか（死亡判定の基準、誤判定時の安全性、
+  破棄後の再作成経路）
+- split 実行中の import が commit されない場合の **timeout / abort**
+  （下記 split の「node[i+1] は node[i] を監視」だけでは、node[i] が
+  「生きているがハングしている」場合に検知できないことを確認済み）
+
+詳細な検討項目と検証計画は [README.md の「今後の TODO」](README.md#今後の-todo)
+（TODO-1〜TODO-4）を参照。
+
 ## 分岐
 
 | hosting sector<br>- active<br>- inactive | frontward sector<br>- not exist<br>- active<br>- inactive | frontward node<br>- match<br>- not match (frontward sector head < frontward node addr) | frontward sector head  | note                                   | action                     |

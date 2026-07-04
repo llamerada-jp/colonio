@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -136,10 +137,10 @@ func (s *Sector) Start(ctx context.Context) {
 				return
 
 			case <-timer.C:
-				s.applyProposals()
+				s.applyProposals(true)
 
 			case <-s.triggerCh:
-				s.applyProposals()
+				s.applyProposals(false)
 				if !timer.Stop() {
 					select {
 					case <-timer.C:
@@ -237,6 +238,11 @@ func (s *Sector) Activate(tail types.NodeID) {
 	s.triggerCh <- struct{}{}
 }
 
+// NOTE: 終了も raft コミットを要するため (applyProposals 冒頭)、quorum を失った
+// グループは自分自身を終了することすらできない。シミュレーション (2026-07-04) で、
+// KVS 側が Terminate を毎秒呼び続けても terminated にならないケースを観測。
+// リーダー不在が一定時間続いた場合に raft を経由せずローカルで破棄する
+// 脱出経路の追加を検討すべき。
 func (s *Sector) Terminate() {
 	s.mtx.Lock()
 	if s.terminated || s.proposalTerminating {
@@ -417,9 +423,56 @@ func (s *Sector) Import(records map[string][]byte) {
 	}
 }
 
-func (s *Sector) applyProposals() {
+// pendingProposalNames returns labels of pending proposals for debugging. Call with s.mtx held.
+func (s *Sector) pendingProposalNames() []string {
+	names := []string{}
+	if s.proposalTerminating {
+		names = append(names, "terminate")
+	}
+	if len(s.proposalAppendingNodes) > 0 {
+		names = append(names, fmt.Sprintf("appendNodes(%d)", len(s.proposalAppendingNodes)))
+	}
+	if len(s.proposalRemovingNodes) > 0 {
+		names = append(names, fmt.Sprintf("removeNodes(%d)", len(s.proposalRemovingNodes)))
+	}
+	if s.proposalActivating != nil {
+		names = append(names, "activate")
+	}
+	if s.proposalExtending != nil {
+		names = append(names, "extend")
+	}
+	if s.proposalImporting != nil {
+		names = append(names, "import")
+	}
+	if s.proposalPreCommitSplitting != nil {
+		names = append(names, "preCommitSplit")
+	}
+	if s.proposalCommittingSplit != nil {
+		names = append(names, "commitSplit")
+	}
+	if s.proposalPrepareMerge != nil {
+		names = append(names, "prepareMerge")
+	}
+	if s.proposalCommittingMerge != nil {
+		names = append(names, "commitMerge")
+	}
+	return names
+}
+
+func (s *Sector) applyProposals(retry bool) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
+
+	// A proposal still pending after proposalRetryDuration means the raft group has not
+	// committed it yet; dump the raft status to see whether the group has a leader.
+	if retry {
+		if pending := s.pendingProposalNames(); len(pending) > 0 {
+			status := s.consensus.Status()
+			fmt.Println(s.head.String(), "## retry proposals", s.sectorKey.String(),
+				"pending", strings.Join(pending, ","),
+				"state", status.RaftState.String(), "lead", status.Lead, "term", status.Term)
+		}
+	}
 
 	// re-apply terminating
 	if s.proposalTerminating {

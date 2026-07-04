@@ -304,6 +304,7 @@ func (k *KVS) kvsOperate(command proto.KvsOperation_Command, key string, value [
 func (k *KVS) subRoutine() {
 	nodeIsStable, backwardNextNodeIDs, frontwardNextNodeIDs := k.handler.KvsGetStability()
 	if !nodeIsStable {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== skip subRoutine: node is not stable")
 		return
 	}
 	// The first element of frontwardNextNodeIDs is the next node in the frontward direction.
@@ -318,6 +319,7 @@ func (k *KVS) subRoutine() {
 	// Try to operate sectors by one thread to avoid race.
 	locked := k.mtxOperateSectors.TryLock()
 	if !locked {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== skip subRoutine: previous operateSectors is still running")
 		return
 	}
 	go func() {
@@ -325,12 +327,14 @@ func (k *KVS) subRoutine() {
 
 		hostingSectorKey := k.hostingManager.GetHostingSectorKey()
 		if hostingSectorKey == nil {
+			fmt.Println(time.Now(), k.localNodeID.String(), "== skip operateSectors: hosting sector key is not ready")
 			return
 		}
 		k.mtx.RLock()
 		hostingSector := k.sectors[*hostingSectorKey]
 		k.mtx.RUnlock()
 		if hostingSector == nil {
+			fmt.Println(time.Now(), k.localNodeID.String(), "== skip operateSectors: hosting sector is not ready")
 			return
 		}
 
@@ -340,6 +344,7 @@ func (k *KVS) subRoutine() {
 
 func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.NodeID, frontwardNextNodeID *types.NodeID, sectorIsStable bool) {
 	if !k.proposedSplitRoutine(hostingSector, nextNodeIDs) {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== skip operateSectors: proposed splitting is not resolved")
 		return
 	}
 
@@ -357,7 +362,16 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 
 	// If there is any management proposal, skip operating sectors until the proposal is resolved
 	// because the proposal may change the condition of sectors.
+	// NOTE: TLA+ AbortProposal により、提案対象が離脱した場合のキャンセル処理が必要。
+	// splitSector: proposedSplitRoutine がターゲット離脱を検知して Terminate で解消。
+	// activateFrontwardSector: 呼び出し側は proposal をセットしないため stuck しない。
+	// mergeSector: TODO — ターゲット離脱時の abort 処理を確認・追加する。
+	// NOTE: シミュレーション (100ノード・ランダム停止, 2026-07-04) で、離脱検知後の
+	// Terminate も raft コミット必須のため quorum 喪失グループでは完了せず、
+	// 「離脱を検知しても解消できない」ケースを観測。abort 処理は raft を経由しない
+	// ローカル破棄とセットで設計する必要がある。
 	if hostingSector.HasManagementProposal() {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== skip operateSectors: hosting sector has management proposal")
 		return
 	}
 
@@ -365,6 +379,8 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 		if sectorIsStable {
 			// Haven't activated sector yet, try to activate if the sector is stable.
 			k.activateHostingSector(hostingSector, nextNodeIDs, true)
+		} else {
+			fmt.Println(time.Now(), k.localNodeID.String(), "== skip activation: sector is not stable")
 		}
 		return
 	}
@@ -372,6 +388,11 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 	frontwardNextSector, frontwardNodeMatch := k.getFrontwardCondition(frontwardNextNodeID)
 	// Skip until the frontward sector will be created.
 	if frontwardNextSector == nil {
+		frontwardNextNodeIDStr := "<nil>"
+		if frontwardNextNodeID != nil {
+			frontwardNextNodeIDStr = frontwardNextNodeID.String()
+		}
+		fmt.Println(time.Now(), k.localNodeID.String(), "== skip operateSectors: frontward next sector is not created yet, frontwardNextNodeID:", frontwardNextNodeIDStr)
 		return
 	}
 
@@ -381,6 +402,9 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 	if frontwardNextSector.GetTailAddress() == nil {
 		if !frontwardNodeMatch {
 			// Terminate the frontward sector.
+			// NOTE: シミュレーションで、frontward レプリカのグループが quorum を失って
+			// いると Terminate がコミットされず、ここを毎秒通り続けることを観測 (2026-07-04)。
+			fmt.Println(time.Now(), k.localNodeID.String(), "@@ Terminate frontward next sector")
 			frontwardNextSector.Terminate()
 			return
 		}
@@ -389,17 +413,21 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 		case frontwardNextSector.GetHeadAddress().Equal(hostingSectorTail):
 			// frontwardNextSector.GetHeadAddress() == hostingSectorTail
 			// Activate frontward next sector.
+			fmt.Println(time.Now(), k.localNodeID.String(), "@@ Activate frontward next sector", frontwardNextSector.GetHeadAddress().String())
 			k.activateFrontwardSector(frontwardNextSector)
 		case frontwardNextSector.GetHeadAddress().IsBetween(k.localNodeID, hostingSectorTail):
 			// frontwardNextSector.GetHeadAddress() is inside the hosting sector range [local, hostingSectorTail)
 			// Split hosting sector and make frontward next sector active.
+			fmt.Println(time.Now(), k.localNodeID.String(), "@@ Split hosting sector and make frontward next sector active")
 			k.splitSector(hostingSector, frontwardNextSector)
 		default:
 			// frontwardNextSector.GetHeadAddress() is outside the hosting sector range (past hostingSectorTail on the ring)
 			// Extend hosing sector to frontward next sector.
 			if k.hasActiveSectorHeadInRange(hostingSectorTail, frontwardNextSector.GetHeadAddress()) {
+				fmt.Println(time.Now(), k.localNodeID.String(), "== skip Extend 1: active sector head exists in range")
 				return
 			}
+			fmt.Println(time.Now(), k.localNodeID.String(), "@@ Extend 1")
 			hostingSector.Extend(*frontwardNextSector.GetHeadAddress())
 		}
 		return
@@ -411,16 +439,27 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 		case frontwardNextSector.GetHeadAddress().IsBetween(k.localNodeID, hostingSectorTail):
 			// frontwardNextSector.GetHeadAddress() is inside the hosting sector range [local, hostingSectorTail)
 			// Terminate both of hosting sector and frontward next sector.
+			fmt.Println(time.Now(), k.localNodeID.String(), "@@ Terminate hosting sector 1")
 			hostingSector.Terminate()
+			fmt.Println(time.Now(), k.localNodeID.String(), "@@ Terminate frontward next sector 1")
 			frontwardNextSector.Terminate()
 		default:
 			// frontwardNextSector.GetHeadAddress() is at or past hostingSectorTail on the ring
 			// Merge the hosting sector with frontward sector and delete the frontward sector.
+			fmt.Println(time.Now(), k.localNodeID.String(), "@@ Merge the hosting sector with frontward sector and delete the frontward sector")
 			k.mergeSector(hostingSector, frontwardNextSector)
 		}
 		return
 	}
 
+	// NOTE: TLA+ Raft モデルでは TerminateB（このパス: frontwardNodeMatch=true）が
+	// 実際に発火する (N=3: 8回, N=4: 14回)。Propose→Commit 間のインターリービングで
+	// CommitActivate/CommitSplit が古い tail を適用し、セクター重複が一時的に発生する。
+	// このパスが重複解消の主要な防御ラインであることが形式検証で確認された。
+	// NOTE: TerminateB で inactive にされるノードが proposing (提案中) の場合、
+	// そのノードの proposing 状態をクリアする必要がある。さもないと CommitMerge 等の
+	// 後続 commit が不正に発火し、anyActive フラグの不整合を引き起こす
+	// (TLA+ MaxChurn=3 で検出: ActiveFlagConsistent 違反)。
 	switch {
 	case frontwardNextSector.GetHeadAddress().Equal(hostingSectorTail):
 		// frontwardNextSector.GetHeadAddress() == hostingSectorTail
@@ -428,14 +467,18 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 	case frontwardNextSector.GetHeadAddress().IsBetween(k.localNodeID, hostingSectorTail):
 		// frontwardNextSector.GetHeadAddress() is inside the hosting sector range [local, hostingSectorTail)
 		// Terminate both of hosting sector and frontward next sector.
+		fmt.Println(time.Now(), k.localNodeID.String(), "@@ Terminate hosting sector 2")
 		hostingSector.Terminate()
+		fmt.Println(time.Now(), k.localNodeID.String(), "@@ Terminate frontward next sector 1")
 		frontwardNextSector.Terminate()
 	default:
 		// frontwardNextSector.GetHeadAddress() is past hostingSectorTail on the ring
 		// Extend hosing sector to frontward next sector.
 		if k.hasActiveSectorHeadInRange(hostingSectorTail, frontwardNextSector.GetHeadAddress()) {
+			fmt.Println(time.Now(), k.localNodeID.String(), "== skip Extend 2: active sector head exists in range")
 			return
 		}
+		fmt.Println(time.Now(), k.localNodeID.String(), "@@ Extend 2")
 		hostingSector.Extend(*frontwardNextSector.GetHeadAddress())
 	}
 }
@@ -558,10 +601,12 @@ func (k *KVS) sectorManageMember(param *sectorManageMemberParam) error {
 }
 
 func (k *KVS) sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID) bool {
+	fmt.Println(time.Now(), k.localNodeID.String(), "== receive sectorActivate from", srcNodeID.String(), "sectorID:", sectorID.String())
 	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
 
 	// ignore if it does not match the current node
 	if hostingSectorKey == nil || hostingSectorKey.SectorID != sectorID {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== reject sectorActivate: hosting sector key is nil or sectorID mismatch")
 		return false
 	}
 
@@ -570,16 +615,19 @@ func (k *KVS) sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID
 	hostingSector, ok := k.sectors[*hostingSectorKey]
 	k.mtx.RUnlock()
 	if !ok {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== reject sectorActivate: hosting sector is not ready")
 		return false
 	}
 
 	// already activated
 	if hostingSector.GetTailAddress() != nil {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== sectorActivate: already activated")
 		return true
 	}
 
 	nodeIsStable, _, frontwardNextNodeIDs := k.handler.KvsGetStability()
 	if !nodeIsStable {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== reject sectorActivate: node is not stable")
 		return false
 	}
 	k.activateHostingSector(hostingSector, frontwardNextNodeIDs, false)
@@ -590,23 +638,27 @@ func (k *KVS) sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID
 func (k *KVS) sectorPrepareSplit(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID) bool {
 	locked := k.mtxOperateSectors.TryLock()
 	if !locked {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== reject sectorPrepareSplit from", srcNodeID.String(), ": operateSectors is running")
 		return false
 	}
 	defer k.mtxOperateSectors.Unlock()
 
 	if k.proposedSplittingNodeID.Equal(srcNodeID) &&
 		k.proposedSplittingSectorID != nil && *k.proposedSplittingSectorID == sectorID {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== accept sectorPrepareSplit from", srcNodeID.String(), "(already accepted)")
 		return true
 	}
 
 	if k.proposedSplittingNodeID != nil ||
 		k.hostingManager.GetHostingSectorKey().SectorID != sectorID {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== reject sectorPrepareSplit from", srcNodeID.String(), ": another proposal or sectorID mismatch")
 		return false
 	}
 
 	k.proposedSplittingNodeID = srcNodeID
 	k.proposedSplittingSectorID = &sectorID
 
+	fmt.Println(time.Now(), k.localNodeID.String(), "== accept sectorPrepareSplit from", srcNodeID.String())
 	return true
 }
 
@@ -633,7 +685,11 @@ func (k *KVS) proposedSplitRoutine(hostingSector *sector.Sector, nextNodeIDs []*
 	}
 	// If the proposed node is not exist, terminate the hosting sector
 	// because the proposed splitting cannot be finished.
+	// NOTE: シミュレーションで、proposer 離脱後にこの Terminate が hosting sector の
+	// quorum 喪失によりコミットされず、毎秒ここを通り続けるケースを観測 (2026-07-04)。
+	// 離脱検知だけでは不十分で、raft を経由しないローカル破棄の脱出経路が必要。
 	if !proposedNodeExists {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== proposedSplitRoutine: proposer", k.proposedSplittingNodeID.String(), "left, terminate hosting sector")
 		hostingSector.Terminate()
 	}
 
@@ -748,113 +804,209 @@ func (k *KVS) SendSectorManageMember(param *hosting.SectorManageMemberParam) {
 }
 
 func (k *KVS) activateHostingSector(hostingSector *sector.Sector, frontwardNextNodeIDs []*types.NodeID, checkEntireState bool) {
+	// NOTE: TLA+ では ActivateFirst アクションに相当する。
+	// anyActive=FALSE (リング上に active セクターが一つもない) でのみ発火する
+	// ため原子的にモデル化している。Go 実装も checkEntireState=true の値で
+	// EntireStateInactive を確認してから Activate するため同じ保証がある。
+	// checkEntireState=false (sectorActivate 経由) のパスは他ノードが既に
+	// active である前提なので、ActivateFrontward (Propose+Commit) に相当する。
 	if checkEntireState {
 		entireState, err := k.activationResolver.ResolveEntireState(k.ctx)
 		if err != nil {
+			fmt.Println(time.Now(), k.localNodeID.String(), "== skip activation: failed to resolve entire state:", err)
 			k.logger.Warn("Failed to get sector entire state", "error", err)
 			return
 		}
 
 		// other node might have already activated the sector, check the state again
 		if entireState != kvsTypes.EntireStateInactive {
+			fmt.Println(time.Now(), k.localNodeID.String(), "@@ Entire not inactive", entireState)
 			return
 		}
 	}
 
-	// local node is stable and other nodes are not exist
-	if len(frontwardNextNodeIDs) == 0 {
+	fmt.Println(time.Now(), k.localNodeID.String(), "== Activating hosting sector", checkEntireState)
+
+	// Decide the tail under RLock, then activate after releasing it.
+	// Activate/markSectorUpdated must not run while k.mtx is held.
+	tail := func() *types.NodeID {
 		k.mtx.RLock()
 		defer k.mtx.RUnlock()
-		if len(k.sectors) != 0 {
-			k.logger.Warn("No frontward node but sectors exist")
-			return
-		}
-		hostingSector.Activate(*k.localNodeID)
-		return
-	}
 
-	var candidate *sector.Sector
-	frontwardNodeID := frontwardNextNodeIDs[0]
-	for sectorKey, sector := range k.sectors {
-		sectorHead := sector.GetHeadAddress()
-		if sectorHead.Equal(k.localNodeID) {
-			continue
+		// local node is stable and other nodes are not exist
+		if len(frontwardNextNodeIDs) == 0 {
+			for sectorKey := range k.sectors {
+				if sectorKey != hostingSector.GetKey() {
+					k.logger.Warn("No frontward node but other sectors exist")
+					return nil
+				}
+			}
+			return k.localNodeID
 		}
-		if sectorHead.Equal(frontwardNodeID) {
-			if candidate == nil || sectorKey.SectorNo > candidate.GetKey().SectorNo {
-				candidate = sector
+
+		var candidate *sector.Sector
+		frontwardNodeID := frontwardNextNodeIDs[0]
+		fmt.Println(time.Now(), k.localNodeID.String(), "== frontwardNodeID", frontwardNodeID.String())
+		for sectorKey, sector := range k.sectors {
+			sectorHead := sector.GetHeadAddress()
+			fmt.Println(time.Now(), k.localNodeID.String(), "== check sector", sectorKey.String(), "head", sectorHead.String())
+			if sectorHead.Equal(k.localNodeID) {
+				continue
+			}
+			if sectorHead.Equal(frontwardNodeID) {
+				if candidate == nil || sectorKey.SectorNo > candidate.GetKey().SectorNo {
+					candidate = sector
+				}
+			}
+
+			// Overlap guard for ActivateFrontward: check only ACTIVE sectors
+			// (TLA+: \A other \in Actives : ~IsBetween(other, f, ft)).
+			// Why active-only: inactive replicas of departed nodes can remain in k.sectors
+			// for a while; if they are counted here, activation may be blocked forever
+			// because inactive replicas do not self-heal or progress this path.
+			// NOTE: シミュレーション (100ノード・ランダム停止, 2026-06/2026-07) で、
+			// 離脱ノードを head とする ACTIVE なレプリカが残留し、本ガードが永久発動して
+			// 活性化チェーンが止まるデッドロックを観測。掃除経路 (Terminate/Merge) は
+			// backward の hosting sector が active になった後にしか走らず、しかも
+			// 死んだグループでは Terminate 自体が raft コミットされない。
+			// head がルーティング上に存在しない active レプリカはガード対象から外すか、
+			// raft を経由せずローカル破棄する処理が必要。
+			if sectorHead.IsBetween(k.localNodeID, frontwardNodeID) && sector.GetTailAddress() != nil {
+				fmt.Println(time.Now(), k.localNodeID.String(), "== skip 1: active sector", sectorKey.String(), "head", sectorHead.String(), "blocks activation toward", frontwardNodeID.String())
+				return nil
 			}
 		}
-
-		if sectorHead.IsBetween(k.localNodeID, frontwardNodeID) {
-			return
+		if candidate == nil {
+			fmt.Println(time.Now(), k.localNodeID.String(), "== skip 2")
+			return nil
 		}
-	}
-	if candidate == nil {
+		return candidate.GetHeadAddress()
+	}()
+	if tail == nil {
 		return
 	}
 
-	hostingSector.Activate(*candidate.GetHeadAddress())
+	fmt.Println(time.Now(), k.localNodeID.String(), "== Activate hosting sector with tail", tail.String())
+	hostingSector.Activate(*tail)
 }
 
+// NOTE: TLA+ Raft モデルでは activateFrontwardSector を ProposeActivate と CommitActivate に分割。
+// sendSectorActivate (Raft Propose) から応答を受け取るまでの間に対象ノードが Leave する場合、
+// HasManagementProposal() が true のまま stuck する可能性がある。
+// タイムアウトや対象離脱検知による abort 処理の追加を検討すべき。
 func (k *KVS) activateFrontwardSector(frontwardNextSector *sector.Sector) {
+	sectorID := frontwardNextSector.GetKey().SectorID
+	dstNodeID := *frontwardNextSector.GetHeadAddress()
+
+	fmt.Println(time.Now(), k.localNodeID.String(), "== send sectorActivate to", dstNodeID.String(), "sectorID:", sectorID.String())
 	cErr := k.outbound.sendSectorActivate(&SectorActivateParam{
-		dstNodeID: frontwardNextSector.GetHeadAddress(),
-		sectorID:  frontwardNextSector.GetKey().SectorID,
+		dstNodeID: &dstNodeID,
+		sectorID:  sectorID,
 	})
-	if err := <-cErr; err != nil {
-		k.logger.Warn("Failed to activate frontward sector", "error", err)
-	}
+
+	go func() {
+		err := <-cErr
+		fmt.Println(time.Now(), k.localNodeID.String(), "== sectorActivate response from", dstNodeID.String(), "err:", err)
+		if err != nil {
+			k.logger.Warn("Failed to activate frontward sector", "dstNodeID", dstNodeID.String(), "sectorID", sectorID.String(), "error", err)
+		}
+	}()
 }
 
+// NOTE: TLA+ Raft モデルでは splitSector を ProposeSplit (PreCommitSplit で tail 縮小) と
+// CommitSplit (frontward の活性化) の 2 ステップに分割してモデル化。
+// PreCommitSplit と CommitSplit の間に他ノードの操作がインターリーブすることで
+// 一時的なセクター重複が発生しうる。これは TerminateB で解消される。
+// NOTE: シミュレーション (100ノード・ランダム停止, 2026-07-04) で、Migrate 内の
+// frontward 側グループへの Import 提案が quorum 喪失によりコミットされず、この関数が
+// 無期限ブロックするハングを観測 (5/6 件、相手ノードは生存・prepareSplit 受諾済み)。
+// この間 mtxOperateSectors を握り続けるため当該ノードのセクター管理が全停止し、
+// frontward 側も proposedSplitting がセットされたまま待ち続ける。グループが治癒して
+// 23 秒後に回復した例もあるが、過半数喪失時は治癒に必要な ConfChange 自体が
+// コミットできず永久化する。timeout+abort と quorum 喪失検知が必要。
 func (k *KVS) splitSector(hostingSector, frontwardNextSector *sector.Sector) {
+	fmt.Println(time.Now(), k.localNodeID.String(), "== split: send sectorPrepareSplit to", frontwardNextSector.GetHeadAddress().String())
 	cErr := k.outbound.sendSectorPrepareSplit(&SectorSplitParam{
 		dstNodeID: frontwardNextSector.GetHeadAddress(),
 		sectorID:  frontwardNextSector.GetKey().SectorID,
 	})
 	if err := <-cErr; err != nil {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== split: sectorPrepareSplit failed:", err)
 		k.logger.Warn("Failed to split sector", "error", err)
 		return
 	}
 	frontwardNewTail := hostingSector.GetTailAddress()
 
+	fmt.Println(time.Now(), k.localNodeID.String(), "== split: migrating records to frontward sector")
 	if err := hostingSector.Migrate(frontwardNextSector); err != nil {
+		// NOTE: TLA+ AbortProposal に相当。Migrate 失敗時に frontward 側の
+		// 提案 (sendSectorPrepareSplit で受諾済) をキャンセルし、
+		// proposing 状態が永続しないようにする。
+		// PreCommitSplit/CommitSplit 失敗パスも同様。
 		frontwardNextSector.Terminate()
+		fmt.Println(time.Now(), k.localNodeID.String(), "== split: migrate failed:", err)
 		k.logger.Warn("Failed to migrate sector", "error", err)
 		return
 	}
 
+	fmt.Println(time.Now(), k.localNodeID.String(), "== split: pre-committing split on hosting sector")
 	if err := hostingSector.PreCommitSplit(frontwardNextSector.GetHeadAddress()); err != nil {
 		frontwardNextSector.Terminate()
+		fmt.Println(time.Now(), k.localNodeID.String(), "== split: pre commit failed:", err)
 		k.logger.Warn("Failed to pre commit split", "error", err)
 		return
 	}
 
+	fmt.Println(time.Now(), k.localNodeID.String(), "== split: committing split on frontward sector")
 	if err := frontwardNextSector.CommitSplit(frontwardNewTail); err != nil {
 		frontwardNextSector.Terminate()
+		fmt.Println(time.Now(), k.localNodeID.String(), "== split: commit failed:", err)
 		k.logger.Warn("Failed to commit split", "error", err)
 		return
 	}
+	fmt.Println(time.Now(), k.localNodeID.String(), "== split: done")
 }
 
+// NOTE: mergeSector は PrepareMerge → Merge → Terminate → CommitMerge の
+// 3 つの Raft グループにまたがる操作。TLA+ では ProposeMerge/CommitMerge に非原子化済み。
+// ProposeMerge→CommitMerge 間に TerminateB が割り込み、吸収対象 (fs) が既に
+// inactive になるケースを CommitMerge が冪等に処理する設計。
+// NOTE: TLA+ MaxChurn=2 検証で、Merge で吸収される側が提案中 (proposing) の場合に
+// proposing 状態がクリアされないバグを発見。Go 実装でも Merge 時に吸収される側の
+// 提案中操作を安全にキャンセルする処理が必要。
+// NOTE: TLA+ MaxChurn=3 検証で、CommitMerge が fs を active→inactive にする際に
+// anyActive フラグの更新漏れを発見。Go 実装でも merge commit 後に全セクターが
+// inactive になった場合の状態遷移を正しく処理する必要がある。
+// NOTE: PrepareMerge/CommitMerge も raft 適用まで cond.Wait で無期限ブロックするため、
+// splitSector の Import と同じく quorum 喪失でハングする危険がある
+// (シミュレーションでは merge は全件完了、未観測。2026-07-04)。
 func (k *KVS) mergeSector(hostingSector, frontwardNextSector *sector.Sector) {
+	fmt.Println(time.Now(), k.localNodeID.String(), "== merge: preparing merge on frontward sector, head", frontwardNextSector.GetHeadAddress().String())
 	if err := frontwardNextSector.PrepareMerge(k.localNodeID); err != nil {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== merge: prepare failed:", err)
 		k.logger.Warn("Failed to prepare merge", "error", err)
 		return
 	}
 
 	newTail := frontwardNextSector.GetTailAddress()
 
+	fmt.Println(time.Now(), k.localNodeID.String(), "== merge: migrating records from frontward sector")
 	if err := hostingSector.Merge(frontwardNextSector); err != nil {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== merge: migrate failed:", err)
 		k.logger.Warn("Failed to merge sector", "error", err)
 		return
 	}
 
+	fmt.Println(time.Now(), k.localNodeID.String(), "== merge: terminating frontward sector")
 	frontwardNextSector.Terminate()
 
+	fmt.Println(time.Now(), k.localNodeID.String(), "== merge: committing merge on hosting sector")
 	if err := hostingSector.CommitMerge(newTail); err != nil {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== merge: commit failed:", err)
 		k.logger.Warn("Failed to commit merge", "error", err)
+		return
 	}
+	fmt.Println(time.Now(), k.localNodeID.String(), "== merge: done")
 }
 
 func (k *KVS) takeObservation() {
