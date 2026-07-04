@@ -285,6 +285,78 @@ func TestKVS_sectorActivate_ignoresInactiveSectorBetween(t *testing.T) {
 	}, 15*time.Second, 100*time.Millisecond)
 }
 
+// TestKVS_sectorManageMember_rejectsTombstonedKey is a regression test for the
+// raft panic observed in the simulator (run5, 2026-07-04): a replica that was
+// locally terminated must never be re-created under the same
+// {sectorID, sectorNo} with an empty log, because the group still remembers
+// that raft member's progress and votes. Re-delivered SectorManageMember
+// messages for a tombstoned key must be rejected; re-adding the node under a
+// fresh sectorNo is the only safe path.
+func TestKVS_sectorManageMember_rejectsTombstonedKey(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	headNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+
+	handler := &kvsHandlerHelper{isStable: true}
+	k := newTestKVS(t, ctx, localNodeID, handler)
+
+	sectorKey := kvsTypes.SectorKey{
+		SectorID: kvsTypes.SectorID(uuid.New()),
+		SectorNo: kvsTypes.SectorNo(2),
+	}
+	members := map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: headNodeID,
+		kvsTypes.SectorNo(2):      localNodeID,
+	}
+
+	require.NoError(t, k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_APPEND,
+		sectorKey: sectorKey,
+		head:      headNodeID,
+		members:   members,
+	}))
+
+	// simulate the local (force) termination of the replica
+	k.SectorTerminated(&sectorKey)
+	require.Eventually(t, func() bool {
+		k.mtx.RLock()
+		defer k.mtx.RUnlock()
+		_, ok := k.sectors[sectorKey]
+		return !ok
+	}, 5*time.Second, 50*time.Millisecond)
+
+	// a re-delivered setting message for the same key must be rejected
+	err := k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_APPEND,
+		sectorKey: sectorKey,
+		head:      headNodeID,
+		members:   members,
+	})
+	require.Error(t, err)
+	k.mtx.RLock()
+	_, recreated := k.sectors[sectorKey]
+	k.mtx.RUnlock()
+	require.False(t, recreated)
+
+	// the same node under a FRESH sectorNo is accepted
+	freshKey := kvsTypes.SectorKey{
+		SectorID: sectorKey.SectorID,
+		SectorNo: kvsTypes.SectorNo(3),
+	}
+	require.NoError(t, k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_APPEND,
+		sectorKey: freshKey,
+		head:      headNodeID,
+		members:   members,
+	}))
+	k.mtx.RLock()
+	_, created := k.sectors[freshKey]
+	k.mtx.RUnlock()
+	require.True(t, created)
+}
+
 // TestKVS_activateHostingSector_singleNode is a regression test: a lone node
 // could never activate its own sector because the emptiness check counted the
 // hosting sector itself.

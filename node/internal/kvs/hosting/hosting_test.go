@@ -17,6 +17,7 @@ package hosting
 
 import (
 	"testing"
+	"time"
 
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/types"
@@ -65,6 +66,51 @@ func TestManager_ManageMember_panicsOnLocalNodeID(t *testing.T) {
 	require.PanicsWithValue(t, "localNodeID found in nextNodeIDs", func() {
 		m.ManageMember([]*types.NodeID{otherNodeID, localNodeID})
 	})
+}
+
+// TestManager_ManageMember_reapsStaleMember verifies the recovery path for
+// members that cannot finish their setup (dead/slow learners, or targets that
+// reject re-delivered setting messages due to a sector tombstone): after
+// memberSetupTimeout the member is marked Removing, and the node is re-added
+// under a FRESH sectorNo on the following tick.
+func TestManager_ManageMember_reapsStaleMember(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID := nodeIDs[0]
+	memberNodeID := nodeIDs[1]
+
+	m := NewManager(&Config{
+		Logger:   testUtil.Logger(t),
+		Outbound: &outboundHelper{},
+	})
+	m.memberSetupTimeout = 50 * time.Millisecond
+	m.Start(&sectorHandlerHelper{}, localNodeID)
+
+	m.ManageMember([]*types.NodeID{memberNodeID})
+
+	var memberSectorNo kvsTypes.SectorNo
+	for sec, entry := range m.memberStates {
+		if entry.NodeID.Equal(memberNodeID) {
+			memberSectorNo = sec
+		}
+	}
+	require.NotZero(t, memberSectorNo)
+	require.Equal(t, MemberStateCreating, m.memberStates[memberSectorNo].State)
+
+	// the member never finishes its setup; after the timeout it must be
+	// reaped and re-added under a fresh sectorNo
+	time.Sleep(100 * time.Millisecond)
+	m.ManageMember([]*types.NodeID{memberNodeID})
+
+	require.Equal(t, MemberStateRemoving, m.memberStates[memberSectorNo].State)
+	var newSectorNo kvsTypes.SectorNo
+	for sec, entry := range m.memberStates {
+		if sec != memberSectorNo && entry.NodeID.Equal(memberNodeID) {
+			newSectorNo = sec
+		}
+	}
+	require.NotZero(t, newSectorNo)
+	require.Greater(t, newSectorNo, memberSectorNo)
+	require.Equal(t, MemberStateAppending, m.memberStates[newSectorNo].State)
 }
 
 func TestManager_getNodesToBeChanged(t *testing.T) {

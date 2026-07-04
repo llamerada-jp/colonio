@@ -270,6 +270,7 @@ MC_MaxChurn       == 1
 | inactive セクターへの Terminate の apply が完了不能 (2026-07-04 発見) | `processTerminateProposal` が `ReleaseSector` のエラーで `terminated` を立てずに return。inactive セクターは `AllocateSector` 未実行のため必ず失敗する | Terminate が「commit → apply 失敗 → 再提案」を永久に繰り返し、**健全なグループが quorum 喪失と同一の症状**（毎秒空振り）を示し活性化チェーンを恒久停止。commit が進み続けるため pending バックストップも発火しない。修正: terminate の apply を必ず完了させる + activate/import の AllocateSector を冪等化 |
 | explicit パケットの非宛先受理 → ゴーストレプリカ (2026-07-04 run3 発見) | `classifyPacket` はルートテーブルが自ノードを返すと explicit でも `Receive` していた | 死亡ノード宛の SectorManageMember / raft メッセージを別ノードが受理し、**同じ raft メンバー ID を複数の物理ノードが名乗る**。誤ノードへのデータ複製・本来メンバーの永久非同期・二重投票リスク。修正: explicit は宛先一致時のみ受理 |
 | apply エラーで committed entries のバッチが中断 (2026-07-04 run3 発見) | `publishEntries` が apply エラーで即 return するが `Advance()` は実行される | 同一バッチの残り committed entries が**適用されないまま消費**され、そのメンバーだけ状態が乖離。非冪等な `processCommitSplitProposal`（エラー返却 + proposal 未クリア → 3 秒ごと再提案）が毒エントリー化して恒常的にこれを誘発。修正: ログして継続 + CommitSplit apply の冪等化 |
+| 破棄済みレプリカの同一キー復活 → raft panic (2026-07-04 run5 発見) | 非 Normal メンバーへの setting message 毎秒再送 × ローカル強制破棄の組み合わせで、ack 済みレプリカが**同じ {sectorID, sectorNo} で空ログ再作成**される（learner-first で再送窓が拡大し顕在化） | グループはその raft ID の Match・投票を記憶しており、「メンバーはログを失わない」前提が破れて **etcd raft 内部で panic（プロセス停止・recover 不能）**。復活→再破棄のループが破棄数も増幅。修正: sector tombstone で同一キー再作成を拒否 + 停滞メンバーを reap して新 sectorNo で再追加 |
 
 **教訓**: TLA+ のアクションは原子的にモデル化されるため、アクション「内部」の
 ロック取得順序はモデルの検証対象外。実装側は以下のロック規約で防ぐ
@@ -799,6 +800,50 @@ panic せず黙って自己 append してしまうため、initHostSector と同
   `TestSector_appendDeadNode_learnerKeepsQuorum`（sector 層での同性質。旧
   `TestSector_forceTerminate_leaderWithoutQuorum` は「dead append で quorum が
   壊れる」前提自体が learner-first で成立しなくなったため置き換え）。
+
+#### シミュレーション run 5（learner-first 導入後、2026-07-04）: raft panic
+
+activate の恒久停止は発生しなかったが、t≈180s から不安定化
+（`node is not stable` が min3: 1504 → min5: 3733/分、強制破棄 990 回）し、
+最終的に **etcd raft 内部で panic してプロセスごと停止**した
+（`slice bounds out of range` at `nextCommittedEnts` / `unstable.slice`、
+`RestartNode` で生成されたレプリカの run goroutine）。
+
+**機構（レプリカ復活による raft メンバーの記憶喪失）**:
+
+1. learner-first により、メンバーが Normal になるまで hostingManager の
+   `sendSettingMessage` が **APPEND を毎秒再送し続ける**ようになった
+   （従来は昇格が即時だったため再送窓が短かった）。
+2. 追随中のレプリカ（entries を ack 済み = リーダーの Progress に Match>0 が残る）
+   が、churn によるリーダー不在 30 秒でローカル強制破棄される。
+3. 再送 APPEND が**同じ {sectorID, sectorNo} を空ログで再作成**する
+   （`RestartNode` — panic スタックと一致）。
+4. グループはその raft ID の Match・投票を記憶しているため、
+   **「メンバーは自分のログを失わない」という raft の大前提が破れ**、
+   復活インスタンスとの整合が取れず内部状態矛盾で panic する。
+   panic は raft 内部の goroutine で起きるため recover 不能
+   （1 プロセス 100 ノードのシミュレータでは全ノード即死）。
+
+なお「復活レプリカ → 30 秒後にまた leaderless 破棄 → また復活」のループが
+破棄数を増幅する（990 回）ため、t≈180s 以降の不安定化自体もこの復活サイクルが
+一因とみられる（run4 の同時間帯は 498 回だった）。run3 で観測した
+「slot 12 を 2 ノードが保持」も、再配送 APPEND による複製インスタンスという
+同族の問題。
+
+**修正（実装済み）**:
+
+- **sector tombstone**（kvs.go）: ローカル破棄（SectorTerminated）または
+  remove 適用（SectorRemoveNode）された {sectorID, sectorNo} を記録し、
+  同じキーの SectorManageMember CREATE/APPEND を拒否する。
+  **raft メンバー ID は使い捨て**とし、同一 ID の空ログ再作成を構造的に禁止。
+- **停滞メンバーの reap**（hosting.go `reapStaleMembers`,
+  memberSetupTimeout=30s）: 非 Normal のまま一定時間経過したメンバーを
+  Removing にし、routing に残っていれば**新しい sectorNo で追加し直す**。
+  tombstone 拒否からの回復経路であり、死んだ/停滞 learner の掃除も
+  routing の失効（約 3 分）を待たず 30 秒に短縮される。
+
+回帰テスト: `TestKVS_sectorManageMember_rejectsTombstonedKey` /
+`TestManager_ManageMember_reapsStaleMember`。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加
