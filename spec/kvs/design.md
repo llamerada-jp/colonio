@@ -65,6 +65,25 @@ README「シミュレーション再実行での発見」参照）。
 死亡判定への routing 情報の組み合わせ、しきい値の実測に基づく調整。
 詳細は [README.md の「今後の TODO」](README.md#今後の-todo)（TODO-1〜TODO-4）を参照。
 
+### churn 下のメンバーシップ管理の課題（2026-07-04 run4 で確認・未解決）
+
+恒久停止バグの解消後、律速要因は churn 下のメンバーシップ管理に移った
+（詳細は README「シミュレーション run 4」参照）。
+
+- **未同期 voter による quorum 毀損**: 新メンバーは追加直後（ログ同期完了前）から
+  quorum 計算に入るため、join 波でメンバー入れ替えが続くとグループが本物の
+  quorum 喪失に落ち、強制破棄→再作成→チェーン再活性化のコストを払い続ける。
+  対策候補は learner-first メンバーシップ（`ConfChangeAddLearnerNode` で追加し
+  同期後に voter 昇格）。
+- **is_stable ゲートによる修復凍結**: `subRoutine` は is_stable でないと
+  ManageMember / operateSectors に到達しないため、churn 中は穴の修復
+  （Extend / terminate frontward）も止まる。修復系操作の許可条件の再検討が必要。
+- ~~自己メンバーシップ~~（撤回）: run4 で疑ったが、force terminate ログの
+  読み違いと判明。routing は自ノードを近傍リストから構造的に除外しており、
+  「nextNodeIDs に自分が現れない」は不変条件（README run4 の訂正参照）。
+  検出強化として `ManageMember` にも initHostSector と同じ panic ガードを
+  置く余地はある。
+
 ## 分岐
 
 | hosting sector<br>- active<br>- inactive | frontward sector<br>- not exist<br>- active<br>- inactive | frontward node<br>- match<br>- not match (frontward sector head < frontward node addr) | frontward sector head  | note                                   | action                     |

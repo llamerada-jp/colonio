@@ -25,6 +25,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type sectorHandlerHelper struct{}
+
+var _ SectorHandler = &sectorHandlerHelper{}
+
+func (h *sectorHandlerHelper) HostingAllocateSector(sectorKey *kvsTypes.SectorKey, head *types.NodeID, isHosting bool, join bool, members map[kvsTypes.SectorNo]*types.NodeID) {
+}
+
+func (h *sectorHandlerHelper) HostingApplyAppendNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {
+}
+
+func (h *sectorHandlerHelper) HostingApplyRemoveNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo) {
+}
+
+type outboundHelper struct{}
+
+var _ OutboundPort = &outboundHelper{}
+
+func (o *outboundHelper) sendSectorManageMember(param *SectorManageMemberParam) {}
+
+// TestManager_ManageMember_panicsOnLocalNodeID asserts the invariant guard:
+// routing must never list the local node as its own neighbor, and a violation
+// is a logic error that should be detected loudly on the ManageMember path,
+// same as initHostSector.
+func TestManager_ManageMember_panicsOnLocalNodeID(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID := nodeIDs[0]
+	otherNodeID := nodeIDs[1]
+
+	m := NewManager(&Config{
+		Logger:   testUtil.Logger(t),
+		Outbound: &outboundHelper{},
+	})
+	m.Start(&sectorHandlerHelper{}, localNodeID)
+
+	// normal path: initialize the hosting sector with a proper neighbor
+	m.ManageMember([]*types.NodeID{otherNodeID})
+
+	require.PanicsWithValue(t, "localNodeID found in nextNodeIDs", func() {
+		m.ManageMember([]*types.NodeID{otherNodeID, localNodeID})
+	})
+}
+
 func TestManager_getNodesToBeChanged(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(5)
 

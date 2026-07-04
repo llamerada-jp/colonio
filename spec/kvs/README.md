@@ -696,6 +696,83 @@ proposal クリア）。
 再現条件が複雑なため、次回シミュレーションで `== drop explicit packet` の発火と
 already-activated ループの消長を観測して判定する。クラス B'（TODO-2）は未着手。
 
+#### シミュレーション run 4（全修正後、2026-07-04）
+
+**恒久停止クラスは全て解消した**:
+
+- proposer-left ループ: 0 件（run 2: 最長 138 秒＋無限 → 消滅）
+- already-activated ループ（クラス C）: 2 件のみ、いずれも **40〜70 秒で自己解消**
+  （孤児レプリカがリーダー不在 30 秒の強制破棄で掃除され再作成される）
+- skip 1（クラス B'）: 1 件・25 秒継続で run 終了。恒久化の証拠なし
+- `== drop explicit packet` は 0 件（ゴースト再現なし。ガードは保険として妥当）
+
+一方で**新しい支配的問題**を確認: 活性化カバレッジは t=130s に 69/100 まで到達後、
+**単調減少に転じ t=250s には 46 まで低下**した。減少は 2 つの位相からなる。
+
+**位相 1 (t=130〜180s): is_stable ゲートによる修復凍結 + churn の自然減**
+
+active 集合の差分では、この 50 秒間の喪失 7 は**全てノード自体のランダム停止**
+（強制破棄ではない）で、**新規獲得は 0**。獲得ゼロの理由:
+
+- 活性化チェーンの前進イベント（`Activate hosting sector`）は t=138 を最後に沈黙。
+- kill された active ノードの穴を塞ぐ修復も凍結（この 70 秒間で **Extend 0 件**、
+  Terminate frontward 2 件のみ）。原因は `node is not stable` によるスキップ
+  （10 秒あたり 78〜186 件 ≒ 大半のノードが不安定判定）。`subRoutine` は
+  is_stable でないと ManageMember にも operateSectors にも到達しないため、
+  churn 中は修復を担うノードが何もできない。
+- 231 ノード解析（2026-06）で記録した「KVS の進行が seed の reconcile /
+  is_stable フラップに律速される」構造問題が、クラッシュ系バグの解消後の
+  律速要因として表面化した形。
+
+**位相 2 (t≈240s〜): 強制破棄ストーム**
+
+大量 join（+20 ノード超）に伴い強制破棄が集中（5 分間で 498 回・151 グループ、
+うち 84 回は直前まで active なセクター。ほぼ全て leaderless 判定、破棄セクターの
+年齢中央値 244 秒 = 序盤にできた古参セクター）。
+
+機構: join 波でルーティング近傍が入れ替わり、hostingManager がメンバーを
+追加/削除し続ける。**新 voter は同期完了前から quorum 計算に入る**（learner 段階が
+ない）ため、未同期 voter の増加と旧メンバーの離脱が重なるとグループが本物の
+leaderless に落ち、30 秒後に破棄される。破棄はグループ単位で並列に起こるが、
+再活性化はチェーン伝播で直列にしか進まないため、churn が続く間はカバレッジが
+純減する。**脱出経路（強制破棄）は正しく機能しており、ボトルネックは
+「churn 下で quorum を守れないメンバーシップ管理」に移った。**
+
+**訂正 (2026-07-04): 「自己メンバーシップの疑い」は誤認だった**
+
+当初、e24f5072 を head とするレプリカが slot 5 / slot 10 で force terminate された
+ログから「hostingManager が自ノードを重複 append した」と推定したが、これは
+**`@@ force terminate` の出力がレプリカ保持ノードではなく sector の head を
+表示する**ことによる読み違い。実際は「e24f のグループの通常レプリカ (slot 5, 10)
+を、それを保持する別々のメンバーノードが各自破棄した」正常な動作だった。
+
+また routing 側を精査した結果、`recvRoutingPacket` は localNodeID を
+secondNeighborhoods から明示的に除外しており、`neighborhoodInfos`（接続済みピア）
+にも自分は入り得ないため、**「nextNodeIDs に自分が現れない」は能動的に維持された
+不変条件**である。`initHostSector` の panic はこの不変条件の破れ = ロジックエラーの
+検出器として妥当（タイミング起因で正常系に発生する状態ではない）。
+`ManageMember` 側の toAppend にはガード自体がなく、不変条件が破れた場合は
+panic せず黙って自己 append してしまうため、initHostSector と同じ panic を
+置くのが一貫する（ログ格下げではなく検出の追加）。
+
+改善候補（優先順）:
+
+1. **learner-first メンバーシップ**（設計変更・中）: 新メンバーを
+   `ConfChangeAddLearnerNode` で追加し、同期完了後に voter へ昇格する。
+   未同期 voter による quorum 毀損を構造的に防ぐ。etcd raft がネイティブに
+   対応しており、位相 2 対策の本命。
+2. **is_stable ゲートの緩和 / seed 律速の解消**（設計判断・中〜大): 不安定時も
+   修復系操作（Extend / Terminate frontward）だけは許可する、あるいは
+   is_stable の判定自体を安定化する。位相 1 対策。
+3. **ManageMember のヒステリシス**: routing ビューが N tick 連続で同一の場合のみ
+   メンバー変更を発行し、view flap の追従で ConfChange を浪費しない。
+4. ~~ManageMember に localNodeID の panic ガードを追加~~ → **実装済み (2026-07-04)**。
+   チェックは入力 nextNodeIDs に対して行う（toAppend 導出内では自ノードが
+   memberMap（host slot）に吸収され検出できないため）。回帰テスト:
+   `TestManager_ManageMember_panicsOnLocalNodeID`。
+5. しきい値調整は対症療法にしかならない（destroy を遅らせても quorum 喪失自体は
+   解消しない）。
+
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加
 
