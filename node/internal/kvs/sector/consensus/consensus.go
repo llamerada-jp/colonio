@@ -32,6 +32,10 @@ import (
 
 const (
 	raftTickDuration = 100 * time.Millisecond
+	// proposeTimeout bounds raftNode.Propose, which otherwise blocks until a
+	// leader exists. A leaderless (quorum-lost) group must not block the
+	// caller forever; the sector's retry loop re-proposes pending proposals.
+	proposeTimeout = 2 * time.Second
 )
 
 type Handler interface {
@@ -207,7 +211,9 @@ func (n *Consensus) Propose(p *proto.ConsensusProposal) {
 		panic("Failed to marshal Raft proposal: " + err.Error())
 	}
 
-	if err := n.raftNode.Propose(n.ctx, data); err != nil {
+	ctx, cancel := context.WithTimeout(n.ctx, proposeTimeout)
+	defer cancel()
+	if err := n.raftNode.Propose(ctx, data); err != nil {
 		n.handler.ConsensusError(err)
 	}
 }

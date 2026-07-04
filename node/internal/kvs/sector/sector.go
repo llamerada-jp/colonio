@@ -17,6 +17,7 @@ package sector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -30,6 +31,17 @@ import (
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	"go.etcd.io/raft/v3"
 )
+
+// ErrProposalTimeout is returned by blocking sector operations when the raft
+// group did not commit the proposal within proposalWaitTimeout. It usually
+// means the group has lost its quorum (TLA+ TimeoutAbort).
+var ErrProposalTimeout = errors.New("proposal was not committed within timeout")
+
+// ErrSectorStopped is returned by blocking sector operations when the sector
+// was stopped or force-terminated before the proposal was committed, so the
+// caller can abort the ongoing multi-sector operation instead of treating the
+// proposal as applied.
+var ErrSectorStopped = errors.New("sector was stopped before the proposal was committed")
 
 type SectorHandler interface {
 	SectorError(sectorKey *kvsTypes.SectorKey, err error)
@@ -66,8 +78,17 @@ type Sector struct {
 	head      types.NodeID
 
 	proposalRetryDuration time.Duration
-	triggerCh             chan struct{}
-	stopCtx               context.CancelFunc
+	// proposalWaitTimeout bounds the cond.Wait of blocking operations
+	// (Extend/Import/PreCommitSplit/CommitSplit/PrepareMerge/CommitMerge) so a
+	// quorum-lost group cannot block the caller (and mtxOperateSectors) forever.
+	proposalWaitTimeout time.Duration
+	// forceTerminateDuration is how long the raft group may stay leaderless
+	// before the local replica is destroyed without raft (TLA+ LocalDestroy).
+	forceTerminateDuration time.Duration
+	// leaderlessSince is touched only by the Start loop goroutine.
+	leaderlessSince time.Time
+	triggerCh       chan struct{}
+	stopCtx         context.CancelFunc
 
 	mtx                        sync.RWMutex
 	cond                       *sync.Cond
@@ -95,6 +116,8 @@ func NewSector(config *SectorConfig) *Sector {
 		isHosting:              config.IsHosting,
 		head:                   *config.Head,
 		proposalRetryDuration:  3 * time.Second,
+		proposalWaitTimeout:    15 * time.Second,
+		forceTerminateDuration: 30 * time.Second,
 		triggerCh:              make(chan struct{}, 1),
 		proposalAppendingNodes: make(map[kvsTypes.SectorNo]*types.NodeID),
 		proposalRemovingNodes:  make(map[kvsTypes.SectorNo]struct{}),
@@ -124,19 +147,23 @@ func NewSector(config *SectorConfig) *Sector {
 func (s *Sector) Start(ctx context.Context) {
 	s.consensus.Start(ctx)
 
+	// Derive from the node context so the loop (and quorum-loss detection)
+	// stops on node shutdown as well, not only via Stop().
+	loopCtx, cancel := context.WithCancel(ctx)
+	s.stopCtx = cancel
+
 	go func() {
-		ctx, cancel := context.WithCancel(context.Background())
-		s.stopCtx = cancel
 		defer cancel()
 		timer := time.NewTimer(s.proposalRetryDuration)
 		defer timer.Stop()
 
 		for {
 			select {
-			case <-ctx.Done():
+			case <-loopCtx.Done():
 				return
 
 			case <-timer.C:
+				s.checkQuorumLoss()
 				s.applyProposals(true)
 
 			case <-s.triggerCh:
@@ -207,6 +234,36 @@ func (s *Sector) RemoveNode(sectorNo kvsTypes.SectorNo) {
 	s.triggerCh <- struct{}{}
 }
 
+// waitProposal blocks until check reports done or the sector stops. check runs
+// with s.mtx read-locked. It returns ErrProposalTimeout after proposalWaitTimeout;
+// the caller must clear its pending proposal so applyProposals stops re-proposing it.
+func (s *Sector) waitProposal(check func() (done bool, err error)) error {
+	deadline := time.Now().Add(s.proposalWaitTimeout)
+	// Broadcast has no effect on waiters that have not called Wait yet, but such
+	// a waiter re-checks the deadline before the next Wait, so no wakeup is lost.
+	wake := time.AfterFunc(s.proposalWaitTimeout, func() { s.cond.Broadcast() })
+	defer wake.Stop()
+
+	s.cond.L.Lock()
+	defer s.cond.L.Unlock()
+	for {
+		done, err := check()
+		if err != nil {
+			return err
+		}
+		if done {
+			return nil
+		}
+		if s.stopped {
+			return ErrSectorStopped
+		}
+		if !time.Now().Before(deadline) {
+			return ErrProposalTimeout
+		}
+		s.cond.Wait()
+	}
+}
+
 func (s *Sector) HasManagementProposal() bool {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
@@ -241,8 +298,8 @@ func (s *Sector) Activate(tail types.NodeID) {
 // NOTE: 終了も raft コミットを要するため (applyProposals 冒頭)、quorum を失った
 // グループは自分自身を終了することすらできない。シミュレーション (2026-07-04) で、
 // KVS 側が Terminate を毎秒呼び続けても terminated にならないケースを観測。
-// リーダー不在が一定時間続いた場合に raft を経由せずローカルで破棄する
-// 脱出経路の追加を検討すべき。
+// → リーダー不在が forceTerminateDuration 続いた場合に raft を経由せずローカルで
+// 破棄する脱出経路を checkQuorumLoss として実装 (2026-07-04)。
 func (s *Sector) Terminate() {
 	s.mtx.Lock()
 	if s.terminated || s.proposalTerminating {
@@ -257,7 +314,7 @@ func (s *Sector) Terminate() {
 	s.triggerCh <- struct{}{}
 }
 
-func (s *Sector) Extend(newTail types.NodeID) {
+func (s *Sector) Extend(newTail types.NodeID) error {
 	if !s.isHosting {
 		panic("only host sector can be extended")
 	}
@@ -266,21 +323,22 @@ func (s *Sector) Extend(newTail types.NodeID) {
 
 	if newTail.IsBetween(&s.head, s.tail) {
 		s.mtx.Unlock()
-		return
+		return nil
 	}
 	s.proposalExtending = &newTail
 	s.mtx.Unlock()
 
 	s.triggerCh <- struct{}{}
 
-	s.cond.L.Lock()
-	defer s.cond.L.Unlock()
-	for {
-		if s.proposalExtending == nil || s.stopped {
-			break
-		}
-		s.cond.Wait()
+	if err := s.waitProposal(func() (bool, error) {
+		return s.proposalExtending == nil, nil
+	}); err != nil {
+		s.mtx.Lock()
+		s.proposalExtending = nil
+		s.mtx.Unlock()
+		return fmt.Errorf("failed to extend sector: %w", err)
 	}
+	return nil
 }
 
 func (s *Sector) Migrate(to *Sector) error {
@@ -292,8 +350,7 @@ func (s *Sector) Migrate(to *Sector) error {
 		return fmt.Errorf("failed to export records: %w", err)
 	}
 
-	to.Import(records)
-	return nil
+	return to.Import(records)
 }
 
 func (s *Sector) PreCommitSplit(frontwardNodeID *types.NodeID) error {
@@ -307,16 +364,18 @@ func (s *Sector) PreCommitSplit(frontwardNodeID *types.NodeID) error {
 
 	s.triggerCh <- struct{}{}
 
-	s.cond.L.Lock()
-	defer s.cond.L.Unlock()
-	for {
+	if err := s.waitProposal(func() (bool, error) {
 		if s.mergeBy != nil {
-			return fmt.Errorf("cannot pre-commit split while merge is being prepared by %s", s.mergeBy.String())
+			return false, fmt.Errorf("cannot pre-commit split while merge is being prepared by %s", s.mergeBy.String())
 		}
-		if s.proposalPreCommitSplitting == nil || s.stopped {
-			break
+		return s.proposalPreCommitSplitting == nil, nil
+	}); err != nil {
+		if errors.Is(err, ErrProposalTimeout) || errors.Is(err, ErrSectorStopped) {
+			s.mtx.Lock()
+			s.proposalPreCommitSplitting = nil
+			s.mtx.Unlock()
 		}
-		s.cond.Wait()
+		return fmt.Errorf("failed to pre-commit split: %w", err)
 	}
 	return nil
 }
@@ -328,13 +387,13 @@ func (s *Sector) CommitSplit(newTail *types.NodeID) error {
 
 	s.triggerCh <- struct{}{}
 
-	s.cond.L.Lock()
-	defer s.cond.L.Unlock()
-	for {
-		if s.proposalCommittingSplit == nil || s.stopped {
-			break
-		}
-		s.cond.Wait()
+	if err := s.waitProposal(func() (bool, error) {
+		return s.proposalCommittingSplit == nil, nil
+	}); err != nil {
+		s.mtx.Lock()
+		s.proposalCommittingSplit = nil
+		s.mtx.Unlock()
+		return fmt.Errorf("failed to commit split: %w", err)
 	}
 	return nil
 }
@@ -346,19 +405,21 @@ func (s *Sector) PrepareMerge(proposedBy *types.NodeID) error {
 
 	s.triggerCh <- struct{}{}
 
-	s.cond.L.Lock()
-	defer s.cond.L.Unlock()
-	for {
+	if err := s.waitProposal(func() (bool, error) {
 		if s.mergeBy != nil {
 			if !s.mergeBy.Equal(proposedBy) {
-				return fmt.Errorf("merge is prepared by %s, not %s", s.mergeBy.String(), proposedBy.String())
+				return false, fmt.Errorf("merge is prepared by %s, not %s", s.mergeBy.String(), proposedBy.String())
 			}
-			break
+			return true, nil
 		}
-		if s.stopped {
-			break
+		return false, nil
+	}); err != nil {
+		if errors.Is(err, ErrProposalTimeout) || errors.Is(err, ErrSectorStopped) {
+			s.mtx.Lock()
+			s.proposalPrepareMerge = nil
+			s.mtx.Unlock()
 		}
-		s.cond.Wait()
+		return fmt.Errorf("failed to prepare merge: %w", err)
 	}
 	return nil
 }
@@ -369,8 +430,7 @@ func (s *Sector) Merge(from *Sector) error {
 		return fmt.Errorf("failed to export records: %w", err)
 	}
 
-	s.Import(records)
-	return nil
+	return s.Import(records)
 }
 
 func (s *Sector) CommitMerge(newTail *types.NodeID) error {
@@ -387,18 +447,18 @@ func (s *Sector) CommitMerge(newTail *types.NodeID) error {
 
 	s.triggerCh <- struct{}{}
 
-	s.cond.L.Lock()
-	defer s.cond.L.Unlock()
-	for {
-		if s.proposalCommittingMerge == nil || s.stopped {
-			break
-		}
-		s.cond.Wait()
+	if err := s.waitProposal(func() (bool, error) {
+		return s.proposalCommittingMerge == nil, nil
+	}); err != nil {
+		s.mtx.Lock()
+		s.proposalCommittingMerge = nil
+		s.mtx.Unlock()
+		return fmt.Errorf("failed to commit merge: %w", err)
 	}
 	return nil
 }
 
-func (s *Sector) Import(records map[string][]byte) {
+func (s *Sector) Import(records map[string][]byte) error {
 	importRecords := make([]*proto.Import_Record, 0, len(records))
 	for key, value := range records {
 		importRecords = append(importRecords, &proto.Import_Record{
@@ -413,14 +473,15 @@ func (s *Sector) Import(records map[string][]byte) {
 
 	s.triggerCh <- struct{}{}
 
-	s.cond.L.Lock()
-	defer s.cond.L.Unlock()
-	for {
-		if s.proposalImporting == nil || s.stopped {
-			break
-		}
-		s.cond.Wait()
+	if err := s.waitProposal(func() (bool, error) {
+		return s.proposalImporting == nil, nil
+	}); err != nil {
+		s.mtx.Lock()
+		s.proposalImporting = nil
+		s.mtx.Unlock()
+		return fmt.Errorf("failed to import records: %w", err)
 	}
+	return nil
 }
 
 // pendingProposalNames returns labels of pending proposals for debugging. Call with s.mtx held.
@@ -459,9 +520,15 @@ func (s *Sector) pendingProposalNames() []string {
 	return names
 }
 
+// applyProposals proposes the pending proposals to the raft group. The
+// proposals are collected under s.mtx and proposed after releasing it:
+// consensus.Propose blocks (bounded by its propose timeout) while the group
+// has no leader, and holding s.mtx here would stall every other sector
+// operation for that period.
 func (s *Sector) applyProposals(retry bool) {
+	proposals := []*proto.ConsensusProposal{}
+
 	s.mtx.RLock()
-	defer s.mtx.RUnlock()
 
 	// A proposal still pending after proposalRetryDuration means the raft group has not
 	// committed it yet; dump the raft status to see whether the group has a leader.
@@ -474,107 +541,113 @@ func (s *Sector) applyProposals(retry bool) {
 		}
 	}
 
-	// re-apply terminating
-	if s.proposalTerminating {
+	switch {
+	case s.proposalTerminating:
+		// re-apply terminating, and skip the other proposals
 		if !s.terminated {
-			s.consensus.Propose(&proto.ConsensusProposal{
+			proposals = append(proposals, &proto.ConsensusProposal{
 				Content: &proto.ConsensusProposal_Terminate{
 					Terminate: &proto.Terminate{},
 				},
 			})
 		}
-		return
-	}
 
-	if s.terminated {
-		return
-	}
+	case s.terminated:
+		// nothing to apply
 
-	// Apply appending nodes.
-	for sectorNo, nodeID := range s.proposalAppendingNodes {
-		s.consensus.AppendNode(sectorNo, nodeID)
-	}
+	default:
+		// Apply appending nodes (AppendNode/RemoveNode are already asynchronous).
+		for sectorNo, nodeID := range s.proposalAppendingNodes {
+			s.consensus.AppendNode(sectorNo, nodeID)
+		}
 
-	// Apply removing nodes.
-	for sectorNo := range s.proposalRemovingNodes {
-		s.consensus.RemoveNode(sectorNo)
-	}
+		// Apply removing nodes.
+		for sectorNo := range s.proposalRemovingNodes {
+			s.consensus.RemoveNode(sectorNo)
+		}
 
-	// Apply activating.
-	if s.proposalActivating != nil {
-		s.consensus.Propose(&proto.ConsensusProposal{
-			Content: &proto.ConsensusProposal_Activate{
-				Activate: &proto.Activate{
-					Tail: s.proposalActivating.Proto(),
+		// Apply activating.
+		if s.proposalActivating != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_Activate{
+					Activate: &proto.Activate{
+						Tail: s.proposalActivating.Proto(),
+					},
 				},
-			},
-		})
+			})
+		}
+
+		// Apply extending
+		if s.proposalExtending != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_Extend{
+					Extend: &proto.Extend{
+						Tail: s.proposalExtending.Proto(),
+					},
+				},
+			})
+		}
+
+		// Apply importing
+		if s.proposalImporting != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_Import{
+					Import: &proto.Import{
+						Records: s.proposalImporting,
+					},
+				},
+			})
+		}
+
+		// Apply pre-commit splitting.
+		if s.proposalPreCommitSplitting != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_PreCommitSplit{
+					PreCommitSplit: &proto.PreCommitSplit{
+						Tail: s.proposalPreCommitSplitting.Proto(),
+					},
+				},
+			})
+		}
+
+		// Apply committing split.
+		if s.proposalCommittingSplit != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_CommitSplit{
+					CommitSplit: &proto.CommitSplit{
+						Tail: s.proposalCommittingSplit.Proto(),
+					},
+				},
+			})
+		}
+
+		// Apply prepare merge.
+		if s.proposalPrepareMerge != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_PrepareMerge{
+					PrepareMerge: &proto.PrepareMerge{
+						Handler: s.proposalPrepareMerge.Proto(),
+					},
+				},
+			})
+		}
+
+		// Apply committing merge.
+		if s.proposalCommittingMerge != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_CommitMerge{
+					CommitMerge: &proto.CommitMerge{
+						Tail: s.proposalCommittingMerge.Proto(),
+					},
+				},
+			})
+		}
 	}
 
-	// Apply extending
-	if s.proposalExtending != nil {
-		s.consensus.Propose(&proto.ConsensusProposal{
-			Content: &proto.ConsensusProposal_Extend{
-				Extend: &proto.Extend{
-					Tail: s.proposalExtending.Proto(),
-				},
-			},
-		})
-	}
+	s.mtx.RUnlock()
 
-	// Apply importing
-	if s.proposalImporting != nil {
-		s.consensus.Propose(&proto.ConsensusProposal{
-			Content: &proto.ConsensusProposal_Import{
-				Import: &proto.Import{
-					Records: s.proposalImporting,
-				},
-			},
-		})
-	}
-
-	// Apply pre-commit splitting.
-	if s.proposalPreCommitSplitting != nil {
-		s.consensus.Propose(&proto.ConsensusProposal{
-			Content: &proto.ConsensusProposal_PreCommitSplit{
-				PreCommitSplit: &proto.PreCommitSplit{
-					Tail: s.proposalPreCommitSplitting.Proto(),
-				},
-			},
-		})
-	}
-
-	// Apply committing split.
-	if s.proposalCommittingSplit != nil {
-		s.consensus.Propose(&proto.ConsensusProposal{
-			Content: &proto.ConsensusProposal_CommitSplit{
-				CommitSplit: &proto.CommitSplit{
-					Tail: s.proposalCommittingSplit.Proto(),
-				},
-			},
-		})
-	}
-
-	// Apply prepare merge.
-	if s.proposalPrepareMerge != nil {
-		s.consensus.Propose(&proto.ConsensusProposal{
-			Content: &proto.ConsensusProposal_PrepareMerge{
-				PrepareMerge: &proto.PrepareMerge{
-					Handler: s.proposalPrepareMerge.Proto(),
-				},
-			},
-		})
-	}
-
-	// Apply committing merge.
-	if s.proposalCommittingMerge != nil {
-		s.consensus.Propose(&proto.ConsensusProposal{
-			Content: &proto.ConsensusProposal_CommitMerge{
-				CommitMerge: &proto.CommitMerge{
-					Tail: s.proposalCommittingMerge.Proto(),
-				},
-			},
-		})
+	for _, proposal := range proposals {
+		s.consensus.Propose(proposal)
 	}
 }
 
@@ -674,6 +747,12 @@ func (s *Sector) processActivateProposal(activate *proto.Activate) error {
 }
 
 func (s *Sector) processTerminateProposal() error {
+	return s.terminateLocked()
+}
+
+// terminateLocked releases the sector resources and notifies the handler.
+// Call with s.mtx write-locked; the caller broadcasts s.cond after unlocking.
+func (s *Sector) terminateLocked() error {
 	s.operator.ClearRange()
 	if err := s.store.ReleaseSector(&s.sectorKey); err != nil {
 		return err
@@ -685,6 +764,50 @@ func (s *Sector) processTerminateProposal() error {
 
 	go s.handler.SectorTerminated(&s.sectorKey)
 	return nil
+}
+
+// checkQuorumLoss destroys the local replica without raft when the group has
+// been leaderless for forceTerminateDuration (TLA+ LocalDestroy). A group that
+// lost its quorum can never commit anything — including Terminate — so this is
+// the only escape path; without it a stale replica blocks the activation chain
+// forever. If the group is actually alive (e.g. the local node is only
+// partitioned), destroying the replica is equivalent to this member leaving,
+// and the resulting overlap is repaired by the existing Terminate/Merge paths.
+// Runs on the Start loop goroutine only (leaderlessSince is not locked).
+func (s *Sector) checkQuorumLoss() {
+	s.mtx.RLock()
+	inactive := s.stopped || s.terminated
+	s.mtx.RUnlock()
+	if inactive {
+		return
+	}
+
+	if s.consensus.Status().Lead != raft.None {
+		s.leaderlessSince = time.Time{}
+		return
+	}
+	if s.leaderlessSince.IsZero() {
+		s.leaderlessSince = time.Now()
+		return
+	}
+	if time.Since(s.leaderlessSince) < s.forceTerminateDuration {
+		return
+	}
+
+	fmt.Println(time.Now(), s.head.String(), "## force terminate", s.sectorKey.String(),
+		"leaderless for", time.Since(s.leaderlessSince))
+
+	s.mtx.Lock()
+	var err error
+	if !s.stopped && !s.terminated {
+		err = s.terminateLocked()
+	}
+	s.mtx.Unlock()
+	s.cond.Broadcast()
+
+	if err != nil {
+		s.handler.SectorError(&s.sectorKey, fmt.Errorf("failed to force-terminate sector: %w", err))
+	}
 }
 
 func (s *Sector) processExtendProposal(extend *proto.Extend) error {

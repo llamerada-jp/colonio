@@ -370,6 +370,9 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 	// Terminate も raft コミット必須のため quorum 喪失グループでは完了せず、
 	// 「離脱を検知しても解消できない」ケースを観測。abort 処理は raft を経由しない
 	// ローカル破棄とセットで設計する必要がある。
+	// → sector.checkQuorumLoss (リーダー不在の継続で raft を経由せずローカル破棄) を
+	// 実装 (2026-07-04)。破棄されると SectorTerminated 経由でセクターが再作成され、
+	// pending proposal ごと解消される。
 	if hostingSector.HasManagementProposal() {
 		fmt.Println(time.Now(), k.localNodeID.String(), "== skip operateSectors: hosting sector has management proposal")
 		return
@@ -404,6 +407,7 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 			// Terminate the frontward sector.
 			// NOTE: シミュレーションで、frontward レプリカのグループが quorum を失って
 			// いると Terminate がコミットされず、ここを毎秒通り続けることを観測 (2026-07-04)。
+			// → quorum 喪失時は sector.checkQuorumLoss の強制破棄が脱出経路になる。
 			fmt.Println(time.Now(), k.localNodeID.String(), "@@ Terminate frontward next sector")
 			frontwardNextSector.Terminate()
 			return
@@ -428,7 +432,10 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 				return
 			}
 			fmt.Println(time.Now(), k.localNodeID.String(), "@@ Extend 1")
-			hostingSector.Extend(*frontwardNextSector.GetHeadAddress())
+			if err := hostingSector.Extend(*frontwardNextSector.GetHeadAddress()); err != nil {
+				fmt.Println(time.Now(), k.localNodeID.String(), "== Extend 1 failed:", err)
+				k.logger.Warn("Failed to extend sector", "error", err)
+			}
 		}
 		return
 	}
@@ -479,7 +486,10 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 			return
 		}
 		fmt.Println(time.Now(), k.localNodeID.String(), "@@ Extend 2")
-		hostingSector.Extend(*frontwardNextSector.GetHeadAddress())
+		if err := hostingSector.Extend(*frontwardNextSector.GetHeadAddress()); err != nil {
+			fmt.Println(time.Now(), k.localNodeID.String(), "== Extend 2 failed:", err)
+			k.logger.Warn("Failed to extend sector", "error", err)
+		}
 	}
 }
 
@@ -688,6 +698,8 @@ func (k *KVS) proposedSplitRoutine(hostingSector *sector.Sector, nextNodeIDs []*
 	// NOTE: シミュレーションで、proposer 離脱後にこの Terminate が hosting sector の
 	// quorum 喪失によりコミットされず、毎秒ここを通り続けるケースを観測 (2026-07-04)。
 	// 離脱検知だけでは不十分で、raft を経由しないローカル破棄の脱出経路が必要。
+	// → sector.checkQuorumLoss として実装 (2026-07-04)。破棄で hosting sector が
+	// 再作成されると sectorID が変わり、上の分岐で proposedSplitting も解消される。
 	if !proposedNodeExists {
 		fmt.Println(time.Now(), k.localNodeID.String(), "== proposedSplitRoutine: proposer", k.proposedSplittingNodeID.String(), "left, terminate hosting sector")
 		hostingSector.Terminate()
@@ -871,6 +883,8 @@ func (k *KVS) activateHostingSector(hostingSector *sector.Sector, frontwardNextN
 			// 死んだグループでは Terminate 自体が raft コミットされない。
 			// head がルーティング上に存在しない active レプリカはガード対象から外すか、
 			// raft を経由せずローカル破棄する処理が必要。
+			// → sector.checkQuorumLoss として後者を実装 (2026-07-04)。死んだグループの
+			// レプリカはリーダー不在の継続でローカル破棄され、本ガードは解除される。
 			if sectorHead.IsBetween(k.localNodeID, frontwardNodeID) && sector.GetTailAddress() != nil {
 				fmt.Println(time.Now(), k.localNodeID.String(), "== skip 1: active sector", sectorKey.String(), "head", sectorHead.String(), "blocks activation toward", frontwardNodeID.String())
 				return nil
@@ -924,6 +938,10 @@ func (k *KVS) activateFrontwardSector(frontwardNextSector *sector.Sector) {
 // frontward 側も proposedSplitting がセットされたまま待ち続ける。グループが治癒して
 // 23 秒後に回復した例もあるが、過半数喪失時は治癒に必要な ConfChange 自体が
 // コミットできず永久化する。timeout+abort と quorum 喪失検知が必要。
+// → 実装 (2026-07-04): Import 等のブロッキング操作は proposalWaitTimeout で
+// ErrProposalTimeout を返し、下の abort パス (Terminate) に入る。quorum 喪失で
+// Terminate も commit できない場合は sector.checkQuorumLoss の強制破棄が後始末する。
+// frontward 側の proposedSplitting はセクター再作成による sectorID 変化で解消される。
 func (k *KVS) splitSector(hostingSector, frontwardNextSector *sector.Sector) {
 	fmt.Println(time.Now(), k.localNodeID.String(), "== split: send sectorPrepareSplit to", frontwardNextSector.GetHeadAddress().String())
 	cErr := k.outbound.sendSectorPrepareSplit(&SectorSplitParam{
@@ -980,6 +998,7 @@ func (k *KVS) splitSector(hostingSector, frontwardNextSector *sector.Sector) {
 // NOTE: PrepareMerge/CommitMerge も raft 適用まで cond.Wait で無期限ブロックするため、
 // splitSector の Import と同じく quorum 喪失でハングする危険がある
 // (シミュレーションでは merge は全件完了、未観測。2026-07-04)。
+// → proposalWaitTimeout の導入で無期限ブロックは解消 (2026-07-04)。
 func (k *KVS) mergeSector(hostingSector, frontwardNextSector *sector.Sector) {
 	fmt.Println(time.Now(), k.localNodeID.String(), "== merge: preparing merge on frontward sector, head", frontwardNextSector.GetHeadAddress().String())
 	if err := frontwardNextSector.PrepareMerge(k.localNodeID); err != nil {
