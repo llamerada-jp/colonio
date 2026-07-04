@@ -85,10 +85,19 @@ type Sector struct {
 	// forceTerminateDuration is how long the raft group may stay leaderless
 	// before the local replica is destroyed without raft (TLA+ LocalDestroy).
 	forceTerminateDuration time.Duration
-	// leaderlessSince is touched only by the Start loop goroutine.
-	leaderlessSince time.Time
-	triggerCh       chan struct{}
-	stopCtx         context.CancelFunc
+	// forcePendingDuration is how long management proposals may stay pending
+	// without any commit progress before the replica is destroyed without
+	// raft. This backstop catches quorum-lost groups that still see a leader
+	// (e.g. detection races around CheckQuorum step-down), where proposals
+	// enter the leader's log but can never commit.
+	forcePendingDuration time.Duration
+	// leaderlessSince / pendingSince / pendingCommitIndex are touched only by
+	// the Start loop goroutine.
+	leaderlessSince    time.Time
+	pendingSince       time.Time
+	pendingCommitIndex uint64
+	triggerCh          chan struct{}
+	stopCtx            context.CancelFunc
 
 	mtx                        sync.RWMutex
 	cond                       *sync.Cond
@@ -118,6 +127,7 @@ func NewSector(config *SectorConfig) *Sector {
 		proposalRetryDuration:  3 * time.Second,
 		proposalWaitTimeout:    15 * time.Second,
 		forceTerminateDuration: 30 * time.Second,
+		forcePendingDuration:   45 * time.Second,
 		triggerCh:              make(chan struct{}, 1),
 		proposalAppendingNodes: make(map[kvsTypes.SectorNo]*types.NodeID),
 		proposalRemovingNodes:  make(map[kvsTypes.SectorNo]struct{}),
@@ -535,9 +545,12 @@ func (s *Sector) applyProposals(retry bool) {
 	if retry {
 		if pending := s.pendingProposalNames(); len(pending) > 0 {
 			status := s.consensus.Status()
-			fmt.Println(s.head.String(), "## retry proposals", s.sectorKey.String(),
+			// keep the time.Now() prefix: the simulator's log collection drops
+			// lines that do not start with a timestamp
+			fmt.Println(time.Now(), s.head.String(), "## retry proposals", s.sectorKey.String(),
 				"pending", strings.Join(pending, ","),
-				"state", status.RaftState.String(), "lead", status.Lead, "term", status.Term)
+				"state", status.RaftState.String(), "lead", status.Lead, "term", status.Term,
+				"commit", status.Commit)
 		}
 	}
 
@@ -766,36 +779,62 @@ func (s *Sector) terminateLocked() error {
 	return nil
 }
 
-// checkQuorumLoss destroys the local replica without raft when the group has
-// been leaderless for forceTerminateDuration (TLA+ LocalDestroy). A group that
-// lost its quorum can never commit anything — including Terminate — so this is
-// the only escape path; without it a stale replica blocks the activation chain
-// forever. If the group is actually alive (e.g. the local node is only
-// partitioned), destroying the replica is equivalent to this member leaving,
-// and the resulting overlap is repaired by the existing Terminate/Merge paths.
-// Runs on the Start loop goroutine only (leaderlessSince is not locked).
+// checkQuorumLoss destroys the local replica without raft when the group can
+// no longer commit (TLA+ LocalDestroy). A group that lost its quorum can never
+// commit anything — including Terminate — so this is the only escape path;
+// without it a stale replica blocks the activation chain forever. Two signals
+// are watched:
+//
+//  1. The group stays leaderless for forceTerminateDuration. Requires
+//     CheckQuorum on the raft side so that a leader without a quorum steps
+//     down; otherwise Status().Lead stays non-zero on the leader and on the
+//     followers it keeps heartbeating (シミュレーション 2026-07-04 で観測).
+//  2. Management proposals stay pending with no commit progress for
+//     forcePendingDuration. This catches any remaining can't-commit case
+//     regardless of what the leader state claims.
+//
+// If the group is actually alive (e.g. the local node is only partitioned),
+// destroying the replica is equivalent to this member leaving, and the
+// resulting overlap is repaired by the existing Terminate/Merge paths.
+// Runs on the Start loop goroutine only (the *Since fields are not locked).
 func (s *Sector) checkQuorumLoss() {
 	s.mtx.RLock()
 	inactive := s.stopped || s.terminated
+	hasPending := len(s.pendingProposalNames()) > 0
 	s.mtx.RUnlock()
 	if inactive {
 		return
 	}
 
-	if s.consensus.Status().Lead != raft.None {
+	status := s.consensus.Status()
+
+	if status.Lead != raft.None {
 		s.leaderlessSince = time.Time{}
-		return
-	}
-	if s.leaderlessSince.IsZero() {
+	} else if s.leaderlessSince.IsZero() {
 		s.leaderlessSince = time.Now()
-		return
 	}
-	if time.Since(s.leaderlessSince) < s.forceTerminateDuration {
+
+	if !hasPending {
+		s.pendingSince = time.Time{}
+	} else if s.pendingSince.IsZero() || status.Commit != s.pendingCommitIndex {
+		// Proposals became pending, or the group is still committing entries:
+		// (re)start the no-progress observation window.
+		s.pendingSince = time.Now()
+		s.pendingCommitIndex = status.Commit
+	}
+
+	var reason string
+	switch {
+	case !s.leaderlessSince.IsZero() && time.Since(s.leaderlessSince) >= s.forceTerminateDuration:
+		reason = fmt.Sprintf("leaderless for %v", time.Since(s.leaderlessSince))
+	case !s.pendingSince.IsZero() && time.Since(s.pendingSince) >= s.forcePendingDuration:
+		reason = fmt.Sprintf("proposals pending without commit progress for %v (lead %d)",
+			time.Since(s.pendingSince), status.Lead)
+	default:
 		return
 	}
 
-	fmt.Println(time.Now(), s.head.String(), "## force terminate", s.sectorKey.String(),
-		"leaderless for", time.Since(s.leaderlessSince))
+	fmt.Println(time.Now(), s.head.String(), "## force terminate", s.sectorKey.String(), reason)
 
 	s.mtx.Lock()
 	var err error

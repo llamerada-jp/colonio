@@ -39,9 +39,14 @@ terminate を含む一切の提案を commit できず、sector が誰にも破�
 ことを確認した。この状態は activation チェーンを恒久停止させるため、raft を
 経由しない以下の脱出経路を導入した。
 
-- **ローカル強制破棄**: raft グループのリーダー不在が一定時間
-  (forceTerminateDuration=30s) 続いた場合、各レプリカは raft を経由せず
-  ローカルに sector を破棄する。破棄後は通常の create/append により
+- **ローカル強制破棄**: 「commit できない raft グループ」を各レプリカが
+  ローカル判定し、raft を経由せず sector を破棄する。判定は 2 系統:
+  (1) リーダー不在が一定時間 (forceTerminateDuration=30s) 続く。
+  leader-without-quorum（リーダーは生きているが過半数が死んでいる状態。
+  シミュレーションでリーダー不在検知をすり抜けることを確認）を検出するため
+  raft の CheckQuorum を有効化し、quorum を失ったリーダーを降格させる。
+  (2) 提案が pending のまま commit が一定時間 (forcePendingDuration=45s)
+  進まない。破棄後は通常の create/append により
   新しい raft 構成が再作成される。誤判定（実際には生きているグループの破棄）は
   メンバー離脱と等価であり、生じうる sector 重複は既存の terminate/merge の
   修復経路で解消される。データは失われうるが、上記「その他の性質」で許容済み。

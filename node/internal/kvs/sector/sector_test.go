@@ -196,6 +196,53 @@ func TestSector_forceTerminate_notFiredWithLeader(t *testing.T) {
 	require.Nil(t, s.GetTailAddress()) // untouched, still inactive
 }
 
+// TestSector_forceTerminate_leaderWithoutQuorum reproduces the stall observed
+// in the simulator (2026-07-04, node.log): the hosting node is the raft LEADER
+// of its own group and the other members died. Proposals enter the leader's
+// log but can never commit, and without CheckQuorum the leader never steps
+// down, so Status().Lead != 0 and the leaderless detection never fires. The
+// combination of CheckQuorum (leader steps down without a quorum of active
+// followers) and the pending-without-progress backstop must destroy the
+// replica anyway.
+func TestSector_forceTerminate_leaderWithoutQuorum(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	deadNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+
+	handler := &sectorHandlerHelper{}
+	// start as a single-voter group so the local node becomes leader
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	s.forceTerminateDuration = 2 * time.Second
+	s.forcePendingDuration = 3 * time.Second
+	s.Start(ctx)
+
+	require.Eventually(t, func() bool {
+		return s.consensus.Status().Lead != 0
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// grow the config with a dead member: the conf change still commits with
+	// the single-voter quorum, after which the quorum is 2/2 and unreachable
+	s.AppendNode(kvsTypes.SectorNo(2), deadNodeID)
+	require.Eventually(t, func() bool {
+		s.mtx.RLock()
+		defer s.mtx.RUnlock()
+		return len(s.proposalAppendingNodes) == 0
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// this proposal enters the leader's log but can never commit
+	s.Activate(*deadNodeID)
+
+	require.Eventually(t, func() bool {
+		return handler.terminatedCount() > 0
+	}, 15*time.Second, 100*time.Millisecond)
+	require.Nil(t, s.GetTailAddress()) // the activate must not have been applied
+}
+
 // TestSector_import_timeoutOnQuorumLoss covers the splitSector hang found in
 // the simulator (2026-07-04): Import blocks on cond.Wait until the raft group
 // applies the proposal, so a quorum-lost group used to block the caller (and

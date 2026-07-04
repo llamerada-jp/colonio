@@ -370,9 +370,9 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 	// Terminate も raft コミット必須のため quorum 喪失グループでは完了せず、
 	// 「離脱を検知しても解消できない」ケースを観測。abort 処理は raft を経由しない
 	// ローカル破棄とセットで設計する必要がある。
-	// → sector.checkQuorumLoss (リーダー不在の継続で raft を経由せずローカル破棄) を
-	// 実装 (2026-07-04)。破棄されると SectorTerminated 経由でセクターが再作成され、
-	// pending proposal ごと解消される。
+	// → sector.checkQuorumLoss (リーダー不在の継続または pending proposal の
+	// commit 停滞で raft を経由せずローカル破棄) を実装 (2026-07-04)。破棄されると
+	// SectorTerminated 経由でセクターが再作成され、pending proposal ごと解消される。
 	if hostingSector.HasManagementProposal() {
 		fmt.Println(time.Now(), k.localNodeID.String(), "== skip operateSectors: hosting sector has management proposal")
 		return
@@ -884,7 +884,8 @@ func (k *KVS) activateHostingSector(hostingSector *sector.Sector, frontwardNextN
 			// head がルーティング上に存在しない active レプリカはガード対象から外すか、
 			// raft を経由せずローカル破棄する処理が必要。
 			// → sector.checkQuorumLoss として後者を実装 (2026-07-04)。死んだグループの
-			// レプリカはリーダー不在の継続でローカル破棄され、本ガードは解除される。
+			// レプリカはリーダー不在の継続または pending proposal の commit 停滞で
+			// ローカル破棄され、本ガードは解除される。
 			if sectorHead.IsBetween(k.localNodeID, frontwardNodeID) && sector.GetTailAddress() != nil {
 				fmt.Println(time.Now(), k.localNodeID.String(), "== skip 1: active sector", sectorKey.String(), "head", sectorHead.String(), "blocks activation toward", frontwardNodeID.String())
 				return nil

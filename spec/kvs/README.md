@@ -557,22 +557,60 @@ TODO-3 / TODO-4 の Go 実装は 2026-07-04 に先行実装した（下記
    クラス A の全停止が解消される（呼び出し側は既存の abort パスで Terminate）。
    また Stop / 強制破棄で起こされた場合は成功と区別するため
    `ErrSectorStopped` を返す。
-3. **ローカル強制破棄** (TODO-4, `checkQuorumLoss`,
-   forceTerminateDuration=30s): raft グループのリーダー不在
-   (`Status().Lead == 0`) が継続した場合、raft を経由せずローカルで
-   セクターを破棄する (TLA+ の `LocalDestroy` に相当)。破棄は
-   `SectorTerminated` 経由で通常の再作成フローに入る。これにより
+3. **ローカル強制破棄** (TODO-4, `checkQuorumLoss`): 「commit できない
+   グループ」をローカル判定し、raft を経由せずセクターを破棄する
+   (TLA+ の `LocalDestroy` に相当)。判定は 2 系統 (いずれかで発火):
+   - リーダー不在 (`Status().Lead == 0`) が forceTerminateDuration=30s 継続。
+     leader-without-quorum を検出するため raft の `CheckQuorum` を有効化
+     (下記「シミュレーション再実行での発見」参照)。
+   - management proposal が pending のまま commit index が
+     forcePendingDuration=45s 進まない。リーダー状態の如何によらず
+     「commit できない」症状そのものを見るバックストップ。
+
+   破棄は `SectorTerminated` 経由で通常の再作成フローに入る。これにより
    「Terminate 自体が commit できない」クラス A/B の恒久停止が解消される。
    誤発動（実際は生きているグループの破棄）はメンバー離脱と等価で、
    生じた重複は quorum を持つ側の TerminateB / Merge 経路で修復される。
 
-しきい値 (2s / 15s / 30s) は `## retry proposals` ログの実測に基づく
+しきい値 (2s / 15s / 30s / 45s) は `## retry proposals` ログの実測に基づく
 再調整を想定した暫定値。回帰テスト:
 `node/internal/kvs/sector/sector_test.go` の
 `TestSector_forceTerminate_onQuorumLoss` /
 `TestSector_forceTerminate_notFiredWithLeader` /
+`TestSector_forceTerminate_leaderWithoutQuorum` /
 `TestSector_import_timeoutOnQuorumLoss` /
 `TestSector_import_unblockedByForceTerminate`。
+
+#### シミュレーション再実行での発見: leader-without-quorum（2026-07-04, simulator/node.log）
+
+上記実装の初版（リーダー不在検知のみ）でシミュレーションを再実行したところ、
+timeout+abort は機能した（import timeout 123 件、mtxOperateSectors の恒久ハングは
+消滅）が、**強制破棄が 9 分間で一度も発火せず**、活性化チェーンの停滞が残存した。
+
+原因: **etcd raft は `CheckQuorum` を有効にしない限り、フォロワーを全て失った
+リーダーも自発的に降格しない**。hosting ノード自身がグループのリーダーである場合、
+過半数が死んでも `Status().Lead == 自分 ≠ 0` のままで、提案はリーダーのログに
+入る（`Propose` は成功する）が commit だけが永久に進まない。さらにその
+リーダーが生きてハートビートを送り続けるため、他レプリカ（フォロワー）から見ても
+`Lead ≠ 0` となり、**どちら側でもリーダー不在検知が発火しない**。
+
+観測された停滞形態（いずれもこの機構に帰着）:
+
+| 形態 | 症状 |
+|------|------|
+| prepareSplit 受諾スタック | proposer 死亡後、`proposedSplitRoutine` が Terminate を毎秒呼ぶが commit されず、新しい backward 隣接からの prepareSplit を「another proposal」で 4 分以上拒否し続ける |
+| split ライブロック | split 受諾 → Migrate の Import が 15 秒でタイムアウト → abort の Terminate も commit されず → 約 16 秒周期で同じ split を再試行 |
+
+対処（実装済み）: `CheckQuorum: true`（リーダーが election timeout 周期で
+過半数と疎通できないと降格 → 両側で `Lead == 0` になり既存検知が効く）に加え、
+raft 挙動の見落としに対して頑健なバックストップとして「pending proposal が
+commit 進捗なしに forcePendingDuration 継続」を破棄条件に追加した。
+
+教訓: 「リーダー不在の継続」は quorum 喪失の十分条件ではない
+（TODO-4 で保留していた死亡判定基準の論点に対する実測の答え）。
+また、この実行では `## retry proposals` ログが行頭タイムスタンプなしのため
+ログ収集で欠落していた。行頭に time.Now() を付与済み（state/lead/term/commit が
+残っていれば StateLeader のまま停滞していることを直接確認できたはず）。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加
@@ -670,8 +708,12 @@ TODO-3 / TODO-4 の Go 実装は 2026-07-04 に先行実装した（下記
 #### TODO-4: quorum 喪失セクターのローカル強制破棄（設計 + Go 実装）
 
 > **実装済み (2026-07-04)** — 上記「quorum 喪失対策の実装」参照。死亡判定は
-> リーダー不在の継続時間のみ（routing 上の消失との組み合わせは未実装、
-> しきい値実測後に再検討）。誤判定時の安全性のモデル検証 (TODO-1 検証項目 3) は未実施。
+> 「リーダー不在の継続」+「pending proposal の commit 停滞」の 2 系統
+> （routing 上の消失との組み合わせは未実装、しきい値実測後に再検討）。
+> 初版のリーダー不在のみの判定は leader-without-quorum を検出できないことが
+> シミュレーション再実行で判明し、CheckQuorum 有効化とバックストップを追加した
+> （上記「シミュレーション再実行での発見」参照）。
+> 誤判定時の安全性のモデル検証 (TODO-1 検証項目 3) は未実施。
 
 - **背景**: 終了 (Terminate) 自体が raft commit を要する現構造では、quorum を
   失ったグループは**自分自身を終了することもできず**、誰にも消せない

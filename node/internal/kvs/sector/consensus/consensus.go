@@ -91,10 +91,19 @@ func NewConsensus(config *Config) *Consensus {
 	}
 
 	raftConfig := &raft.Config{
-		Logger:                    config.RaftLogger,
-		ID:                        uint64(config.SectorKey.SectorNo),
-		ElectionTick:              10,
-		HeartbeatTick:             1,
+		Logger:        config.RaftLogger,
+		ID:            uint64(config.SectorKey.SectorNo),
+		ElectionTick:  10,
+		HeartbeatTick: 1,
+		// Without CheckQuorum a leader whose followers all died stays leader
+		// forever (Status().Lead == self), so the sector's quorum-loss
+		// detection never sees the group as leaderless. With CheckQuorum the
+		// leader steps down after an election timeout without a quorum of
+		// active followers, which also stops its heartbeats and lets the
+		// surviving followers observe Lead == 0.
+		// (シミュレーション 2026-07-04: leader-without-quorum がリーダー不在
+		// 検知をすり抜けて活性化チェーンが停止する事例を観測)
+		CheckQuorum:               true,
 		Storage:                   n.raftStorage,
 		MaxSizePerMsg:             1024 * 1024,
 		MaxInflightMsgs:           256,
