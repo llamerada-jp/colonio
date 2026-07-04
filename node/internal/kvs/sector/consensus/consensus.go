@@ -62,6 +62,31 @@ type Config struct {
 	Members    map[kvsTypes.SectorNo]*types.NodeID
 }
 
+// snapshotGuardStorage wraps MemoryStorage to keep raft from panicking when a
+// leader is asked to send a snapshot it does not have. Snapshot creation is
+// not implemented yet (operator.ExportSnapshot is a stub and appliedIndex is
+// never advanced, so maybeTriggerSnapshot never fires); raft however reaches
+// maybeSendSnapshot whenever a follower's Next falls outside the leader's log
+// and panics on an empty snapshot ("need non-empty snapshot", シミュレーション
+// run6, 2026-07-04 で観測). Returning ErrSnapshotTemporarilyUnavailable makes
+// raft skip the send instead: the follower stays unsynced and is eventually
+// re-added under a fresh sectorNo by the membership manager's reap, after
+// which it can catch up from entry 1 (the log is never compacted).
+type snapshotGuardStorage struct {
+	*raft.MemoryStorage
+}
+
+func (s *snapshotGuardStorage) Snapshot() (raftpb.Snapshot, error) {
+	snapshot, err := s.MemoryStorage.Snapshot()
+	if err != nil {
+		return snapshot, err
+	}
+	if raft.IsEmptySnap(snapshot) {
+		return raftpb.Snapshot{}, raft.ErrSnapshotTemporarilyUnavailable
+	}
+	return snapshot, nil
+}
+
 type Consensus struct {
 	logger      *slog.Logger
 	handler     Handler
@@ -113,7 +138,7 @@ func NewConsensus(config *Config) *Consensus {
 		// (シミュレーション 2026-07-04: leader-without-quorum がリーダー不在
 		// 検知をすり抜けて活性化チェーンが停止する事例を観測)
 		CheckQuorum:               true,
-		Storage:                   n.raftStorage,
+		Storage:                   &snapshotGuardStorage{n.raftStorage},
 		MaxSizePerMsg:             1024 * 1024,
 		MaxInflightMsgs:           256,
 		MaxUncommittedEntriesSize: 1 << 30,

@@ -25,6 +25,8 @@ import (
 	"github.com/llamerada-jp/colonio/types"
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/raft/v3"
+	"go.etcd.io/raft/v3/raftpb"
 )
 
 // joinTestCluster wires multiple in-process Consensus instances with droppable
@@ -333,4 +335,25 @@ func TestConsensus_checkQuorum_leaderStepsDown(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return c1.Status().Lead == 0
 	}, 10*time.Second, 100*time.Millisecond)
+}
+
+// TestSnapshotGuardStorage covers the guard for the raft panic observed in the
+// simulator (run6, 2026-07-04): snapshot creation is not implemented, but a
+// leader asked to send a snapshot panics on an empty one. The guard converts
+// the empty snapshot into ErrSnapshotTemporarilyUnavailable, which raft
+// handles by skipping the send.
+func TestSnapshotGuardStorage(t *testing.T) {
+	ms := raft.NewMemoryStorage()
+	s := &snapshotGuardStorage{ms}
+
+	_, err := s.Snapshot()
+	require.ErrorIs(t, err, raft.ErrSnapshotTemporarilyUnavailable)
+
+	// a real snapshot passes through unchanged
+	require.NoError(t, ms.Append([]raftpb.Entry{{Index: 1, Term: 1}}))
+	_, err = ms.CreateSnapshot(1, &raftpb.ConfState{Voters: []uint64{1}}, []byte("data"))
+	require.NoError(t, err)
+	snapshot, err := s.Snapshot()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), snapshot.Metadata.Index)
 }

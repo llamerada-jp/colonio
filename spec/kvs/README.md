@@ -271,6 +271,7 @@ MC_MaxChurn       == 1
 | explicit パケットの非宛先受理 → ゴーストレプリカ (2026-07-04 run3 発見) | `classifyPacket` はルートテーブルが自ノードを返すと explicit でも `Receive` していた | 死亡ノード宛の SectorManageMember / raft メッセージを別ノードが受理し、**同じ raft メンバー ID を複数の物理ノードが名乗る**。誤ノードへのデータ複製・本来メンバーの永久非同期・二重投票リスク。修正: explicit は宛先一致時のみ受理 |
 | apply エラーで committed entries のバッチが中断 (2026-07-04 run3 発見) | `publishEntries` が apply エラーで即 return するが `Advance()` は実行される | 同一バッチの残り committed entries が**適用されないまま消費**され、そのメンバーだけ状態が乖離。非冪等な `processCommitSplitProposal`（エラー返却 + proposal 未クリア → 3 秒ごと再提案）が毒エントリー化して恒常的にこれを誘発。修正: ログして継続 + CommitSplit apply の冪等化 |
 | 破棄済みレプリカの同一キー復活 → raft panic (2026-07-04 run5 発見) | 非 Normal メンバーへの setting message 毎秒再送 × ローカル強制破棄の組み合わせで、ack 済みレプリカが**同じ {sectorID, sectorNo} で空ログ再作成**される（learner-first で再送窓が拡大し顕在化） | グループはその raft ID の Match・投票を記憶しており、「メンバーはログを失わない」前提が破れて **etcd raft 内部で panic（プロセス停止・recover 不能）**。復活→再破棄のループが破棄数も増幅。修正: sector tombstone で同一キー再作成を拒否 + 停滞メンバーを reap して新 sectorNo で再追加 |
+| snapshot 未実装のまま raft が snapshot 送信を要求 → panic (2026-07-04 run6 発見) | `operator.ExportSnapshot`/`ImportSnapshot` がスタブな上、`appliedIndex` が通常エントリーで更新されず snapshot 作成トリガが不活性。raft はフォロワーの Next がログ範囲外になると `Storage.Snapshot()` を要求し、空だと panic する | churn でフォロワー進捗とリーダーのログがずれた瞬間 **`need non-empty snapshot` でプロセス停止**。修正: `snapshotGuardStorage` が空 snapshot を `ErrSnapshotTemporarilyUnavailable` に変換（送信スキップ → reap による新 sectorNo 再作成で index 1 から追いつく）。snapshot 本実装は TODO |
 
 **教訓**: TLA+ のアクションは原子的にモデル化されるため、アクション「内部」の
 ロック取得順序はモデルの検証対象外。実装側は以下のロック規約で防ぐ
@@ -844,6 +845,42 @@ activate の恒久停止は発生しなかったが、t≈180s から不安定�
 
 回帰テスト: `TestKVS_sectorManageMember_rejectsTombstonedKey` /
 `TestManager_ManageMember_reapsStaleMember`。
+
+#### シミュレーション run 6（tombstone 導入後、2026-07-04）: `need non-empty snapshot` panic
+
+m=+161 で `panic: need non-empty snapshot`（`raft.maybeSendSnapshot`、リーダーの
+run goroutine）によりプロセス停止。161 秒の短命 run のため tombstone / reap の
+効果評価は持ち越し（tombstone 拒否 0 件・force terminate 14 件のみ）。
+
+**確認結果: snapshot 機能は実質未実装だった。**
+
+1. `operator.ExportSnapshot` / `ImportSnapshot` は `panic("not implemented")` の
+   スタブ。
+2. さらに `consensus.appliedIndex` は snapshot 適用時にしか代入されず、通常
+   エントリーの適用で**一切更新されない**ため、`maybeTriggerSnapshot`
+   （1000 エントリーごとの snapshot 作成 + compaction）は永遠に発火しない
+   不活性コード。つまり**どのノードも snapshot を作らず、ログは compaction
+   されないまま無限に伸びる**。
+3. 一方 etcd raft は、フォロワーの Next がリーダーのログ範囲外になると
+   （`term(Next-1)` が ErrCompacted/ErrUnavailable）snapshot 送信に落ち、
+   `Storage.Snapshot()` が空だと panic する。churn でこの状況に入った瞬間、
+   プロセスごと死ぬ（recover 不能）。
+
+**修正（実装済み）**: `snapshotGuardStorage` — MemoryStorage をラップし、空の
+snapshot 要求を etcd raft 公式のエスケープ **`ErrSnapshotTemporarilyUnavailable`**
+に変換する。raft は panic せず送信をスキップし、当該フォロワーは同期不能の
+ままになるが、membership manager の reap (30s) が**新しい sectorNo で作り直し、
+ログは compaction されていないので index 1 から追いつける** — snapshot 本実装なしで
+整合する。回帰テスト: `TestSnapshotGuardStorage`。
+
+**残課題（TODO として記録）**: snapshot の本実装
+（operator の store serialize + appliedIndex の更新 + トリガの有効化）。
+現状はログ無限成長（MemoryStorage のメモリ増加）とも表裏一体で、長時間運用・
+大量書き込みでは必須になる。実装時は「learner の catch-up が snapshot 経由に
+なる」ため、`ConsensusApplySnapshot` の store 反映と冪等性もセットで設計する。
+なお「リーダーの Next がログ範囲外に出た正確な系譜」（同一 term での二重リーダー
+疑い = 空ログ再作成による votedFor 忘却の残存経路の可能性）は未特定で、
+次回 run の観測対象。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加
