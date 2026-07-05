@@ -678,8 +678,13 @@ func (k *KVS) sectorPrepareSplit(srcNodeID *types.NodeID, sectorID kvsTypes.Sect
 		return true
 	}
 
+	// The hosting sector key is nil between a (force) termination of the
+	// hosting sector and its re-creation by ManageMember; an inbound
+	// prepare-split in that window must simply be rejected
+	// (シミュレーション run7, 2026-07-04: この窓での nil 参照で panic).
+	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
 	if k.proposedSplittingNodeID != nil ||
-		k.hostingManager.GetHostingSectorKey().SectorID != sectorID {
+		hostingSectorKey == nil || hostingSectorKey.SectorID != sectorID {
 		fmt.Println(time.Now(), k.localNodeID.String(), "== reject sectorPrepareSplit from", srcNodeID.String(), ": another proposal or sectorID mismatch")
 		return false
 	}

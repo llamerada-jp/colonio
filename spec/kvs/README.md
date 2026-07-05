@@ -873,6 +873,33 @@ snapshot 要求を etcd raft 公式のエスケープ **`ErrSnapshotTemporarilyU
 ログは compaction されていないので index 1 から追いつける** — snapshot 本実装なしで
 整合する。回帰テスト: `TestSnapshotGuardStorage`。
 
+#### シミュレーション run 7（snapshot ガード後・70 ノード、2026-07-04）
+
+100 ノードは負荷起因とみられる不安定（30 秒〜）のため 70 ノードに変更。
+activate の恒久停止なし。m=+413 で **自前コードの nil 参照 panic**:
+`sectorPrepareSplit` が `GetHostingSectorKey()` の戻りを nil チェックせず
+`.SectorID` を参照していた。hosting sector の（強制）破棄から ManageMember に
+よる再作成までの窓では key が nil になり、そこへ prepareSplit RPC が着信すると
+落ちる。破棄→再作成が高頻度になったことで顕在化した潜在バグ
+（他の 3 箇所の呼び出しは nil チェック済みだった）。
+→ 修正: nil なら reject。回帰テスト `TestKVS_sectorPrepareSplit_noHostingSector`。
+
+健全性の指標は大きく改善:
+
+- カバレッジは t=80s に **66/71 (94%)** 到達（run4 のピークは 69/100）。
+- 強制破棄 511 回のうち、**直前まで active だったセクターの破棄は 0 回**
+  （run4: 84 回）— learner-first により生きているグループの quorum が
+  churn で毀損されなくなった効果が確認できた。
+- reap は 39 回発動。tombstone 拒否は 0 回（再配送の発生前に reap が
+  取り除いている、または復活サイクル自体が消えたため機会なし）。
+
+一方、ピーク後のカバレッジは単調減少（t=340s で 36/70）。active セクターの
+破壊はもう起きていないため、減少の機構は「ランダム停止が active ノードを
+削る速度 > チェーン再活性化の速度」。再活性化側の律速は既記録の改善候補
+2（is_stable ゲートによる修復凍結）と 3（ヒステリシス）の領域で、
+run 終盤（min6: 破棄 353 回）は kill の累積により inactive レプリカの掃除が
+集中したことも負荷に寄与した。
+
 **残課題（TODO として記録）**: snapshot の本実装
 （operator の store serialize + appliedIndex の更新 + トリガの有効化）。
 現状はログ無限成長（MemoryStorage のメモリ増加）とも表裏一体で、長時間運用・

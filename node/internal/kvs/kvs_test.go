@@ -357,6 +357,26 @@ func TestKVS_sectorManageMember_rejectsTombstonedKey(t *testing.T) {
 	require.True(t, created)
 }
 
+// TestKVS_sectorPrepareSplit_noHostingSector is a regression test for a nil
+// dereference observed in the simulator (run7, 2026-07-04): the hosting sector
+// key is nil between a (force) termination of the hosting sector and its
+// re-creation by ManageMember, and an inbound prepare-split request in that
+// window crashed the process. It must be rejected instead.
+func TestKVS_sectorPrepareSplit_noHostingSector(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	srcNodeID := types.NewNormalNodeID(0x1000000000000000, 0)
+
+	handler := &kvsHandlerHelper{isStable: true}
+	k := newTestKVS(t, ctx, localNodeID, handler)
+
+	// no hosting sector has been created: GetHostingSectorKey() is nil
+	require.Nil(t, k.hostingManager.GetHostingSectorKey())
+	require.False(t, k.sectorPrepareSplit(srcNodeID, kvsTypes.SectorID(uuid.New())))
+}
+
 // TestKVS_activateHostingSector_singleNode is a regression test: a lone node
 // could never activate its own sector because the emptiness check counted the
 // hosting sector itself.
