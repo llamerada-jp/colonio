@@ -373,6 +373,11 @@ commit ハンドラは `ctx.Err()` をチェックして無視するだけにな
 
 ### B. CommitMerge を冪等にする（既に Go 実装で必要）
 
+> **おおむね実装済み (2026-07-04)** — apply ハンドラの「冪等かつ必ず完了」規約として
+> 実装した（Terminate の必ず完了・CommitSplit の no-op 化・AllocateSector の許容。
+> run2/run3 の修正、design.md の規約参照）。本節の CommitMerge の
+> extendTailOnly 分岐のみ未実装。
+
 TLA+ で発見した CommitMerge の二重実行パスは、Go でも以下のシナリオで起こりうる:
 
 1. ノード n が fs に対して `mergeSector(hosting, fs)` を開始
@@ -508,19 +513,21 @@ func (k *KVS) onAnyCommit() {
 
 ### 優先度サマリ
 
-| 案 | 効果 | 実装コスト | 推奨度 |
-|---|------|----------|--------|
-| A: proposing をセクター内蔵 | バグ予防 (大) | 中 | ★★★ |
-| B: 操作の冪等化 | バグ予防 (中) | 小 | ★★★ |
-| C: anyActive のローカル化 | バグ予防 (中) | 小 | ★★★ |
-| D: TerminateA 再検討 | 保守性 | 小 (調査のみ) | ★★ |
-| E: Split のアトミック化 | 構造改善 | 大 | ★ (将来) |
-| F: Merge 2 コミット化 | レース面縮小 | 中 | ★★ |
-| G: TerminateB 即時化 | 修復遅延短縮 | 小 | ★★ |
+| 案 | 効果 | 実装コスト | 推奨度 | 状況 (2026-07-04) |
+|---|------|----------|--------|-------------------|
+| A: proposing をセクター内蔵 | バグ予防 (大) | 中 | ★★★ | 未実装。ただし動機の多く（提案スタックの解消）は TODO-3 の timeout+abort と強制破棄で代替済み |
+| B: 操作の冪等化 | バグ予防 (中) | 小 | ★★★ | **おおむね実装済み**: Terminate は必ず完了・CommitSplit は既活性化で no-op・Activate/Import の AllocateSector は割り当て済みを許容（run2/run3 の修正）。CommitMerge の「fs が先に inactive 化された場合の extendTailOnly」は未実装 |
+| C: anyActive のローカル化 | バグ予防 (中) | 小 | ★★★ | 未実装 |
+| D: TerminateA 再検討 | 保守性 | 小 (調査のみ) | ★★ | 未着手 |
+| E: Split のアトミック化 | 構造改善 | 大 | ★ (将来) | 未着手 |
+| F: Merge 2 コミット化 | レース面縮小 | 中 | ★★ | 未着手 |
+| G: TerminateB 即時化 | 修復遅延短縮 | 小 | ★★ | 未着手 |
 
 ## 今後の TODO
 
 ### 完了済み
+
+モデル:
 
 - [x] **routing ビューと sector-store を分離** → `KvsSectorSepView.tla` で実装済
 - [x] **Raft 合意の非原子性をモデル化** → `KvsSectorRaft.tla` で実装済
@@ -532,6 +539,36 @@ func (k *KVS) onAnyCommit() {
       - MaxChurn=3 で TerminateB→CommitMerge 間のインターリーブバグ 2 件を発見・修正
       - TerminateA が MaxChurn=3 で初めて発火 (20回)
 
+Go 実装（いずれも 2026-07-04、詳細は各 run のセクション参照）:
+
+- [x] **TODO-3: セクター操作の timeout + abort**（proposalWaitTimeout=15s、
+      Propose の有界化、`applyProposals` のロック外 Propose）
+- [x] **TODO-4: quorum 喪失セクターのローカル強制破棄**（leaderless 30s /
+      pending 停滞 45s の 2 系統 + CheckQuorum 有効化）
+- [x] **apply ハンドラの冪等・必ず完了規約**（terminate 完了保証、CommitSplit
+      no-op 化、AllocateSector 許容、publishEntries のバッチ継続 = 改善案 B の主要部）
+- [x] **learner-first メンバーシップ**（未同期 voter による quorum 毀損の根絶。
+      run7 で「active セクターの破壊 0 件」を確認）
+- [x] **raft メンバー ID の使い捨て化**（sector tombstone + 停滞メンバーの
+      reap/新 slot 再追加）
+- [x] **explicit パケットの非宛先受理ガード**（ゴーストレプリカ対策）
+- [x] **snapshot 未実装対策のガード**（`ErrSnapshotTemporarilyUnavailable` 変換で
+      `need non-empty snapshot` panic を根絶。本実装は未完了 TODO 側）
+- [x] **ManageMember の localNodeID panic ガード** / **sectorPrepareSplit の
+      nil ガード**（クラッシュ系の穴埋め）
+
+### 未完了（2026-07-04 時点の一覧）
+
+| 項目 | 種別 | 参照 |
+|------|------|------|
+| TODO-1: quorum 喪失の拡張モデル（LocalDestroy の safety 検証） | モデル | 下表 |
+| TODO-2: stale active レプリカのガード緩和検証 | モデル | 下表 |
+| snapshot の本実装（operator serialize + appliedIndex + トリガ。ログ無限成長対策と表裏一体） | Go 実装 | run6 の残課題 |
+| is_stable ゲートの緩和（不安定時の修復凍結 = カバレッジ漸減の律速） | 設計 + Go | run4 改善候補 2 / run7 考察 |
+| ManageMember のヒステリシス | Go 実装 | run4 改善候補 3 |
+| 改善案 A / C / D / E / F / G（B の残り: CommitMerge extendTailOnly を含む） | Go 実装 | アルゴリズム改善案 |
+| 同一 term 二重リーダー疑いの系譜特定（run6 の未特定事項） | 調査 | run6 |
+
 ### 状況（2026-07-04 のシミュレーション解析より）
 
 TODO-3 / TODO-4 の Go 実装は 2026-07-04 に先行実装した（下記
@@ -542,7 +579,7 @@ TODO-3 / TODO-4 の Go 実装は 2026-07-04 に先行実装した（下記
 | # | 内容 | 種別 | 優先度 | 状況 |
 |---|------|------|--------|------|
 | [TODO-1](#todo-1) | quorum 喪失の故障モードを含む拡張モデル | モデル | 高 | 未着手 |
-| [TODO-2](#todo-2) | stale active レプリカの掃除とガード緩和の検証 | モデル | 高 | 未着手（TODO-1 と独立に着手可） |
+| [TODO-2](#todo-2) | stale active レプリカの掃除とガード緩和の検証 | モデル | 高 | 未着手（TODO-1 と独立に着手可）。クラス B' は run4/run7 でも継続観測（短時間で解消し恒久化はしていない） |
 | [TODO-3](#todo-3) | セクター操作の timeout + abort | Go 実装 | 高 | **実装済み (2026-07-04)**、モデル検証は TODO-1 待ち |
 | [TODO-4](#todo-4) | quorum 喪失セクターのローカル強制破棄 | 設計 + Go 実装 | 高 | **実装済み (2026-07-04)**、モデル検証は TODO-1 待ち |
 
