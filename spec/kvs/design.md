@@ -54,6 +54,22 @@ terminate を含む一切の提案を commit できず、sector が誰にも破�
   ブロッキング操作は proposalWaitTimeout=15s でエラー復帰し、呼び出し元が
   abort（frontward sector の terminate）する。terminate も commit できない
   場合は上記の強制破棄が後始末する。
+- **メンバー除去の out-of-band 通知（2026-07-06 追加）**: remove された
+  メンバーは自分の除去 commit をグループから学習できない（除去適用後
+  リーダーは送信を止める = raft の既知の性質）ため、stale レプリカが
+  上記の強制破棄で刈られるまで 30〜60 秒残留する。これがシミュレーション
+  （README run 10）で残存した赤描画（レプリカ間 tail 不一致）の主因だった。
+  対策として、除去 conf change の適用時に host が removed node へ
+  `SectorManageMember COMMAND_REMOVE` を直接送り、受信側は tombstone +
+  ローカル破棄（`Sector.TerminateLocally`、強制破棄と同一経路）で即時解消
+  する。通知は best-effort の one-shot で、喪失時は強制破棄が backstop の
+  まま残る。**モデル上は新アクションではなく、LocalDestroy の発火条件が
+  早まっただけ**（グループが除去を commit 済みなので構成上メンバー離脱
+  そのもの。TODO-1 でモデル化する場合は単一の LocalDestroy アクションの
+  発火条件違いとして扱う。README TODO-1 の追記参照）。
+  なお hosting sector 宛の REMOVE は拒否する（host は自グループから除去
+  されない仕様のため、受理すると無認証パケット 1 つで active sector を
+  破棄できてしまう）。
 
 また、**raft メンバー ID（sectorNo）は使い捨て**とする。ローカル破棄や remove
 適用で消えたレプリカを同じ {sectorID, sectorNo} で再作成すると、グループが記憶する
@@ -64,8 +80,14 @@ etcd raft 内部 panic。README「run 5」参照）。再作成は必ず新し�
 また、raft 適用（apply）ハンドラは**冪等かつ必ず完了する**ことを規約とする。
 apply が失敗して提案の完了フラグを立てられないと、「commit は成功するが状態が
 進まない」再提案ループになり、健全なグループが quorum 喪失と同一の症状を示す
-（実例: inactive セクターへの terminate が store 未割り当てを理由に失敗し続けた。
-README「シミュレーション再実行での発見」参照）。
+（実例 1: inactive セクターへの terminate が store 未割り当てを理由に失敗し続けた。
+README「シミュレーション再実行での発見」参照）。エラーによる失敗だけでなく、
+**状態ゲートによる黙殺も同じ違反**である（実例 2: `ConsensusApplyProposal` の
+activation ゲート `tail == nil` が commit 済みの Import / CommitSplit を
+inactive セクターで捨てており、import 先が定義上 inactive である split は
+構造的に一度も成功できなかった。2026-07-06 修正、README run 8 参照）。
+モデルの Commit 系アクション（CommitSplit 等）は「commit されたら状態が
+遷移する」を暗黙の前提としており、この規約はその前提を実装側で保証するもの。
 
 未決事項: 誤判定時の安全性のモデル検証（README の TODO-1 検証項目 3）、
 死亡判定への routing 情報の組み合わせ、しきい値の実測に基づく調整。
@@ -82,6 +104,16 @@ README「シミュレーション再実行での発見」参照）。
   append は quorum に影響しない。昇格前の learner はメンバー状態機械上
   「追加完了」にならず、routing から消えれば通常経路で除去される。
   初期メンバー（グループ bootstrap）は従来どおり voter（スコープ外）。
+- ~~join レプリカの履歴 replay 失敗による恒久乖離~~ → **bootstrap conf change
+  への nodeID context 付与ほかで対策済み (2026-07-06)**: ログ未圧縮のため
+  join メンバーは bootstrap の conf change entry を必ず replay するが、
+  context が無いと離脱済み初期メンバーを解決できず、apply バッチ中断で
+  全履歴を失い恒久乖離していた（乖離 voter が leaderless ストームの起点に
+  なる正帰還。README run 9 参照）。これらは raft メンバーシップと
+  メッセージ経路の実装詳細であり、**モデルの抽象度（セクター状態のみ、
+  レプリカ・メンバー表なし）より下の層**にあたる。
+- ~~除去されたメンバーの stale レプリカ残留~~ → **out-of-band 除去通知で
+  対策済み (2026-07-06)**: 上記「quorum 喪失時の脱出経路」の項を参照。
 - **is_stable ゲートによる修復凍結**: `subRoutine` は is_stable でないと
   ManageMember / operateSectors に到達しないため、churn 中は穴の修復
   （Extend / terminate frontward）も止まる。修復系操作の許可条件の再検討が必要。

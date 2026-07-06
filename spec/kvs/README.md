@@ -557,6 +557,16 @@ Go 実装（いずれも 2026-07-04、詳細は各 run のセクション参照�
 - [x] **ManageMember の localNodeID panic ガード** / **sectorPrepareSplit の
       nil ガード**（クラッシュ系の穴埋め）
 
+Go 実装（いずれも 2026-07-06、詳細は run 8〜10 のセクション参照）:
+
+- [x] **Import / CommitSplit の activation ゲート通過**（split が構造的に
+      不成立だった規約違反の解消。run 8）
+- [x] **bootstrap conf change への nodeID context 付与 + publishEntries の
+      conf change 適用エラー継続 + nodeID 不明 learner の promote 抑止**
+      （join レプリカの恒久乖離 → 強制破棄ストームの正帰還を解消。run 9）
+- [x] **メンバー除去の out-of-band 通知**（COMMAND_REMOVE。除去済みメンバーの
+      stale レプリカが強制破棄まで 30〜60 秒残留する赤の主因を解消。run 10）
+
 ### 未完了（2026-07-04 時点の一覧）
 
 | 項目 | 種別 | 参照 |
@@ -946,6 +956,83 @@ run 終盤（min6: 破棄 353 回）は kill の累積により inactive レプ�
 疑い = 空ログ再作成による votedFor 忘却の残存経路の可能性）は未特定で、
 次回 run の観測対象。
 
+#### シミュレーション run 8（100 ノード、2026-07-06）: split が構造的に不成立
+
+「一度 active になった位置が inactive のまま戻らない」症状を解析。
+終了時 active 22 / inactive 69。dump 解析で「active → inactive に戻った
+セクター」は 0 件で、黄色の実体は terminate → 新 sectorID で再作成された
+別セクターが activate できないループと判明。ログ集計で
+**split 試行 784 回 / migrate 失敗 779 回 / `split: done` 0 回**
+（初回失敗は開始 69 秒後）— split は run 開始から一度も成功していなかった。
+
+> **真因**: `ConsensusApplyProposal` の `if s.tail == nil { return nil }`
+> （activation ゲート）が、**commit 済みの Import / CommitSplit 提案を
+> inactive セクターで黙って捨てていた**。split の import 先 frontward
+> セクターは定義上 inactive なので、この実装では split は構造的に成功不能。
+> commit は成功し続けるため pending バックストップも発火しない —
+> run 2 の terminate と同型の **「apply ハンドラは必ず完了する」規約違反**
+> （commit → apply 黙殺 → 15s timeout → abort → 再作成 → 無限ループ）。
+
+→ 修正: Import / CommitSplit の適用を activation ゲートの前に移動
+（両ハンドラは冪等実装済み）。回帰テスト
+`TestSector_import_commitSplit_onInactiveSector`（修正前コードで失敗を確認）。
+
+#### シミュレーション run 9（100 ノード、2026-07-06）: join レプリカの恒久乖離
+
+split 修正の効果確認: `split: done` 119 回、**t≈105s で 97/97 全 active 達成**
+（プロトコル自体の活性が初めて全域で成立）。しかし churn 開始後
+13:26 から単調劣化（inactive 0→14、強制破棄 18→95 件/分、
+`Unknown node sectorNo` 5.1 万件）。
+
+> **真因**: bootstrap の `raft.Peer{ID}` に nodeID context を付けていな
+> かった。ログは未圧縮（snapshot 未実装）のため後から join するメンバーは
+> entry 1 から全履歴を replay するが、離脱済み bootstrap メンバーの
+> AddNode entry を手持ちのメンバー表（append 時点の現在ビュー）で解決できず
+> `missing node ID in conf change`（729 件）→ publishEntries がバッチを
+> エラー中断（Advance は進む）→ **catch-up 中の初回バッチ ≒ 全履歴を恒久
+> 喪失**。乖離レプリカは raft レベルでは健全（ack・voter 昇格可）だが
+> メンバー表が壊れており、candidate/leader になるとメッセージを送れず
+> グループが実質 leaderless 化 → 強制破棄ストーム → 補充メンバーが同じ毒
+> entry を replay する正帰還。
+
+→ 修正 (3 点): (1) bootstrap peer に `Context: nodeID` 付与（replay の
+自己記述化）、(2) publishEntries の conf change 適用エラーを
+log-and-continue に（normal entry と同方針。ApplyConfChange は適用済みの
+ため raft 内部状態は整合）、(3) nodeID 不明 learner の promote を skip
+（context 空の AddNode を新規にログへ入れない）。回帰テスト
+`TestConsensus_joinResolvesRemovedBootstrapMember`（修正前コードで失敗を確認）。
+
+#### シミュレーション run 10（100 ノード・15 分、2026-07-06）: 残存赤の分析
+
+run 9 の 2 修正の効果確認: inactive は全期間 0〜3 の transient のみで劣化なし、
+publish 失敗 729→0、`Unknown node sectorNo` 5.1 万→3 千、強制破棄は定常
+~20 件/分（全て leaderless 判定）で加速なし。**恒久的な赤（レプリカ状態
+不一致 / メンバー数 <5）は存在しない**（最長でも連続 55 秒、累計 90 秒/585 秒）。
+
+残存する赤の内訳:
+
+1. **主因（tail 不一致 838 sector-sample）**: 近傍変化によるメンバー rotation
+   で remove されたメンバーの stale レプリカ。**除去されたメンバーは自分の
+   除去 commit をグループから学習できない**（除去適用後リーダーは送信を
+   止める = raft の既知の性質）ため、leaderless 30s の強制破棄で刈られる
+   まで古い tail のまま残留する。実例（セクター …4a2ec0cc0f90）では
+   online のままの /2 /3 /4 が順に「ちょうど 30 秒 leaderless」で自壊、
+   /4 は最新 tail に同期済みでも rotation により除去されていた。
+   常時 ~5 セクターがこの状態のため動画では恒久的な赤に見える。
+2. 副因: 新規セクターのメンバー充足待ち（レンダラは memberFullCount=5
+   未満を赤描画）。仕様通りの transient。
+
+→ 修正 (2026-07-06、再 run 未実施): `SectorManageMember COMMAND_REMOVE` に
+よる**除去の out-of-band 通知**。除去 conf change の適用時に host が removed
+node へ直接通知し、受信側は tombstone + `Sector.TerminateLocally()`
+（強制破棄と同じローカル破棄経路）で即時破棄。通知は best-effort の
+one-shot で、パケット喪失時は従来の強制破棄が backstop として残る。
+hosting sector 宛の REMOVE は拒否（host は自グループから除去されない仕様の
+ため、受理すると無認証パケット 1 つで active セクターを破棄できてしまう）。
+回帰テスト: `TestManager_OnSectorRemoveNode_notifiesRemovedMember` /
+`TestKVS_sectorManageMember_removeDestroysReplica` /
+`TestKVS_sectorManageMember_removeRejectsHostingSector`。
+
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加
 
@@ -992,8 +1079,18 @@ run 終盤（min6: 破棄 353 回）は kill の累積により inactive レプ�
      （stuck 状態 1 つ + 回復アクション 2 つ）。
   また、しきい値（forceTerminateDuration=30s）をどこまで詰められるかは
   誤発動時の安全性の境界に依存するため、本検証はしきい値調整の前提でもある。
+- **追記 (2026-07-06)**: 実装の LocalDestroy 相当は発火経路が 2 系統になった:
+  (a) タイマー判定（leaderless 30s / pending 停滞 45s、TODO-4）、
+  (b) **除去の out-of-band 通知**（COMMAND_REMOVE、run 10 参照）。
+  モデル化する際は両者を**単一の抽象アクション `LocalDestroy(n)` の
+  発火条件違い**として扱えば十分で、別アクションにする必要はない。
+  (b) は「グループが除去を commit 済み」が送信の前提なので構成上
+  誤発動ではない（= メンバー離脱そのもの）が、遅延・重複パケットと
+  再作成のインターリーブは (a) の誤発動と同じ検証枠（検証項目 3）に入る。
+  なお sectorNo は使い捨て（tombstone）のため、遅延 REMOVE が別の実体を
+  指すエイリアシングは実装上排除済み。
 - **関連**: `kvs.go` の `splitSector` / `mergeSector` / `proposedSplitRoutine` の
-  NOTE (2026-07-04)、`sector.go` の `Terminate` の NOTE。
+  NOTE (2026-07-04)、`sector.go` の `Terminate` / `TerminateLocally` の NOTE。
 
 <a id="todo-2"></a>
 #### TODO-2: stale active レプリカの掃除とガード緩和の検証（クラス B）

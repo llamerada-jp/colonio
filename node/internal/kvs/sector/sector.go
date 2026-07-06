@@ -871,6 +871,18 @@ func (s *Sector) checkQuorumLoss() {
 
 	fmt.Println(time.Now(), s.head.String(), "@@ force terminate", s.sectorKey.String(), reason)
 
+	s.TerminateLocally()
+}
+
+// TerminateLocally destroys the local replica without going through raft.
+// It is the escape hatch for replicas that can no longer receive anything
+// from their group: quorum-lost groups (checkQuorumLoss) and members that
+// were removed from the group — a removed member cannot learn its own
+// removal from the raft log (the leader stops messaging it once the removal
+// applies), so KVS calls this when the host's out-of-band removal
+// notification (SectorManageMember COMMAND_REMOVE) arrives. Idempotent; safe
+// to call on an already stopped or terminated sector.
+func (s *Sector) TerminateLocally() {
 	s.mtx.Lock()
 	var err error
 	if !s.stopped && !s.terminated {

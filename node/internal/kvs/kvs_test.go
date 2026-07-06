@@ -357,6 +357,108 @@ func TestKVS_sectorManageMember_rejectsTombstonedKey(t *testing.T) {
 	require.True(t, created)
 }
 
+// TestKVS_sectorManageMember_removeDestroysReplica verifies the receiver side
+// of the out-of-band removal notification (シミュレーション 2026-07-06): a
+// removed member no longer receives anything from its group, so COMMAND_REMOVE
+// must destroy the local replica immediately (instead of waiting 30-60s for
+// the leaderless force terminate) and tombstone the key so a stale re-delivered
+// setting message cannot resurrect it.
+func TestKVS_sectorManageMember_removeDestroysReplica(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	headNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+
+	handler := &kvsHandlerHelper{isStable: true}
+	k := newTestKVS(t, ctx, localNodeID, handler)
+
+	sectorKey := kvsTypes.SectorKey{
+		SectorID: kvsTypes.SectorID(uuid.New()),
+		SectorNo: kvsTypes.SectorNo(2),
+	}
+	members := map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: headNodeID,
+		kvsTypes.SectorNo(2):      localNodeID,
+	}
+	require.NoError(t, k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_APPEND,
+		sectorKey: sectorKey,
+		head:      headNodeID,
+		members:   members,
+	}))
+
+	// the host notifies this node that the member was removed; the replica is
+	// destroyed via TerminateLocally → SectorTerminated (async)
+	require.NoError(t, k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_REMOVE,
+		sectorKey: sectorKey,
+		head:      headNodeID,
+	}))
+
+	require.Eventually(t, func() bool {
+		k.mtx.RLock()
+		defer k.mtx.RUnlock()
+		_, exists := k.sectors[sectorKey]
+		return !exists
+	}, 5*time.Second, 50*time.Millisecond)
+
+	// a stale re-delivered setting message must not resurrect the replica
+	err := k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_APPEND,
+		sectorKey: sectorKey,
+		head:      headNodeID,
+		members:   members,
+	})
+	require.Error(t, err)
+
+	// a REMOVE for a key this node never held only leaves a tombstone
+	unknownKey := kvsTypes.SectorKey{
+		SectorID: sectorKey.SectorID,
+		SectorNo: kvsTypes.SectorNo(9),
+	}
+	require.NoError(t, k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_REMOVE,
+		sectorKey: unknownKey,
+		head:      headNodeID,
+	}))
+	err = k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_APPEND,
+		sectorKey: unknownKey,
+		head:      headNodeID,
+		members:   members,
+	})
+	require.Error(t, err)
+}
+
+// TestKVS_sectorManageMember_removeRejectsHostingSector: the host slot is never
+// removed from its own group (getNodesToBeChanged skips HostNodeSectorNo), so a
+// REMOVE targeting the local hosting sector is bogus — accepting it would let a
+// single unauthenticated packet destroy an active sector.
+func TestKVS_sectorManageMember_removeRejectsHostingSector(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	srcNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+
+	handler := &kvsHandlerHelper{isStable: true}
+	k := newTestKVS(t, ctx, localNodeID, handler)
+	hostingSectorKey := setupHostingSector(t, k)
+
+	err := k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_REMOVE,
+		sectorKey: *hostingSectorKey,
+		head:      srcNodeID,
+	})
+	require.Error(t, err)
+
+	k.mtx.RLock()
+	_, exists := k.sectors[*hostingSectorKey]
+	k.mtx.RUnlock()
+	require.True(t, exists)
+}
+
 // TestKVS_sectorPrepareSplit_noHostingSector is a regression test for a nil
 // dereference observed in the simulator (run7, 2026-07-04): the hosting sector
 // key is nil between a (force) termination of the hosting sector and its

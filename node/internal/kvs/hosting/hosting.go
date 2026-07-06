@@ -258,9 +258,27 @@ func (m *Manager) OnSectorAppendNode(sectorKey *kvsTypes.SectorKey, sectorNo kvs
 func (m *Manager) OnSectorRemoveNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	if m.hostingSectorKey != nil && *sectorKey == *m.hostingSectorKey {
-		delete(m.memberStates, sectorNo)
+	if m.hostingSectorKey == nil || *sectorKey != *m.hostingSectorKey {
+		return
 	}
+
+	// Tell the removed node about its removal out-of-band: once the removal
+	// applies, the group stops messaging the removed member, so it can never
+	// learn of the removal from the raft log itself. Without this it keeps its
+	// replica with stale state until the leaderless force-terminate backstop
+	// reaps it 30-60s later (シミュレーション 2026-07-06: この残留 replica の
+	// tail 不一致が残存する赤描画の主因だった). Best-effort one-shot: a lost
+	// packet just falls back to the force-terminate path.
+	if entry, ok := m.memberStates[sectorNo]; ok && !entry.NodeID.Equal(m.localNodeID) {
+		go m.outbound.sendSectorManageMember(&SectorManageMemberParam{
+			DstNodeID: entry.NodeID,
+			SectorID:  m.hostingSectorKey.SectorID,
+			SectorNo:  sectorNo,
+			Command:   proto.SectorManageMember_COMMAND_REMOVE,
+		})
+	}
+
+	delete(m.memberStates, sectorNo)
 }
 
 func (m *Manager) OnSectorTerminated(sectorKey *kvsTypes.SectorKey) {

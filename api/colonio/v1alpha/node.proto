@@ -123,6 +123,12 @@ message SectorManageMember {
     // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
     COMMAND_CREATE = 0;
     COMMAND_APPEND = 1;
+    // Out-of-band notification that the member {sector_id, sector_no} was
+    // removed from the raft group. A removed member cannot learn its own
+    // removal from the group (the leader stops messaging it once the removal
+    // applies), so without this it lingers with stale state until the
+    // leaderless force-terminate backstop reaps it. members is unused.
+    COMMAND_REMOVE = 2;
   }
 
   bytes               sector_id = 1;

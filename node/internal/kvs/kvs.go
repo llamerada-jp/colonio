@@ -599,6 +599,11 @@ type sectorManageMemberParam struct {
 }
 
 func (k *KVS) sectorManageMember(param *sectorManageMemberParam) error {
+	// Fetch before taking k.mtx: the established lock order is the hosting
+	// manager's mutex first, then k.mtx (ManageMember → HostingAllocateSector);
+	// taking them in the opposite order here could deadlock.
+	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
+
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
 
@@ -621,6 +626,41 @@ func (k *KVS) sectorManageMember(param *sectorManageMemberParam) error {
 			}
 			k.allocateSector(&param.sectorKey, param.head, false, append, param.members)
 		}
+
+	case proto.SectorManageMember_COMMAND_REMOVE:
+		// Out-of-band removal notification from the group's host: this member
+		// was removed by a committed conf change, but a removed member no
+		// longer receives anything from the group, so the notification is the
+		// only way to learn it promptly (the fallback is the 30s leaderless
+		// force terminate). Destroy the replica locally — never via raft, the
+		// group would ignore proposals from a removed member.
+		//
+		// A node never removes its own host slot from its hosting sector
+		// (getNodesToBeChanged skips HostNodeSectorNo), so a REMOVE targeting
+		// the local hosting sector is bogus (stale or misdirected): terminating
+		// it here would let a single unauthenticated packet kill an active
+		// sector.
+		if hostingSectorKey != nil && *hostingSectorKey == param.sectorKey {
+			return fmt.Errorf("reject removing the hosting sector: %s", param.sectorKey.String())
+		}
+
+		// Tombstone even when the replica does not exist locally (already
+		// destroyed, or the notification raced ahead of the setting message):
+		// the group has committed the removal, so this member ID must never be
+		// (re)created on this node.
+		k.addSectorTombstoneLocked(param.sectorKey)
+
+		sector, ok := k.sectors[param.sectorKey]
+		if !ok {
+			return nil
+		}
+		// Same flow as the quorum-loss force terminate: TerminateLocally
+		// releases the store sector and fires SectorTerminated, which stops the
+		// raft loop and deletes the map entry. The entry must stay in k.sectors
+		// until then — SectorTerminated returns early (skipping Stop) when the
+		// key is already gone. Run it off this goroutine: it takes the sector
+		// lock and k.mtx is held here.
+		go sector.TerminateLocally()
 
 	default:
 		return fmt.Errorf("unknown SectorManageMember command: %d", param.command)

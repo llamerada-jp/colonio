@@ -133,6 +133,12 @@ const (
 	// buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
 	SectorManageMember_COMMAND_CREATE SectorManageMember_Command = 0
 	SectorManageMember_COMMAND_APPEND SectorManageMember_Command = 1
+	// Out-of-band notification that the member {sector_id, sector_no} was
+	// removed from the raft group. A removed member cannot learn its own
+	// removal from the group (the leader stops messaging it once the removal
+	// applies), so without this it lingers with stale state until the
+	// leaderless force-terminate backstop reaps it. members is unused.
+	SectorManageMember_COMMAND_REMOVE SectorManageMember_Command = 2
 )
 
 // Enum value maps for SectorManageMember_Command.
@@ -140,10 +146,12 @@ var (
 	SectorManageMember_Command_name = map[int32]string{
 		0: "COMMAND_CREATE",
 		1: "COMMAND_APPEND",
+		2: "COMMAND_REMOVE",
 	}
 	SectorManageMember_Command_value = map[string]int32{
 		"COMMAND_CREATE": 0,
 		"COMMAND_APPEND": 1,
+		"COMMAND_REMOVE": 2,
 	}
 )
 
@@ -1831,7 +1839,7 @@ const file_api_colonio_v1alpha_node_proto_rawDesc = "" +
 	"\x10ConsensusMessage\x12\x1b\n" +
 	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1b\n" +
 	"\tsector_no\x18\x02 \x01(\x04R\bsectorNo\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\fR\amessage\"\xf5\x02\n" +
+	"\amessage\x18\x03 \x01(\fR\amessage\"\x89\x03\n" +
 	"\x12SectorManageMember\x12\x1b\n" +
 	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1b\n" +
 	"\tsector_no\x18\x02 \x01(\x04R\bsectorNo\x12I\n" +
@@ -1839,10 +1847,11 @@ const file_api_colonio_v1alpha_node_proto_rawDesc = "" +
 	"\amembers\x18\x04 \x03(\v24.api.colonio.v1alpha.SectorManageMember.MembersEntryR\amembers\x1aW\n" +
 	"\fMembersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x04R\x03key\x121\n" +
-	"\x05value\x18\x02 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x05value:\x028\x01\"1\n" +
+	"\x05value\x18\x02 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x05value:\x028\x01\"E\n" +
 	"\aCommand\x12\x12\n" +
 	"\x0eCOMMAND_CREATE\x10\x00\x12\x12\n" +
-	"\x0eCOMMAND_APPEND\x10\x01\"V\n" +
+	"\x0eCOMMAND_APPEND\x10\x01\x12\x12\n" +
+	"\x0eCOMMAND_REMOVE\x10\x02\"V\n" +
 	"\x1aSectorManageMemberResponse\x12\x1b\n" +
 	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1b\n" +
 	"\tsector_no\x18\x02 \x01(\x04R\bsectorNo\"-\n" +

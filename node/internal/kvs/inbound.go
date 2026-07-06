@@ -121,6 +121,12 @@ func (i *inboundAdapter) recvSectorManageMember(packet *networkTypes.Packet) {
 		return
 	}
 
+	// REMOVE is a one-way notification: the sender has already dropped the
+	// member entry, so there is no state machine waiting for a response.
+	if command == proto.SectorManageMember_COMMAND_REMOVE {
+		return
+	}
+
 	// send response when the node is created or appended
 	i.transferer.RequestOneWay(
 		packet.SrcNodeID,

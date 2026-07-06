@@ -16,9 +16,11 @@
 package hosting
 
 import (
+	"sync"
 	"testing"
 	"time"
 
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/types"
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
@@ -39,11 +41,30 @@ func (h *sectorHandlerHelper) HostingApplyAppendNode(sectorKey kvsTypes.SectorKe
 func (h *sectorHandlerHelper) HostingApplyRemoveNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo) {
 }
 
-type outboundHelper struct{}
+type outboundHelper struct {
+	mtx  sync.Mutex
+	sent []*SectorManageMemberParam
+}
 
 var _ OutboundPort = &outboundHelper{}
 
-func (o *outboundHelper) sendSectorManageMember(param *SectorManageMemberParam) {}
+func (o *outboundHelper) sendSectorManageMember(param *SectorManageMemberParam) {
+	o.mtx.Lock()
+	defer o.mtx.Unlock()
+	o.sent = append(o.sent, param)
+}
+
+func (o *outboundHelper) sentByCommand(command proto.SectorManageMember_Command) []*SectorManageMemberParam {
+	o.mtx.Lock()
+	defer o.mtx.Unlock()
+	params := []*SectorManageMemberParam{}
+	for _, p := range o.sent {
+		if p.Command == command {
+			params = append(params, p)
+		}
+	}
+	return params
+}
 
 // TestManager_ManageMember_panicsOnLocalNodeID asserts the invariant guard:
 // routing must never list the local node as its own neighbor, and a violation
@@ -111,6 +132,61 @@ func TestManager_ManageMember_reapsStaleMember(t *testing.T) {
 	require.NotZero(t, newSectorNo)
 	require.Greater(t, newSectorNo, memberSectorNo)
 	require.Equal(t, MemberStateAppending, m.memberStates[newSectorNo].State)
+}
+
+// TestManager_OnSectorRemoveNode_notifiesRemovedMember verifies the
+// out-of-band removal notification (シミュレーション 2026-07-06): once the
+// RemoveNode conf change applies, the group stops messaging the removed
+// member, so the host must tell it directly — otherwise its replica lingers
+// with stale state until the 30s leaderless force terminate reaps it, which
+// showed up as the dominant red (replica tail mismatch) in the simulator.
+func TestManager_OnSectorRemoveNode_notifiesRemovedMember(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID := nodeIDs[0]
+	memberNodeID := nodeIDs[1]
+
+	outbound := &outboundHelper{}
+	m := NewManager(&Config{
+		Logger:   testUtil.Logger(t),
+		Outbound: outbound,
+	})
+	m.Start(&sectorHandlerHelper{}, localNodeID)
+
+	m.ManageMember([]*types.NodeID{memberNodeID})
+	hostingSectorKey := m.GetHostingSectorKey()
+	require.NotNil(t, hostingSectorKey)
+	var memberSectorNo kvsTypes.SectorNo
+	for sec, entry := range m.memberStates {
+		if entry.NodeID.Equal(memberNodeID) {
+			memberSectorNo = sec
+		}
+	}
+	require.NotZero(t, memberSectorNo)
+
+	// the removal conf change applies on the host
+	m.OnSectorRemoveNode(hostingSectorKey, memberSectorNo)
+
+	// the member entry is gone and the removed node is notified (async)
+	m.mtx.RLock()
+	_, exists := m.memberStates[memberSectorNo]
+	m.mtx.RUnlock()
+	require.False(t, exists)
+	require.Eventually(t, func() bool {
+		return len(outbound.sentByCommand(proto.SectorManageMember_COMMAND_REMOVE)) == 1
+	}, 5*time.Second, 50*time.Millisecond)
+	sent := outbound.sentByCommand(proto.SectorManageMember_COMMAND_REMOVE)[0]
+	require.True(t, sent.DstNodeID.Equal(memberNodeID))
+	require.Equal(t, hostingSectorKey.SectorID, sent.SectorID)
+	require.Equal(t, memberSectorNo, sent.SectorNo)
+
+	// a removal for a foreign sector must not notify anyone
+	foreignKey := &kvsTypes.SectorKey{
+		SectorID: hostingSectorKey.SectorID,
+		SectorNo: kvsTypes.SectorNo(99),
+	}
+	m.OnSectorRemoveNode(foreignKey, memberSectorNo)
+	time.Sleep(100 * time.Millisecond)
+	require.Len(t, outbound.sentByCommand(proto.SectorManageMember_COMMAND_REMOVE), 1)
 }
 
 func TestManager_getNodesToBeChanged(t *testing.T) {
