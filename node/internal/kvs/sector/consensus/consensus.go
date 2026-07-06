@@ -145,10 +145,47 @@ func NewConsensus(config *Config) *Consensus {
 	}
 
 	if !config.Join {
+		// Attach the node ID as the peer context: StartNode synthesizes a
+		// ConfChangeAddNode entry per peer, and these entries are replayed from
+		// the head of the log by every member that joins later (the log is
+		// never compacted — snapshots are not implemented). Without the
+		// context, a replaying member can resolve a bootstrap sectorNo only
+		// through its own initial member table. That table is the membership
+		// manager's CURRENT view at append time, so it no longer contains
+		// bootstrap members that were replaced in the meantime, and replacement
+		// starts within the first minute of a run (routing-view shifts during
+		// ring formation, later churn).
+		//
+		// The failure chain this context breaks (シミュレーション 2026-07-06,
+		// split 修正後の run で観測):
+		//
+		//  1. A member joins an existing group and catches up from entry 1.
+		//     The bootstrap AddNode entry of an already-replaced member cannot
+		//     be resolved → applyConfChangeSingle returns "missing node ID in
+		//     conf change".
+		//  2. publishEntries used to abort the whole batch on that error while
+		//     Advance() still ran. For a catching-up member the first batch is
+		//     essentially the entire history, so the member permanently lost
+		//     every committed entry after the poison one: activate/import
+		//     proposals (tail stays nil → replica-state mismatch, simulator
+		//     red) and all later conf changes (members table stays near-empty).
+		//     → now mitigated independently in publishEntries (log-and-continue).
+		//  3. At the raft level the diverged member is healthy — it
+		//     acknowledges appends and gets promoted to voter — but with a broken members
+		//     table it cannot map sectorNo → nodeID for its peers, so once it
+		//     campaigns or wins an election it cannot send a single message
+		//     ("Unknown node sectorNo for sending Raft message", 5万件/10min).
+		//  4. To every other member the group now looks leaderless; after
+		//     forceTerminateDuration (30s) they destroy their replicas one by
+		//     one (leaderless force terminate 18→95 件/分 と加速), the manager
+		//     re-appends replacements, each replacement replays the same
+		//     poisoned history → more diverged members. This positive feedback
+		//     degraded the ring from 97/97 active to 72 active within minutes.
 		peers := []raft.Peer{}
-		for sectorNo := range config.Members {
+		for sectorNo, nodeID := range config.Members {
 			peers = append(peers, raft.Peer{
-				ID: uint64(sectorNo),
+				ID:      uint64(sectorNo),
+				Context: []byte(nodeID.String()),
 			})
 		}
 		n.raftNode = raft.StartNode(raftConfig, peers)
@@ -289,6 +326,18 @@ func (n *Consensus) maybePromoteLearners() {
 		if !ok || status.Commit == 0 || pr.Match < status.Commit {
 			continue
 		}
+		// Never propose a promotion without the member's node ID: an
+		// empty-context AddNode entry stays in the never-compacted log and can
+		// only be resolved by replicas that already have the ID in their
+		// members table. Every member that joins later replays it, fails, and
+		// enters the divergence chain documented at the bootstrap peers in
+		// NewConsensus — so a promotion that cannot carry its node ID must not
+		// enter the log at all. (Skipping is safe: the promotion is re-proposed
+		// by promoteCheckTicks as long as the learner stays caught up, and a
+		// learner whose ID the leader does not know cannot be messaged anyway.)
+		if _, ok := contexts[id]; !ok {
+			continue
+		}
 
 		go func(id uint64, context []byte) {
 			if err := n.raftNode.ProposeConfChange(n.ctx, raftpb.ConfChangeV2{
@@ -401,8 +450,19 @@ func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
 			n.confState = *n.raftNode.ApplyConfChange(cc)
 			n.mtx.Unlock()
 
+			// Log-and-continue, like the proposal loop below: the entry is
+			// committed, and aborting here would silently skip the remaining
+			// committed entries of the batch (Advance() still runs), leaving
+			// this member permanently diverged from the group state. For a
+			// catching-up member the first batch is essentially the whole log,
+			// so a single unresolvable entry used to cost it every activate/
+			// import proposal and every later conf change — step 2 of the
+			// divergence chain documented at the bootstrap peers in
+			// NewConsensus (シミュレーション 2026-07-06). Note ApplyConfChange
+			// already ran above, so the raft-internal state stays consistent
+			// regardless of this error.
 			if err := n.applyConfChangeSingle(cc.Type, cc.NodeID, cc.Context); err != nil {
-				return err
+				n.logger.Error("Failed to apply committed conf change", "error", err)
 			}
 
 		case raftpb.EntryConfChangeV2:
@@ -416,8 +476,11 @@ func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
 
 			for _, change := range cc2.Changes {
 				// TODO: Context is used for both AddNode and RemoveNode, but it is only needed for AddNode. We should separate the context for AddNode and RemoveNode in ConfChangeV2.
+				// Log-and-continue: same reasoning as the EntryConfChange case
+				// above — an unresolvable change must not cost this member the
+				// rest of the committed batch.
 				if err := n.applyConfChangeSingle(change.Type, change.NodeID, cc2.Context); err != nil {
-					return err
+					n.logger.Error("Failed to apply committed conf change", "error", err)
 				}
 			}
 		}

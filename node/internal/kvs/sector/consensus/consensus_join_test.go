@@ -208,6 +208,73 @@ func TestConsensus_joinCatchesUpWithDeadMember(t *testing.T) {
 	}, 15*time.Second, 100*time.Millisecond)
 }
 
+// TestConsensus_joinResolvesRemovedBootstrapMember reproduces the divergence
+// storm found in the simulator (2026-07-06): the log is never compacted, so a
+// joining member replays the bootstrap conf-change entries from the head of
+// the log. Those entries used to carry no node-ID context, so a bootstrap
+// member that had since been removed could not be resolved through the
+// joiner's member table ("missing node ID in conf change") and the whole
+// catch-up batch was aborted — the joiner stayed permanently diverged (no
+// members, no applied proposals), could not route raft messages when it
+// became candidate, and triggered leaderless force-terminate storms.
+func TestConsensus_joinResolvesRemovedBootstrapMember(t *testing.T) {
+	cluster := newJoinTestCluster(t)
+
+	no1 := kvsTypes.SectorNo(1)
+	no2 := kvsTypes.SectorNo(2)
+	no3 := kvsTypes.SectorNo(3) // bootstrap member, dead and removed
+	no4 := kvsTypes.SectorNo(4) // joins after the removal
+
+	ids := testUtil.UniqueNodeIDs(4)
+	cluster.nodeIDs[no1] = ids[0]
+	cluster.nodeIDs[no2] = ids[1]
+	cluster.nodeIDs[no3] = ids[2]
+	cluster.nodeIDs[no4] = ids[3]
+	cluster.dead[no3] = true
+
+	initialMembers := map[kvsTypes.SectorNo]*types.NodeID{
+		no1: cluster.nodeIDs[no1],
+		no2: cluster.nodeIDs[no2],
+		no3: cluster.nodeIDs[no3],
+	}
+
+	c1 := cluster.addConsensus(no1, false, initialMembers)
+	c2 := cluster.addConsensus(no2, false, initialMembers)
+	c1.Start(t.Context())
+	c2.Start(t.Context())
+
+	require.Eventually(t, func() bool {
+		return c1.Status().Lead != 0
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// the manager removes the dead bootstrap member
+	c1.RemoveNode(no3)
+	require.Eventually(t, func() bool {
+		return len(c1.Status().Config.Voters[0]) == 2
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// commit history the new member has to catch up with
+	c1.Propose(activateProposal(cluster.nodeIDs[no1]))
+	require.Eventually(t, func() bool {
+		return cluster.appliedCount(no1) >= 1
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// the joiner's member table is the manager's CURRENT view: no3 is gone
+	c1.AppendNode(no4, cluster.nodeIDs[no4])
+	c4 := cluster.addConsensus(no4, true, map[kvsTypes.SectorNo]*types.NodeID{
+		no1: cluster.nodeIDs[no1],
+		no2: cluster.nodeIDs[no2],
+		no4: cluster.nodeIDs[no4],
+	})
+	c4.Start(t.Context())
+
+	// the joiner must replay the full history (including the bootstrap
+	// conf changes for no3), apply the committed proposal, and be promoted
+	require.Eventually(t, func() bool {
+		return cluster.appliedCount(no4) >= 1 && cluster.appendedCount(no1, no4) >= 1
+	}, 15*time.Second, 100*time.Millisecond)
+}
+
 // TestConsensus_learnerFirst_deadAppendKeepsQuorum verifies the core property
 // of learner-first membership (シミュレーション run4, 2026-07-04 の破棄ストーム
 // 対策): appending a dead node adds it as a learner only, so the quorum stays
