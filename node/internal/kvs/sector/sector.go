@@ -715,6 +715,21 @@ func (s *Sector) ConsensusApplyProposal(proposal *proto.ConsensusProposal) error
 	if activate := proposal.GetActivate(); activate != nil {
 		return s.processActivateProposal(activate)
 	}
+	// Import and CommitSplit target a not-yet-activated sector by design: a
+	// split imports records into the inactive frontward sector and then
+	// activates it with CommitSplit. They must be applied before the
+	// activation gate below — otherwise the committed proposal is silently
+	// dropped, the proposer's pending flag is never cleared, and Import()
+	// times out even though the group is healthy (commit keeps advancing).
+	// (シミュレーション 2026-07-06: このゲートに Import が握り潰されて split が
+	// 一度も完了せず、terminate → 再作成 → split 再試行の無限ループにより
+	// sector が inactive のまま恒久化するのを観測)
+	if importProposal := proposal.GetImport(); importProposal != nil {
+		return s.processImportProposal(importProposal)
+	}
+	if commitSplit := proposal.GetCommitSplit(); commitSplit != nil {
+		return s.processCommitSplitProposal(commitSplit)
+	}
 	if s.tail == nil { // Not activated yet.
 		return nil
 	}
@@ -722,14 +737,8 @@ func (s *Sector) ConsensusApplyProposal(proposal *proto.ConsensusProposal) error
 	if extend := proposal.GetExtend(); extend != nil {
 		return s.processExtendProposal(extend)
 
-	} else if importProposal := proposal.GetImport(); importProposal != nil {
-		return s.processImportProposal(importProposal)
-
 	} else if preCommitSplit := proposal.GetPreCommitSplit(); preCommitSplit != nil {
 		return s.processPreCommitSplitProposal(preCommitSplit)
-
-	} else if commitSplit := proposal.GetCommitSplit(); commitSplit != nil {
-		return s.processCommitSplitProposal(commitSplit)
 
 	} else if prepareMerge := proposal.GetPrepareMerge(); prepareMerge != nil {
 		return s.processPrepareMergeProposal(prepareMerge)

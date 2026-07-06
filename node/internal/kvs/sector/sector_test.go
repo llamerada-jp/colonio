@@ -341,6 +341,42 @@ func TestSector_import_timeoutOnQuorumLoss(t *testing.T) {
 	require.False(t, s.HasManagementProposal())
 }
 
+// TestSector_import_commitSplit_onInactiveSector reproduces the split receiver
+// sequence (シミュレーション 2026-07-06): the frontward sector is inactive by
+// definition while a split imports records into it and then activates it with
+// CommitSplit. ConsensusApplyProposal used to drop both proposals at the
+// "not activated yet" gate even though they committed, so Import timed out on
+// a healthy group and no split ever completed (784 attempts, 0 successes) —
+// the sector was terminated, re-created inactive, and re-split forever.
+func TestSector_import_commitSplit_onInactiveSector(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	tailNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+
+	handler := &sectorHandlerHelper{}
+	// healthy single-voter group; the sector stays inactive (no Activate)
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	s.Start(ctx)
+
+	require.Eventually(t, func() bool {
+		return s.consensus.Status().Lead != 0
+	}, 10*time.Second, 100*time.Millisecond)
+
+	require.NoError(t, s.Import(map[string][]byte{"key": []byte("value")}))
+	require.Nil(t, s.GetTailAddress()) // import alone must not activate
+
+	require.NoError(t, s.CommitSplit(tailNodeID))
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil && s.GetTailAddress().Equal(tailNodeID)
+	}, 10*time.Second, 100*time.Millisecond)
+	require.Equal(t, 0, handler.terminatedCount())
+}
+
 // TestSector_import_unblockedByForceTerminate combines both new mechanisms:
 // when a blocked operation outlives the quorum-loss detection, the forced
 // local destroy must wake it up with ErrSectorStopped (not fake success).
