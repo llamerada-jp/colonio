@@ -271,14 +271,24 @@ func (w *webRTCLinkNative) updateICE(ice string) error {
 }
 
 func (w *webRTCLinkNative) send(data []byte) error {
+	// Snapshot the state and send OUTSIDE the lock: dataChannel.Send descends
+	// into the SCTP stack and has been observed to stall while the association
+	// is dying. Holding the read lock across it blocks disconnect() (which
+	// needs the write lock), so the link could neither finish the send nor be
+	// torn down — the starting point of the na.mtx freeze documented at
+	// NodeAccessor.RelayPacket (シミュレーション 2026-07-06). dataChannel is
+	// never reassigned once set and Send on a closed/closing channel returns
+	// an error, so calling it after releasing the lock is safe.
 	w.mtx.RLock()
-	defer w.mtx.RUnlock()
+	active := w.active
+	dataChannel := w.dataChannel
+	w.mtx.RUnlock()
 
-	if !w.active {
+	if !active || dataChannel == nil {
 		return fmt.Errorf("link is not active")
 	}
 
-	if err := w.dataChannel.Send(data); err != nil {
+	if err := dataChannel.Send(data); err != nil {
 		return fmt.Errorf("failed to send data: %s", err)
 	}
 	return nil

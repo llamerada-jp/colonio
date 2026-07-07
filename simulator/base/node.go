@@ -16,9 +16,13 @@
 package base
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"math/rand"
+	"runtime/pprof"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,7 +39,35 @@ import (
 
 const (
 	messageKey = "simulator"
+	// stackWarnDuration is how long one runNode iteration may take before the
+	// watchdog warns; stackStopDuration is how long before the node is treated
+	// as a "network zombie" and forcibly stopped (シミュレーション 2026-07-06:
+	// ノード内部のロック滞留でループが MessagingPost 内に永久ブロックし、
+	// リンク keepalive だけが生き残る半死ノードが 12 件発生。既存の全
+	// 故障検知をすり抜けて undercount 赤 / is_stable 凍結の原因になった)。
+	stackWarnDuration = 5 * time.Second
+	stackStopDuration = 60 * time.Second
 )
+
+// dumpGoroutinesOnce writes an aggregated goroutine dump to stdout on the
+// first watchdog escalation, to pin down the exact frame the stacked loop is
+// blocked on. Once per process: one dump is enough to diagnose, and a full
+// dump of a 100-node process is large. Each line is prefixed with "==" so the
+// simulator's log collection keeps it (it drops lines without "=="/"@@").
+var dumpGoroutinesOnce sync.Once
+
+func dumpGoroutines() {
+	dumpGoroutinesOnce.Do(func() {
+		var buf bytes.Buffer
+		if err := pprof.Lookup("goroutine").WriteTo(&buf, 1); err != nil {
+			fmt.Println("== gdump: failed to dump goroutines:", err)
+			return
+		}
+		for _, line := range strings.Split(buf.String(), "\n") {
+			fmt.Println("== gdump:", line)
+		}
+	})
+}
 
 type Handler struct {
 	OnEachTime func(node *Node) error
@@ -228,12 +260,33 @@ func (n *Node) runNode(ctx context.Context) error {
 	for {
 		check := false
 		go func() {
-			time.Sleep(5 * time.Second)
-			mtx.Lock()
-			defer mtx.Unlock()
-			if !check && ctx != nil {
-				n.Logger.Warn("might be stacked")
+			isStuck := func() bool {
+				mtx.Lock()
+				defer mtx.Unlock()
+				return !check && ctx != nil
 			}
+
+			time.Sleep(stackWarnDuration)
+			if !isStuck() {
+				return
+			}
+			n.Logger.Warn("might be stacked")
+
+			// The loop never recovers once it blocks inside the node's network
+			// stack (na.mtx freeze); the node keeps its links and seed
+			// registration alive while being unable to send or receive, which
+			// poisons every raft group and neighbor around it. Dump the
+			// goroutines to identify the blocked frame, then stop the node so
+			// it becomes fully dead and the existing failure detectors
+			// (link timeout, force terminate, member reap) can take over.
+			time.Sleep(stackStopDuration - stackWarnDuration)
+			if !isStuck() {
+				return
+			}
+			dumpGoroutines()
+			n.Logger.Error("loop is stacked, stopping the node to avoid a network zombie",
+				"nodeID", localNodeID)
+			n.Col.Stop()
 		}()
 		timer := time.NewTimer(1 * time.Second)
 
