@@ -17,11 +17,13 @@ package kvs
 
 import (
 	"fmt"
+	"sync"
 
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 )
 
 type SimpleStore struct {
+	mtx    sync.RWMutex
 	stores map[kvsTypes.SectorKey]map[string][]byte
 }
 
@@ -34,6 +36,8 @@ func NewSimpleStore() *SimpleStore {
 }
 
 func (s *SimpleStore) AllocateSector(sectorKey *kvsTypes.SectorKey) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	if _, exists := s.stores[*sectorKey]; exists {
 		return fmt.Errorf("node already exists: %s", sectorKey.SectorID.String())
 	}
@@ -42,6 +46,8 @@ func (s *SimpleStore) AllocateSector(sectorKey *kvsTypes.SectorKey) error {
 }
 
 func (s *SimpleStore) ReleaseSector(sectorKey *kvsTypes.SectorKey) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	if _, exists := s.stores[*sectorKey]; !exists {
 		return fmt.Errorf("node does not exist: %s", sectorKey.SectorID.String())
 	}
@@ -53,6 +59,8 @@ func (s *SimpleStore) Set(sectorKey *kvsTypes.SectorKey, key string, value []byt
 	if value == nil {
 		return fmt.Errorf("value cannot be nil")
 	}
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 	if _, exists := s.stores[*sectorKey]; !exists {
 		return fmt.Errorf("node does not exist: %s", sectorKey.SectorID.String())
 	}
@@ -61,6 +69,8 @@ func (s *SimpleStore) Set(sectorKey *kvsTypes.SectorKey, key string, value []byt
 }
 
 func (s *SimpleStore) Get(sectorKey *kvsTypes.SectorKey, key string) ([]byte, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 	if _, exists := s.stores[*sectorKey]; !exists {
 		return nil, fmt.Errorf("node does not exist: %s", sectorKey.SectorID.String())
 	}
@@ -76,6 +86,8 @@ func (s *SimpleStore) Patch(sectorKey *kvsTypes.SectorKey, key string, value []b
 }
 
 func (s *SimpleStore) Delete(sectorKey *kvsTypes.SectorKey, key string) error {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 	if _, exists := s.stores[*sectorKey]; !exists {
 		return fmt.Errorf("node does not exist: %s", sectorKey.SectorID.String())
 	}
