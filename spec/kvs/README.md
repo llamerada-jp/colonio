@@ -567,17 +567,20 @@ Go 実装（いずれも 2026-07-06、詳細は run 8〜10 のセクション参
 - [x] **メンバー除去の out-of-band 通知**（COMMAND_REMOVE。除去済みメンバーの
       stale レプリカが強制破棄まで 30〜60 秒残留する赤の主因を解消。run 10）
 
-### 未完了（2026-07-04 時点の一覧）
+### 未完了（2026-07-09 run 11 反映）
 
 | 項目 | 種別 | 参照 |
 |------|------|------|
+| **prepare_merge (mergeBy) の解放経路**（preparer 死亡で merge 永久拒否 → activation チェーン恒久停止。run 11 の最重要） | 設計 + Go + モデル | run 11 (A) |
+| **disconnect 経路の na.mtx 保持解消**（nodeLinkChangeState / houseKeeping が pion Close 越しにロック保持 → zombie 残穴） | Go 実装 (node) | run 11 (C) |
 | TODO-1: quorum 喪失の拡張モデル（LocalDestroy の safety 検証） | モデル | 下表 |
 | TODO-2: stale active レプリカのガード緩和検証 | モデル | 下表 |
 | snapshot の本実装（operator serialize + appliedIndex + トリガ。ログ無限成長対策と表裏一体） | Go 実装 | run6 の残課題 |
-| is_stable ゲートの緩和（不安定時の修復凍結 = カバレッジ漸減の律速） | 設計 + Go | run4 改善候補 2 / run7 考察 |
+| is_stable ゲートの緩和（不安定時の修復凍結 = カバレッジ漸減の律速。run 11 で「接続不良 node 1 つで隣接の activation が skip 2 凍結」を確認、sectorActivate の失敗も観測不能） | 設計 + Go | run4 改善候補 2 / run7 考察 / run 11 (B) |
 | ManageMember のヒステリシス | Go 実装 | run4 改善候補 3 |
 | 改善案 A / C / D / E / F / G（B の残り: CommitMerge extendTailOnly を含む） | Go 実装 | アルゴリズム改善案 |
 | 同一 term 二重リーダー疑いの系譜特定（run6 の未特定事項） | 調査 | run6 |
+| Col.Stop() 後のセクター raft goroutine 残留（解析ノイズ） | Go 実装 (node/simulator) | run 11 その他 |
 
 ### 状況（2026-07-04 のシミュレーション解析より）
 
@@ -1032,6 +1035,104 @@ hosting sector 宛の REMOVE は拒否（host は自グループから除去さ�
 回帰テスト: `TestManager_OnSectorRemoveNode_notifiesRemovedMember` /
 `TestKVS_sectorManageMember_removeDestroysReplica` /
 `TestKVS_sectorManageMember_removeRejectsHostingSector`。
+
+#### run 10 後の node レイヤー修正（2026-07-06〜07-07、モデルのスコープ外）
+
+run 10 後の再解析で、残存する赤/黄の律速が KVS プロトコルから node レイヤーに
+移ったことを確認し、2 つの修正を実装した:
+
+1. **リンク死活検知の短縮**（commit a35c67b）: `SessionTimeout` 5min → 30s、
+   `KeepaliveInterval` 1min → 10s。死んだ node が他 node の routing ビューに
+   実測 151〜245 秒残留し、KVS の修復機構（memberSetupTimeout /
+   forceTerminateDuration = 30s）と時間スケールが合っていなかった。
+2. **network-zombie 対策**（commit fcee2eb）: `RelayPacket` / `webRTCLinkNative.send`
+   が na.mtx / w.mtx を pion の blocking call 越しに保持しない形に変更 +
+   simulator watchdog 強化（ループ 5s 停滞で warn、60s で goroutine dump と
+   `Col.Stop()` による強制停止）。send 中のリンク死亡で na.mtx が凍結し、
+   リンク keepalive だけ生き残る「半死 node」が 12 件発生していた。
+
+#### シミュレーション run 11（100 ノード・15 分、2026-07-09）: 非 active セクターの分析
+
+上記 2 修正の効果確認と「active（緑）にならないセクター」の原因調査
+（simulator/node.log + dump.json、23:36〜23:51）。
+
+**修正の効果**: 全体の約 8 割が緑を維持。dead node の検知→修復開始は
+約 50 秒（run 10 以前の 151〜245 秒残留は解消）。zombie は 12 件 → 1 件に
+減少し、watchdog は設計通り動作（warn → gdump → 60s で強制停止）。
+
+**残存問題**: 90 秒以上停滞するチェーンが 2 系統あり、いずれも未修正の
+別バグ。加えて zombie 1 件の凍結フレームが gdump で確定した。
+
+**(A) stale prepare_merge（mergeBy）デッドロック — 恒久停止、最重要**
+
+セクターチェーン c13fd132 → c1afd62e → c2e01337 が 200 秒以上 yellow の
+まま run 終了まで復旧しなかった。経緯:
+
+1. c063b759 が active セクター 019f4942-ec2f を host したまま 23:48:35 に
+   churn で停止。レプリカ群は quorum を保ったまま「host 不在の active
+   leftover」として残存。
+2. backward の bfa7be50 が設計通り merge で掃除を開始し、prepare_merge を
+   commit（mergeBy=bfa7be50）した直後の 23:49:26 に**自分も churn で停止**。
+3. 後任 bb89dd23 の merge は `merge is prepared by bfa7be50, not bb89dd23`
+   で毎秒失敗（27 回）。**`mergeBy` をクリアするコードはどこにもない**
+   （`sector.go` `processPrepareMergeProposal`: 一度セットしたら commit_merge
+   後も Terminate 時も preparer 死亡時も残る）。
+4. leftover が active なまま残るため、frontward の inactive セクター群は
+   `activateHostingSector` の overlap ガード（ログ「skip 1」）で activate
+   できない。leftover のグループは健全なので `checkQuorumLoss` の強制破棄も
+   発動しない → 恒久停止。
+
+> **設計ギャップ**: design.md の merge 手順は「prepare_merge は同時に 1
+> node」の排他だけで**解放条件が未定義**。split には「node[i] 消失を監視して
+> terminate」があるが、merge の preparer 死亡には対応するものがない。
+> kvs.go の既存 TODO「mergeSector: ターゲット離脱時の abort」とも別で、
+> 今回はターゲットではなく **merge する側**の死。
+
+なお run 中に同型の leftover ブロック（019f493d-8d77、skip 1 発火 118 回、
+被害 140 秒）が「たまたま間に別 node が join して frontward が変わった」
+ことで解消した例があり、**leftover の掃除経路は自力では機能していない**。
+
+→ 修正方針: preparer が routing から消えたら mergeBy をクリアする raft
+commit（lease/timeout でも可）を追加。design.md に解放条件を明記し、
+TLA+ モデル（PrepareMerge を持つ Raft 版以降）にも反映する。
+
+**(B) is_stable 永久 false → hosting sector 未作成 → 隣接の「skip 2」**
+
+run 終端で 8 セクターのチェーン（459964ea〜599d0676）が yellow。
+
+- 473531f4 は 23:46:25 の起動から 5 分間**一度も is_stable にならず**
+  （required 1d の 4ae30a39 が接続不良 conn=3 で繋がらない）、subRoutine が
+  走らないため hosting sector を一度も作らなかった。
+- backward の 459964ea は sectorActivate を毎秒受信するが、
+  `activateHostingSector` の candidate 探索が「frontward node の sector
+  レプリカが手元にあること」を要求するため「skip 2」で毎回断念。
+- **sectorActivate は skip しても err なしを返す**ので、送信側（42be922c）は
+  失敗を検知できず無限リトライ。
+
+design.md 既知課題「is_stable ゲートによる修復凍結」の新しい現れ方:
+接続不良 node が 1 つあるだけで隣の node の安定化が止まり、その先の
+activation チェーン全体が凍結する。対策候補: (a) sectorActivate 受信側が
+tail を frontwardNodeID そのもので決められるようにする、(b) is_stable の
+要件から到達不能 node を除外する、(c) 最低限 sectorActivate に失敗理由を
+返させ観測可能にする。
+
+**(C) zombie 残穴の凍結フレーム確定（fcee2eb の補完が必要）**
+
+残った zombie 1 件（bb89dd23、A のチェーンの起点でもある）の gdump より:
+`nodeLinkChangeState.func1`（node_accessor.go）が `na.mtx.Lock()` を保持した
+まま `disconnectLink(link, false)` → `link.disconnect()` → pion
+`PeerConnection.Close()` でブロック。fcee2eb は send 経路のロックは外したが、
+**disconnect 経路が na.mtx を握ったまま**だった（`houseKeeping` の
+`disconnectLink(link, false)` も同じ穴）。修正方針: RelayPacket と同様
+「ロック下で対象 link を収集 → 解放後に disconnect」。`disconnectLink` の
+`lock=true` 経路は既に disconnect をロック外で呼ぶ正しい形。
+
+**その他の観測**: `Col.Stop()` 後もセクターの raft ループ goroutine が
+生き残り、停止済み node が force terminate ログを出し続ける（c063b759 で
+停止 95 秒後まで確認）。シミュレーションの解析ノイズになるため、Stop での
+goroutine 終了を確認する余地あり。
+
+3 つの問題は独立しており、(C) を直しても (A)(B) は解決しない。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加

@@ -117,6 +117,24 @@ inactive セクターで捨てており、import 先が定義上 inactive であ
 - **is_stable ゲートによる修復凍結**: `subRoutine` は is_stable でないと
   ManageMember / operateSectors に到達しないため、churn 中は穴の修復
   （Extend / terminate frontward）も止まる。修復系操作の許可条件の再検討が必要。
+  **run 11 (2026-07-09) で新しい現れ方を確認**: 接続不良 node が required 1d に
+  1 つあるだけで隣接 node が is_stable=false のまま hosting sector を作れず
+  （実例: 5 分間一度も安定せず）、backward node の activateHostingSector が
+  「frontward node の sector レプリカが手元にある」ことを要求するため
+  「skip 2」で永久リトライ → その先の activation チェーン全体が凍結。
+  sectorActivate は skip しても成功応答を返すため送信側は検知できない。
+- **prepare_merge の解放条件が未定義（run 11 で恒久停止を確認・未修正）**:
+  `mergeBy` は最初の prepare_merge の commit でセットされたきり、どこでも
+  クリアされない（commit_merge 後も、terminate 時も、preparer 死亡時も）。
+  preparer が merge 完了前に死ぬと、後任の merge は
+  「merge is prepared by X, not Y」で永久拒否され、host 不在の active
+  leftover が残り続ける。leftover のグループは quorum 健全なので
+  checkQuorumLoss も発動せず、frontward の inactive 群は overlap ガード
+  （skip 1）で activate できない → activation チェーン恒久停止。
+  split には preparer 監視 + terminate があるが merge にはない。
+  対策: preparer の離脱検知で mergeBy をクリアする raft commit
+  （lease/timeout でも可）。モデルにも解放アクションの追加が必要。
+  詳細は README「シミュレーション run 11」参照。
 - ~~自己メンバーシップ~~（撤回）: run4 で疑ったが、force terminate ログの
   読み違いと判明。routing は自ノードを近傍リストから構造的に除外しており、
   「nextNodeIDs に自分が現れない」は不変条件（README run4 の訂正参照）。
@@ -173,6 +191,8 @@ note: address は円環になっているため、実装時は between に適宜
 
 - node[i] は sector[i+1] に prepare_merge を通知する
   prepare_merge は sector に対して同時に1つの node しか通知できない。すでに他の node から prepare_merge を受けている場合は失敗する
+  （**既知の欠陥**: prepare_merge の解放条件が未定義。preparer が merge 完了前に
+  死ぬと後任が永久に merge できない。上記「churn 下のメンバーシップ管理の課題」参照）
 - node[i] は sector[i+1] のデータを export して sector[i] に import する
 - node[i] は sector[i+1] に terminate を通知する
 - node[i] は sector[i] に commit_merge を通知し、sector[i] を [node[i].addr, sector[i+1].tail) の範囲で active にしなおす
