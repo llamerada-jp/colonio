@@ -518,3 +518,84 @@ func TestKVS_activateHostingSector_singleNode(t *testing.T) {
 		return tail != nil && tail.Equal(localNodeID)
 	}, 15*time.Second, 100*time.Millisecond)
 }
+
+// TestKVS_sectorActivate_clipsTailAtLeftover is a regression test for the
+// circular wait found in シミュレーション run 11/13 (2026-07-10): when a host
+// dies, its ACTIVE sector survives as a "leftover" kept alive by its healthy
+// replica group. With the leftover's head between the local node and its
+// routing frontward neighbor, the overlap guard ("skip 1") used to reject
+// activation forever — but the only sector positioned to merge the leftover
+// away is the local one, and merge requires it to be active first. The
+// activation must instead clip its tail to the leftover's head: [local,
+// leftover) overlaps nothing, and the active sector can then absorb the
+// leftover through the standard merge path (TLA+ KvsSectorLeftover Phase
+// L1/L2 で検証)。
+func TestKVS_sectorActivate_clipsTailAtLeftover(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// ring order: backward < local < dead < frontward
+	backwardNodeID := types.NewNormalNodeID(0x1000000000000000, 0)
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	deadNodeID := types.NewNormalNodeID(0x6000000000000000, 0)
+	frontwardNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+
+	handler := &kvsHandlerHelper{
+		isStable: true,
+		// the dead node is no longer part of the routing view
+		backwardNextNodeIDs:  []*types.NodeID{backwardNodeID},
+		frontwardNextNodeIDs: []*types.NodeID{frontwardNodeID},
+	}
+
+	k := newTestKVS(t, ctx, localNodeID, handler)
+	hostingSectorKey := setupHostingSector(t, k)
+
+	// ACTIVE replica left behind by the dead node (the leftover). Its raft
+	// group has no quorum here, so make it active by applying the committed
+	// Activate proposal directly — the replica state a member would hold.
+	leftoverSectorKey := kvsTypes.SectorKey{
+		SectorID: kvsTypes.SectorID(uuid.New()),
+		SectorNo: kvsTypes.SectorNo(2),
+	}
+	err := k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_CREATE,
+		sectorKey: leftoverSectorKey,
+		head:      deadNodeID,
+		members: map[kvsTypes.SectorNo]*types.NodeID{
+			kvsTypes.HostNodeSectorNo: deadNodeID,
+			kvsTypes.SectorNo(2):      localNodeID,
+		},
+	})
+	require.NoError(t, err)
+	k.mtx.RLock()
+	leftoverSector := k.sectors[leftoverSectorKey]
+	k.mtx.RUnlock()
+	require.NotNil(t, leftoverSector)
+	require.NoError(t, leftoverSector.ConsensusApplyProposal(&proto.ConsensusProposal{
+		Content: &proto.ConsensusProposal_Activate{
+			Activate: &proto.Activate{Tail: frontwardNodeID.Proto()},
+		},
+	}))
+
+	done := make(chan bool, 1)
+	go func() {
+		done <- k.sectorActivate(backwardNodeID, hostingSectorKey.SectorID)
+	}()
+	select {
+	case ok := <-done:
+		require.True(t, ok)
+	case <-time.After(10 * time.Second):
+		t.Fatal("sectorActivate did not return")
+	}
+
+	// the hosting sector must become active with the tail clipped to the
+	// leftover's head (NOT skipped, NOT overlapping the leftover)
+	k.mtx.RLock()
+	hostingSector := k.sectors[*hostingSectorKey]
+	k.mtx.RUnlock()
+	require.NotNil(t, hostingSector)
+	require.Eventually(t, func() bool {
+		tail := hostingSector.GetTailAddress()
+		return tail != nil && tail.Equal(deadNodeID)
+	}, 15*time.Second, 100*time.Millisecond)
+}

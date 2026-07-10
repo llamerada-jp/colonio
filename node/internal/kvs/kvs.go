@@ -945,6 +945,12 @@ func (k *KVS) activateHostingSector(hostingSector *sector.Sector, frontwardNextN
 		var candidate *sector.Sector
 		frontwardNodeID := frontwardNextNodeIDs[0]
 		fmt.Println(time.Now(), k.localNodeID.String(), "== frontwardNodeID", frontwardNodeID.String())
+		// blocker is the nearest ACTIVE sector head inside (local, frontwardNodeID)
+		// (TLA+ KvsSectorLeftover: CommitActivate / ActivateFirst の blockers)。
+		// Active-only: inactive replicas of departed nodes can remain in
+		// k.sectors for a while; if they are counted here, activation may be
+		// blocked forever because inactive replicas do not self-heal.
+		var blocker *types.NodeID
 		for sectorKey, sector := range k.sectors {
 			sectorHead := sector.GetHeadAddress()
 			fmt.Println(time.Now(), k.localNodeID.String(), "== check sector", sectorKey.String(), "head", sectorHead.String())
@@ -957,25 +963,29 @@ func (k *KVS) activateHostingSector(hostingSector *sector.Sector, frontwardNextN
 				}
 			}
 
-			// Overlap guard for ActivateFrontward: check only ACTIVE sectors
-			// (TLA+: \A other \in Actives : ~IsBetween(other, f, ft)).
-			// Why active-only: inactive replicas of departed nodes can remain in k.sectors
-			// for a while; if they are counted here, activation may be blocked forever
-			// because inactive replicas do not self-heal or progress this path.
-			// NOTE: シミュレーション (100ノード・ランダム停止, 2026-06/2026-07) で、
-			// 離脱ノードを head とする ACTIVE なレプリカが残留し、本ガードが永久発動して
-			// 活性化チェーンが止まるデッドロックを観測。掃除経路 (Terminate/Merge) は
-			// backward の hosting sector が active になった後にしか走らず、しかも
-			// 死んだグループでは Terminate 自体が raft コミットされない。
-			// head がルーティング上に存在しない active レプリカはガード対象から外すか、
-			// raft を経由せずローカル破棄する処理が必要。
-			// → sector.checkQuorumLoss として後者を実装 (2026-07-04)。死んだグループの
-			// レプリカはリーダー不在の継続または pending proposal の commit 停滞で
-			// ローカル破棄され、本ガードは解除される。
 			if sectorHead.IsBetween(k.localNodeID, frontwardNodeID) && sector.GetTailAddress() != nil {
-				fmt.Println(time.Now(), k.localNodeID.String(), "== skip 1: active sector", sectorKey.String(), "head", sectorHead.String(), "blocks activation toward", frontwardNodeID.String())
-				return nil
+				if blocker == nil || sectorHead.IsBetween(k.localNodeID, blocker) {
+					blocker = sectorHead
+				}
 			}
+		}
+		// An active sector between the local node and the frontward node is
+		// typically the leftover of a dead host, kept alive by its healthy
+		// replica group. Activation used to be rejected here ("skip 1") to
+		// avoid overlap — but the only sector positioned to merge the leftover
+		// away is this one, and merge requires it to be ACTIVE first: a
+		// circular wait that froze the activation chain until the leftover's
+		// group happened to lose quorum (シミュレーション run 11/13 で観測、
+		// run 13 では 14 分停止。TLA+ KvsSectorLeftover Phase L1 の liveness
+		// 違反として再現)。Instead, activate with the tail clipped to the
+		// nearest blocker: [local, blocker) does not overlap anything, and
+		// once this sector is active the standard merge path (with the
+		// ReleaseMerge backstop) absorbs the leftover and extends the tail
+		// (Phase L2 で liveness 回復、Phase L3 で誤検知 release との併発
+		// safety を検証済み)。
+		if blocker != nil {
+			fmt.Println(time.Now(), k.localNodeID.String(), "@@ Activate hosting sector clipped to", blocker.String(), "instead of", frontwardNodeID.String())
+			return blocker
 		}
 		if candidate == nil {
 			fmt.Println(time.Now(), k.localNodeID.String(), "== skip 2")

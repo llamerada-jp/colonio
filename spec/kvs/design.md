@@ -146,6 +146,7 @@ inactive セクターで捨てており、import 先が定義上 inactive であ
 | hosting sector<br>- active<br>- inactive | frontward sector<br>- not exist<br>- active<br>- inactive | frontward node<br>- match<br>- not match (frontward sector head < frontward node addr) | frontward sector head  | note                                   | action                     |
 | ---------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------- | -------------------------------------- | -------------------------- |
 | inactive                                 | (inactive)                                                | *                                                                                      | *                      | - entire: inactive<br>- member: stable | activate hosting sector    |
+| inactive                                 | active (leftover 等) が (自 addr, frontward node addr) 内に存在 | *                                                                              | *                      | 2026-07-10 追加                        | activate hosting sector<br>(tail を範囲内最近傍の active head に切り詰める) |
 | active                                   | not exist                                                 | *                                                                                      | *                      |                                        | skip                       |
 | active                                   | inactive                                                  | not match                                                                              | *                      |                                        | terminate frontward sector |
 | active                                   | inactive                                                  | match                                                                                  | < hosting sector tail  |                                        | split                      |
@@ -167,6 +168,14 @@ note: address は円環になっているため、実装時は between に適宜
 - seed は lease に似た仕組みで、active な node を選ぶ。選ばれた node は active な sector を持つことができる
 - node[i] は sector[i] を [node[i].addr, node[i+1].addr) の範囲で active にする
 - node[i] は seed に対して active になったことを通知する
+- **tail の切り詰め (2026-07-10 追加)**: [node[i].addr, node[i+1].addr) 内に
+  active な sector head (host 死亡後の leftover 等) が存在する場合、skip せず
+  tail をその範囲内最近傍の active head に切り詰めて activate する。
+  切り詰めた範囲は重複を生まない。active になった sector が通常の merge で
+  leftover を吸収し、tail が伸びる。skip すると「activate は leftover が
+  邪魔で不可、leftover の掃除 (merge) は active でないと不可」の循環待ちで
+  activation チェーンが恒久停止する (run 11/13 で観測、
+  `KvsSectorLeftover.tla` で検証。activate frontward sector 側も同じ)。
 
 ### activate frontward sector
 
