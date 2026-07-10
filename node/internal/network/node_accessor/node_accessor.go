@@ -401,14 +401,23 @@ func (na *NodeAccessor) assignedNodeID(nodeID *types.NodeID) bool {
 	return false
 }
 
+// disconnectLink unregisters the link and tears down its WebRTC session.
+// Set lock when the caller does not hold na.mtx.
+//
+// The teardown runs on its own goroutine, never under na.mtx: pion's
+// PeerConnection.Close() has been observed to hang while the peer's
+// association is dying, and holding na.mtx across it freezes send, receive
+// and IsOnline — the "network zombie". Worse, the hang is contagious: the
+// neighbor of a zombie freezes inside Close() while disconnecting the dying
+// link and becomes the next zombie (シミュレーション run 12, 2026-07-10:
+// 10 ノードがリング上を後方へ 2〜6 分間隔で連鎖)。The link is unregistered
+// from the maps synchronously, so no new packets are routed to it;
+// link.disconnect() stops the keepalive/buffer tickers and cancels the link
+// routine before the potentially-blocking Close(), so only the leaked
+// goroutine may linger.
 func (na *NodeAccessor) disconnectLink(link *nodeLink, lock bool) {
-	if err := link.disconnect(); err != nil {
-		na.logger.Error("failed to disconnect link", slog.String("error", err.Error()))
-	}
-
 	if lock {
 		na.mtx.Lock()
-		defer na.mtx.Unlock()
 	}
 
 	if nodeID := na.link2nodeID[link]; nodeID != nil {
@@ -421,6 +430,16 @@ func (na *NodeAccessor) disconnectLink(link *nodeLink, lock bool) {
 		delete(na.offerID2state, offerID)
 		delete(na.link2offerID, link)
 	}
+
+	if lock {
+		na.mtx.Unlock()
+	}
+
+	go func() {
+		if err := link.disconnect(); err != nil {
+			na.logger.Error("failed to disconnect link", slog.String("error", err.Error()))
+		}
+	}()
 }
 
 func (na *NodeAccessor) houseKeeping() error {

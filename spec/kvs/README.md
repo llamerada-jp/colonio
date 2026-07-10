@@ -593,7 +593,7 @@ Go 実装（いずれも 2026-07-06、詳細は run 8〜10 のセクション参
 
 | 項目 | 種別 | 参照 |
 |------|------|------|
-| **disconnect 経路の na.mtx 保持解消**（nodeLinkChangeState / houseKeeping が pion Close 越しにロック保持 → zombie 残穴） | Go 実装 (node) | run 11 (C) |
+| ~~disconnect 経路の na.mtx 保持解消~~ → **対策済み (2026-07-10)**。残候補: connect() 内 newNodeLink の pion 初期化が na.mtx 下 | Go 実装 (node) | run 12 の対策 |
 | TODO-1: quorum 喪失の拡張モデル（LocalDestroy の safety 検証） | モデル | 下表 |
 | TODO-2: stale active レプリカのガード緩和検証 | モデル | 下表 |
 | snapshot の本実装（operator serialize + appliedIndex + トリガ。ログ無限成長対策と表裏一体） | Go 実装 | run6 の残課題 |
@@ -1246,6 +1246,29 @@ run 終了まで安定** — zombie の発生源さえ止まれば修復機構�
 
 → 次の優先順位: **(C) disconnect 経路の na.mtx 保持解消**（連鎖の根源）、
 次いで (B) is_stable ゲート（修復テールの律速）。
+
+#### (C) disconnect 経路の修正（run 12 の対策、2026-07-10、モデルのスコープ外）
+
+`NodeAccessor.disconnectLink` を「map からの登録解除は同期（na.mtx 下）、
+`link.disconnect()` は専用 goroutine」に分離した。従来は disconnect()（pion
+`PeerConnection.Close()` に降りる。死にかけの association で無期限ハングする
+ことを run 11/12 の gdump で実測）を先に実行してから map を掃除していたため、
+na.mtx を保持する呼び出し元（`nodeLinkChangeState` / `houseKeeping` /
+`ConnectLinks` / `SignalingAnswer` / shutdown）が Close() のハングごと
+na.mtx を凍結させ、zombie 連鎖（run 12: 10 ノード）の根源になっていた。
+
+- 登録解除が同期なので、以後のパケットが死んだリンクへルーティングされる
+  ことはない。`nodeLink.disconnect()` は keepalive/buffer の ticker 停止と
+  ルーチンの context cancel を Close() の**前**に行うため、ハングが残っても
+  リークするのは goroutine 1 つだけで、リンクとしては即座に死ぬ。
+- 回帰テスト `TestNodeAccessor_disconnectDoesNotBlockMutex`（disconnect が
+  ブロックする stub webRTC link で、Close() ハング中も na.mtx が取得可能かつ
+  リンクが登録解除済みであることを検証）。修正前コードで
+  「na.mtx frozen (network zombie)」として失敗することを確認済み。
+- 残る候補: `connect()`（subRoutine / ConnectLinks から na.mtx 下で呼ばれる）
+  内の `newNodeLink` は pion の ICE agent / mDNS 初期化を含む。run 12 の
+  gdump に該当スタックが見えたがブロックの確証はない。zombie が再発する
+  場合はここを疑う。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加
