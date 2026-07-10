@@ -17,6 +17,7 @@ message ConsensusProposal {
     CommitMerge    commit_merge     = 7;
     Import         import           = 8;
     Operation      operation        = 9;
+    ReleaseMerge   release_merge    = 10;
   }
 }
 
@@ -40,6 +41,13 @@ message CommitSplit {
 }
 
 message PrepareMerge {
+  colonio.v1alpha.NodeID handler = 1;
+}
+
+// ReleaseMerge releases a stale prepare_merge claim. The apply is a CAS:
+// mergeBy is cleared only when it still equals `handler`, so a release that
+// races with a newer PrepareMerge never clears the newer claim.
+message ReleaseMerge {
   colonio.v1alpha.NodeID handler = 1;
 }
 

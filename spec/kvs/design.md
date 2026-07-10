@@ -123,18 +123,18 @@ inactive セクターで捨てており、import 先が定義上 inactive であ
   「frontward node の sector レプリカが手元にある」ことを要求するため
   「skip 2」で永久リトライ → その先の activation チェーン全体が凍結。
   sectorActivate は skip しても成功応答を返すため送信側は検知できない。
-- **prepare_merge の解放条件が未定義（run 11 で恒久停止を確認・未修正）**:
-  `mergeBy` は最初の prepare_merge の commit でセットされたきり、どこでも
-  クリアされない（commit_merge 後も、terminate 時も、preparer 死亡時も）。
-  preparer が merge 完了前に死ぬと、後任の merge は
-  「merge is prepared by X, not Y」で永久拒否され、host 不在の active
-  leftover が残り続ける。leftover のグループは quorum 健全なので
-  checkQuorumLoss も発動せず、frontward の inactive 群は overlap ガード
-  （skip 1）で activate できない → activation チェーン恒久停止。
-  split には preparer 監視 + terminate があるが merge にはない。
-  対策: preparer の離脱検知で mergeBy をクリアする raft commit
-  （lease/timeout でも可）。モデルにも解放アクションの追加が必要。
-  詳細は README「シミュレーション run 11」参照。
+- ~~prepare_merge の解放条件が未定義~~ → **ReleaseMerge で対策済み
+  (2026-07-10、モデル検証 → Go 実装)**: `mergeBy` は最初の prepare_merge の
+  commit でセットされたきりクリア経路がなく、preparer が merge 完了前に
+  死ぬと後任の merge / 対象セクターの split が永久拒否され activation
+  チェーンが恒久停止していた（run 11 で観測。`KvsSectorMergeLock.tla`
+  Phase 1 で liveness 違反として再現）。対策: 同一保持者の mergeBy に
+  30 秒（mergeReleaseDuration）連続で拒否されたレプリカが raft 経由で
+  `ReleaseMerge` を提案し、apply は「mergeBy = 保持者のときだけ nil に戻す」
+  CAS で決定的に解放する。解放ゲートの誤発動（保持者が実は生存）は
+  ロックなしのインターリービングに戻るだけで、safety はモデルの Phase 3
+  （無条件解放）で検証済み、生じうる重複は既存 Terminate 系が修復する。
+  詳細は README「mergeBy 解放のモデル検証と実装」参照。
 - ~~自己メンバーシップ~~（撤回）: run4 で疑ったが、force terminate ログの
   読み違いと判明。routing は自ノードを近傍リストから構造的に除外しており、
   「nextNodeIDs に自分が現れない」は不変条件（README run4 の訂正参照）。
@@ -191,8 +191,12 @@ note: address は円環になっているため、実装時は between に適宜
 
 - node[i] は sector[i+1] に prepare_merge を通知する
   prepare_merge は sector に対して同時に1つの node しか通知できない。すでに他の node から prepare_merge を受けている場合は失敗する
-  （**既知の欠陥**: prepare_merge の解放条件が未定義。preparer が merge 完了前に
-  死ぬと後任が永久に merge できない。上記「churn 下のメンバーシップ管理の課題」参照）
+- prepare_merge の解放条件: 同じ保持者による prepare_merge に一定時間
+  （mergeReleaseDuration = 30s）連続で拒否された sector のレプリカは、
+  release_merge を raft に提案してよい。release_merge の適用は
+  「保持者が一致するときだけ解放する」CAS とする（preparer が merge 完了前に
+  死ぬと解放経路がなく恒久停止するため。2026-07-10 追加、
+  `KvsSectorMergeLock.tla` で検証済み）
 - node[i] は sector[i+1] のデータを export して sector[i] に import する
 - node[i] は sector[i+1] に terminate を通知する
 - node[i] は sector[i] に commit_merge を通知し、sector[i] を [node[i].addr, sector[i+1].tail) の範囲で active にしなおす

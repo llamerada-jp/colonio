@@ -71,7 +71,7 @@ func (x Operation_Command) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Operation_Command.Descriptor instead.
 func (Operation_Command) EnumDescriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{9, 0}
+	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{10, 0}
 }
 
 type ConsensusProposal struct {
@@ -87,6 +87,7 @@ type ConsensusProposal struct {
 	//	*ConsensusProposal_CommitMerge
 	//	*ConsensusProposal_Import
 	//	*ConsensusProposal_Operation
+	//	*ConsensusProposal_ReleaseMerge
 	Content       isConsensusProposal_Content `protobuf_oneof:"content"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -210,6 +211,15 @@ func (x *ConsensusProposal) GetOperation() *Operation {
 	return nil
 }
 
+func (x *ConsensusProposal) GetReleaseMerge() *ReleaseMerge {
+	if x != nil {
+		if x, ok := x.Content.(*ConsensusProposal_ReleaseMerge); ok {
+			return x.ReleaseMerge
+		}
+	}
+	return nil
+}
+
 type isConsensusProposal_Content interface {
 	isConsensusProposal_Content()
 }
@@ -250,6 +260,10 @@ type ConsensusProposal_Operation struct {
 	Operation *Operation `protobuf:"bytes,9,opt,name=operation,proto3,oneof"`
 }
 
+type ConsensusProposal_ReleaseMerge struct {
+	ReleaseMerge *ReleaseMerge `protobuf:"bytes,10,opt,name=release_merge,json=releaseMerge,proto3,oneof"`
+}
+
 func (*ConsensusProposal_Activate) isConsensusProposal_Content() {}
 
 func (*ConsensusProposal_Terminate) isConsensusProposal_Content() {}
@@ -267,6 +281,8 @@ func (*ConsensusProposal_CommitMerge) isConsensusProposal_Content() {}
 func (*ConsensusProposal_Import) isConsensusProposal_Content() {}
 
 func (*ConsensusProposal_Operation) isConsensusProposal_Content() {}
+
+func (*ConsensusProposal_ReleaseMerge) isConsensusProposal_Content() {}
 
 type Activate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -524,6 +540,53 @@ func (x *PrepareMerge) GetHandler() *NodeID {
 	return nil
 }
 
+// ReleaseMerge releases a stale prepare_merge claim. The apply is a CAS:
+// mergeBy is cleared only when it still equals `handler`, so a release that
+// races with a newer PrepareMerge never clears the newer claim.
+type ReleaseMerge struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Handler       *NodeID                `protobuf:"bytes,1,opt,name=handler,proto3" json:"handler,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReleaseMerge) Reset() {
+	*x = ReleaseMerge{}
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseMerge) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseMerge) ProtoMessage() {}
+
+func (x *ReleaseMerge) ProtoReflect() protoreflect.Message {
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseMerge.ProtoReflect.Descriptor instead.
+func (*ReleaseMerge) Descriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ReleaseMerge) GetHandler() *NodeID {
+	if x != nil {
+		return x.Handler
+	}
+	return nil
+}
+
 type CommitMerge struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Tail          *NodeID                `protobuf:"bytes,1,opt,name=tail,proto3" json:"tail,omitempty"`
@@ -533,7 +596,7 @@ type CommitMerge struct {
 
 func (x *CommitMerge) Reset() {
 	*x = CommitMerge{}
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[7]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -545,7 +608,7 @@ func (x *CommitMerge) String() string {
 func (*CommitMerge) ProtoMessage() {}
 
 func (x *CommitMerge) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[7]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -558,7 +621,7 @@ func (x *CommitMerge) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitMerge.ProtoReflect.Descriptor instead.
 func (*CommitMerge) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{7}
+	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CommitMerge) GetTail() *NodeID {
@@ -577,7 +640,7 @@ type Import struct {
 
 func (x *Import) Reset() {
 	*x = Import{}
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[8]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -589,7 +652,7 @@ func (x *Import) String() string {
 func (*Import) ProtoMessage() {}
 
 func (x *Import) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[8]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -602,7 +665,7 @@ func (x *Import) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Import.ProtoReflect.Descriptor instead.
 func (*Import) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{8}
+	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Import) GetRecords() []*Import_Record {
@@ -624,7 +687,7 @@ type Operation struct {
 
 func (x *Operation) Reset() {
 	*x = Operation{}
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[9]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -636,7 +699,7 @@ func (x *Operation) String() string {
 func (*Operation) ProtoMessage() {}
 
 func (x *Operation) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[9]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -649,7 +712,7 @@ func (x *Operation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Operation.ProtoReflect.Descriptor instead.
 func (*Operation) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{9}
+	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Operation) GetCommand() Operation_Command {
@@ -690,7 +753,7 @@ type Import_Record struct {
 
 func (x *Import_Record) Reset() {
 	*x = Import_Record{}
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[10]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -702,7 +765,7 @@ func (x *Import_Record) String() string {
 func (*Import_Record) ProtoMessage() {}
 
 func (x *Import_Record) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[10]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -715,7 +778,7 @@ func (x *Import_Record) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Import_Record.ProtoReflect.Descriptor instead.
 func (*Import_Record) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{8, 0}
+	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{9, 0}
 }
 
 func (x *Import_Record) GetKey() string {
@@ -736,7 +799,7 @@ var File_api_colonio_v1alpha_consensus_proto protoreflect.FileDescriptor
 
 const file_api_colonio_v1alpha_consensus_proto_rawDesc = "" +
 	"\n" +
-	"#api/colonio/v1alpha/consensus.proto\x12\x13api.colonio.v1alpha\x1a\x1eapi/colonio/v1alpha/core.proto\"\xf2\x04\n" +
+	"#api/colonio/v1alpha/consensus.proto\x12\x13api.colonio.v1alpha\x1a\x1eapi/colonio/v1alpha/core.proto\"\xbc\x05\n" +
 	"\x11ConsensusProposal\x12;\n" +
 	"\bactivate\x18\x01 \x01(\v2\x1d.api.colonio.v1alpha.ActivateH\x00R\bactivate\x12>\n" +
 	"\tterminate\x18\x02 \x01(\v2\x1e.api.colonio.v1alpha.TerminateH\x00R\tterminate\x125\n" +
@@ -746,7 +809,9 @@ const file_api_colonio_v1alpha_consensus_proto_rawDesc = "" +
 	"\rprepare_merge\x18\x06 \x01(\v2!.api.colonio.v1alpha.PrepareMergeH\x00R\fprepareMerge\x12E\n" +
 	"\fcommit_merge\x18\a \x01(\v2 .api.colonio.v1alpha.CommitMergeH\x00R\vcommitMerge\x125\n" +
 	"\x06import\x18\b \x01(\v2\x1b.api.colonio.v1alpha.ImportH\x00R\x06import\x12>\n" +
-	"\toperation\x18\t \x01(\v2\x1e.api.colonio.v1alpha.OperationH\x00R\toperationB\t\n" +
+	"\toperation\x18\t \x01(\v2\x1e.api.colonio.v1alpha.OperationH\x00R\toperation\x12H\n" +
+	"\rrelease_merge\x18\n" +
+	" \x01(\v2!.api.colonio.v1alpha.ReleaseMergeH\x00R\freleaseMergeB\t\n" +
 	"\acontent\";\n" +
 	"\bActivate\x12/\n" +
 	"\x04tail\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x04tail\"\v\n" +
@@ -758,6 +823,8 @@ const file_api_colonio_v1alpha_consensus_proto_rawDesc = "" +
 	"\vCommitSplit\x12/\n" +
 	"\x04tail\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x04tail\"E\n" +
 	"\fPrepareMerge\x125\n" +
+	"\ahandler\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\ahandler\"E\n" +
+	"\fReleaseMerge\x125\n" +
 	"\ahandler\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\ahandler\">\n" +
 	"\vCommitMerge\x12/\n" +
 	"\x04tail\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x04tail\"x\n" +
@@ -790,7 +857,7 @@ func file_api_colonio_v1alpha_consensus_proto_rawDescGZIP() []byte {
 }
 
 var file_api_colonio_v1alpha_consensus_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_colonio_v1alpha_consensus_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_api_colonio_v1alpha_consensus_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_api_colonio_v1alpha_consensus_proto_goTypes = []any{
 	(Operation_Command)(0),    // 0: api.colonio.v1alpha.Operation.Command
 	(*ConsensusProposal)(nil), // 1: api.colonio.v1alpha.ConsensusProposal
@@ -800,11 +867,12 @@ var file_api_colonio_v1alpha_consensus_proto_goTypes = []any{
 	(*PreCommitSplit)(nil),    // 5: api.colonio.v1alpha.PreCommitSplit
 	(*CommitSplit)(nil),       // 6: api.colonio.v1alpha.CommitSplit
 	(*PrepareMerge)(nil),      // 7: api.colonio.v1alpha.PrepareMerge
-	(*CommitMerge)(nil),       // 8: api.colonio.v1alpha.CommitMerge
-	(*Import)(nil),            // 9: api.colonio.v1alpha.Import
-	(*Operation)(nil),         // 10: api.colonio.v1alpha.Operation
-	(*Import_Record)(nil),     // 11: api.colonio.v1alpha.Import.Record
-	(*NodeID)(nil),            // 12: api.colonio.v1alpha.NodeID
+	(*ReleaseMerge)(nil),      // 8: api.colonio.v1alpha.ReleaseMerge
+	(*CommitMerge)(nil),       // 9: api.colonio.v1alpha.CommitMerge
+	(*Import)(nil),            // 10: api.colonio.v1alpha.Import
+	(*Operation)(nil),         // 11: api.colonio.v1alpha.Operation
+	(*Import_Record)(nil),     // 12: api.colonio.v1alpha.Import.Record
+	(*NodeID)(nil),            // 13: api.colonio.v1alpha.NodeID
 }
 var file_api_colonio_v1alpha_consensus_proto_depIdxs = []int32{
 	2,  // 0: api.colonio.v1alpha.ConsensusProposal.activate:type_name -> api.colonio.v1alpha.Activate
@@ -813,22 +881,24 @@ var file_api_colonio_v1alpha_consensus_proto_depIdxs = []int32{
 	5,  // 3: api.colonio.v1alpha.ConsensusProposal.pre_commit_split:type_name -> api.colonio.v1alpha.PreCommitSplit
 	6,  // 4: api.colonio.v1alpha.ConsensusProposal.commit_split:type_name -> api.colonio.v1alpha.CommitSplit
 	7,  // 5: api.colonio.v1alpha.ConsensusProposal.prepare_merge:type_name -> api.colonio.v1alpha.PrepareMerge
-	8,  // 6: api.colonio.v1alpha.ConsensusProposal.commit_merge:type_name -> api.colonio.v1alpha.CommitMerge
-	9,  // 7: api.colonio.v1alpha.ConsensusProposal.import:type_name -> api.colonio.v1alpha.Import
-	10, // 8: api.colonio.v1alpha.ConsensusProposal.operation:type_name -> api.colonio.v1alpha.Operation
-	12, // 9: api.colonio.v1alpha.Activate.tail:type_name -> api.colonio.v1alpha.NodeID
-	12, // 10: api.colonio.v1alpha.Extend.tail:type_name -> api.colonio.v1alpha.NodeID
-	12, // 11: api.colonio.v1alpha.PreCommitSplit.tail:type_name -> api.colonio.v1alpha.NodeID
-	12, // 12: api.colonio.v1alpha.CommitSplit.tail:type_name -> api.colonio.v1alpha.NodeID
-	12, // 13: api.colonio.v1alpha.PrepareMerge.handler:type_name -> api.colonio.v1alpha.NodeID
-	12, // 14: api.colonio.v1alpha.CommitMerge.tail:type_name -> api.colonio.v1alpha.NodeID
-	11, // 15: api.colonio.v1alpha.Import.records:type_name -> api.colonio.v1alpha.Import.Record
-	0,  // 16: api.colonio.v1alpha.Operation.command:type_name -> api.colonio.v1alpha.Operation.Command
-	17, // [17:17] is the sub-list for method output_type
-	17, // [17:17] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	9,  // 6: api.colonio.v1alpha.ConsensusProposal.commit_merge:type_name -> api.colonio.v1alpha.CommitMerge
+	10, // 7: api.colonio.v1alpha.ConsensusProposal.import:type_name -> api.colonio.v1alpha.Import
+	11, // 8: api.colonio.v1alpha.ConsensusProposal.operation:type_name -> api.colonio.v1alpha.Operation
+	8,  // 9: api.colonio.v1alpha.ConsensusProposal.release_merge:type_name -> api.colonio.v1alpha.ReleaseMerge
+	13, // 10: api.colonio.v1alpha.Activate.tail:type_name -> api.colonio.v1alpha.NodeID
+	13, // 11: api.colonio.v1alpha.Extend.tail:type_name -> api.colonio.v1alpha.NodeID
+	13, // 12: api.colonio.v1alpha.PreCommitSplit.tail:type_name -> api.colonio.v1alpha.NodeID
+	13, // 13: api.colonio.v1alpha.CommitSplit.tail:type_name -> api.colonio.v1alpha.NodeID
+	13, // 14: api.colonio.v1alpha.PrepareMerge.handler:type_name -> api.colonio.v1alpha.NodeID
+	13, // 15: api.colonio.v1alpha.ReleaseMerge.handler:type_name -> api.colonio.v1alpha.NodeID
+	13, // 16: api.colonio.v1alpha.CommitMerge.tail:type_name -> api.colonio.v1alpha.NodeID
+	12, // 17: api.colonio.v1alpha.Import.records:type_name -> api.colonio.v1alpha.Import.Record
+	0,  // 18: api.colonio.v1alpha.Operation.command:type_name -> api.colonio.v1alpha.Operation.Command
+	19, // [19:19] is the sub-list for method output_type
+	19, // [19:19] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_api_colonio_v1alpha_consensus_proto_init() }
@@ -847,6 +917,7 @@ func file_api_colonio_v1alpha_consensus_proto_init() {
 		(*ConsensusProposal_CommitMerge)(nil),
 		(*ConsensusProposal_Import)(nil),
 		(*ConsensusProposal_Operation)(nil),
+		(*ConsensusProposal_ReleaseMerge)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -854,7 +925,7 @@ func file_api_colonio_v1alpha_consensus_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_colonio_v1alpha_consensus_proto_rawDesc), len(file_api_colonio_v1alpha_consensus_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

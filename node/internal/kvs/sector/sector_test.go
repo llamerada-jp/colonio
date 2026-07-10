@@ -377,6 +377,108 @@ func TestSector_import_commitSplit_onInactiveSector(t *testing.T) {
 	require.Equal(t, 0, handler.terminatedCount())
 }
 
+// TestSector_prepareMerge_releasedAfterHolderStalls reproduces the stale
+// prepare_merge deadlock (シミュレーション run 11, 2026-07-09): mergeBy had no
+// release path, so once a preparer committed prepare_merge and died before
+// commit_merge, every later PrepareMerge on the sector was rejected with
+// "merge is prepared by X" forever, and the activation chain stalled (TLA+
+// KvsSectorMergeLock Phase 1 の liveness 違反と同じ系列). A conflict that
+// outlives mergeReleaseDuration must now trigger a ReleaseMerge commit, after
+// which the surviving merger's PrepareMerge succeeds.
+func TestSector_prepareMerge_releasedAfterHolderStalls(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	deadHolderNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+	mergerNodeID := types.NewNormalNodeID(0xc000000000000000, 0)
+	tailNodeID := types.NewNormalNodeID(0xf000000000000000, 0)
+
+	handler := &sectorHandlerHelper{}
+	// healthy single-voter group
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	s.mergeReleaseDuration = 500 * time.Millisecond
+	s.Start(ctx)
+
+	// merges target active sectors only
+	s.Activate(*tailNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// the holder commits prepare_merge, then "dies" (never finishes the merge)
+	require.NoError(t, s.PrepareMerge(deadHolderNodeID))
+
+	// another merger is rejected while the claim is fresh
+	err := s.PrepareMerge(mergerNodeID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "merge is prepared by")
+	// the losing attempt must not leak a pending proposal (retry spam)
+	require.False(t, s.HasManagementProposal())
+
+	// after mergeReleaseDuration the conflict triggers ReleaseMerge and the
+	// merger's PrepareMerge goes through
+	require.Eventually(t, func() bool {
+		return s.PrepareMerge(mergerNodeID) == nil
+	}, 10*time.Second, 200*time.Millisecond)
+
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	require.True(t, s.mergeBy.Equal(mergerNodeID)) // CAS kept the new claim
+	require.Equal(t, 0, handler.terminatedCount())
+}
+
+// TestSector_preCommitSplit_releasedAfterHolderStalls covers the second victim
+// of a stale prepare_merge claim: PreCommitSplit on the hosting sector is
+// rejected while mergeBy is held, so a holder that died mid-merge used to
+// block every future split of this sector (the exact liveness violation shown
+// by TLA+ KvsSectorMergeLock Phase 1: a joiner inside the sector range can
+// never be activated). The conflict must also be detected before proposing:
+// the old in-wait check let the tail shrink commit while the caller aborted.
+func TestSector_preCommitSplit_releasedAfterHolderStalls(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	deadHolderNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+	splitNodeID := types.NewNormalNodeID(0xc000000000000000, 0)
+	tailNodeID := types.NewNormalNodeID(0xf000000000000000, 0)
+
+	handler := &sectorHandlerHelper{}
+	// healthy single-voter group
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	s.mergeReleaseDuration = 500 * time.Millisecond
+	s.Start(ctx)
+
+	s.Activate(*tailNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// a backward node commits prepare_merge on this sector, then "dies"
+	require.NoError(t, s.PrepareMerge(deadHolderNodeID))
+
+	// the split is rejected before proposing: the tail must not shrink
+	err := s.PreCommitSplit(splitNodeID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "merge is being prepared by")
+	require.True(t, s.GetTailAddress().Equal(tailNodeID))
+
+	// after mergeReleaseDuration the stale claim is released and the split
+	// proceeds
+	require.Eventually(t, func() bool {
+		return s.PreCommitSplit(splitNodeID) == nil
+	}, 10*time.Second, 200*time.Millisecond)
+	require.True(t, s.GetTailAddress().Equal(splitNodeID))
+	require.Equal(t, 0, handler.terminatedCount())
+}
+
 // TestSector_import_unblockedByForceTerminate combines both new mechanisms:
 // when a blocked operation outlives the quorum-loss detection, the forced
 // local destroy must wake it up with ErrSectorStopped (not fake success).

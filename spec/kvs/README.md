@@ -47,6 +47,12 @@ spec/kvs/
   KvsSectorRaftMC.tla      # Raft 版モデルパラメータ
   KvsSectorRaft.cfg        # Raft 版 TLC 設定
 
+  KvsSectorMergeLock.tla        # merge 排他ロック (mergeBy) + ReleaseMerge 版
+  KvsSectorMergeLockMC.tla      # 同モデルパラメータ (Phase 1/2 は定数を切替)
+  KvsSectorMergeLock.cfg        # 同 TLC 設定 (liveness 含む)
+  KvsSectorMergeLockSafetyMC.tla # Phase 3 (誤検知 safety) パラメータ
+  KvsSectorMergeLockSafety.cfg  # Phase 3 TLC 設定 (safety のみ)
+
   README.md                # このファイル
 ```
 
@@ -67,6 +73,8 @@ spec/kvs/
 | `ProposeMerge(n)`      | `mergeSector()` の ProposeMerge (Raft 版のみ) |
 | `CommitMerge(n)`       | `mergeSector()` の CommitMerge (Raft 版のみ) |
 | `AbortProposal(n)`     | 提案対象が離脱した場合のキャンセル (Raft 版のみ) |
+| `mergeLock[fs]`        | `Sector.mergeBy` (MergeLock 版のみ) |
+| `ReleaseMergeLock(fs)` | `Sector.checkMergeRelease` → ReleaseMerge 提案 (MergeLock 版のみ) |
 | `Join(n)`              | `hostingManager.ManageMember` がメンバー追加 |
 | `Leave(n)`             | `hostingManager.ManageMember` がメンバー削除 |
 | `RefreshRView(n)`      | routing / gossip の近傍情報伝播 |
@@ -161,6 +169,13 @@ java -jar tla2tools.jar -workers auto -config KvsSectorSepView.cfg KvsSectorSepV
 
 # Raft 非原子性版 (Terminate が発火)
 java -jar tla2tools.jar -workers auto -config KvsSectorRaft.cfg KvsSectorRaftMC.tla
+
+# merge 排他ロック + ReleaseMerge 版 (run 11 対策の検証)
+# Phase 2 (修正確認, デフォルト設定)。Phase 1 (バグ再現) は
+# KvsSectorMergeLockMC.tla の MC_EnableRelease を FALSE にして実行
+java -jar tla2tools.jar -workers auto -config KvsSectorMergeLock.cfg KvsSectorMergeLockMC.tla
+# Phase 3 (誤検知 safety)
+java -jar tla2tools.jar -workers auto -config KvsSectorMergeLockSafety.cfg KvsSectorMergeLockSafetyMC.tla
 ```
 
 ## パラメータ調整
@@ -567,11 +582,17 @@ Go 実装（いずれも 2026-07-06、詳細は run 8〜10 のセクション参
 - [x] **メンバー除去の out-of-band 通知**（COMMAND_REMOVE。除去済みメンバーの
       stale レプリカが強制破棄まで 30〜60 秒残留する赤の主因を解消。run 10）
 
-### 未完了（2026-07-09 run 11 反映）
+モデル + Go 実装（2026-07-10、詳細は「mergeBy 解放のモデル検証と実装」参照）:
+
+- [x] **prepare_merge (mergeBy) の解放経路**（`KvsSectorMergeLock.tla` で
+      バグ再現 (Phase 1 liveness 違反) → ReleaseMerge で回復 (Phase 2) →
+      誤検知 safety (Phase 3) を検証したうえで、ReleaseMerge 提案 +
+      mergeReleaseDuration ゲートを Go 実装。run 11 (A) の恒久停止を解消）
+
+### 未完了（2026-07-10 更新）
 
 | 項目 | 種別 | 参照 |
 |------|------|------|
-| **prepare_merge (mergeBy) の解放経路**（preparer 死亡で merge 永久拒否 → activation チェーン恒久停止。run 11 の最重要） | 設計 + Go + モデル | run 11 (A) |
 | **disconnect 経路の na.mtx 保持解消**（nodeLinkChangeState / houseKeeping が pion Close 越しにロック保持 → zombie 残穴） | Go 実装 (node) | run 11 (C) |
 | TODO-1: quorum 喪失の拡張モデル（LocalDestroy の safety 検証） | モデル | 下表 |
 | TODO-2: stale active レプリカのガード緩和検証 | モデル | 下表 |
@@ -1092,9 +1113,8 @@ run 10 後の再解析で、残存する赤/黄の律速が KVS プロトコル�
 被害 140 秒）が「たまたま間に別 node が join して frontward が変わった」
 ことで解消した例があり、**leftover の掃除経路は自力では機能していない**。
 
-→ 修正方針: preparer が routing から消えたら mergeBy をクリアする raft
-commit（lease/timeout でも可）を追加。design.md に解放条件を明記し、
-TLA+ モデル（PrepareMerge を持つ Raft 版以降）にも反映する。
+→ **対策済み (2026-07-10、モデル検証 → Go 実装の順で実施)**:
+下記「mergeBy 解放のモデル検証と実装」を参照。
 
 **(B) is_stable 永久 false → hosting sector 未作成 → 隣接の「skip 2」**
 
@@ -1133,6 +1153,66 @@ tail を frontwardNodeID そのもので決められるようにする、(b) is_
 goroutine 終了を確認する余地あり。
 
 3 つの問題は独立しており、(C) を直しても (A)(B) は解決しない。
+
+#### mergeBy 解放のモデル検証と実装（run 11 (A) の対策、2026-07-10）
+
+run 8 の教訓（apply 黙殺は実装先行では見つからない）を踏まえ、今回は
+**モデル反映 → Go 実装**の順で実施した。
+
+**モデル**: `KvsSectorMergeLock.tla`（Raft 版のコピー派生）。既存 Raft 版は
+(1) mergeBy に相当する target 側ロックを持たず（ProposeMerge は overlap
+ガードのみで排他）、(2) `Leave(n)` が `proposing[n] = "none"` を要求するため
+「prepare を commit した後、merge 完了前に preparer が死ぬ」系列が到達不能で、
+このバグを原理的に表現できなかった（TODO-1 の既知の制約の具体例）。差分:
+
+- `mergeLock[fs]`（= Go の `Sector.mergeBy`）を追加。`ProposeMerge` は
+  `mergeLock[fs] \in {-1, n}` を要求して取得、`ProposeSplit` は
+  `mergeLock[n] = -1` を要求（= PreCommitSplit の拒否）。セクター破棄
+  （CommitMerge 吸収 / Terminate / Leave）で当該セクターのロックは消えるが、
+  **離脱ノードが他セクターに保持するロックは残る**（バグの忠実な写像）。
+- `Leave` を `proposing \in {"none", "merge"}` に緩和（merge 中の死亡のみ。
+  activate/split 中の離脱は TODO-1 のスコープ）。
+- 修正本体 `ReleaseMergeLock(fs)`: 保持者が Members にいないとき生存メンバー
+  が解放（WF 付き）。誤検知検証用 `ReleaseMergeLockAny(fs)`: 保持者の生死に
+  関係なく解放できる（公平性なし）。
+
+**検証結果**（N=4, InitialMembers={0,1}, MaxChurn=3, 24 workers）:
+
+| Phase | 設定 | 結果 |
+|-------|------|------|
+| 1: バグ再現 | EnableRelease=FALSE | **EventuallyAllActive / EventuallyFullCoverage 違反**（72 秒、500 万状態生成）。counterexample は「1 が 2 のセクターに ProposeMerge（lock 取得）→ Leave(1) → Join(3) が (2,0) 内 → 2 の ProposeSplit が stale lock で永久ブロック → 0 と 3 が永遠に inactive」— run 11 と同型の系列 |
+| 2: 修正確認 | EnableRelease=TRUE | **全 safety + 全 liveness 成立**（14 分、5,545 万状態生成 / 584 万 distinct、深さ 40） |
+| 3: 誤検知 safety | +PermissiveRelease=TRUE (safety のみ) | **全 invariant 成立**（2 分、1 億 2,692 万状態生成 / 1,205 万 distinct、深さ 54）。解放ゲートがどれだけ誤発動しても safety は保たれる |
+
+モデルの抽象度の限界: sector = node のため run 11 の「host 死亡後の leftover
+への merge が塞がる」形そのものは表現できず（leftover が存在できない）、
+stale lock が split を塞ぐ形で同一バグを再現している。leftover 形は下記の
+Go 回帰テストで担保。
+
+**Go 実装**（検知と解放を `Sector` 内に封じ込め、kvs.go は無変更）:
+
+- proto: `ConsensusProposal` に `ReleaseMerge{handler}` を追加。apply は
+  「mergeBy = handler のときだけ nil に戻す」**CAS で決定的・冪等**
+  （新しい PrepareMerge と競合しても新しい claim を消さない）。activation
+  ゲートの前に適用する（run 8 の「apply は必ず完了する」規約）。
+- 解放ゲート: PrepareMerge / PreCommitSplit が同一保持者の mergeBy に
+  `mergeReleaseDuration`（30s、他の修復系と同スケール）連続で拒否されたら
+  ReleaseMerge を提案（`checkMergeRelease`、sector ループで毎 tick 判定）。
+  健全な merge は 1 秒未満で完了するため、30 秒継続する競合は保持者の死亡
+  または stall とみなせる。誤検知はロックなしのインターリービング（Phase 3
+  で safety 検証済み）に戻るだけで、生じうる重複は既存 Terminate 系が修復。
+- 付随修正: PrepareMerge / PreCommitSplit の mergeBy 競合チェックを
+  **propose 前**に移動（モデルの enabling と同じ意味論）。従来は propose 後
+  の waitProposal 内で検出しており、(a) 競合エラーで pending フラグが漏れて
+  retry tick ごとに再 propose される（run 11 で "pending prepareMerge" の
+  スパムとして観測）、(b) PreCommitSplit は apply 側にガードがないため
+  競合中でも tail 縮小だけ commit され、呼び出し元の abort と食い違う、
+  という 2 つの問題があった。
+- 回帰テスト: `TestSector_prepareMerge_releasedAfterHolderStalls`（leftover
+  形: 保持者死亡 → 後任の merge が release 後に成功、CAS の確認込み）/
+  `TestSector_preCommitSplit_releasedAfterHolderStalls`（split 形: Phase 1
+  counterexample と同じ被害経路、tail 非縮小の確認込み）。
+  いずれも修正前コードで失敗することを確認済み。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加
