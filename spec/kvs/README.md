@@ -617,7 +617,7 @@ Go 実装（いずれも 2026-07-06、詳細は run 8〜10 のセクション参
 
 | 項目 | 種別 | 参照 |
 |------|------|------|
-| **seed セッション喪失の「接続黒穴」node（run 14 の最上位残存要因: 26 体、領域単位の yellow 最長 17 分の原因）。client 側の AssignNode リトライ + challenge 競合 (ShortLifespan=10s) の解消** | Go 実装 (node/seed) | run 14 |
+| **seed セッション喪失の「接続黒穴」node（run 14 の最上位残存要因: 26 体、領域単位の yellow 最長 17 分の原因）** → challenge 競合は**対策済み (2026-07-11)**。AssignNode リトライ等の残 TODO は [spec/seed/README.md](../seed/README.md) に移管 | Go 実装 (node/seed) | run 14 / spec/seed |
 | ~~disconnect 経路の na.mtx 保持解消~~ → **対策済み (2026-07-10)**。残候補: connect() 内 newNodeLink の pion 初期化が na.mtx 下 | Go 実装 (node) | run 12 の対策 |
 | ~~leftover 循環待ち（inactive host + 範囲内 active leftover でチェーン恒久停止）~~ → **対策済み (2026-07-10)** | 設計 + Go + モデル | run 13 の対策 |
 | TODO-1: quorum 喪失の拡張モデル（LocalDestroy の safety 検証） | モデル | 下表 |
@@ -1430,19 +1430,16 @@ tail 切り詰め activation 導入後の確認 run。**最終フレームは ye
   `already subscribed` で拒否され続ける（keepalive 側は
   normalLifespan/2 = 15 分のタイマーまで解放されない）。
 
-**対策候補**（未実装、優先度順）:
+**対策**（詳細と TODO は [spec/seed/README.md](../seed/README.md) に移管）:
 
-1. **client 側の回復**: seed RPC が連続 N 回 (または T 秒) 失敗したら
-   AssignNode からやり直す（nodeID が変わるため network 層の再起動 =
-   node 再作成が自然）。少なくとも「黒穴のまま生き続ける」ことを防ぐ。
-2. **challenge 競合の解消**: ShortLifespan を client の再購読周期より
-   十分長く (例 30 秒) するか、challenge 応答を sleep なしで即時
-   再購読させる。
-3. **already subscribed の自己修復**: 新しい購読要求が来たら古い channel
-   を閉じて置き換える（同一 node の重複購読は新しい方を正とする）。
-4. (防御) 周辺 node 側: 特定 peer への接続試行が長時間失敗し続ける場合に
-   routing の必須集合から外す、または is_stable 判定を全リンク AND から
-   緩和する — ただし 1〜3 で黒穴自体が消えれば不要の可能性が高い。
+- **対応済み (2026-07-11)**: challenge 競合の解消を両輪で実施 —
+  ShortLifespan 10 秒 → 30 秒 (seed/seed.go) + client keepalive ループの
+  sleep をエラー時のみに変更 (seed_accessor.go、成功時は即再購読)。
+  未購読窓 ≒ RTT vs 猶予 30 秒となり競合は実質消える。
+- **TODO (spec/seed 側)**: (1) client の AssignNode リトライ（黒穴の
+  恒久解。run 15 で `failed to poll` の 10 秒間隔ストリークが残存したら
+  着手）、(2) already subscribed の自己修復、(3) 周辺 node 側の防御
+  (is_stable 緩和とセットで判断)。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加

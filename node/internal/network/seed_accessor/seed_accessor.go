@@ -135,13 +135,20 @@ func (sa *SeedAccessor) Start(ctx context.Context) (*types.NodeID, error) {
 				return
 
 			default:
+				// Keepalive is a long-poll: the seed holds the request until a
+				// keepalive challenge or its own timer, so pacing comes from the
+				// server. Do not sleep on success: a challenge shortens the node
+				// lifespan to the seed's shortLifespan, and the lifespan is
+				// restored only by the next Keepalive call — sleeping here races
+				// against the eviction and can permanently detach the node from
+				// signaling (シミュレーション run 14, 2026-07-10: 「接続黒穴」).
 				if err := sa.keepalive(); err != nil {
 					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 						return
 					}
 					sa.logger.Warn("failed to keepalive", slog.String("error", err.Error()))
+					time.Sleep(10 * time.Second)
 				}
-				time.Sleep(10 * time.Second)
 			}
 		}
 	}()
