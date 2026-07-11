@@ -118,8 +118,8 @@ func (n *Node) Start(ctx context.Context) error {
 				return err
 			}
 
-			// Randomly generate a duration between 30 seconds and 10 minutes
-			durationSec := rand.Intn(9*60+30) + 30
+			// Randomly generate a duration between 1~10 minutes
+			durationSec := rand.Intn(19*60) + 60
 			timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(durationSec)*time.Second)
 			if err := n.runNode(timeoutCtx); err != nil {
 				n.Logger.Error("node error", "error", err)
