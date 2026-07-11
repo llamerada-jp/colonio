@@ -136,6 +136,12 @@ func (c *joinTestCluster) appendedCount(observer, member kvsTypes.SectorNo) int 
 	return c.appended[observer][member]
 }
 
+func (c *joinTestCluster) snapshotCount(sectorNo kvsTypes.SectorNo) int {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	return c.snapshots[sectorNo]
+}
+
 func activateProposal(nodeID *types.NodeID) *proto.ConsensusProposal {
 	return &proto.ConsensusProposal{
 		Content: &proto.ConsensusProposal_Activate{

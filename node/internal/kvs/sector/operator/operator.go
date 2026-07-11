@@ -165,10 +165,43 @@ func (s *Operator) ImportRecords(records map[string][]byte) error {
 	return nil
 }
 
-func (s *Operator) ExportSnapshot() ([]byte, error) {
-	panic("exportSnapshot not implemented")
+// ExportAllRecords dumps every record of the sector without range filtering.
+// Snapshots must use this instead of ExportRecords: a not-yet-activated
+// sector has no tail to filter by but may already hold records (split imports
+// into the inactive frontward sector before CommitSplit activates it).
+func (s *Operator) ExportAllRecords() (map[string][]byte, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	records := make(map[string][]byte)
+
+	for key := range s.keys {
+		value, err := s.store.Get(&s.sectorKey, key)
+		if err != nil {
+			return nil, err
+		}
+		records[key] = value
+	}
+
+	return records, nil
 }
 
-func (s *Operator) ImportSnapshot(data []byte) error {
-	panic("importSnapshot not implemented")
+// ReplaceRecords swaps the whole record set for the snapshot's one. Unlike
+// ImportRecords (a merge), applying a snapshot must delete local records that
+// the snapshot does not contain — a replica that fell behind may hold keys
+// the group has since deleted. The caller resets the store sector
+// (ReleaseSector/AllocateSector) before calling this.
+func (s *Operator) ReplaceRecords(records map[string][]byte) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	s.keys = make(map[string]any)
+	for key, value := range records {
+		if err := s.store.Set(&s.sectorKey, key, value); err != nil {
+			return err
+		}
+		s.keys[key] = struct{}{}
+	}
+
+	return nil
 }

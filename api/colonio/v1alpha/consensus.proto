@@ -63,6 +63,44 @@ message Import {
   repeated Record records = 1;
 }
 
+// SectorSnapshot is the sector-layer state machine snapshot: the replicated
+// state after applying all log entries up to the snapshot index. Local intent
+// fields (proposal*, splittingAddress, timers) are deliberately excluded —
+// each replica rebuilds those from its own role. It is produced by
+// Handler.ConsensusGetSnapshot and consumed by Handler.ConsensusApplySnapshot;
+// the consensus layer treats it as opaque bytes (see ConsensusSnapshot).
+message SectorSnapshot {
+  // All KV records of the sector. A not-yet-activated sector may hold
+  // records (split imports into the inactive frontward sector before
+  // CommitSplit activates it), so records must not be tied to tail.
+  repeated Import.Record records = 1;
+
+  // Activation + range state; unset means not activated. Ignored when
+  // terminated is true (terminate clears the operator range but keeps
+  // Sector.tail, so tail carries no meaning after termination).
+  colonio.v1alpha.NodeID tail = 2;
+
+  // Current prepare_merge holder (merge lock); unset means unlocked. Must be
+  // included: a replica restored without it would diverge from the group's
+  // merge-lock state (KvsSectorMergeLock safety).
+  colonio.v1alpha.NodeID merge_by = 3;
+
+  bool terminated = 4;
+}
+
+// ConsensusSnapshot is the outer message stored in raftpb.Snapshot.Data. It
+// wraps the sector-layer payload with the consensus-layer member table:
+// sectorNo→nodeID routing is built only by conf-change replay, which a
+// snapshot-joining member cannot perform once the log is compacted, and
+// raft's ConfState carries raft IDs only.
+message ConsensusSnapshot {
+  // Serialized SectorSnapshot, passed through to the handler unparsed.
+  bytes sector_state = 1;
+
+  // sectorNo → nodeID member table for raft message routing.
+  map<uint64, colonio.v1alpha.NodeID> members = 2;
+}
+
 message Operation {
   enum Command {
     // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX

@@ -30,6 +30,7 @@ import (
 	"github.com/llamerada-jp/colonio/types"
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	"go.etcd.io/raft/v3"
+	proto3 "google.golang.org/protobuf/proto"
 )
 
 // ErrProposalTimeout is returned by blocking sector operations when the raft
@@ -1174,12 +1175,115 @@ func (s *Sector) ConsensusRemoveNode(sectorNo kvsTypes.SectorNo) {
 	s.handler.SectorRemoveNode(&s.sectorKey, sectorNo)
 }
 
+// ConsensusGetSnapshot assembles the sector-layer snapshot: exactly the
+// replicated state that ConsensusApplyProposal mutates (records, tail,
+// mergeBy, terminated) and none of the local intent (proposal* flags,
+// splittingAddress) — each replica rebuilds those from its own role.
+// See spec/kvs/snapshot.md.
+//
+// Runs on the consensus loop goroutine, serialized with the apply handlers;
+// s.mtx is held across the record export so the payload is a consistent cut
+// (applies mutate records while holding s.mtx for writing).
 func (s *Sector) ConsensusGetSnapshot() ([]byte, error) {
-	return s.operator.ExportSnapshot()
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	records, err := s.operator.ExportAllRecords()
+	if err != nil {
+		return nil, err
+	}
+
+	snapshot := &proto.SectorSnapshot{
+		Records:    make([]*proto.Import_Record, 0, len(records)),
+		Terminated: s.terminated,
+	}
+	for key, value := range records {
+		snapshot.Records = append(snapshot.Records, &proto.Import_Record{
+			Key:   key,
+			Value: value,
+		})
+	}
+	if s.tail != nil {
+		snapshot.Tail = s.tail.Proto()
+	}
+	if s.mergeBy != nil {
+		snapshot.MergeBy = s.mergeBy.Proto()
+	}
+
+	return proto3.Marshal(snapshot)
 }
 
-func (s *Sector) ConsensusApplySnapshot(snapshot []byte) error {
-	return s.operator.ImportSnapshot(snapshot)
+// ConsensusApplySnapshot replaces the local sector state with the snapshot.
+// Replacement, not merge: a replica that fell behind may hold keys the group
+// has since deleted, so the store sector is reset before importing. Like the
+// apply handlers this must be idempotent and, like them, it must not
+// resurrect a stopped or terminated replica.
+func (s *Sector) ConsensusApplySnapshot(data []byte) error {
+	snapshot := &proto.SectorSnapshot{}
+	if err := proto3.Unmarshal(data, snapshot); err != nil {
+		return fmt.Errorf("failed to unmarshal sector snapshot: %w", err)
+	}
+
+	s.mtx.Lock()
+	defer func() {
+		s.mtx.Unlock()
+		s.cond.Broadcast()
+	}()
+
+	if snapshot.Terminated {
+		return s.terminateLocked()
+	}
+	if s.stopped || s.terminated {
+		return nil
+	}
+
+	// Reset the store sector so ReplaceRecords starts from empty. Both calls
+	// tolerate errors like the activate/import handlers do: ReleaseSector
+	// fails when the sector was never allocated (an inactive replica), which
+	// is the normal case for a fresh joiner.
+	if err := s.store.ReleaseSector(&s.sectorKey); err != nil {
+		fmt.Println(time.Now(), s.head.String(), "@@ apply snapshot: release sector skipped:", err)
+	}
+	if err := s.store.AllocateSector(&s.sectorKey); err != nil {
+		fmt.Println(time.Now(), s.head.String(), "@@ apply snapshot: allocate sector skipped:", err)
+	}
+
+	// Clear the range before importing so the SetRange below starts from the
+	// nil-range branch and never walks the delete loop against records that
+	// are being replaced anyway.
+	s.tail = nil
+	s.operator.ClearRange()
+
+	records := make(map[string][]byte, len(snapshot.Records))
+	for _, record := range snapshot.Records {
+		records[record.Key] = record.Value
+	}
+	if err := s.operator.ReplaceRecords(records); err != nil {
+		return fmt.Errorf("failed to replace records from snapshot: %w", err)
+	}
+
+	if snapshot.Tail != nil {
+		tail, err := types.NewNodeIDFromProto(snapshot.Tail)
+		if err != nil {
+			return fmt.Errorf("failed to parse tail NodeID in snapshot: %w", err)
+		}
+		s.tail = tail
+		if err := s.operator.SetRange(*tail); err != nil {
+			return fmt.Errorf("failed to set range from snapshot: %w", err)
+		}
+	}
+
+	if snapshot.MergeBy != nil {
+		mergeBy, err := types.NewNodeIDFromProto(snapshot.MergeBy)
+		if err != nil {
+			return fmt.Errorf("failed to parse mergeBy NodeID in snapshot: %w", err)
+		}
+		s.mergeBy = mergeBy
+	} else {
+		s.mergeBy = nil
+	}
+
+	return nil
 }
 
 func (s *Sector) OperatorProposeOperation(operation *proto.Operation) {

@@ -18,6 +18,7 @@ package consensus
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"maps"
 	"slices"
@@ -63,15 +64,16 @@ type Config struct {
 }
 
 // snapshotGuardStorage wraps MemoryStorage to keep raft from panicking when a
-// leader is asked to send a snapshot it does not have. Snapshot creation is
-// not implemented yet (operator.ExportSnapshot is a stub and appliedIndex is
-// never advanced, so maybeTriggerSnapshot never fires); raft however reaches
-// maybeSendSnapshot whenever a follower's Next falls outside the leader's log
-// and panics on an empty snapshot ("need non-empty snapshot", シミュレーション
-// run6, 2026-07-04 で観測). Returning ErrSnapshotTemporarilyUnavailable makes
-// raft skip the send instead: the follower stays unsynced and is eventually
-// re-added under a fresh sectorNo by the membership manager's reap, after
-// which it can catch up from entry 1 (the log is never compacted).
+// leader is asked to send a snapshot before the first one has been created
+// (maybeTriggerSnapshot fires only after snapCount applied entries). Raft
+// reaches maybeSendSnapshot whenever a follower's Next falls outside the
+// leader's log and panics on an empty snapshot ("need non-empty snapshot",
+// シミュレーション run6, 2026-07-04 で観測). Returning
+// ErrSnapshotTemporarilyUnavailable makes raft skip the send instead: before
+// the first snapshot the log is still uncompacted, so the follower can catch
+// up from entry 1 (or is re-added under a fresh sectorNo by the membership
+// manager's reap). Once a snapshot exists it passes through unchanged and
+// lagging followers are served via InstallSnapshot.
 type snapshotGuardStorage struct {
 	*raft.MemoryStorage
 }
@@ -147,8 +149,9 @@ func NewConsensus(config *Config) *Consensus {
 	if !config.Join {
 		// Attach the node ID as the peer context: StartNode synthesizes a
 		// ConfChangeAddNode entry per peer, and these entries are replayed from
-		// the head of the log by every member that joins later (the log is
-		// never compacted — snapshots are not implemented). Without the
+		// the head of the log by every member that joins before the first
+		// compaction (after compaction the joiner instead receives the member
+		// table inside the snapshot; see applySnapshot). Without the
 		// context, a replaying member can resolve a bootstrap sectorNo only
 		// through its own initial member table. That table is the membership
 		// manager's CURRENT view at append time, so it no longer contains
@@ -220,13 +223,13 @@ func (n *Consensus) Start(ctx context.Context) {
 
 			case rd := <-n.raftNode.Ready():
 				if !raft.IsEmptySnap(rd.Snapshot) {
-					n.raftStorage.ApplySnapshot(rd.Snapshot)
-					n.mtx.Lock()
-					n.confState = rd.Snapshot.Metadata.ConfState
-					n.mtx.Unlock()
-					n.snapshotIndex = rd.Snapshot.Metadata.Index
-					n.appliedIndex = rd.Snapshot.Metadata.Index
-					n.handler.ConsensusApplySnapshot(rd.Snapshot.Data)
+					if err := n.applySnapshot(rd.Snapshot); err != nil {
+						// Log-and-continue like publishEntries: aborting the
+						// loop would stop the replica entirely, while a failed
+						// snapshot apply leaves it unsynced until the
+						// membership manager reaps and re-adds it.
+						n.logger.Error("Failed to apply snapshot", "error", err)
+					}
 				}
 
 				if err := n.raftStorage.Append(rd.Entries); err != nil {
@@ -327,7 +330,7 @@ func (n *Consensus) maybePromoteLearners() {
 			continue
 		}
 		// Never propose a promotion without the member's node ID: an
-		// empty-context AddNode entry stays in the never-compacted log and can
+		// empty-context AddNode entry stays in the log until compaction and can
 		// only be resolved by replicas that already have the ID in their
 		// members table. Every member that joins later replays it, fails, and
 		// enters the divergence chain documented at the bootstrap peers in
@@ -428,6 +431,23 @@ func (n *Consensus) sendMessages(messages []raftpb.Message) error {
 }
 
 func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	// Skip entries already covered by the applied state — e.g. entries that
+	// overlap a snapshot applied in the same Ready batch (mirrors etcd's
+	// raftexample). A gap above appliedIndex+1 must never happen; applying
+	// across it would silently skip committed entries, so refuse the batch.
+	firstIndex := entries[0].Index
+	if firstIndex > n.appliedIndex+1 {
+		return fmt.Errorf("first index of committed entries (%d) leaves a gap above applied index (%d)", firstIndex, n.appliedIndex)
+	}
+	if n.appliedIndex-firstIndex+1 >= uint64(len(entries)) {
+		return nil // every entry is already applied
+	}
+	entries = entries[n.appliedIndex-firstIndex+1:]
+
 	proposals := make([]*proto.ConsensusProposal, 0)
 
 	for _, entry := range entries {
@@ -500,6 +520,12 @@ func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
 		}
 	}
 
+	// Advance appliedIndex only after the whole batch is applied: it is what
+	// maybeTriggerSnapshot snapshots at, so it must never run ahead of the
+	// state machine (a snapshot taken beyond the applied state would drop the
+	// unapplied suffix for every future snapshot-joining member).
+	n.appliedIndex = entries[len(entries)-1].Index
+
 	return nil
 }
 
@@ -558,13 +584,67 @@ func (n *Consensus) applyConfChangeSingle(ccType raftpb.ConfChangeType, id uint6
 	return nil
 }
 
+// applySnapshot installs a received snapshot: raft storage and metadata,
+// the consensus-layer member table, and the sector-layer state (via the
+// handler). The member table is REPLACED, not merged — the snapshot's members
+// map is the group's authoritative sectorNo→nodeID view at the snapshot
+// index, and a member joining via snapshot never replays the compacted
+// conf-change entries that would otherwise build it (see spec/kvs/snapshot.md).
+func (n *Consensus) applySnapshot(snapshot raftpb.Snapshot) error {
+	wrapper := &proto.ConsensusSnapshot{}
+	if err := proto3.Unmarshal(snapshot.Data, wrapper); err != nil {
+		return err
+	}
+	members := make(map[kvsTypes.SectorNo]*types.NodeID, len(wrapper.Members))
+	for id, nodeIDProto := range wrapper.Members {
+		nodeID, err := types.NewNodeIDFromProto(nodeIDProto)
+		if err != nil {
+			return err
+		}
+		members[kvsTypes.SectorNo(id)] = nodeID
+	}
+
+	if err := n.raftStorage.ApplySnapshot(snapshot); err != nil {
+		return err
+	}
+	n.mtx.Lock()
+	n.confState = snapshot.Metadata.ConfState
+	n.members = members
+	n.mtx.Unlock()
+	n.snapshotIndex = snapshot.Metadata.Index
+	n.appliedIndex = snapshot.Metadata.Index
+
+	return n.handler.ConsensusApplySnapshot(wrapper.SectorState)
+}
+
+// buildSnapshotData wraps the handler's sector-layer payload with the
+// consensus-layer member table into the bytes stored in raftpb.Snapshot.Data.
+func (n *Consensus) buildSnapshotData() ([]byte, error) {
+	sectorState, err := n.handler.ConsensusGetSnapshot()
+	if err != nil {
+		return nil, err
+	}
+
+	n.mtx.RLock()
+	members := make(map[uint64]*proto.NodeID, len(n.members))
+	for sectorNo, nodeID := range n.members {
+		members[uint64(sectorNo)] = nodeID.Proto()
+	}
+	n.mtx.RUnlock()
+
+	return proto3.Marshal(&proto.ConsensusSnapshot{
+		SectorState: sectorState,
+		Members:     members,
+	})
+}
+
 func (n *Consensus) maybeTriggerSnapshot() error {
 	// Trigger a snapshot if the number of applied entries exceeds the threshold
 	if n.appliedIndex-n.snapshotIndex <= n.snapCount {
 		return nil
 	}
 
-	data, err := n.handler.ConsensusGetSnapshot()
+	data, err := n.buildSnapshotData()
 	if err != nil {
 		return err
 	}
