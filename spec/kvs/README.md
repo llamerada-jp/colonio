@@ -617,8 +617,9 @@ Go 実装（いずれも 2026-07-06、詳細は run 8〜10 のセクション参
 
 | 項目 | 種別 | 参照 |
 |------|------|------|
-| **seed セッション喪失の「接続黒穴」node（run 14 の最上位残存要因: 26 体、領域単位の yellow 最長 17 分の原因）** → challenge 競合は**対策済み (2026-07-11)**。AssignNode リトライ等の残 TODO は [spec/seed/README.md](../seed/README.md) に移管 | Go 実装 (node/seed) | run 14 / spec/seed |
-| ~~disconnect 経路の na.mtx 保持解消~~ → **対策済み (2026-07-10)**。残候補: connect() 内 newNodeLink の pion 初期化が na.mtx 下 | Go 実装 (node) | run 12 の対策 |
+| ~~seed セッション喪失の「接続黒穴」node（run 14 の最上位残存要因: 26 体、領域単位の yellow 最長 17 分の原因）~~ → challenge 競合を**対策済み (2026-07-11)、run 15 (6.8h) で 0 件を確認**。AssignNode リトライ等の残 TODO は [spec/seed/README.md](../seed/README.md) に移管 | Go 実装 (node/seed) | run 14 / run 15 / spec/seed |
+| ~~disconnect 経路の na.mtx 保持解消~~ → **対策済み (2026-07-10)**。~~残候補: connect() 内 newNodeLink の pion 初期化が na.mtx 下~~ → **run 15 の gdump で無実を確認** (重い ICE/mDNS 生成は非同期側、na.mtx 下の NewPeerConnection は軽量) | Go 実装 (node) | run 12 の対策 / run 15 続報 |
+| simulator の loop-stuck 連鎖死 (Go runtime の sync.Pool convoy、180 node/1 process 起因)。node 数削減 / GOGC / mDNS 無効化で緩和 | simulator | run 15 続報 |
 | ~~leftover 循環待ち（inactive host + 範囲内 active leftover でチェーン恒久停止）~~ → **対策済み (2026-07-10)** | 設計 + Go + モデル | run 13 の対策 |
 | TODO-1: quorum 喪失の拡張モデル（LocalDestroy の safety 検証） | モデル | 下表 |
 | TODO-2: stale active レプリカのガード緩和検証 | モデル | 下表 |
@@ -1440,6 +1441,91 @@ tail 切り詰め activation 導入後の確認 run。**最終フレームは ye
   恒久解。run 15 で `failed to poll` の 10 秒間隔ストリークが残存したら
   着手）、(2) already subscribed の自己修復、(3) 周辺 node 側の防御
   (is_stable 緩和とセットで判断)。
+
+#### シミュレーション run 15（180 ノード・6.8 時間、2026-07-10〜11）: 黒穴修正の確認と残存 tail の分類
+
+challenge 競合修正後の長時間 run。node.log は最初の 4 時間で途切れている
+（dump は 6.8 時間分）。churn 率は run 14 と同等 (約 1,000 starts/h) で、
+寿命 60 秒以上の node 寿命は 6,753 (run 14 の 3.6 倍のサンプル)。
+
+**黒穴は完全に消滅し、修正の因果が確定**:
+
+| 指標 | run 14 | run 15 | 変化 |
+|------|--------|--------|------|
+| `failed to poll` / `failed to keepalive` | 1,500 / 1,507 件 | **0 / 0 件** | 消滅 |
+| 黒穴 (必須リンク未接続+新規接続ゼロ ≥240s) | 26 体 | **0 体** | 消滅 |
+| time-to-first-stable p99 / max / never | 177s / 733s / 10 | **6s / 10s / 0** | 桁違いに改善 |
+| 一度も active にならず死んだ寿命 | 50/1,851 (2.7%) | **20/6,753 (0.3%)** | 1/9 |
+| time-to-active median / p90 / p99 | 6s / 95s / 467s | 5s / 9s / **152s** | p90 で 1/10 |
+| yellow episode (≥120s) 発生率 | 88 件/h | **16 件/h** | 1/5.5 |
+| yellow episode median / p90 / max | 195s / 600s / 1005s | 180s / 525s / 1035s | 同等〜微改善 |
+| watchdog (loop stuck) | 2.6 回/h | 0.75 回/h | 1/3.5 |
+| 最終フレーム | green 172 / y 0 / r 2 / nh 4 | green 162 / y 0 / r 3 / nh 4 | 同等 (健全) |
+
+run 14 で黒穴が time-to-first-stable を桁で悪化させていた副作用
+(evict された node は seed の `GetNodesByRange` からも消えるため、周辺の
+`ReconcileNextNodes` が構造的に mismatch し続ける) も同時に解消された。
+
+**TODO 残置ケースの悪化有無**: 悪化なし。
+
+- leftover 残留 (nohost episode ≥120s): 発生率 56→35 件/h に減、
+  median 255→285s / p90 555→645s と分布はわずかに長い側に寄ったが
+  max は同等 (1155→1095s)。「quorum 健全な leftover は merge か
+  checkQuorumLoss まで残る」という既知挙動の範囲内
+  （黒穴消滅で node が寿命を全うするようになり、健全な leftover が
+  増えた影響と整合）。
+- ReleaseMerge backstop 10 回発火 / clip 241 回発火 — いずれも正常動作、
+  恒久停止なし。
+- is_stable フラップ: median 13→15 回/寿命 (max 47→167)。寿命が延びた
+  分の増加で、停滞への寄与は観測されず。
+
+**残存 tail event = 既知 TODO の領域** (6.8 時間で地域クラスタ 2 件のみ、
+いずれも自然回復):
+
+1. **f 領域 19:36〜20:09**: watchdog が「loop stuck」で f4c5e325 を stop
+   (19:33:54) した直後から発生。merge 相手だった f433e0e1 → その後継
+   f424cb86 が「hosting sector の force terminate → 再作成」を繰り返し
+   (inactive leftover が 4〜6 世代堆積、うち 1 つは **replicas=8** と
+   member 定員 5 を超過)、チェーン先端がそこで足踏み。
+   → 既知 TODO: TODO-2 (stale レプリカ掃除)、quorum 喪失 terminate の連鎖。
+2. **e 領域 21:51〜22:03**: active だった e0x〜e7x の広域が一斉に
+   inactive 化する「地域崩壊」(旧 active sector は tails が divergent な
+   leftover として残留)。再 activate は hop-by-hop なので回復に約 12 分。
+   → 起点は下記「反応しない node の調査」で特定 (loop-stuck の連鎖死)。
+
+#### run 15 続報: 「反応しない node」の正体 — loop-stuck 12 体 (newNodeLink 穴は無実、2026-07-11 解析)
+
+dump 全走査 (6,777 寿命) で無応答系のシグネチャを分類した結果:
+
+- **na.mtx 型 network zombie はゼロ**: レコード途絶→復帰 (60 秒超の loop
+  停止から生還) 0 件、長時間 offline (赤) 0 件、conn リスト凍結 0 件。
+- **「stop レコードなしで消えた node」が 12 体** (0.18%)。うち 3 体は log
+  で watchdog kill を確認済み (warn 5s / stop 60s)。残り 9 体は log 欠落窓
+  (19:34 以降) だが同一シグネチャで、**時刻もリング領域もクラスタして
+  おり、上記 2 つの yellow クラスタと一致** (19:53〜20:07 の 5 体 =
+  f クラスタの後半、21:50〜21:56 の 4 体 = e クラスタの起点。消えた node の
+  sector がそのまま divergent leftover になっている)。地域崩壊の正体は
+  この連鎖死。
+- **凍結機構 (gdump 16:37:20 の解析)**: DTLS GCM encrypt/decrypt 内の
+  `sync.Pool.pinSlow` (Go runtime のグローバル `allPoolsMu`) に **2,109
+  goroutine が滞留**する convoy → nodeLink send mutex → transferer.mtx の
+  writer 待ちに変換され Receive RLock 293 本 + main loop (MessagingPost)
+  が凍結 → watchdog 発火。**180 node を 1 プロセスに同居させた simulator
+  アーティファクト** (~8,200 DTLS セッションが GC のたびに pool 再 pin で
+  グローバルロックに殺到) であり、colonio プロトコルのバグではない。
+  実運用 (1 node / 1 process) では発生しない。dying region の隣接 node は
+  修復トラフィックで DTLS 負荷が上がるため、連鎖死が地域に固まるのも整合。
+- **newNodeLink 候補穴は無実と確認**: gdump 上、重い ICE agent / mDNS
+  生成は connect() の非同期 goroutine (getLocalSDP → CreateOffer 経由の
+  遅延生成) で走っており、na.mtx 下の NewPeerConnection は軽量。na.mtx の
+  待ちは一時的な RLock (n=1) のみ。
+- 副作用: loop-stuck 死は runNode の defer (stop レコード + 通常 teardown)
+  を通らないため sector が汚く残り、地域の修復コスト (force terminate /
+  divergent leftover) を増やす。watchdog の Col.Stop 後も raft goroutine が
+  数十秒残ることを log で確認 (既知 TODO: Col.Stop 残留)。
+- 対策候補 (simulator 側): 1 プロセスあたりの node 数削減、GOGC/GOMAXPROCS
+  調整、pion の mDNS 無効化 (MulticastDNSMode — mDNS socket bind の
+  syscall 滞留 10 件も観測)。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加

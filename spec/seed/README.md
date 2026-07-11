@@ -59,7 +59,7 @@ challenge 競合の解消 (発生率対策) を両輪で実施:
 
 | 項目 | 内容 | 備考 |
 |------|------|------|
-| client の AssignNode リトライ | seed RPC が連続 N 回 (または T 秒) 失敗したら AssignNode からやり直す。nodeID が変わるため network 層の再起動 (= ノード再作成) が自然。**黒穴の恒久解はこれ**で、上記の対応は発生率を下げるだけ。セッション喪失の別トリガー (seed 再起動、challenge パケットロス等) には無力 | run 15 で黒穴シグネチャ (`failed to poll` の 10 秒間隔ストリーク) が残存したら着手 |
+| client の AssignNode リトライ | seed RPC が連続 N 回 (または T 秒) 失敗したら AssignNode からやり直す。nodeID が変わるため network 層の再起動 (= ノード再作成) が自然。**黒穴の恒久解はこれ**で、上記の対応は発生率を下げるだけ。セッション喪失の別トリガー (seed 再起動、challenge パケットロス等) には無力 | **run 15 (6.8h, 2026-07-10〜11) で黒穴シグネチャ 0 件を確認** — 着手条件は満たさず保留。seed の再起動を伴う運用を始めるときに再検討 |
 | 「already subscribed」の自己修復 | PollSignal / Keepalive は同一ノードの重複購読をエラーで拒否するが、古い stream の切断を server が検知できない場合、再購読が塞がれ続ける (keepalive 側の解放は normalLifespan/2 = 15 分のタイマーまで)。新しい購読要求が来たら古い channel を閉じて置き換えるべき | セッション再入 (AssignNode リトライ) を入れる場合は必須になる |
 | 周辺ノード側の防御 | 特定 peer への接続試行が長時間失敗し続ける場合に routing の必須集合から外す / is_stable 判定の緩和 | 上記で黒穴自体が消えれば不要の可能性が高い。KVS 側の is_stable ゲート緩和 (spec/kvs 未完了表) と合わせて判断 |
 
@@ -74,3 +74,12 @@ grep "failed to poll" node.log | grep -o "no=#[0-9]*" | sort | uniq -c | sort -r
 
 ストリークがゼロなら challenge 競合が支配的トリガーだったと確定。残存する
 場合は別トリガーがあるため AssignNode リトライ (TODO 1 行目) に進む。
+
+**検証結果 (run 15: 180 ノード・6.8 時間、2026-07-10〜11)**:
+`failed to poll` / `failed to keepalive` は **0 件** (run 14 は計 3,007 件)、
+dump 側の黒穴検出も **0 体** (run 14 は 26 体)。challenge 競合が支配的
+トリガーだったと確定。副次効果として time-to-first-stable p99 が
+177s → 6s (evict された node が seed の `GetNodesByRange` から消えることで
+周辺の `ReconcileNextNodes` が mismatch し続ける副作用も同時に解消)、
+一度も active にならず死ぬ node 寿命が 2.7% → 0.3% に減少。
+詳細は [spec/kvs/README.md](../kvs/README.md) の run 15 節。
