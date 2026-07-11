@@ -21,7 +21,9 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"os"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -32,6 +34,28 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	proto3 "google.golang.org/protobuf/proto"
 )
+
+// Snapshot tuning knobs. The environment overrides exist for simulator
+// verification runs (spec/kvs/snapshot.md Stage 5): lowering them makes
+// management churn alone trigger snapshot/compaction/InstallSnapshot
+// frequently, without waiting for a data-plane write load. Production uses
+// the defaults.
+var (
+	defaultSnapCount               = envUint("COLONIO_KVS_SNAP_COUNT", 1000)
+	defaultSnapshotCatchUpEntriesN = envUint("COLONIO_KVS_SNAP_CATCHUP", 100)
+)
+
+func envUint(name string, fallback uint64) uint64 {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil || parsed == 0 {
+		return fallback
+	}
+	return parsed
+}
 
 const (
 	raftTickDuration = 100 * time.Millisecond
@@ -120,8 +144,8 @@ func NewConsensus(config *Config) *Consensus {
 		sectorKey:   *config.SectorKey,
 		raftStorage: raft.NewMemoryStorage(),
 
-		snapshotCatchUpEntriesN: 100,
-		snapCount:               1000,
+		snapshotCatchUpEntriesN: defaultSnapshotCatchUpEntriesN,
+		snapCount:               defaultSnapCount,
 
 		members: maps.Clone(config.Members),
 	}
@@ -663,6 +687,11 @@ func (n *Consensus) maybeTriggerSnapshot() error {
 			return err
 		}
 	}
+
+	// the "@@" marker is required: the simulator's log collection only keeps
+	// lines containing "==" or "@@" (see the retry log in sector.go)
+	fmt.Println(time.Now(), "@@ snapshot compact", n.sectorKey.String(),
+		"applied", n.appliedIndex, "compact", compactIndex)
 
 	n.snapshotIndex = n.appliedIndex
 	return nil

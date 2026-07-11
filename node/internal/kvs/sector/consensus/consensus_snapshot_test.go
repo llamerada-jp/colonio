@@ -27,6 +27,23 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 )
 
+// TestEnvUint covers the snapshot tuning knob parsing: invalid or zero values
+// must fall back to the default so a typo in the simulator manifest can never
+// disable compaction bounds or set snapCount to 0 (which would snapshot on
+// every Ready batch).
+func TestEnvUint(t *testing.T) {
+	require.Equal(t, uint64(1000), envUint("COLONIO_KVS_TEST_UNSET", 1000))
+
+	t.Setenv("COLONIO_KVS_TEST_KNOB", "20")
+	require.Equal(t, uint64(20), envUint("COLONIO_KVS_TEST_KNOB", 1000))
+
+	t.Setenv("COLONIO_KVS_TEST_KNOB", "0")
+	require.Equal(t, uint64(1000), envUint("COLONIO_KVS_TEST_KNOB", 1000))
+
+	t.Setenv("COLONIO_KVS_TEST_KNOB", "abc")
+	require.Equal(t, uint64(1000), envUint("COLONIO_KVS_TEST_KNOB", 1000))
+}
+
 // TestConsensusSnapshot_membersRoundTrip covers the consensus-layer wrapping
 // (spec/kvs/snapshot.md): buildSnapshotData wraps the handler's sector-layer
 // payload with the member table, and applySnapshot REPLACES the receiver's

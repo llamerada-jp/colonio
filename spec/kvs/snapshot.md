@@ -165,15 +165,42 @@ nodeID との対応を運べないため、Data 側で運ぶ。
 （"Unknown node sectorNo" warning + raft リトライ）で収束する。etcd
 raftexample と同型の挙動。
 
+## Stage 5 シミュレーション検証の手順（準備済み）
+
+データプレーン未実装のため、raft エントリの供給源は activation プロトコル
+（management proposal + conf change + 選挙時 empty entry）のみ。閾値を
+下げることで、この churn だけで snapshot 経路を頻繁に発火させて検証する。
+
+**検証できること**: snapshot/compaction/InstallSnapshot が churn 下で正しく
+動くこと（activation liveness の非退行、実 transferer 経由の MsgSnap 送受信、
+compact 後の join/promotion）。
+**検証できないこと**: メモリ有界化の定量評価と MsgSnap のサイズ限界
+（records が空のため。Stage 6 でデータプレーン実装後に行う）。
+
+1. `simulator/deploy/node/random/node.yaml` のコメントアウトされた env を
+   有効化する:
+   - `COLONIO_KVS_SNAP_COUNT=20`（デフォルト 1000）
+   - `COLONIO_KVS_SNAP_CATCHUP=10`（デフォルト 100）
+2. いつもの手順で実行: `make simulate-random` → 数時間 → `make export`
+3. ログの観測点（simulator のログ収集は "==" / "@@" 行のみ保持）:
+   - `@@ snapshot export`（leader が snapshot 生成、sector 層）
+   - `@@ snapshot compact`（compact 実施、applied/compact index 付き）
+   - `@@ snapshot apply`（follower が InstallSnapshot を適用）
+4. 判定基準:
+   - `export`/`compact` が出続け、`apply` が compaction 後の join で観測される
+   - never-active / 赤・黄 率が run 16 の水準（never-active 0.3% 相当）から
+     悪化しない
+   - `Failed to apply snapshot` / `need non-empty snapshot` panic /
+     watchdog 連鎖が出ない
+
 ## TODO
 
 - **Stage 5: パラメータ調整と検証**
-  - `snapCount`(1000) / `snapshotCatchUpEntriesN`(100) の実測調整。
-  - churn（split/merge/import 反復）下で raft ログのメモリが有界化される
-    ことをシミュレーションで確認。
+  - 上記手順でシミュレーション実行し、churn 下の非退行を確認する。
+  - `snapCount`(1000) / `snapshotCatchUpEntriesN`(100) の本番値の実測調整。
   - snapshot を含む MsgSnap のメッセージサイズと transferer/network 層の
     パケットサイズ上限の関係を確認（records が大きい sector の snapshot は
-    1 メッセージで送られる）。
+    1 メッセージで送られる）→ データプレーン実装後（Stage 6）に実測。
 - **Stage 6: データプレーンとの結合検証**（データプレーン実装後）
   - `operator.Set/Patch/Delete/ApplyProposal`（現状 panic スタブ）実装後、
     実書き込み負荷で snapshot/compaction を検証。

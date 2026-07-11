@@ -1210,6 +1210,10 @@ func (s *Sector) ConsensusGetSnapshot() ([]byte, error) {
 		snapshot.MergeBy = s.mergeBy.Proto()
 	}
 
+	// the "@@" marker is required by the simulator's log collection
+	fmt.Println(time.Now(), s.head.String(), "@@ snapshot export", s.sectorKey.String(),
+		"records", len(records), "terminated", snapshot.Terminated)
+
 	return proto3.Marshal(snapshot)
 }
 
@@ -1223,6 +1227,10 @@ func (s *Sector) ConsensusApplySnapshot(data []byte) error {
 	if err := proto3.Unmarshal(data, snapshot); err != nil {
 		return fmt.Errorf("failed to unmarshal sector snapshot: %w", err)
 	}
+
+	// the "@@" marker is required by the simulator's log collection
+	fmt.Println(time.Now(), s.head.String(), "@@ snapshot apply", s.sectorKey.String(),
+		"records", len(snapshot.Records), "terminated", snapshot.Terminated)
 
 	s.mtx.Lock()
 	defer func() {
