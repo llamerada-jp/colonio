@@ -134,9 +134,17 @@ func (t *Transferer) Stop() {
 }
 
 func (t *Transferer) subRoutine() {
-	t.mtx.Lock()
-	defer t.mtx.Unlock()
+	// Collect the retry packets under the lock and send them only after
+	// releasing it. TransfererSendPacket can re-enter Receive on this same
+	// goroutine: when routing finds no next step, classifyPacket calls
+	// Error → Response synchronously, and the error packet is addressed to
+	// the local node (the requester). Receive takes t.mtx, so sending while
+	// holding it freezes the node permanently (シミュレーション run 16,
+	// 2026-07-11: churn で経路が消えた領域の watchdog kill 連鎖の根本原因)。
+	// Request follows the same rule (registers under the lock, sends outside).
+	var packets []*networkTypes.Packet
 
+	t.mtx.Lock()
 	for id, record := range t.requestRecord {
 		if time.Now().Before(record.lastSend.Add(t.retryInterval)) {
 			continue
@@ -151,19 +159,23 @@ func (t *Transferer) subRoutine() {
 
 		// retry
 		if record.mode&networkTypes.PacketModeNoRetry == 0 {
-			packet := &networkTypes.Packet{
+			packets = append(packets, &networkTypes.Packet{
 				DstNodeID: record.dstNodeID,
 				SrcNodeID: t.localNodeID,
 				ID:        id,
 				HopCount:  0,
 				Mode:      record.mode,
 				Content:   record.content,
-			}
-			t.handler.TransfererSendPacket(packet)
+			})
 		}
 
 		record.tryCount++
 		record.lastSend = time.Now()
+	}
+	t.mtx.Unlock()
+
+	for _, packet := range packets {
+		t.handler.TransfererSendPacket(packet)
 	}
 }
 

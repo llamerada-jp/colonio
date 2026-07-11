@@ -619,7 +619,8 @@ Go 実装（いずれも 2026-07-06、詳細は run 8〜10 のセクション参
 |------|------|------|
 | ~~seed セッション喪失の「接続黒穴」node（run 14 の最上位残存要因: 26 体、領域単位の yellow 最長 17 分の原因）~~ → challenge 競合を**対策済み (2026-07-11)、run 15 (6.8h) で 0 件を確認**。AssignNode リトライ等の残 TODO は [spec/seed/README.md](../seed/README.md) に移管 | Go 実装 (node/seed) | run 14 / run 15 / spec/seed |
 | ~~disconnect 経路の na.mtx 保持解消~~ → **対策済み (2026-07-10)**。~~残候補: connect() 内 newNodeLink の pion 初期化が na.mtx 下~~ → **run 15 の gdump で無実を確認** (重い ICE/mDNS 生成は非同期側、na.mtx 下の NewPeerConnection は軽量) | Go 実装 (node) | run 12 の対策 / run 15 続報 |
-| simulator の loop-stuck 連鎖死 (Go runtime の sync.Pool convoy、180 node/1 process 起因)。node 数削減 / GOGC / mDNS 無効化で緩和 | simulator | run 15 続報 |
+| simulator の loop-stuck 連鎖死 (Go runtime の sync.Pool convoy、180 node/1 process 起因)。node 数削減 / GOGC / mDNS 無効化で緩和 → **run 16 でプロセス分割を実施、convoy は解消** | simulator | run 15 続報 |
+| ~~Transferer 自己デッドロック (subRoutine が mtx 保持中に再送 → 経路なし → Error が自ノードに同期配送 → Receive で同一 RWMutex 再取得)。run 16 の終端クラスタ (watchdog kill 5 件・never-active 7 体) の根本原因~~ → **修正済み (2026-07-11)**。送信 API を mtx 下で呼ばない規約は残るので新規コードで注意 | Go 実装 (node) | run 16 |
 | ~~leftover 循環待ち（inactive host + 範囲内 active leftover でチェーン恒久停止）~~ → **対策済み (2026-07-10)** | 設計 + Go + モデル | run 13 の対策 |
 | TODO-1: quorum 喪失の拡張モデル（LocalDestroy の safety 検証） | モデル | 下表 |
 | TODO-2: stale active レプリカのガード緩和検証 | モデル | 下表 |
@@ -1526,6 +1527,61 @@ dump 全走査 (6,777 寿命) で無応答系のシグネチャを分類した�
 - 対策候補 (simulator 側): 1 プロセスあたりの node 数削減、GOGC/GOMAXPROCS
   調整、pion の mDNS 無効化 (MulticastDNSMode — mDNS socket bind の
   syscall 滞留 10 件も観測)。
+
+#### シミュレーション run 16（150 ノード・6 プロセス・57 分、2026-07-11）: Transferer 自己デッドロックの特定
+
+simulator を 6 pod に分割した run。プロセス分割により run 15 の sync.Pool
+convoy ノイズが消え、**loop-stuck の真因が colonio 本体のデッドロックだと
+確定**した。
+
+**30 秒以上 active にならない sector**: 142 episode (+ 終了時進行中 4)。
+分類:
+
+1. **起動ウェーブ (01:12〜01:15)**: 全ノード同時 join 後、activation
+   チェーンが全域に届くまで最長 165 秒。1 秒周期の hop-by-hop 伝播の
+   設計特性で、churn 由来ではない (寿命の短い 9 ノードはウェーブ到達前に
+   死亡し never-active)。
+2. **終端クラスタ (02:01〜run 終了、ID 08〜11 領域)**: watchdog kill 5 件が
+   **4 つの異なるプロセス**で発生、全て同一リング領域。健全な新規 joiner
+   7 体 (ready で `Entire not inactive` を待ち続ける) が never-active の
+   まま run 終了。
+
+**根本原因 (gdump で確定): Transferer の RWMutex 自己デッドロック**。
+
+```
+Transferer.subRoutine (transferer.go:137 で mtx.Lock を保持)
+  → :162 再送 TransfererSendPacket           ← ロック保持のまま送信
+  → Network.classifyPacket → 経路なし (network.go:254)
+  → Transferer.Error → Response (宛先 = 元パケットの SrcNodeID = 自分)
+  → classifyPacket → ローカル配送
+  → Transferer.Receive (:257) → mtx.Lock      ← 同一 goroutine で再取得
+  → 非再入 RWMutex のため永久デッドロック
+```
+
+- 発火条件は「retry 対象の宛先への経路が瞬間的に消える」こと。churn の
+  波で routing に穴が開いた領域の (特に joining 直後の) ノードが踏む。
+  初被害の 0e05fcd9 は join の約 23 秒後にデッドロック。
+- デッドロックしたノードはリンク keepalive だけ生き残る半死状態
+  (受信 goroutine 41 本が RLock 待ちで滞留) → 60 秒後に watchdog kill →
+  defer を通らない汚い死で領域の churn がさらに進み、**連鎖的に隣接
+  joiner が同じ罠を踏む** (5 件が 10 分間に同一領域で連鎖)。
+- `Request()` (:194) はロックを外してから送信しており、subRoutine (:162)
+  だけが「mtx 保持中に送信しない」規約に違反している。run 15 の
+  loop-stuck 12 体にも同じシグネチャが含まれていた可能性が高い
+  (当時は pool convoy と混在して切り分け不能だった)。
+- 「might be stacked」警告 (5 秒) = 5 件が全て致死 (60 秒) に進行 =
+  一時停止ではなく恒久デッドロックであることと整合。
+
+**対策 (2026-07-11 修正済み)**: subRoutine をロック下で再送パケットの
+収集のみ行い、ロック解放後に送信する形に変更 (Request と同じ「mtx 保持中に
+送信しない」規約に統一)。回帰テスト
+`TestRetry_noRouteErrorDoesNotDeadlock` (classifyPacket の「経路なし →
+Error → 自ノードへ同期配送」を忠実に模倣) が修正前コードで両アサーション
+失敗 (デッドロック検出 + mtx 保持継続) することを確認済み、修正後パス。
+なお「送信 API が同一 goroutine で Receive に再入する」構造自体は残って
+いるため、送信 API の新規呼び出し箇所では同じ規約 (ロック下で送信しない)
+を守る必要がある。Receive のローカル配送を goroutine に逃がす構造的解消は
+順序保証への影響評価が必要なため見送り (規約 + 回帰テストで担保)。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加
