@@ -140,6 +140,24 @@ inactive セクターで捨てており、import 先が定義上 inactive であ
   「nextNodeIDs に自分が現れない」は不変条件（README run4 の訂正参照）。
   検出強化として `ManageMember` にも initHostSector と同じ panic ガードを
   置く余地はある。
+- **生存 host の sector を leftover と誤認する merge/overlap 抗争
+  （2026-07-12 Stage B run で観測・未解決）**: routing 視界の不一致
+  （リンク喪失・視界更新の遅延）により、隣接 host が**生きている node** の
+  active sector を「host 死亡後の leftover」と誤認すると、次のループに入る:
+  tail 切り詰め activate → merge で吸収 → 生存側が自 sector を再 activate →
+  重複検知（Terminate hosting sector 1 / TerminateB 系）で**両方 terminate・
+  データ破棄** → backward node の sectorActivate で再 activate → 再 merge…。
+  実測では単一 range で 46 秒間に Terminate 27 回。吸収後の range への
+  **ack 済み書き込みが overlap 解消の破棄で失われる**ため、データプレーンの
+  CAS 監査（api.md Stage B の `@@ kvs cas ok` 短間隔重複、同一 (key, base) で
+  3 回成功）として可視化された（発生率 ~0.04% of CAS）。データロス自体は
+  「その他の性質」で許容済みのクラスだが、抗争中は range の可用性も劣化する。
+  注意: tail 切り詰め activate（`KvsSectorLeftover.tla`）は「host 死亡後の
+  leftover」を前提に検証しており、**生存 host の active sector を対象にした
+  場合のインターリービングはモデル未検証**。対策候補: merge 実行前の
+  leftover host 生存確認（直接リンク試行 or seed 照会）、生存 host 側を
+  優先する overlap 解消規則。上記 is_stable / 死活検知の課題と同じ
+  「routing 視界と sector 状態の不一致」ファミリー。
 
 ## 分岐
 
@@ -176,6 +194,11 @@ note: address は円環になっているため、実装時は between に適宜
   邪魔で不可、leftover の掃除 (merge) は active でないと不可」の循環待ちで
   activation チェーンが恒久停止する (run 11/13 で観測、
   `KvsSectorLeftover.tla` で検証。activate frontward sector 側も同じ)。
+  **注意**: この設計とモデル検証は「host 死亡後の leftover」を前提とする。
+  routing 視界の不一致で**生存 host の active sector** を leftover と誤認した
+  場合は merge/overlap 抗争ループに入り、ack 済み書き込みが破棄される
+  (2026-07-12 観測・未解決。「churn 下のメンバーシップ管理の課題」の
+  同名項目を参照)。
 
 ### activate frontward sector
 
