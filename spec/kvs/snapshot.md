@@ -219,19 +219,21 @@ compact 後の join/promotion）。
 
 - **Stage 5: パラメータ調整と検証**
   - [x] churn 下の非退行をシミュレーションで確認（2026-07-12、上記）。
-  - `snapCount`(1000) / `snapshotCatchUpEntriesN`(100) の本番値の実測調整
-    → データプレーン実装後の書き込み負荷で行う。
+  - [x] `snapCount`(1000) / `snapshotCatchUpEntriesN`(100) の本番値検証
+    → 2026-07-12 の書き込み負荷 run（3.7h、~90 op/s × 4KiB）で本番値のまま
+    継続発火（11.6 回/分）・メモリ有界化（クラスタ平均 heap 840〜930MiB で
+    飽和）・失敗 0 を確認。結果詳細は dataplane.md「Stage 6 検証結果」。
   - `Unknown node sectorNo` warn のベースライン比較（snapshot 導入前 run が
     残っていないため未実施。気になる場合は main 相当で再 run して比較）。
   - snapshot を含む MsgSnap のメッセージサイズと transferer/network 層の
-    パケットサイズ上限の関係を確認（records が大きい sector の snapshot は
-    1 メッセージで送られる）→ データプレーン実装後（Stage 6）に実測。
+    パケットサイズ上限の関係: KEYS=256 × 4KiB（sector あたり数レコード）では
+    問題なし。**サイズ限界の実測は未実施**（KEYS を減らし VALUE_SIZE を
+    上げて 1 sector の snapshot を MB 級にして攻める）。
 - **Stage 6: データプレーンとの結合検証**
-  - [x] `operator.Set/Patch/Delete/ApplyProposal` 実装（2026-07-12、設計は
-    spec/kvs/dataplane.md）。
-  - 実書き込み負荷（大 value × 高頻度 Set）で snapshot/compaction による
-    メモリ有界化を実測し、`snapCount`/`snapshotCatchUpEntriesN` の本番値を
-    調整する。MsgSnap サイズとパケット上限の関係もここで実測。
+  - [x] `operator.Set/Patch/Delete/ApplyProposal` 実装(2026-07-12、設計は
+    spec/kvs/dataplane.md)。
+  - [x] 実書き込み負荷での snapshot/compaction メモリ有界化の実測
+    （2026-07-12 run、dataplane.md「Stage 6 検証結果」）。
   - `Operation.operation_id` の重複適用防止（dedup 状態）を複製状態に
     加える場合、それも snapshot に含める必要がある（SectorSnapshot に
     フィールド追加）。現状は提案の再送がないため dedup 不要

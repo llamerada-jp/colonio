@@ -115,10 +115,25 @@ func (r *Routing) Start(ctx context.Context, localNodeID *types.NodeID) {
 }
 
 func (r *Routing) GetStability() (bool, []*types.NodeID, []*types.NodeID) {
+	// r1d is created by Start: a caller racing the startup (e.g. a public API
+	// call before the node finished starting) must see "not stable" instead
+	// of a nil dereference.
+	if r.r1d == nil {
+		return false, nil, nil
+	}
 	return r.r1d.getStability()
 }
 
 func (r *Routing) GetNextStep1D(packet *networkTypes.Packet) *types.NodeID {
+	// r1d is created by Start; before that there is no route to anywhere.
+	// Returning nil makes classifyPacket answer request packets with
+	// PacketErrorCodeNoOneReceive, so an early public API call (KvsSet before
+	// the node is online) fails with an error instead of a SIGSEGV
+	// (シミュレーション 2026-07-12: simulator の負荷 goroutine が入れ替え直後の
+	// 未 Start インスタンスに KvsSet して panic するのを観測)。
+	if r.r1d == nil {
+		return nil
+	}
 	return r.r1d.getNextStep(packet)
 }
 

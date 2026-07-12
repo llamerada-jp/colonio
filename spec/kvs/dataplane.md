@@ -85,6 +85,11 @@ client: KVS.Set(key, value)
   index に追いつくまで待つ」等が必要。
 - release_merge が誤発火（保持者が生きているのに 30s 超過）した場合、
   fence が外れて上記の窓が再度開く。頻度は低い（healthy merge は 1 秒未満）。
+- SetSplitting のドレインは operationTimeout(10s) で打ち切って split を続行
+  する。打ち切り時は「ack 待ちの書き込みが export 後に apply されて消える」
+  窓が開く（Stage 6 run 実測: 78 件/3.7h、激 churn 下）。打ち切り時に split を
+  中断する方が安全だが、quorum 不調中の sector を split できないと活性化
+  チェーンが停滞するトレードオフがあり未対応。
 
 ## エラーマッピング（kvsOperate）
 
@@ -129,6 +134,30 @@ simulator に env ゲート付きの KVS 書き込み負荷を実装済み
 このために公開 API のエラーを typed 化した（`KvsSet` 等が
 `kvsTypes.ErrorSectorNotReady` / `ErrorStoreKeyNotFound` を返す。従来は
 文字列化されたコードのみで判別不能だった）。
+
+### Stage 6 検証結果（2026-07-12 run, 3.7h, 200 node / 8 pod, INTERVAL=1000ms / KEYS=256 / VALUE=4KiB, SNAP_COUNT=1000 本番値）
+
+- **メモリ有界化: 合格**。クラスタ平均 heapAlloc は立ち上がり ~30 分で
+  434→~850MiB に達した後、**3 時間以上 840〜930MiB で振動し単調増加なし**
+  （snapshot 無しなら書き込み ~90 op/s × 4KiB で毎時 +1.2GiB/クラスタ相当の
+  ログが積もるはずの負荷）。
+- **snapshot は本番閾値で継続発火**: export 2,547 回 / InstallSnapshot 適用
+  2,258 回（≈11.6 回/分）、失敗 0、`need non-empty snapshot` panic 0、
+  publishEntries gap 0。
+- **データ整合性**: verify corrupt **0**（130 万 Set / 46 万 Get）。
+  verify miss 0.64%（probe のリトライ窓 ~3s に他 node の Delete が挟まる
+  確率とオーダー一致、蓄積・増加傾向なし）。Get NOT_FOUND 8.7% ≈
+  Delete/(Set+Delete) の定常削除率 6.2% + churn。
+- **クラスタ健全性**: force terminate ~350 回/h で定常（加速なし = divergence
+  storm なし）、gdump/watchdog 0、負荷 goroutine の生存 ~175 node/分で安定。
+- **観測された課題 2 件**（対策済み/記録済み）:
+  1. simulator 負荷 goroutine のライフサイクルバグで SIGSEGV 2 回
+     （node 入れ替え直後の未 Start インスタンスに KvsSet → routing1D nil）。
+     kvsload の instance capture + ctx ガードで修正、加えて routing 側にも
+     Start 前呼び出しの nil ガードを追加（公開 API が SIGSEGV しない防御）。
+  2. `split fence: pending operations not drained` が **78 件/3.7h**。
+     SetSplitting のドレインが operationTimeout(10s) を超過 = quorum 不調中の
+     split で残存ロスト窓が実際に開いた回数。下記「残存する既知の窓」参照。
 
 ## TODO
 
