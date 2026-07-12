@@ -23,6 +23,7 @@ import (
 	"github.com/llamerada-jp/colonio/types"
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	"github.com/stretchr/testify/require"
+	proto3 "google.golang.org/protobuf/proto"
 )
 
 // TestSector_dataplane_endToEnd drives the full write path through a real
@@ -39,7 +40,8 @@ func TestSector_dataplane_endToEnd(t *testing.T) {
 
 	// before activation every operation is rejected as retryable
 	operator := s.GetOperator()
-	require.ErrorIs(t, operator.Set("key1", []byte("value1")), kvsTypes.ErrorSectorNotReady)
+	_, err := operator.Set("key1", []byte("value1"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorSectorNotReady)
 
 	// activate with tail == head: the sector covers the whole ring
 	s.Activate(*localNodeID)
@@ -48,29 +50,37 @@ func TestSector_dataplane_endToEnd(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// write → committed through raft → applied → acknowledged
-	require.NoError(t, operator.Set("key1", []byte("value1")))
+	revision1, err := operator.Set("key1", []byte("value1"), nil)
+	require.NoError(t, err)
+	require.NotZero(t, revision1)
 
-	// read-your-writes on the host
-	value, err := operator.Get("key1")
+	// read-your-writes on the host, revision included
+	value, revision, err := operator.Get("key1")
 	require.NoError(t, err)
 	require.Equal(t, []byte("value1"), value)
+	require.Equal(t, revision1, revision)
 
-	// the applied write reached the shared store, so it is part of what
-	// splits/merges/snapshots export
+	// the applied write reached the shared store (as the record envelope), so
+	// it is part of what splits/merges/snapshots export
 	stored, err := store.Get(&s.sectorKey, "key1")
 	require.NoError(t, err)
-	require.Equal(t, []byte("value1"), stored)
+	record := &proto.KvsRecord{}
+	require.NoError(t, proto3.Unmarshal(stored, record))
+	require.Equal(t, []byte("value1"), record.Value)
+	require.Equal(t, revision1, record.Revision)
 
-	// overwrite and delete complete the lifecycle
-	require.NoError(t, operator.Set("key1", []byte("value2")))
-	value, err = operator.Get("key1")
+	// overwrite and delete complete the lifecycle; revisions grow
+	revision2, err := operator.Set("key1", []byte("value2"), nil)
+	require.NoError(t, err)
+	require.Greater(t, revision2, revision1)
+	value, _, err = operator.Get("key1")
 	require.NoError(t, err)
 	require.Equal(t, []byte("value2"), value)
 
-	require.NoError(t, operator.Delete("key1"))
-	_, err = operator.Get("key1")
+	require.NoError(t, operator.Delete("key1", nil))
+	_, _, err = operator.Get("key1")
 	require.ErrorIs(t, err, kvsTypes.ErrorStoreKeyNotFound)
-	require.ErrorIs(t, operator.Delete("key1"), kvsTypes.ErrorStoreKeyNotFound)
+	require.ErrorIs(t, operator.Delete("key1", nil), kvsTypes.ErrorStoreKeyNotFound)
 }
 
 // TestSector_dataplane_mergeFencedByPrepareMerge: once a prepare_merge is
@@ -91,14 +101,16 @@ func TestSector_dataplane_mergeFencedByPrepareMerge(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond)
 
 	operator := s.GetOperator()
-	require.NoError(t, operator.Set("key1", []byte("value1")))
+	_, err := operator.Set("key1", []byte("value1"), nil)
+	require.NoError(t, err)
 
 	// the merge lock fences writes...
 	require.NoError(t, s.PrepareMerge(holder))
-	require.ErrorIs(t, operator.Set("key2", []byte("value2")), kvsTypes.ErrorSectorNotReady)
+	_, err = operator.Set("key2", []byte("value2"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorSectorNotReady)
 
 	// ...but reads stay available
-	value, err := operator.Get("key1")
+	value, _, err := operator.Get("key1")
 	require.NoError(t, err)
 	require.Equal(t, []byte("value1"), value)
 
@@ -110,7 +122,8 @@ func TestSector_dataplane_mergeFencedByPrepareMerge(t *testing.T) {
 			ReleaseMerge: &proto.ReleaseMerge{Handler: holder.Proto()},
 		},
 	}))
-	require.NoError(t, operator.Set("key2", []byte("value2")))
+	_, err = operator.Set("key2", []byte("value2"), nil)
+	require.NoError(t, err)
 }
 
 // TestSector_dataplane_snapshotIncludesOperationWrites: records written via
@@ -128,7 +141,8 @@ func TestSector_dataplane_snapshotIncludesOperationWrites(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return src.GetTailAddress() != nil
 	}, 10*time.Second, 100*time.Millisecond)
-	require.NoError(t, src.GetOperator().Set("key1", []byte("value1")))
+	revision, err := src.GetOperator().Set("key1", []byte("value1"), nil)
+	require.NoError(t, err)
 
 	data, err := src.ConsensusGetSnapshot()
 	require.NoError(t, err)
@@ -136,7 +150,10 @@ func TestSector_dataplane_snapshotIncludesOperationWrites(t *testing.T) {
 	dst := newSnapshotTestSector(t, localNodeID, &sectorHandlerHelper{}, newRecordStoreHelper())
 	require.NoError(t, dst.ConsensusApplySnapshot(data))
 
-	value, err := dst.GetOperator().Get("key1")
+	// the restored replica serves the record with its original revision, and
+	// its counter continues past it (a CAS chain survives the restore)
+	value, restoredRevision, err := dst.GetOperator().Get("key1")
 	require.NoError(t, err)
 	require.Equal(t, []byte("value1"), value)
+	require.Equal(t, revision, restoredRevision)
 }

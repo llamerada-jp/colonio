@@ -26,7 +26,7 @@ import (
 )
 
 type inboundPort interface {
-	kvsOperate(command proto.KvsOperation_Command, key string, value []byte) (proto.KvsOperationResponse_Error, []byte)
+	kvsOperate(operation *proto.KvsOperation) (proto.KvsOperationResponse_Error, []byte, uint64)
 	processConsensusMessage(key kvsTypes.SectorKey, content *proto.ConsensusMessage)
 	sectorManageMember(param *sectorManageMemberParam) error
 	sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID) bool
@@ -57,17 +57,15 @@ func SetupInbound(l *slog.Logger, t *transferer.Transferer, c inboundPort) {
 
 func (i *inboundAdapter) recvKvsOperation(packet *networkTypes.Packet) {
 	content := packet.Content.GetKvsOperation()
-	command := content.Command
-	key := content.Key
-	value := content.Value
 
-	errCode, resValue := i.core.kvsOperate(command, key, value)
+	errCode, resValue, revision := i.core.kvsOperate(content)
 
 	i.transferer.Response(packet, &proto.PacketContent{
 		Content: &proto.PacketContent_KvsOperationResponse{
 			KvsOperationResponse: &proto.KvsOperationResponse{
-				Error: errCode,
-				Value: resValue,
+				Error:    errCode,
+				Value:    resValue,
+				Revision: revision,
 			},
 		},
 	})

@@ -77,12 +77,15 @@ func envInt(name string, defaultValue int) int {
 // "@@" marker so the simulator's log collection keeps them. "prep" counts
 // operations whose deadline expired while the range was still preparing
 // (nothing was accepted); "unk" counts writes with an unknown outcome
-// (timeout in flight — the write may still apply).
+// (timeout in flight — the write may still apply); "conf" counts CAS
+// conflicts (expected under contention: the shared key space makes nodes
+// race on the same records).
 type kvsLoadStats struct {
-	set, setPreparing, setUnknown, setError            int
-	get, getNotFound, getPreparing, getError           int
-	del, delNotFound, delPreparing, delUnknown, delErr int
-	verifyMiss, verifyCorrupt                          int
+	set, setPreparing, setUnknown, setError              int
+	cas, casConflict, casPreparing, casUnknown, casError int
+	get, getNotFound, getPreparing, getError             int
+	del, delNotFound, delPreparing, delUnknown, delErr   int
+	verifyMiss, verifyCorrupt                            int
 }
 
 // memReporterOnce starts one memory reporter per process: the raft logs of
@@ -147,6 +150,7 @@ func (n *Node) startKvsLoad(ctx context.Context) {
 			if time.Since(lastDump) >= time.Minute {
 				fmt.Println(time.Now(), localNodeID, "@@ kvs load:",
 					"set", stats.set, "/prep", stats.setPreparing, "/unk", stats.setUnknown, "/err", stats.setError, ",",
+					"cas", stats.cas, "/conf", stats.casConflict, "/prep", stats.casPreparing, "/unk", stats.casUnknown, "/err", stats.casError, ",",
 					"get", stats.get, "/nf", stats.getNotFound, "/prep", stats.getPreparing, "/err", stats.getError, ",",
 					"del", stats.del, "/nf", stats.delNotFound, "/prep", stats.delPreparing, "/unk", stats.delUnknown, "/err", stats.delErr, ",",
 					"miss", stats.verifyMiss, "corrupt", stats.verifyCorrupt)
@@ -159,7 +163,8 @@ func (n *Node) startKvsLoad(ctx context.Context) {
 
 // kvsLoadOperation runs one randomly chosen operation: mostly overwrites
 // (they grow the raft log without growing the live data set — exactly the
-// case snapshots must bound), some reads, few deletes.
+// case snapshots must bound), some conditional read-modify-writes (CAS),
+// some reads, few deletes.
 func kvsLoadOperation(ctx context.Context, col colonioNode.Node, stats *kvsLoadStats) {
 	key := fmt.Sprintf("kvs-load-%d", rand.Intn(kvsLoadKeys))
 	kv := col.KVS()
@@ -168,7 +173,7 @@ func kvsLoadOperation(ctx context.Context, col colonioNode.Node, stats *kvsLoadS
 	defer cancel()
 
 	switch r := rand.Intn(100); {
-	case r < 70: // Set + verify probe
+	case r < 55: // Set + verify probe
 		_, err := kv.Set(opCtx, key, kvsLoadValue(key))
 		switch {
 		case err == nil:
@@ -180,6 +185,55 @@ func kvsLoadOperation(ctx context.Context, col colonioNode.Node, stats *kvsLoadS
 			stats.setUnknown++
 		default:
 			stats.setError++
+		}
+
+	case r < 70: // CAS read-modify-write
+		// Read the current revision, then write conditionally on it. Under
+		// contention (the key space is shared cluster-wide) conflicts are the
+		// expected correct outcome; a lost update would show up as two
+		// successful conditional writes built on the same base revision.
+		result, err := kv.Get(opCtx, key)
+		var baseRevision uint64
+		switch {
+		case err == nil:
+			baseRevision = result.Revision
+		case errors.Is(err, nodeKvs.ErrNotFound):
+			baseRevision = 0 // create guarded by absence
+		case errors.Is(err, nodeKvs.ErrPreparing):
+			stats.casPreparing++
+			return
+		default:
+			stats.casError++
+			return
+		}
+
+		condition := nodeKvs.WithAbsent()
+		if baseRevision != 0 {
+			condition = nodeKvs.WithRevision(baseRevision)
+		}
+		_, err = kv.Set(opCtx, key, kvsLoadValue(key), condition)
+		switch {
+		case err == nil:
+			stats.cas++
+			// Lost-update audit line: CAS correctness means at most one
+			// success per (key, base revision) across the whole cluster —
+			// revisions are never reused within a sector lineage, so a
+			// duplicated pair in the collected logs is a lost update. The
+			// base==0 (absence) case is excluded: delete/re-create makes
+			// absence legitimately winnable more than once. (Sector data
+			// loss on majority failure resets the counter and can produce a
+			// rare false positive; correlate with force-terminate storms.)
+			if baseRevision != 0 {
+				fmt.Println(time.Now(), col.GetLocalNodeID(), "@@ kvs cas ok:", key, baseRevision)
+			}
+		case errors.Is(err, nodeKvs.ErrConflict):
+			stats.casConflict++
+		case errors.Is(err, nodeKvs.ErrPreparing):
+			stats.casPreparing++
+		case errors.Is(err, nodeKvs.ErrResultUnknown):
+			stats.casUnknown++
+		default:
+			stats.casError++
 		}
 
 	case r < 95: // Get

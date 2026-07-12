@@ -599,3 +599,23 @@ func TestKVS_sectorActivate_clipsTailAtLeftover(t *testing.T) {
 		return tail != nil && tail.Equal(deadNodeID)
 	}, 15*time.Second, 100*time.Millisecond)
 }
+
+// TestResponseErrorToError pins the response-code → typed-error mapping. The
+// CONFLICT case is the regression guard: it used to fall into the unknown
+// class, and because the public client auto-retries unknown outcomes for
+// conditional writes, every genuine CAS conflict was re-sent until its
+// deadline (simulator run 2026-07-12: cas conf=0 / unk=15.5%).
+func TestResponseErrorToError(t *testing.T) {
+	require.NoError(t, responseErrorToError("set", proto.KvsOperationResponse_ERROR_NONE))
+	require.ErrorIs(t, responseErrorToError("get", proto.KvsOperationResponse_ERROR_NOT_FOUND),
+		kvsTypes.ErrorStoreKeyNotFound)
+	require.ErrorIs(t, responseErrorToError("set", proto.KvsOperationResponse_ERROR_PREPARING),
+		kvsTypes.ErrorSectorNotReady)
+	require.ErrorIs(t, responseErrorToError("set", proto.KvsOperationResponse_ERROR_CONFLICT),
+		kvsTypes.ErrorCasConflict)
+	require.ErrorIs(t, responseErrorToError("set", proto.KvsOperationResponse_ERROR_UNKNOWN),
+		kvsTypes.ErrorOperationResultUnknown)
+	// future codes must stay in the not-blindly-retryable unknown class
+	require.ErrorIs(t, responseErrorToError("set", proto.KvsOperationResponse_Error(99)),
+		kvsTypes.ErrorOperationResultUnknown)
+}

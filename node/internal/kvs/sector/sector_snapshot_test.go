@@ -213,7 +213,7 @@ func TestSector_snapshot_roundTrip(t *testing.T) {
 	require.False(t, dst.terminated)
 	dst.mtx.RUnlock()
 
-	records, err := dst.operator.ExportAllRecords()
+	records, _, err := dst.operator.ExportAllRecords()
 	require.NoError(t, err)
 	require.Equal(t, map[string][]byte{
 		"key1": []byte("value1"),
@@ -226,7 +226,7 @@ func TestSector_snapshot_roundTrip(t *testing.T) {
 
 	// idempotent: applying the same snapshot again must not fail nor change state
 	require.NoError(t, dst.ConsensusApplySnapshot(data))
-	records, err = dst.operator.ExportAllRecords()
+	records, _, err = dst.operator.ExportAllRecords()
 	require.NoError(t, err)
 	require.Len(t, records, 2)
 }
@@ -255,7 +255,7 @@ func TestSector_snapshot_inactiveWithRecords(t *testing.T) {
 	require.Nil(t, dst.mergeBy)
 	dst.mtx.RUnlock()
 
-	records, err := dst.operator.ExportAllRecords()
+	records, _, err := dst.operator.ExportAllRecords()
 	require.NoError(t, err)
 	require.Equal(t, map[string][]byte{"key1": []byte("value1")}, records)
 }

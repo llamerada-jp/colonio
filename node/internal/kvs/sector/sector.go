@@ -123,6 +123,10 @@ type Sector struct {
 	proposalTerminating        bool
 	proposalExtending          *types.NodeID // tail
 	proposalImporting          []*proto.Import_Record
+	// proposalImportingCounter is the source sector's revision counter taken
+	// with the exported records; it travels inside the Import proposal so the
+	// apply can max-merge it deterministically on every replica.
+	proposalImportingCounter uint64
 	proposalPreCommitSplitting *types.NodeID // frontwardNodeID
 	proposalCommittingSplit    *types.NodeID // tail
 	proposalPrepareMerge       *types.NodeID // proposed by
@@ -383,12 +387,12 @@ func (s *Sector) Migrate(to *Sector) error {
 	splittingAddress := to.GetHeadAddress()
 	s.operator.SetSplitting(splittingAddress)
 
-	records, err := s.operator.ExportRecords(splittingAddress, s.GetTailAddress())
+	records, revisionCounter, err := s.operator.ExportRecords(splittingAddress, s.GetTailAddress())
 	if err != nil {
 		return fmt.Errorf("failed to export records: %w", err)
 	}
 
-	return to.Import(records)
+	return to.Import(records, revisionCounter)
 }
 
 func (s *Sector) PreCommitSplit(frontwardNodeID *types.NodeID) error {
@@ -496,12 +500,12 @@ func (s *Sector) PrepareMerge(proposedBy *types.NodeID) error {
 }
 
 func (s *Sector) Merge(from *Sector) error {
-	records, err := from.operator.ExportRecords(from.GetHeadAddress(), from.GetTailAddress())
+	records, revisionCounter, err := from.operator.ExportRecords(from.GetHeadAddress(), from.GetTailAddress())
 	if err != nil {
 		return fmt.Errorf("failed to export records: %w", err)
 	}
 
-	return s.Import(records)
+	return s.Import(records, revisionCounter)
 }
 
 func (s *Sector) CommitMerge(newTail *types.NodeID) error {
@@ -529,7 +533,7 @@ func (s *Sector) CommitMerge(newTail *types.NodeID) error {
 	return nil
 }
 
-func (s *Sector) Import(records map[string][]byte) error {
+func (s *Sector) Import(records map[string][]byte, revisionCounter uint64) error {
 	importRecords := make([]*proto.Import_Record, 0, len(records))
 	for key, value := range records {
 		importRecords = append(importRecords, &proto.Import_Record{
@@ -540,6 +544,7 @@ func (s *Sector) Import(records map[string][]byte) error {
 
 	s.mtx.Lock()
 	s.proposalImporting = importRecords
+	s.proposalImportingCounter = revisionCounter
 	s.mtx.Unlock()
 
 	s.triggerCh <- struct{}{}
@@ -671,7 +676,8 @@ func (s *Sector) applyProposals(retry bool) {
 			proposals = append(proposals, &proto.ConsensusProposal{
 				Content: &proto.ConsensusProposal_Import{
 					Import: &proto.Import{
-						Records: s.proposalImporting,
+						Records:         s.proposalImporting,
+						RevisionCounter: s.proposalImportingCounter,
 					},
 				},
 			})
@@ -1055,7 +1061,7 @@ func (s *Sector) processImportProposal(importProposal *proto.Import) error {
 	if err := s.store.AllocateSector(&s.sectorKey); err != nil {
 		fmt.Println(time.Now(), s.head.String(), "@@ import: allocate sector skipped:", err)
 	}
-	if err := s.operator.ImportRecords(records); err != nil {
+	if err := s.operator.ImportRecords(records, importProposal.RevisionCounter); err != nil {
 		return fmt.Errorf("failed to import records: %w", err)
 	}
 
@@ -1193,14 +1199,15 @@ func (s *Sector) ConsensusGetSnapshot() ([]byte, error) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
-	records, err := s.operator.ExportAllRecords()
+	records, revisionCounter, err := s.operator.ExportAllRecords()
 	if err != nil {
 		return nil, err
 	}
 
 	snapshot := &proto.SectorSnapshot{
-		Records:    make([]*proto.Import_Record, 0, len(records)),
-		Terminated: s.terminated,
+		Records:         make([]*proto.Import_Record, 0, len(records)),
+		Terminated:      s.terminated,
+		RevisionCounter: revisionCounter,
 	}
 	for key, value := range records {
 		snapshot.Records = append(snapshot.Records, &proto.Import_Record{
@@ -1271,7 +1278,7 @@ func (s *Sector) ConsensusApplySnapshot(data []byte) error {
 	for _, record := range snapshot.Records {
 		records[record.Key] = record.Value
 	}
-	if err := s.operator.ReplaceRecords(records); err != nil {
+	if err := s.operator.ReplaceRecords(records, snapshot.RevisionCounter); err != nil {
 		return fmt.Errorf("failed to replace records from snapshot: %w", err)
 	}
 

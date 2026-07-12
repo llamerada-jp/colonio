@@ -123,7 +123,11 @@ simulator に env ゲート付きの KVS 書き込み負荷を実装済み
    - `@@ kvs load`（node ごと・毎分の操作統計）→ set/get 成功が主で
      err/exhausted が少数であること
      （2026-07-12 API 再編後の形式: `prep` = deadline まで PREPARING が
-     続いた回数、`unk` = 結果不定、`err` = その他。exhausted は廃止）
+     続いた回数、`unk` = 結果不定、`err` = その他。exhausted は廃止。
+     Stage B で `cas .../conf/prep/unk/err` を追加 — conf は競合下の正常系）
+   - `@@ kvs cas ok: <key> <baseRevision>`（Stage B 追加）→ クラスタ全ログで
+     **(key, baseRevision) の重複が 0** であること = lost update 不在。
+     判定条件の詳細は spec/kvs/api.md Stage B 4 を参照
    - `@@ kvs verify miss`（ack 済み Set 直後の Get が NOT_FOUND）→ 他 node の
      Delete 競合（5%）を超える持続的な発生は書き込みロスト（fence バグ）の兆候
    - `@@ kvs verify corrupt`（value の key プレフィックス不一致）→ 0 であること

@@ -325,7 +325,7 @@ func TestSector_import_timeoutOnQuorumLoss(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.Import(map[string][]byte{"key": []byte("value")})
+		done <- s.Import(map[string][]byte{"key": []byte("value")}, 0)
 	}()
 
 	select {
@@ -364,7 +364,7 @@ func TestSector_import_commitSplit_onInactiveSector(t *testing.T) {
 		return s.consensus.Status().Lead != 0
 	}, 10*time.Second, 100*time.Millisecond)
 
-	require.NoError(t, s.Import(map[string][]byte{"key": []byte("value")}))
+	require.NoError(t, s.Import(map[string][]byte{"key": []byte("value")}, 0))
 	require.Nil(t, s.GetTailAddress()) // import alone must not activate
 
 	require.NoError(t, s.CommitSplit(tailNodeID))
@@ -498,7 +498,7 @@ func TestSector_import_unblockedByForceTerminate(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.Import(map[string][]byte{"key": []byte("value")})
+		done <- s.Import(map[string][]byte{"key": []byte("value")}, 0)
 	}()
 
 	select {

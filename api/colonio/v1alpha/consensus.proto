@@ -61,6 +61,28 @@ message Import {
     bytes  value = 2;
   }
   repeated Record records = 1;
+
+  // Source sector's revision counter at export time. The apply max-merges it
+  // into the importing sector's counter so that a record's next revision is
+  // always greater than any revision it carried in — per-key monotonicity
+  // survives split/merge migration and delete/re-create (spec/kvs/lock.md
+  // 「revision counter」).
+  uint64 revision_counter = 2;
+}
+
+// KvsRecord is the envelope stored as the record value in the sector store:
+// the user value plus the replicated per-record metadata. It rides opaquely
+// through Import / snapshot / migration, so the metadata cannot be forgotten
+// on any state-transfer path. Serialized with deterministic marshaling —
+// the bytes are part of the replicated state.
+message KvsRecord {
+  bytes  value    = 1;
+  // Assigned from the sector's revision counter on every Set; never reused
+  // within a sector lineage (the counter only grows and max-merges on
+  // import). 0 is never assigned: it is the CAS sentinel for "absent".
+  uint64 revision = 2;
+  // Field 3 is reserved for the lease lock (KvsLock, spec/kvs/lock.md
+  // Stage D).
 }
 
 // SectorSnapshot is the sector-layer state machine snapshot: the replicated
@@ -86,6 +108,11 @@ message SectorSnapshot {
   colonio.v1alpha.NodeID merge_by = 3;
 
   bool terminated = 4;
+
+  // Revision counter (replicated state, see Import.revision_counter). A
+  // restored replica assigns it verbatim: the snapshot is the full state at
+  // its log index.
+  uint64 revision_counter = 5;
 }
 
 // ConsensusSnapshot is the outer message stored in raftpb.Snapshot.Data. It
@@ -114,4 +141,12 @@ message Operation {
   uint32  operation_id = 2;
   string  key          = 3;
   bytes   value        = 4;
+
+  // CAS condition, checked deterministically at apply time against the
+  // record's replicated revision. cas_revision != 0: apply only when the
+  // record exists with exactly this revision. cas_absent: apply only when the
+  // record does not exist. Both unset = unconditional. A failed check is a
+  // waiter-level conflict, not an apply failure.
+  uint64 cas_revision = 5;
+  bool   cas_absent   = 6;
 }

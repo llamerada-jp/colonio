@@ -24,6 +24,7 @@ import (
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/types"
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
+	proto3 "google.golang.org/protobuf/proto"
 )
 
 // ErrOperationTimeout is returned when a proposed operation was not applied
@@ -32,10 +33,49 @@ import (
 // not assume the write was lost.
 var ErrOperationTimeout = errors.New("operation was not applied within timeout")
 
+// CasCondition guards a write; nil means unconditional. The check runs at
+// apply time against the record's replicated revision, so it is deterministic
+// across replicas (spec/kvs/lock.md「CAS 操作」).
+type CasCondition struct {
+	// Revision, when non-zero, requires the record to exist with exactly this
+	// revision. Revisions are assigned from the sector counter and are never 0.
+	Revision uint64
+	// Absent requires the record to not exist.
+	Absent bool
+}
+
 type Operations interface {
-	Get(key string) ([]byte, error)
-	Set(key string, value []byte) error
-	Delete(key string) error
+	Get(key string) ([]byte, uint64, error)
+	Set(key string, value []byte, cas *CasCondition) (uint64, error)
+	Delete(key string, cas *CasCondition) error
+}
+
+// recordMarshal serializes the KvsRecord envelope. Deterministic marshaling
+// is required: the encoded bytes are replicated state (stored on every
+// replica and carried by snapshots), so replicas must produce identical
+// bytes for identical logical records.
+var recordMarshal = proto3.MarshalOptions{Deterministic: true}
+
+func encodeRecord(value []byte, revision uint64) ([]byte, error) {
+	return recordMarshal.Marshal(&proto.KvsRecord{
+		Value:    value,
+		Revision: revision,
+	})
+}
+
+func decodeRecord(data []byte) (*proto.KvsRecord, error) {
+	record := &proto.KvsRecord{}
+	if err := proto3.Unmarshal(data, record); err != nil {
+		return nil, fmt.Errorf("failed to decode record envelope: %w", err)
+	}
+	return record, nil
+}
+
+// applyResult is what ApplyProposal reports back to the proposing waiter.
+type applyResult struct {
+	err error
+	// revision is the newly assigned revision for an applied SET, 0 otherwise.
+	revision uint64
 }
 
 type Handler interface {
@@ -59,6 +99,15 @@ type Operator struct {
 	splittingAddress *types.NodeID
 	keys             map[string]any
 
+	// revisionCounter is replicated state: it grows by one on every applied
+	// SET (the new value becomes the record's revision), max-merges with the
+	// source counter on Import, and is assigned verbatim on snapshot restore.
+	// It never decreases within a sector lineage, which gives per-key revision
+	// monotonicity across overwrites, delete/re-create and split/merge
+	// migration (spec/kvs/lock.md「revision counter」). Mutated only on the
+	// apply paths, under s.mtx.
+	revisionCounter uint64
+
 	// operationTimeout bounds the wait between proposing an operation and its
 	// apply. A quorum-lost group commits nothing, so the wait must not hold
 	// the client's request forever.
@@ -71,7 +120,7 @@ type Operator struct {
 	// applied ID either belongs to this map or to no waiter at all (replicas
 	// and replaying joiners have empty maps).
 	nextOperationID uint32
-	waiters         map[uint32]chan error
+	waiters         map[uint32]chan *applyResult
 	// mergeFenced rejects writes while this sector's mergeBy lock is held: the
 	// range is about to be absorbed by a neighbor, and a write applied after
 	// the absorber exported the records would be silently lost. Driven by the
@@ -90,7 +139,7 @@ func NewOperator(config *Config) *Operator {
 		head:             *config.Head,
 		keys:             make(map[string]any),
 		operationTimeout: 10 * time.Second,
-		waiters:          make(map[uint32]chan error),
+		waiters:          make(map[uint32]chan *applyResult),
 	}
 }
 
@@ -133,27 +182,38 @@ func (s *Operator) writableLocked(keyHash *types.NodeID) error {
 // acknowledged only after the local apply, so the host observes its own
 // acknowledged writes; reads may still be stale relative to operations
 // committed but not yet applied locally (see spec/kvs/dataplane.md).
-func (s *Operator) Get(key string) ([]byte, error) {
+// It returns the record's value and revision.
+func (s *Operator) Get(key string) ([]byte, uint64, error) {
 	keyHash := types.NewHashedNodeID([]byte(key))
 
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
 	if !s.inRangeLocked(keyHash) {
-		return nil, kvsTypes.ErrorSectorNotReady
+		return nil, 0, kvsTypes.ErrorSectorNotReady
 	}
 	if _, ok := s.keys[key]; !ok {
-		return nil, kvsTypes.ErrorStoreKeyNotFound
+		return nil, 0, kvsTypes.ErrorStoreKeyNotFound
 	}
-	return s.store.Get(&s.sectorKey, key)
+	data, err := s.store.Get(&s.sectorKey, key)
+	if err != nil {
+		return nil, 0, err
+	}
+	record, err := decodeRecord(data)
+	if err != nil {
+		return nil, 0, err
+	}
+	return record.Value, record.Revision, nil
 }
 
-func (s *Operator) Set(key string, value []byte) error {
-	return s.proposeOperation(proto.Operation_COMMAND_SET, key, value)
+// Set writes the value under the key and returns the newly assigned revision.
+func (s *Operator) Set(key string, value []byte, cas *CasCondition) (uint64, error) {
+	return s.proposeOperation(proto.Operation_COMMAND_SET, key, value, cas)
 }
 
-func (s *Operator) Delete(key string) error {
-	return s.proposeOperation(proto.Operation_COMMAND_DELETE, key, nil)
+func (s *Operator) Delete(key string, cas *CasCondition) error {
+	_, err := s.proposeOperation(proto.Operation_COMMAND_DELETE, key, nil, cas)
+	return err
 }
 
 // proposeOperation runs a write through the raft group and blocks until the
@@ -162,30 +222,36 @@ func (s *Operator) Delete(key string) error {
 // accepted before a fence (SetSplitting) is always visible to the fence's
 // drain loop. The propose itself runs outside the lock — sending under a held
 // mutex is the Transferer self-deadlock pattern (2026-07-11).
-func (s *Operator) proposeOperation(command proto.Operation_Command, key string, value []byte) error {
+// It returns the newly assigned revision for an applied SET (0 otherwise).
+func (s *Operator) proposeOperation(command proto.Operation_Command, key string, value []byte, cas *CasCondition) (uint64, error) {
 	keyHash := types.NewHashedNodeID([]byte(key))
 
 	s.mtx.Lock()
 	if err := s.writableLocked(keyHash); err != nil {
 		s.mtx.Unlock()
-		return err
+		return 0, err
 	}
 	s.nextOperationID++
 	operationID := s.nextOperationID
-	waiter := make(chan error, 1)
+	waiter := make(chan *applyResult, 1)
 	s.waiters[operationID] = waiter
 	s.mtx.Unlock()
 
-	s.handler.OperatorProposeOperation(&proto.Operation{
+	operation := &proto.Operation{
 		Command:     command,
 		OperationId: operationID,
 		Key:         key,
 		Value:       value,
-	})
+	}
+	if cas != nil {
+		operation.CasRevision = cas.Revision
+		operation.CasAbsent = cas.Absent
+	}
+	s.handler.OperatorProposeOperation(operation)
 
 	select {
-	case err := <-waiter:
-		return err
+	case result := <-waiter:
+		return result.revision, result.err
 
 	case <-time.After(s.operationTimeout):
 		s.mtx.Lock()
@@ -193,11 +259,11 @@ func (s *Operator) proposeOperation(command proto.Operation_Command, key string,
 		s.mtx.Unlock()
 		// The apply may have signaled between the timeout and the delete.
 		select {
-		case err := <-waiter:
-			return err
+		case result := <-waiter:
+			return result.revision, result.err
 		default:
 		}
-		return ErrOperationTimeout
+		return 0, ErrOperationTimeout
 	}
 }
 
@@ -278,6 +344,41 @@ func (s *Operator) SetMergeFence(fenced bool) {
 	s.mtx.Unlock()
 }
 
+// casConflictLocked checks the operation's CAS condition against the record's
+// current revision. Deterministic across replicas: keys, the stored envelopes
+// and the revision inside them are all replicated state. A decode failure is
+// also deterministic (the stored bytes are identical on every replica).
+// Call with s.mtx held.
+func (s *Operator) casConflictLocked(operation *proto.Operation) error {
+	if operation.CasRevision == 0 && !operation.CasAbsent {
+		return nil // unconditional
+	}
+
+	var current uint64 // 0 = absent (revisions are never assigned 0)
+	if _, ok := s.keys[operation.Key]; ok {
+		data, err := s.store.Get(&s.sectorKey, operation.Key)
+		if err != nil {
+			return err
+		}
+		record, err := decodeRecord(data)
+		if err != nil {
+			return err
+		}
+		current = record.Revision
+	}
+
+	if operation.CasAbsent {
+		if current != 0 {
+			return kvsTypes.ErrorCasConflict
+		}
+		return nil
+	}
+	if current != operation.CasRevision {
+		return kvsTypes.ErrorCasConflict
+	}
+	return nil
+}
+
 // ApplyProposal applies a committed operation to the store and, on the
 // proposing replica, resolves the waiter. Runs on the consensus loop
 // goroutine of every replica. The range gate re-checks against the CURRENT
@@ -285,7 +386,8 @@ func (s *Operator) SetMergeFence(fenced bool) {
 // key out — and is deterministic across replicas because tail is replicated
 // state. A skipped operation fails only the local waiter (the client retries
 // against the new owner); it is not an apply divergence, so the consensus
-// layer still gets nil.
+// layer still gets nil. The same holds for a CAS conflict: the store is left
+// untouched deterministically and only the waiter learns the conflict.
 func (s *Operator) ApplyProposal(operation *proto.Operation) error {
 	keyHash := types.NewHashedNodeID([]byte(operation.Key))
 
@@ -293,14 +395,27 @@ func (s *Operator) ApplyProposal(operation *proto.Operation) error {
 
 	var waiterErr error // outcome reported to the local waiter
 	var storeErr error  // real store failure, reported to the consensus layer
+	var appliedRevision uint64
 	if !s.inRangeLocked(keyHash) {
 		waiterErr = kvsTypes.ErrorSectorNotReady
+	} else if casErr := s.casConflictLocked(operation); casErr != nil {
+		waiterErr = casErr
 	} else {
 		switch operation.Command {
 		case proto.Operation_COMMAND_SET:
-			storeErr = s.store.Set(&s.sectorKey, operation.Key, operation.Value)
-			if storeErr == nil {
-				s.keys[operation.Key] = struct{}{}
+			// The counter advances only when the write lands, so a store
+			// failure leaves the replicated state untouched.
+			newRevision := s.revisionCounter + 1
+			data, err := encodeRecord(operation.Value, newRevision)
+			if err != nil {
+				waiterErr = err
+			} else {
+				storeErr = s.store.Set(&s.sectorKey, operation.Key, data)
+				if storeErr == nil {
+					s.revisionCounter = newRevision
+					s.keys[operation.Key] = struct{}{}
+					appliedRevision = newRevision
+				}
 			}
 
 		// Operation_COMMAND_PATCH falls to default (a deterministic waiter
@@ -334,13 +449,18 @@ func (s *Operator) ApplyProposal(operation *proto.Operation) error {
 	s.mtx.Unlock()
 
 	if waiter != nil {
-		waiter <- waiterErr
+		waiter <- &applyResult{err: waiterErr, revision: appliedRevision}
 	}
 
 	return storeErr
 }
 
-func (s *Operator) ExportRecords(head, tail *types.NodeID) (map[string][]byte, error) {
+// ExportRecords exports the records in [head, tail) as opaque envelope bytes,
+// together with the sector's revision counter taken in the same critical
+// section (the importer max-merges it; exporting the records without the
+// counter would let the destination assign revisions the records have already
+// passed).
+func (s *Operator) ExportRecords(head, tail *types.NodeID) (map[string][]byte, uint64, error) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
@@ -354,15 +474,19 @@ func (s *Operator) ExportRecords(head, tail *types.NodeID) (map[string][]byte, e
 
 		value, err := s.store.Get(&s.sectorKey, key)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		records[key] = value
 	}
 
-	return records, nil
+	return records, s.revisionCounter, nil
 }
 
-func (s *Operator) ImportRecords(records map[string][]byte) error {
+// ImportRecords merges migrated records in and max-merges the source sector's
+// revision counter: after the import, every next revision assigned here is
+// greater than any revision the imported records carry. Runs on the apply
+// path (deterministic: the counter arrives inside the committed proposal).
+func (s *Operator) ImportRecords(records map[string][]byte, revisionCounter uint64) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -372,15 +496,17 @@ func (s *Operator) ImportRecords(records map[string][]byte) error {
 		}
 		s.keys[key] = struct{}{}
 	}
+	s.revisionCounter = max(s.revisionCounter, revisionCounter)
 
 	return nil
 }
 
-// ExportAllRecords dumps every record of the sector without range filtering.
-// Snapshots must use this instead of ExportRecords: a not-yet-activated
-// sector has no tail to filter by but may already hold records (split imports
-// into the inactive frontward sector before CommitSplit activates it).
-func (s *Operator) ExportAllRecords() (map[string][]byte, error) {
+// ExportAllRecords dumps every record of the sector without range filtering,
+// plus the revision counter for the snapshot. Snapshots must use this instead
+// of ExportRecords: a not-yet-activated sector has no tail to filter by but
+// may already hold records (split imports into the inactive frontward sector
+// before CommitSplit activates it).
+func (s *Operator) ExportAllRecords() (map[string][]byte, uint64, error) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
@@ -389,20 +515,22 @@ func (s *Operator) ExportAllRecords() (map[string][]byte, error) {
 	for key := range s.keys {
 		value, err := s.store.Get(&s.sectorKey, key)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		records[key] = value
 	}
 
-	return records, nil
+	return records, s.revisionCounter, nil
 }
 
 // ReplaceRecords swaps the whole record set for the snapshot's one. Unlike
 // ImportRecords (a merge), applying a snapshot must delete local records that
 // the snapshot does not contain — a replica that fell behind may hold keys
-// the group has since deleted. The caller resets the store sector
-// (ReleaseSector/AllocateSector) before calling this.
-func (s *Operator) ReplaceRecords(records map[string][]byte) error {
+// the group has since deleted. The revision counter is assigned verbatim for
+// the same reason: the snapshot is the full replicated state at its index.
+// The caller resets the store sector (ReleaseSector/AllocateSector) before
+// calling this.
+func (s *Operator) ReplaceRecords(records map[string][]byte, revisionCounter uint64) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -413,6 +541,7 @@ func (s *Operator) ReplaceRecords(records map[string][]byte) error {
 		}
 		s.keys[key] = struct{}{}
 	}
+	s.revisionCounter = revisionCounter
 
 	return nil
 }

@@ -26,17 +26,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// casParams records the CAS condition a backend call carried.
+type casParams struct {
+	revision uint64
+	absent   bool
+}
+
 // fakeBackend scripts one response per call in order; when the script is
-// exhausted or an entry is nil/hang, the response channel never resolves
+// exhausted or an entry is nil, the response channel never resolves
 // (emulating a request lost in flight).
 type fakeBackend struct {
 	mtx        sync.Mutex
 	getResults []*kvsTypes.GetResult
-	setErrors  []*error // nil entry = never respond
+	setResults []*kvsTypes.SetResult
 	delErrors  []*error
 	getCalls   int
 	setCalls   int
 	delCalls   int
+	setCas     []casParams
+	delCas     []casParams
 }
 
 func (f *fakeBackend) Get(key string) chan *kvsTypes.GetResult {
@@ -57,16 +65,36 @@ func (f *fakeBackend) Get(key string) chan *kvsTypes.GetResult {
 	return c
 }
 
-func respondErr(script *[]*error, calls *int, mtx *sync.Mutex) chan error {
-	c := make(chan error, 1)
-	mtx.Lock()
-	defer mtx.Unlock()
-	*calls++
-	if len(*script) == 0 {
+func (f *fakeBackend) Set(key string, value []byte, casRevision uint64, casAbsent bool) chan *kvsTypes.SetResult {
+	c := make(chan *kvsTypes.SetResult, 1)
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	f.setCalls++
+	f.setCas = append(f.setCas, casParams{revision: casRevision, absent: casAbsent})
+	if len(f.setResults) == 0 {
 		return c // hang
 	}
-	entry := (*script)[0]
-	*script = (*script)[1:]
+	result := f.setResults[0]
+	f.setResults = f.setResults[1:]
+	if result == nil {
+		return c // hang
+	}
+	c <- result
+	close(c)
+	return c
+}
+
+func (f *fakeBackend) Delete(key string, casRevision uint64, casAbsent bool) chan error {
+	c := make(chan error, 1)
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	f.delCalls++
+	f.delCas = append(f.delCas, casParams{revision: casRevision, absent: casAbsent})
+	if len(f.delErrors) == 0 {
+		return c // hang
+	}
+	entry := f.delErrors[0]
+	f.delErrors = f.delErrors[1:]
 	if entry == nil {
 		return c // hang
 	}
@@ -75,25 +103,18 @@ func respondErr(script *[]*error, calls *int, mtx *sync.Mutex) chan error {
 	return c
 }
 
-func (f *fakeBackend) Set(key string, value []byte) chan error {
-	return respondErr(&f.setErrors, &f.setCalls, &f.mtx)
-}
-
-func (f *fakeBackend) Delete(key string) chan error {
-	return respondErr(&f.delErrors, &f.delCalls, &f.mtx)
-}
-
 func errP(err error) *error { return &err }
 
 func TestClientGet(t *testing.T) {
 	backend := &fakeBackend{getResults: []*kvsTypes.GetResult{
-		{Data: []byte("value")},
+		{Data: []byte("value"), Revision: 7},
 	}}
 	client := NewClient(backend)
 
 	res, err := client.Get(t.Context(), "key")
 	require.NoError(t, err)
 	assert.Equal(t, []byte("value"), res.Value)
+	assert.Equal(t, uint64(7), res.Revision)
 	assert.Equal(t, 1, backend.getCalls)
 }
 
@@ -109,11 +130,37 @@ func TestClientGetNotFound(t *testing.T) {
 	assert.Equal(t, 1, backend.getCalls)
 }
 
+func TestClientGetRetriesPreparing(t *testing.T) {
+	backend := &fakeBackend{getResults: []*kvsTypes.GetResult{
+		{Err: kvsTypes.ErrorSectorNotReady},
+		{Data: []byte("value"), Revision: 1},
+	}}
+	client := NewClient(backend)
+
+	res, err := client.Get(t.Context(), "key")
+	require.NoError(t, err)
+	assert.Equal(t, []byte("value"), res.Value)
+	assert.Equal(t, 2, backend.getCalls)
+}
+
+func TestClientSetReturnsRevision(t *testing.T) {
+	backend := &fakeBackend{setResults: []*kvsTypes.SetResult{
+		{Revision: 42},
+	}}
+	client := NewClient(backend)
+
+	res, err := client.Set(t.Context(), "key", []byte("value"))
+	require.NoError(t, err)
+	assert.Equal(t, uint64(42), res.Revision)
+	// unconditional write carries no CAS condition
+	assert.Equal(t, casParams{}, backend.setCas[0])
+}
+
 func TestClientSetRetriesPreparing(t *testing.T) {
-	backend := &fakeBackend{setErrors: []*error{
-		errP(kvsTypes.ErrorSectorNotReady),
-		errP(kvsTypes.ErrorSectorNotReady),
-		errP(nil),
+	backend := &fakeBackend{setResults: []*kvsTypes.SetResult{
+		{Err: kvsTypes.ErrorSectorNotReady},
+		{Err: kvsTypes.ErrorSectorNotReady},
+		{Revision: 1},
 	}}
 	client := NewClient(backend)
 
@@ -123,11 +170,11 @@ func TestClientSetRetriesPreparing(t *testing.T) {
 }
 
 func TestClientSetPreparingDeadline(t *testing.T) {
-	backend := &fakeBackend{setErrors: []*error{
-		errP(kvsTypes.ErrorSectorNotReady),
-		errP(kvsTypes.ErrorSectorNotReady),
-		errP(kvsTypes.ErrorSectorNotReady),
-		errP(kvsTypes.ErrorSectorNotReady),
+	backend := &fakeBackend{setResults: []*kvsTypes.SetResult{
+		{Err: kvsTypes.ErrorSectorNotReady},
+		{Err: kvsTypes.ErrorSectorNotReady},
+		{Err: kvsTypes.ErrorSectorNotReady},
+		{Err: kvsTypes.ErrorSectorNotReady},
 	}}
 	client := NewClient(backend)
 
@@ -142,8 +189,8 @@ func TestClientSetPreparingDeadline(t *testing.T) {
 }
 
 func TestClientSetWithoutRetry(t *testing.T) {
-	backend := &fakeBackend{setErrors: []*error{
-		errP(kvsTypes.ErrorSectorNotReady),
+	backend := &fakeBackend{setResults: []*kvsTypes.SetResult{
+		{Err: kvsTypes.ErrorSectorNotReady},
 	}}
 	client := NewClient(backend)
 
@@ -166,6 +213,76 @@ func TestClientSetInFlightDeadline(t *testing.T) {
 	assert.Equal(t, 1, backend.setCalls)
 }
 
+func TestClientSetUnconditionalUnknownNotRetried(t *testing.T) {
+	backend := &fakeBackend{setResults: []*kvsTypes.SetResult{
+		{Err: kvsTypes.ErrorOperationResultUnknown},
+	}}
+	client := NewClient(backend)
+
+	_, err := client.Set(t.Context(), "key", []byte("value"))
+	// without a CAS condition, an unknown-outcome retry could double-apply
+	assert.ErrorIs(t, err, ErrResultUnknown)
+	assert.Equal(t, 1, backend.setCalls)
+}
+
+func TestClientSetCasRetriesUnknown(t *testing.T) {
+	backend := &fakeBackend{setResults: []*kvsTypes.SetResult{
+		{Err: kvsTypes.ErrorOperationResultUnknown},
+		{Revision: 6},
+	}}
+	client := NewClient(backend)
+
+	res, err := client.Set(t.Context(), "key", []byte("value"), WithRevision(5))
+	// the CAS condition makes the retry at-most-once, so unknown is retried
+	require.NoError(t, err)
+	assert.Equal(t, uint64(6), res.Revision)
+	assert.Equal(t, 2, backend.setCalls)
+	assert.Equal(t, casParams{revision: 5}, backend.setCas[0])
+	assert.Equal(t, casParams{revision: 5}, backend.setCas[1])
+}
+
+func TestClientSetConflictNotRetried(t *testing.T) {
+	backend := &fakeBackend{setResults: []*kvsTypes.SetResult{
+		{Err: kvsTypes.ErrorCasConflict},
+	}}
+	client := NewClient(backend)
+
+	_, err := client.Set(t.Context(), "key", []byte("value"), WithRevision(5))
+	// a conflict is a definite answer: re-read and decide, never blind-retry
+	assert.ErrorIs(t, err, ErrConflict)
+	assert.Equal(t, 1, backend.setCalls)
+}
+
+func TestClientSetWithAbsent(t *testing.T) {
+	backend := &fakeBackend{setResults: []*kvsTypes.SetResult{
+		{Revision: 1},
+	}}
+	client := NewClient(backend)
+
+	_, err := client.Set(t.Context(), "key", []byte("value"), WithAbsent())
+	require.NoError(t, err)
+	assert.Equal(t, casParams{absent: true}, backend.setCas[0])
+}
+
+func TestClientWriteOptionValidation(t *testing.T) {
+	backend := &fakeBackend{}
+	client := NewClient(backend)
+
+	// a zero revision would silently turn the condition off on the wire
+	_, err := client.Set(t.Context(), "key", []byte("value"), WithRevision(0))
+	assert.Error(t, err)
+
+	_, err = client.Set(t.Context(), "key", []byte("value"), WithRevision(1), WithAbsent())
+	assert.Error(t, err)
+
+	err = client.Delete(t.Context(), "key", WithRevision(0))
+	assert.Error(t, err)
+
+	// no attempt must reach the backend on a misuse error
+	assert.Equal(t, 0, backend.setCalls)
+	assert.Equal(t, 0, backend.delCalls)
+}
+
 func TestClientDeleteNotFound(t *testing.T) {
 	backend := &fakeBackend{delErrors: []*error{
 		errP(kvsTypes.ErrorStoreKeyNotFound),
@@ -177,27 +294,13 @@ func TestClientDeleteNotFound(t *testing.T) {
 	assert.Equal(t, 1, backend.delCalls)
 }
 
-func TestClientGetRetriesPreparing(t *testing.T) {
-	backend := &fakeBackend{getResults: []*kvsTypes.GetResult{
-		{Err: kvsTypes.ErrorSectorNotReady},
-		{Data: []byte("value")},
+func TestClientDeleteCasConflict(t *testing.T) {
+	backend := &fakeBackend{delErrors: []*error{
+		errP(kvsTypes.ErrorCasConflict),
 	}}
 	client := NewClient(backend)
 
-	res, err := client.Get(t.Context(), "key")
-	require.NoError(t, err)
-	assert.Equal(t, []byte("value"), res.Value)
-	assert.Equal(t, 2, backend.getCalls)
-}
-
-func TestClientUnknownResponseCode(t *testing.T) {
-	backend := &fakeBackend{setErrors: []*error{
-		errP(kvsTypes.ErrorOperationResultUnknown),
-	}}
-	client := NewClient(backend)
-
-	_, err := client.Set(t.Context(), "key", []byte("value"))
-	// result-unknown must never be blindly retried without CAS
-	assert.ErrorIs(t, err, ErrResultUnknown)
-	assert.Equal(t, 1, backend.setCalls)
+	err := client.Delete(t.Context(), "key", WithRevision(3))
+	assert.ErrorIs(t, err, ErrConflict)
+	assert.Equal(t, casParams{revision: 3}, backend.delCas[0])
 }

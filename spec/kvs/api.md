@@ -285,18 +285,61 @@ lock.md の実装ステップを置き換える全体順序。API 再編を先�
    apply に届いた COMMAND_PATCH は default 分岐で決定的な waiter エラーに
    落ちる(apply 失敗ではない)。
 
-### Stage B: revision / CAS(lock.md の層 1)
+### Stage B: revision / CAS(lock.md の層 1)— 実装済み (2026-07-12)
 
-1. proto: `KvsRecord` エンベロープ、`Operation.cas_revision`、
-   `SectorSnapshot` / Import / Export への counter 追加、
-   `KvsOperationResponse` への revision と ERROR_CONFLICT 追加。
-2. operator: エンベロープ encode/decode、sector counter(apply 増加・
-   import で max-merge・snapshot 載せ替え)、CAS 判定。
-3. 公開面: `GetResponse.Revision` / `SetResponse.Revision`、
-   `WithRevision` / `WithAbsent`、`ErrConflict`。
-   CAS 付き操作の UNKNOWN 自動再送もここで入れる。
-4. simulator: kvsload に CAS 負荷(read-modify-write ループ)を追加、
-   `@@ kvs verify` に「CAS 競合下でも lost update がない」検証を追加。
+1. ~~proto~~ → 実装済み: `KvsRecord`(deterministic marshal で store value に
+   格納)、`Operation.cas_revision` + `cas_absent`(「不在を期待する CAS」は
+   番兵でなく独立フラグにした)、`Import.revision_counter` /
+   `SectorSnapshot.revision_counter`、`KvsOperationResponse` の revision と
+   ERROR_CONFLICT。
+2. ~~operator~~ → 実装済み: counter は apply でのみ増加(SET 成功時。
+   DELETE は増やさない — 再作成の ABA は counter 単調性で既に閉じている)、
+   Import は max-merge、snapshot 復元は verbatim 代入。CAS 判定は apply 内で
+   決定的(conflict は waiterErr であって apply 失敗ではない)。
+   waiter は `applyResult{err, revision}` を返す。
+3. ~~公開面~~ → 実装済み: `WithRevision(0)` と `WithRevision`+`WithAbsent` の
+   併用は呼び出し時に即エラー(0 は wire 上の「無条件」番兵のため黙って
+   条件が消えるのを防ぐ)。CAS 付き書き込みは UNKNOWN を自動再送
+   (ctx が生きている場合のみ。再送が conflict になる偽陰性は ErrConflict の
+   doc に明記)。
+4. ~~simulator~~ → 実装済み: 負荷 mix を Set 55% / CAS RMW 15% / Get 25% /
+   Delete 5% に変更。CAS 成功時に `@@ kvs cas ok: <key> <baseRevision>` を
+   出力し、**クラスタ全ログで (key, baseRevision>0) が重複しないこと**が
+   lost update 不在の判定基準(base=0 = 不在条件は delete/再作成で正当に
+   複数回勝てるため除外。過半数喪失の counter リセットは稀な偽陽性源 —
+   force-terminate ストームと突合する)。`@@ kvs load` に
+   `cas/conf/prep/unk/err` を追加。
+
+   **run 検証済み (2026-07-12 run, ~30min, 激 churn)**:
+   - corrupt 0(Set 79k / CAS 成功 18.7k / Get 34k)、watchdog 0、
+     snapshot 発火継続。
+   - **バグ発見→修正**: `responseErrorToError` に ERROR_CONFLICT の
+     逆マッピングが欠けており、conflict が結果不定に化けて CAS の自動再送が
+     deadline まで空回りしていた(conf=0 / unk=15.5% ≒ 実際の競合率が
+     全部 unk に計上)。修正済み + 全コード網羅の回帰テスト追加
+     (`TestResponseErrorToError`)。conf/unk の正常化は次回 run で確認する。
+   - cas ok 重複 91/18.5k は**全て発生間隔 2 分以上**(85/94 は 5 分超)。
+     RMW 窓(サブ秒)での重複は 0 件 = lost update の証拠なし。
+     force terminate 134 回による counter リセット後の revision 再訪
+     (文書化済みの偽陽性)と整合。ノイズ削減には lock.md TODO の
+     lineage epoch が要る。
+
+   **再 run 検証 (2026-07-12 run 2, ~19min)**:
+   - **conflict 修正の効果を確認**: conf 3,077(CAS の 21.8%、無条件 Set 55%
+     と共有 key 空間なら妥当な競合率)、cas unk 15.5%→**0.37%**(set の
+     0.78% と同水準に正常化)。corrupt 0 / watchdog 0 は維持。
+   - cas ok 重複 40 件のうち**短間隔(3〜56 秒)が 4 件**。counter リセット
+     では説明できないためトレースした結果、原因は **merge/overlap 抗争
+     ループ**: 生きている node (c5ea…) の active sector を、routing 視界の
+     不一致から隣接 host (c3a…) が「死んだ host の leftover」と誤認 →
+     tail 切り詰め activate → merge で吸収(この sector への CAS が成功)→
+     生存側が再 activate → 重複検知で両方 Terminate(**ack 済み書き込みごと
+     データ破棄** = design.md で許容済みのクラス)→ 再ループ。46 秒間に
+     Terminate 27 回、同一 (key, base=488) の CAS が 3 回成功。
+     **CAS 実装のバグではなく**、既知の ack 済み書き込みロスト窓が CAS 監査で
+     初めて定量可視化されたもの(発生率 ~0.04% of CAS)。恒久対策をするなら
+     「merge 前の leftover host 生存確認」等の activation 層の課題
+     (design.md「churn 下のメンバーシップ管理の課題」ファミリー)。
 
 ### Stage C: Patch(pluggable Patcher)
 

@@ -28,6 +28,7 @@ import (
 	"github.com/llamerada-jp/colonio/node/internal/kvs/hosting"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/sector"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/sector/consensus"
+	"github.com/llamerada-jp/colonio/node/internal/kvs/sector/operator"
 	"github.com/llamerada-jp/colonio/node/observation"
 	"github.com/llamerada-jp/colonio/types"
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
@@ -142,6 +143,12 @@ func responseErrorToError(command string, code proto.KvsOperationResponse_Error)
 		return kvsTypes.ErrorStoreKeyNotFound
 	case proto.KvsOperationResponse_ERROR_PREPARING:
 		return kvsTypes.ErrorSectorNotReady
+	case proto.KvsOperationResponse_ERROR_CONFLICT:
+		// A definite outcome, and one the public client must NOT auto-retry.
+		// Falling into the unknown class here made conditional writes re-send
+		// genuine conflicts until their deadline (simulator run 2026-07-12:
+		// cas conf=0, unk=15.5% — every conflict burned its full 15s budget).
+		return kvsTypes.ErrorCasConflict
 	default:
 		return fmt.Errorf("kvs %s failed with code %d: %w", command, code, kvsTypes.ErrorOperationResultUnknown)
 	}
@@ -157,23 +164,17 @@ func (k *KVS) Get(key string) chan *kvsTypes.GetResult {
 			defer close(c)
 
 			if err != nil {
-				c <- &kvsTypes.GetResult{
-					Data: nil,
-					Err:  err,
-				}
+				c <- &kvsTypes.GetResult{Err: err}
 				return
 			}
 
 			if err := responseErrorToError("get", res.Error); err != nil {
-				c <- &kvsTypes.GetResult{
-					Data: nil,
-					Err:  err,
-				}
+				c <- &kvsTypes.GetResult{Err: err}
 				return
 			}
 			c <- &kvsTypes.GetResult{
-				Data: res.Value,
-				Err:  nil,
+				Data:     res.Value,
+				Revision: res.Revision,
 			}
 		},
 	})
@@ -181,38 +182,42 @@ func (k *KVS) Get(key string) chan *kvsTypes.GetResult {
 	return c
 }
 
-func (k *KVS) Set(key string, value []byte) chan error {
-	c := make(chan error, 1)
+func (k *KVS) Set(key string, value []byte, casRevision uint64, casAbsent bool) chan *kvsTypes.SetResult {
+	c := make(chan *kvsTypes.SetResult, 1)
 	k.outbound.sendKvsOperation(&operationParam{
-		command: proto.KvsOperation_COMMAND_SET,
-		key:     key,
-		value:   value,
+		command:     proto.KvsOperation_COMMAND_SET,
+		key:         key,
+		value:       value,
+		casRevision: casRevision,
+		casAbsent:   casAbsent,
 		receiver: func(res *proto.KvsOperationResponse, err error) {
 			defer close(c)
 
 			if err != nil {
-				c <- err
+				c <- &kvsTypes.SetResult{Err: err}
 				return
 			}
 
 			if err := responseErrorToError("set", res.Error); err != nil {
-				c <- err
+				c <- &kvsTypes.SetResult{Err: err}
 				return
 			}
 
-			c <- nil
+			c <- &kvsTypes.SetResult{Revision: res.Revision}
 		},
 	})
 
 	return c
 }
 
-func (k *KVS) Delete(key string) chan error {
+func (k *KVS) Delete(key string, casRevision uint64, casAbsent bool) chan error {
 	c := make(chan error, 1)
 	k.outbound.sendKvsOperation(&operationParam{
-		command: proto.KvsOperation_COMMAND_DELETE,
-		key:     key,
-		value:   nil,
+		command:     proto.KvsOperation_COMMAND_DELETE,
+		key:         key,
+		value:       nil,
+		casRevision: casRevision,
+		casAbsent:   casAbsent,
 		receiver: func(res *proto.KvsOperationResponse, err error) {
 			defer close(c)
 
@@ -233,11 +238,11 @@ func (k *KVS) Delete(key string) chan error {
 	return c
 }
 
-func (k *KVS) kvsOperate(command proto.KvsOperation_Command, key string, value []byte) (proto.KvsOperationResponse_Error, []byte) {
+func (k *KVS) kvsOperate(operation *proto.KvsOperation) (proto.KvsOperationResponse_Error, []byte, uint64) {
 	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
 	if hostingSectorKey == nil {
 		k.logger.Debug("preparing hosting sector key")
-		return proto.KvsOperationResponse_ERROR_PREPARING, nil
+		return proto.KvsOperationResponse_ERROR_PREPARING, nil, 0
 	}
 
 	k.mtx.RLock()
@@ -245,14 +250,16 @@ func (k *KVS) kvsOperate(command proto.KvsOperation_Command, key string, value [
 	k.mtx.RUnlock()
 	if hostingSector == nil {
 		k.logger.Debug("preparing hosting sector")
-		return proto.KvsOperationResponse_ERROR_PREPARING, nil
+		return proto.KvsOperationResponse_ERROR_PREPARING, nil, 0
 	}
-	operator := hostingSector.GetOperator()
+	op := hostingSector.GetOperator()
 
 	// ErrorSectorNotReady → PREPARING is the retryable class: not activated
 	// yet, key out of range (stale routing / range moved), or the range is
 	// being handed over (split export, merge lock). A timeout maps to UNKNOWN
 	// because the outcome is genuinely unknown (the proposal may still commit).
+	// A CAS conflict is a definite outcome of its own: the store was left
+	// untouched, and the client must re-read before deciding to retry.
 	toResponseError := func(err error) proto.KvsOperationResponse_Error {
 		switch {
 		case err == nil:
@@ -261,28 +268,39 @@ func (k *KVS) kvsOperate(command proto.KvsOperation_Command, key string, value [
 			return proto.KvsOperationResponse_ERROR_NOT_FOUND
 		case errors.Is(err, kvsTypes.ErrorSectorNotReady):
 			return proto.KvsOperationResponse_ERROR_PREPARING
+		case errors.Is(err, kvsTypes.ErrorCasConflict):
+			return proto.KvsOperationResponse_ERROR_CONFLICT
 		default:
 			return proto.KvsOperationResponse_ERROR_UNKNOWN
 		}
 	}
 
-	switch command {
+	var cas *operator.CasCondition
+	if operation.CasRevision != 0 || operation.CasAbsent {
+		cas = &operator.CasCondition{
+			Revision: operation.CasRevision,
+			Absent:   operation.CasAbsent,
+		}
+	}
+
+	switch operation.Command {
 	case proto.KvsOperation_COMMAND_GET:
-		data, err := operator.Get(key)
-		return toResponseError(err), data
+		data, revision, err := op.Get(operation.Key)
+		return toResponseError(err), data, revision
 
 	case proto.KvsOperation_COMMAND_SET:
-		return toResponseError(operator.Set(key, value)), nil
+		revision, err := op.Set(operation.Key, operation.Value, cas)
+		return toResponseError(err), nil, revision
 
 	// COMMAND_PATCH is deliberately unhandled (falls to default → UNKNOWN):
 	// the old pass-through-to-store patch was removed, and the pluggable
 	// Patcher redefinition arrives with spec/kvs/api.md Stage C.
 
 	case proto.KvsOperation_COMMAND_DELETE:
-		return toResponseError(operator.Delete(key)), nil
+		return toResponseError(op.Delete(operation.Key, cas)), nil, 0
 
 	default:
-		return proto.KvsOperationResponse_ERROR_UNKNOWN, nil
+		return proto.KvsOperationResponse_ERROR_UNKNOWN, nil, 0
 	}
 }
 

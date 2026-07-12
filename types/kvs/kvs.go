@@ -35,6 +35,10 @@ var (
 	// public client (node/kvs) only auto-retries this class for conditional
 	// (CAS) operations.
 	ErrorOperationResultUnknown = fmt.Errorf("operation result is unknown")
+	// ErrorCasConflict means a conditional write (expected revision / expected
+	// absence) found a different state at apply time. The store was left
+	// untouched. Not blindly retryable: re-read the record and decide.
+	ErrorCasConflict = fmt.Errorf("compare-and-swap conflict")
 )
 
 type Store interface {
@@ -48,5 +52,15 @@ type Store interface {
 
 type GetResult struct {
 	Data []byte
-	Err  error
+	// Revision is the record's revision, used as the expected value of a
+	// conditional write (CAS). Assigned from the sector's revision counter;
+	// never 0 for an existing record.
+	Revision uint64
+	Err      error
+}
+
+type SetResult struct {
+	// Revision is the newly assigned revision of the written record.
+	Revision uint64
+	Err      error
 }

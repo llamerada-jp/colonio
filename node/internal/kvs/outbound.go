@@ -31,10 +31,14 @@ var (
 )
 
 type operationParam struct {
-	command  proto.KvsOperation_Command
-	key      string
-	value    []byte
-	receiver func(res *proto.KvsOperationResponse, err error)
+	command proto.KvsOperation_Command
+	key     string
+	value   []byte
+	// CAS condition (see consensus.proto Operation): casRevision != 0 or
+	// casAbsent makes the write conditional.
+	casRevision uint64
+	casAbsent   bool
+	receiver    func(res *proto.KvsOperationResponse, err error)
 }
 
 type SectorManageMemberParam struct {
@@ -92,9 +96,11 @@ func (o *outboundAdapter) sendKvsOperation(param *operationParam) {
 	content := &proto.PacketContent{
 		Content: &proto.PacketContent_KvsOperation{
 			KvsOperation: &proto.KvsOperation{
-				Command: param.command,
-				Key:     param.key,
-				Value:   param.value,
+				Command:     param.command,
+				Key:         param.key,
+				Value:       param.value,
+				CasRevision: param.casRevision,
+				CasAbsent:   param.casAbsent,
 			},
 		},
 	}

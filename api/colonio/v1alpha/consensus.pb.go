@@ -71,7 +71,7 @@ func (x Operation_Command) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Operation_Command.Descriptor instead.
 func (Operation_Command) EnumDescriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{12, 0}
+	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{13, 0}
 }
 
 type ConsensusProposal struct {
@@ -632,10 +632,16 @@ func (x *CommitMerge) GetTail() *NodeID {
 }
 
 type Import struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Records       []*Import_Record       `protobuf:"bytes,1,rep,name=records,proto3" json:"records,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Records []*Import_Record       `protobuf:"bytes,1,rep,name=records,proto3" json:"records,omitempty"`
+	// Source sector's revision counter at export time. The apply max-merges it
+	// into the importing sector's counter so that a record's next revision is
+	// always greater than any revision it carried in — per-key monotonicity
+	// survives split/merge migration and delete/re-create (spec/kvs/lock.md
+	// 「revision counter」).
+	RevisionCounter uint64 `protobuf:"varint,2,opt,name=revision_counter,json=revisionCounter,proto3" json:"revision_counter,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Import) Reset() {
@@ -675,6 +681,73 @@ func (x *Import) GetRecords() []*Import_Record {
 	return nil
 }
 
+func (x *Import) GetRevisionCounter() uint64 {
+	if x != nil {
+		return x.RevisionCounter
+	}
+	return 0
+}
+
+// KvsRecord is the envelope stored as the record value in the sector store:
+// the user value plus the replicated per-record metadata. It rides opaquely
+// through Import / snapshot / migration, so the metadata cannot be forgotten
+// on any state-transfer path. Serialized with deterministic marshaling —
+// the bytes are part of the replicated state.
+type KvsRecord struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Value []byte                 `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
+	// Assigned from the sector's revision counter on every Set; never reused
+	// within a sector lineage (the counter only grows and max-merges on
+	// import). 0 is never assigned: it is the CAS sentinel for "absent".
+	Revision      uint64 `protobuf:"varint,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KvsRecord) Reset() {
+	*x = KvsRecord{}
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KvsRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KvsRecord) ProtoMessage() {}
+
+func (x *KvsRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KvsRecord.ProtoReflect.Descriptor instead.
+func (*KvsRecord) Descriptor() ([]byte, []int) {
+	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *KvsRecord) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+func (x *KvsRecord) GetRevision() uint64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
 // SectorSnapshot is the sector-layer state machine snapshot: the replicated
 // state after applying all log entries up to the snapshot index. Local intent
 // fields (proposal*, splittingAddress, timers) are deliberately excluded —
@@ -694,15 +767,19 @@ type SectorSnapshot struct {
 	// Current prepare_merge holder (merge lock); unset means unlocked. Must be
 	// included: a replica restored without it would diverge from the group's
 	// merge-lock state (KvsSectorMergeLock safety).
-	MergeBy       *NodeID `protobuf:"bytes,3,opt,name=merge_by,json=mergeBy,proto3" json:"merge_by,omitempty"`
-	Terminated    bool    `protobuf:"varint,4,opt,name=terminated,proto3" json:"terminated,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	MergeBy    *NodeID `protobuf:"bytes,3,opt,name=merge_by,json=mergeBy,proto3" json:"merge_by,omitempty"`
+	Terminated bool    `protobuf:"varint,4,opt,name=terminated,proto3" json:"terminated,omitempty"`
+	// Revision counter (replicated state, see Import.revision_counter). A
+	// restored replica assigns it verbatim: the snapshot is the full state at
+	// its log index.
+	RevisionCounter uint64 `protobuf:"varint,5,opt,name=revision_counter,json=revisionCounter,proto3" json:"revision_counter,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *SectorSnapshot) Reset() {
 	*x = SectorSnapshot{}
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[10]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -714,7 +791,7 @@ func (x *SectorSnapshot) String() string {
 func (*SectorSnapshot) ProtoMessage() {}
 
 func (x *SectorSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[10]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -727,7 +804,7 @@ func (x *SectorSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SectorSnapshot.ProtoReflect.Descriptor instead.
 func (*SectorSnapshot) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{10}
+	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SectorSnapshot) GetRecords() []*Import_Record {
@@ -758,6 +835,13 @@ func (x *SectorSnapshot) GetTerminated() bool {
 	return false
 }
 
+func (x *SectorSnapshot) GetRevisionCounter() uint64 {
+	if x != nil {
+		return x.RevisionCounter
+	}
+	return 0
+}
+
 // ConsensusSnapshot is the outer message stored in raftpb.Snapshot.Data. It
 // wraps the sector-layer payload with the consensus-layer member table:
 // sectorNo→nodeID routing is built only by conf-change replay, which a
@@ -775,7 +859,7 @@ type ConsensusSnapshot struct {
 
 func (x *ConsensusSnapshot) Reset() {
 	*x = ConsensusSnapshot{}
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[11]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -787,7 +871,7 @@ func (x *ConsensusSnapshot) String() string {
 func (*ConsensusSnapshot) ProtoMessage() {}
 
 func (x *ConsensusSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[11]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -800,7 +884,7 @@ func (x *ConsensusSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsensusSnapshot.ProtoReflect.Descriptor instead.
 func (*ConsensusSnapshot) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{11}
+	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ConsensusSnapshot) GetSectorState() []byte {
@@ -818,18 +902,25 @@ func (x *ConsensusSnapshot) GetMembers() map[uint64]*NodeID {
 }
 
 type Operation struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Command       Operation_Command      `protobuf:"varint,1,opt,name=command,proto3,enum=api.colonio.v1alpha.Operation_Command" json:"command,omitempty"`
-	OperationId   uint32                 `protobuf:"varint,2,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
-	Value         []byte                 `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Command     Operation_Command      `protobuf:"varint,1,opt,name=command,proto3,enum=api.colonio.v1alpha.Operation_Command" json:"command,omitempty"`
+	OperationId uint32                 `protobuf:"varint,2,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Key         string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	Value       []byte                 `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
+	// CAS condition, checked deterministically at apply time against the
+	// record's replicated revision. cas_revision != 0: apply only when the
+	// record exists with exactly this revision. cas_absent: apply only when the
+	// record does not exist. Both unset = unconditional. A failed check is a
+	// waiter-level conflict, not an apply failure.
+	CasRevision   uint64 `protobuf:"varint,5,opt,name=cas_revision,json=casRevision,proto3" json:"cas_revision,omitempty"`
+	CasAbsent     bool   `protobuf:"varint,6,opt,name=cas_absent,json=casAbsent,proto3" json:"cas_absent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Operation) Reset() {
 	*x = Operation{}
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[12]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -841,7 +932,7 @@ func (x *Operation) String() string {
 func (*Operation) ProtoMessage() {}
 
 func (x *Operation) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[12]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -854,7 +945,7 @@ func (x *Operation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Operation.ProtoReflect.Descriptor instead.
 func (*Operation) Descriptor() ([]byte, []int) {
-	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{12}
+	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Operation) GetCommand() Operation_Command {
@@ -885,6 +976,20 @@ func (x *Operation) GetValue() []byte {
 	return nil
 }
 
+func (x *Operation) GetCasRevision() uint64 {
+	if x != nil {
+		return x.CasRevision
+	}
+	return 0
+}
+
+func (x *Operation) GetCasAbsent() bool {
+	if x != nil {
+		return x.CasAbsent
+	}
+	return false
+}
+
 type Import_Record struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
@@ -895,7 +1000,7 @@ type Import_Record struct {
 
 func (x *Import_Record) Reset() {
 	*x = Import_Record{}
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[13]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -907,7 +1012,7 @@ func (x *Import_Record) String() string {
 func (*Import_Record) ProtoMessage() {}
 
 func (x *Import_Record) ProtoReflect() protoreflect.Message {
-	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[13]
+	mi := &file_api_colonio_v1alpha_consensus_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -969,30 +1074,38 @@ const file_api_colonio_v1alpha_consensus_proto_rawDesc = "" +
 	"\fReleaseMerge\x125\n" +
 	"\ahandler\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\ahandler\">\n" +
 	"\vCommitMerge\x12/\n" +
-	"\x04tail\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x04tail\"x\n" +
+	"\x04tail\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x04tail\"\xa3\x01\n" +
 	"\x06Import\x12<\n" +
-	"\arecords\x18\x01 \x03(\v2\".api.colonio.v1alpha.Import.RecordR\arecords\x1a0\n" +
+	"\arecords\x18\x01 \x03(\v2\".api.colonio.v1alpha.Import.RecordR\arecords\x12)\n" +
+	"\x10revision_counter\x18\x02 \x01(\x04R\x0frevisionCounter\x1a0\n" +
 	"\x06Record\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value\"\xd7\x01\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value\"=\n" +
+	"\tKvsRecord\x12\x14\n" +
+	"\x05value\x18\x01 \x01(\fR\x05value\x12\x1a\n" +
+	"\brevision\x18\x02 \x01(\x04R\brevision\"\x82\x02\n" +
 	"\x0eSectorSnapshot\x12<\n" +
 	"\arecords\x18\x01 \x03(\v2\".api.colonio.v1alpha.Import.RecordR\arecords\x12/\n" +
 	"\x04tail\x18\x02 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x04tail\x126\n" +
 	"\bmerge_by\x18\x03 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\amergeBy\x12\x1e\n" +
 	"\n" +
 	"terminated\x18\x04 \x01(\bR\n" +
-	"terminated\"\xde\x01\n" +
+	"terminated\x12)\n" +
+	"\x10revision_counter\x18\x05 \x01(\x04R\x0frevisionCounter\"\xde\x01\n" +
 	"\x11ConsensusSnapshot\x12!\n" +
 	"\fsector_state\x18\x01 \x01(\fR\vsectorState\x12M\n" +
 	"\amembers\x18\x02 \x03(\v23.api.colonio.v1alpha.ConsensusSnapshot.MembersEntryR\amembers\x1aW\n" +
 	"\fMembersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x04R\x03key\x121\n" +
-	"\x05value\x18\x02 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x05value:\x028\x01\"\xec\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x05value:\x028\x01\"\xae\x02\n" +
 	"\tOperation\x12@\n" +
 	"\acommand\x18\x01 \x01(\x0e2&.api.colonio.v1alpha.Operation.CommandR\acommand\x12!\n" +
 	"\foperation_id\x18\x02 \x01(\rR\voperationId\x12\x10\n" +
 	"\x03key\x18\x03 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x04 \x01(\fR\x05value\"R\n" +
+	"\x05value\x18\x04 \x01(\fR\x05value\x12!\n" +
+	"\fcas_revision\x18\x05 \x01(\x04R\vcasRevision\x12\x1d\n" +
+	"\n" +
+	"cas_absent\x18\x06 \x01(\bR\tcasAbsent\"R\n" +
 	"\aCommand\x12\x0f\n" +
 	"\vCOMMAND_GET\x10\x00\x12\x0f\n" +
 	"\vCOMMAND_SET\x10\x01\x12\x11\n" +
@@ -1012,7 +1125,7 @@ func file_api_colonio_v1alpha_consensus_proto_rawDescGZIP() []byte {
 }
 
 var file_api_colonio_v1alpha_consensus_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_colonio_v1alpha_consensus_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_api_colonio_v1alpha_consensus_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_api_colonio_v1alpha_consensus_proto_goTypes = []any{
 	(Operation_Command)(0),    // 0: api.colonio.v1alpha.Operation.Command
 	(*ConsensusProposal)(nil), // 1: api.colonio.v1alpha.ConsensusProposal
@@ -1025,12 +1138,13 @@ var file_api_colonio_v1alpha_consensus_proto_goTypes = []any{
 	(*ReleaseMerge)(nil),      // 8: api.colonio.v1alpha.ReleaseMerge
 	(*CommitMerge)(nil),       // 9: api.colonio.v1alpha.CommitMerge
 	(*Import)(nil),            // 10: api.colonio.v1alpha.Import
-	(*SectorSnapshot)(nil),    // 11: api.colonio.v1alpha.SectorSnapshot
-	(*ConsensusSnapshot)(nil), // 12: api.colonio.v1alpha.ConsensusSnapshot
-	(*Operation)(nil),         // 13: api.colonio.v1alpha.Operation
-	(*Import_Record)(nil),     // 14: api.colonio.v1alpha.Import.Record
-	nil,                       // 15: api.colonio.v1alpha.ConsensusSnapshot.MembersEntry
-	(*NodeID)(nil),            // 16: api.colonio.v1alpha.NodeID
+	(*KvsRecord)(nil),         // 11: api.colonio.v1alpha.KvsRecord
+	(*SectorSnapshot)(nil),    // 12: api.colonio.v1alpha.SectorSnapshot
+	(*ConsensusSnapshot)(nil), // 13: api.colonio.v1alpha.ConsensusSnapshot
+	(*Operation)(nil),         // 14: api.colonio.v1alpha.Operation
+	(*Import_Record)(nil),     // 15: api.colonio.v1alpha.Import.Record
+	nil,                       // 16: api.colonio.v1alpha.ConsensusSnapshot.MembersEntry
+	(*NodeID)(nil),            // 17: api.colonio.v1alpha.NodeID
 }
 var file_api_colonio_v1alpha_consensus_proto_depIdxs = []int32{
 	2,  // 0: api.colonio.v1alpha.ConsensusProposal.activate:type_name -> api.colonio.v1alpha.Activate
@@ -1041,22 +1155,22 @@ var file_api_colonio_v1alpha_consensus_proto_depIdxs = []int32{
 	7,  // 5: api.colonio.v1alpha.ConsensusProposal.prepare_merge:type_name -> api.colonio.v1alpha.PrepareMerge
 	9,  // 6: api.colonio.v1alpha.ConsensusProposal.commit_merge:type_name -> api.colonio.v1alpha.CommitMerge
 	10, // 7: api.colonio.v1alpha.ConsensusProposal.import:type_name -> api.colonio.v1alpha.Import
-	13, // 8: api.colonio.v1alpha.ConsensusProposal.operation:type_name -> api.colonio.v1alpha.Operation
+	14, // 8: api.colonio.v1alpha.ConsensusProposal.operation:type_name -> api.colonio.v1alpha.Operation
 	8,  // 9: api.colonio.v1alpha.ConsensusProposal.release_merge:type_name -> api.colonio.v1alpha.ReleaseMerge
-	16, // 10: api.colonio.v1alpha.Activate.tail:type_name -> api.colonio.v1alpha.NodeID
-	16, // 11: api.colonio.v1alpha.Extend.tail:type_name -> api.colonio.v1alpha.NodeID
-	16, // 12: api.colonio.v1alpha.PreCommitSplit.tail:type_name -> api.colonio.v1alpha.NodeID
-	16, // 13: api.colonio.v1alpha.CommitSplit.tail:type_name -> api.colonio.v1alpha.NodeID
-	16, // 14: api.colonio.v1alpha.PrepareMerge.handler:type_name -> api.colonio.v1alpha.NodeID
-	16, // 15: api.colonio.v1alpha.ReleaseMerge.handler:type_name -> api.colonio.v1alpha.NodeID
-	16, // 16: api.colonio.v1alpha.CommitMerge.tail:type_name -> api.colonio.v1alpha.NodeID
-	14, // 17: api.colonio.v1alpha.Import.records:type_name -> api.colonio.v1alpha.Import.Record
-	14, // 18: api.colonio.v1alpha.SectorSnapshot.records:type_name -> api.colonio.v1alpha.Import.Record
-	16, // 19: api.colonio.v1alpha.SectorSnapshot.tail:type_name -> api.colonio.v1alpha.NodeID
-	16, // 20: api.colonio.v1alpha.SectorSnapshot.merge_by:type_name -> api.colonio.v1alpha.NodeID
-	15, // 21: api.colonio.v1alpha.ConsensusSnapshot.members:type_name -> api.colonio.v1alpha.ConsensusSnapshot.MembersEntry
+	17, // 10: api.colonio.v1alpha.Activate.tail:type_name -> api.colonio.v1alpha.NodeID
+	17, // 11: api.colonio.v1alpha.Extend.tail:type_name -> api.colonio.v1alpha.NodeID
+	17, // 12: api.colonio.v1alpha.PreCommitSplit.tail:type_name -> api.colonio.v1alpha.NodeID
+	17, // 13: api.colonio.v1alpha.CommitSplit.tail:type_name -> api.colonio.v1alpha.NodeID
+	17, // 14: api.colonio.v1alpha.PrepareMerge.handler:type_name -> api.colonio.v1alpha.NodeID
+	17, // 15: api.colonio.v1alpha.ReleaseMerge.handler:type_name -> api.colonio.v1alpha.NodeID
+	17, // 16: api.colonio.v1alpha.CommitMerge.tail:type_name -> api.colonio.v1alpha.NodeID
+	15, // 17: api.colonio.v1alpha.Import.records:type_name -> api.colonio.v1alpha.Import.Record
+	15, // 18: api.colonio.v1alpha.SectorSnapshot.records:type_name -> api.colonio.v1alpha.Import.Record
+	17, // 19: api.colonio.v1alpha.SectorSnapshot.tail:type_name -> api.colonio.v1alpha.NodeID
+	17, // 20: api.colonio.v1alpha.SectorSnapshot.merge_by:type_name -> api.colonio.v1alpha.NodeID
+	16, // 21: api.colonio.v1alpha.ConsensusSnapshot.members:type_name -> api.colonio.v1alpha.ConsensusSnapshot.MembersEntry
 	0,  // 22: api.colonio.v1alpha.Operation.command:type_name -> api.colonio.v1alpha.Operation.Command
-	16, // 23: api.colonio.v1alpha.ConsensusSnapshot.MembersEntry.value:type_name -> api.colonio.v1alpha.NodeID
+	17, // 23: api.colonio.v1alpha.ConsensusSnapshot.MembersEntry.value:type_name -> api.colonio.v1alpha.NodeID
 	24, // [24:24] is the sub-list for method output_type
 	24, // [24:24] is the sub-list for method input_type
 	24, // [24:24] is the sub-list for extension type_name
@@ -1088,7 +1202,7 @@ func file_api_colonio_v1alpha_consensus_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_colonio_v1alpha_consensus_proto_rawDesc), len(file_api_colonio_v1alpha_consensus_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   15,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

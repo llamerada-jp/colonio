@@ -82,6 +82,7 @@ const (
 	KvsOperationResponse_ERROR_UNKNOWN   KvsOperationResponse_Error = 1
 	KvsOperationResponse_ERROR_PREPARING KvsOperationResponse_Error = 2
 	KvsOperationResponse_ERROR_NOT_FOUND KvsOperationResponse_Error = 3 // used for GET
+	KvsOperationResponse_ERROR_CONFLICT  KvsOperationResponse_Error = 4 // CAS condition failed; re-read before retrying
 )
 
 // Enum value maps for KvsOperationResponse_Error.
@@ -91,12 +92,14 @@ var (
 		1: "ERROR_UNKNOWN",
 		2: "ERROR_PREPARING",
 		3: "ERROR_NOT_FOUND",
+		4: "ERROR_CONFLICT",
 	}
 	KvsOperationResponse_Error_value = map[string]int32{
 		"ERROR_NONE":      0,
 		"ERROR_UNKNOWN":   1,
 		"ERROR_PREPARING": 2,
 		"ERROR_NOT_FOUND": 3,
+		"ERROR_CONFLICT":  4,
 	}
 )
 
@@ -962,10 +965,13 @@ func (x *MessagingResponse) GetResponse() []byte {
 
 // for kvs and consensus module
 type KvsOperation struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Command       KvsOperation_Command   `protobuf:"varint,1,opt,name=command,proto3,enum=api.colonio.v1alpha.KvsOperation_Command" json:"command,omitempty"`
-	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	Value         []byte                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"` // used for SET and PATCH
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Command KvsOperation_Command   `protobuf:"varint,1,opt,name=command,proto3,enum=api.colonio.v1alpha.KvsOperation_Command" json:"command,omitempty"`
+	Key     string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	Value   []byte                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"` // used for SET and PATCH
+	// CAS condition for SET / DELETE (see consensus.proto Operation).
+	CasRevision   uint64 `protobuf:"varint,4,opt,name=cas_revision,json=casRevision,proto3" json:"cas_revision,omitempty"`
+	CasAbsent     bool   `protobuf:"varint,5,opt,name=cas_absent,json=casAbsent,proto3" json:"cas_absent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1021,10 +1027,26 @@ func (x *KvsOperation) GetValue() []byte {
 	return nil
 }
 
+func (x *KvsOperation) GetCasRevision() uint64 {
+	if x != nil {
+		return x.CasRevision
+	}
+	return 0
+}
+
+func (x *KvsOperation) GetCasAbsent() bool {
+	if x != nil {
+		return x.CasAbsent
+	}
+	return false
+}
+
 type KvsOperationResponse struct {
-	state         protoimpl.MessageState     `protogen:"open.v1"`
-	Error         KvsOperationResponse_Error `protobuf:"varint,1,opt,name=error,proto3,enum=api.colonio.v1alpha.KvsOperationResponse_Error" json:"error,omitempty"`
-	Value         []byte                     `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"` // used for GET
+	state protoimpl.MessageState     `protogen:"open.v1"`
+	Error KvsOperationResponse_Error `protobuf:"varint,1,opt,name=error,proto3,enum=api.colonio.v1alpha.KvsOperationResponse_Error" json:"error,omitempty"`
+	Value []byte                     `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"` // used for GET
+	// GET: the record's current revision. SET: the newly assigned revision.
+	Revision      uint64 `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1071,6 +1093,13 @@ func (x *KvsOperationResponse) GetValue() []byte {
 		return x.Value
 	}
 	return nil
+}
+
+func (x *KvsOperationResponse) GetRevision() uint64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
 }
 
 type ConsensusMessage struct {
@@ -1817,25 +1846,30 @@ const file_api_colonio_v1alpha_node_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\fR\amessage\"/\n" +
 	"\x11MessagingResponse\x12\x1a\n" +
-	"\bresponse\x18\x01 \x01(\fR\bresponse\"\xcf\x01\n" +
+	"\bresponse\x18\x01 \x01(\fR\bresponse\"\x91\x02\n" +
 	"\fKvsOperation\x12C\n" +
 	"\acommand\x18\x01 \x01(\x0e2).api.colonio.v1alpha.KvsOperation.CommandR\acommand\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x03 \x01(\fR\x05value\"R\n" +
+	"\x05value\x18\x03 \x01(\fR\x05value\x12!\n" +
+	"\fcas_revision\x18\x04 \x01(\x04R\vcasRevision\x12\x1d\n" +
+	"\n" +
+	"cas_absent\x18\x05 \x01(\bR\tcasAbsent\"R\n" +
 	"\aCommand\x12\x0f\n" +
 	"\vCOMMAND_GET\x10\x00\x12\x0f\n" +
 	"\vCOMMAND_SET\x10\x01\x12\x11\n" +
 	"\rCOMMAND_PATCH\x10\x02\x12\x12\n" +
-	"\x0eCOMMAND_DELETE\x10\x03\"\xc9\x01\n" +
+	"\x0eCOMMAND_DELETE\x10\x03\"\xf9\x01\n" +
 	"\x14KvsOperationResponse\x12E\n" +
 	"\x05error\x18\x01 \x01(\x0e2/.api.colonio.v1alpha.KvsOperationResponse.ErrorR\x05error\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value\"T\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value\x12\x1a\n" +
+	"\brevision\x18\x03 \x01(\x04R\brevision\"h\n" +
 	"\x05Error\x12\x0e\n" +
 	"\n" +
 	"ERROR_NONE\x10\x00\x12\x11\n" +
 	"\rERROR_UNKNOWN\x10\x01\x12\x13\n" +
 	"\x0fERROR_PREPARING\x10\x02\x12\x13\n" +
-	"\x0fERROR_NOT_FOUND\x10\x03\"f\n" +
+	"\x0fERROR_NOT_FOUND\x10\x03\x12\x12\n" +
+	"\x0eERROR_CONFLICT\x10\x04\"f\n" +
 	"\x10ConsensusMessage\x12\x1b\n" +
 	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1b\n" +
 	"\tsector_no\x18\x02 \x01(\x04R\bsectorNo\x12\x18\n" +
