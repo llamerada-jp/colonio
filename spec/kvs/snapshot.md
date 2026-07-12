@@ -226,11 +226,15 @@ compact 後の join/promotion）。
   - snapshot を含む MsgSnap のメッセージサイズと transferer/network 層の
     パケットサイズ上限の関係を確認（records が大きい sector の snapshot は
     1 メッセージで送られる）→ データプレーン実装後（Stage 6）に実測。
-- **Stage 6: データプレーンとの結合検証**（データプレーン実装後）
-  - `operator.Set/Patch/Delete/ApplyProposal`（現状 panic スタブ）実装後、
-    実書き込み負荷で snapshot/compaction を検証。
+- **Stage 6: データプレーンとの結合検証**
+  - [x] `operator.Set/Patch/Delete/ApplyProposal` 実装（2026-07-12、設計は
+    spec/kvs/dataplane.md）。
+  - 実書き込み負荷（大 value × 高頻度 Set）で snapshot/compaction による
+    メモリ有界化を実測し、`snapCount`/`snapshotCatchUpEntriesN` の本番値を
+    調整する。MsgSnap サイズとパケット上限の関係もここで実測。
   - `Operation.operation_id` の重複適用防止（dedup 状態）を複製状態に
     加える場合、それも snapshot に含める必要がある（SectorSnapshot に
-    フィールド追加）。
+    フィールド追加）。現状は提案の再送がないため dedup 不要
+    （dataplane.md の TODO 参照）。
   - 必要なら TLA+ モデル（KvsSectorRaft）へ snapshot 適用の遷移を追加して
     安全性を再検証。

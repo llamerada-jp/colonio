@@ -22,6 +22,12 @@ import (
 var (
 	ErrorStoreInvalidNodeKey = fmt.Errorf("invalid node key")
 	ErrorStoreKeyNotFound    = fmt.Errorf("key not found")
+	// ErrorSectorNotReady is a retryable rejection of a KVS operation: the
+	// sector is not activated yet, the key is outside the sector's current
+	// range (stale routing, or a split/merge just moved it), or the range is
+	// being handed over (split export in progress / merge lock held). Mapped
+	// to KvsOperationResponse ERROR_PREPARING so the client can retry.
+	ErrorSectorNotReady = fmt.Errorf("sector is not ready for the operation")
 )
 
 type Store interface {

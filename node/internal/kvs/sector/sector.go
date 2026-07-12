@@ -1113,6 +1113,10 @@ func (s *Sector) processPrepareMergeProposal(prepareMerge *proto.PrepareMerge) e
 	// Accept the first prepare merge proposal, and reject the others.
 	if s.mergeBy == nil {
 		s.mergeBy = proposedBy
+		// Fence writes while the merge lock is held: this sector's range is
+		// about to be exported by the absorber, and a write applied after
+		// that export would be acknowledged but silently lost.
+		s.operator.SetMergeFence(true)
 	}
 
 	return nil
@@ -1131,6 +1135,7 @@ func (s *Sector) processReleaseMergeProposal(releaseMerge *proto.ReleaseMerge) e
 		fmt.Println(time.Now(), s.head.String(), "@@ release merge", s.sectorKey.String(),
 			"held by", holder.String())
 		s.mergeBy = nil
+		s.operator.SetMergeFence(false)
 	}
 	if s.mergeConflictHolder != nil && s.mergeConflictHolder.Equal(holder) {
 		s.mergeConflictHolder = nil
@@ -1290,6 +1295,8 @@ func (s *Sector) ConsensusApplySnapshot(data []byte) error {
 	} else {
 		s.mergeBy = nil
 	}
+	// keep the operator's write fence in sync with the restored merge lock
+	s.operator.SetMergeFence(s.mergeBy != nil)
 
 	return nil
 }
