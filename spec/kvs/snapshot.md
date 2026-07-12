@@ -193,11 +193,36 @@ compact 後の join/promotion）。
    - `Failed to apply snapshot` / `need non-empty snapshot` panic /
      watchdog 連鎖が出ない
 
+### Stage 5 検証結果（2026-07-12 run, 4.1h, 200 node / 8 pod, SNAP_COUNT=20 / CATCHUP=10）
+
+- snapshot 生成 + compact **65,551 回**、InstallSnapshot 適用 **30,186 回**。
+  発火周期は applied 21/42/63/84... と snapCount どおり繰り返し。
+- 失敗ゼロ: `Failed to apply snapshot` 0、`need non-empty snapshot` panic 0、
+  publishEntries の gap エラー 0、watchdog 0。
+- snapshot ループなし: 1 sector member あたりの apply は最大 2 回。
+- terminated snapshot は 887 回生成されたが適用は 0 回
+  （terminate 直後にグループが解体されるため。問題なし）。
+- 健全性: yellow（inactive host）は各 5 分バケットで 0〜4、毎回別 node で
+  恒久 stall なし。**最終状態 yellow=0**、never-active（10 分以上生存かつ
+  非 stop）**0 体**（run 15 の 0.3% から改善維持）。red は churn による
+  一時的な観測値のみ（1〜28 で振動、蓄積なし）。
+- `Unknown node sectorNo` warn は 345k 件あるが、全 pod に均等・定常で
+  加速なし（歴代の divergence storm の兆候である加速 + force terminate
+  連鎖は不在。force terminate は 1,649 回で時間とともに減少）。churn 起因の
+  背景ノイズと snapshot members の一時ずれ（上記「既知の許容事項」）の
+  合算とみられる。snapshot 導入前の run との定量比較は未実施。
+- 副次観測: management churn だけでは 1 sector group の生涯エントリ数は
+  概ね 20〜100。本番値 snapCount=1000 では管理系 churn で snapshot が
+  発火することはほぼなく、データプレーン書き込みが実質的な発火源になる。
+
 ## TODO
 
 - **Stage 5: パラメータ調整と検証**
-  - 上記手順でシミュレーション実行し、churn 下の非退行を確認する。
-  - `snapCount`(1000) / `snapshotCatchUpEntriesN`(100) の本番値の実測調整。
+  - [x] churn 下の非退行をシミュレーションで確認（2026-07-12、上記）。
+  - `snapCount`(1000) / `snapshotCatchUpEntriesN`(100) の本番値の実測調整
+    → データプレーン実装後の書き込み負荷で行う。
+  - `Unknown node sectorNo` warn のベースライン比較（snapshot 導入前 run が
+    残っていないため未実施。気になる場合は main 相当で再 run して比較）。
   - snapshot を含む MsgSnap のメッセージサイズと transferer/network 層の
     パケットサイズ上限の関係を確認（records が大きい sector の snapshot は
     1 メッセージで送られる）→ データプレーン実装後（Stage 6）に実測。
