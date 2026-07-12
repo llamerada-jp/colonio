@@ -1,7 +1,8 @@
 # KVS lock 機構(revision/CAS + lease)の設計
 
-2026-07-12 設計。未実装。データプレーン(spec/kvs/dataplane.md)の上に積む
-2 層構成の排他機構。アプリケーション層(何を lock で守るか)はこの文書の
+2026-07-12 設計、**2026-07-13 実装完了**(revision/CAS は api.md Stage B、
+lease lock は Stage D。実装時の決定事項と run 検証状況は api.md を参照)。
+データプレーン(spec/kvs/dataplane.md)の上に積む 2 層構成の排他機構。アプリケーション層(何を lock で守るか)はこの文書の
 スコープ外とし、KVS が提供するプリミティブのみを定義する。
 公開 API の形(module client / ctx / managed Lock / Watch)と実装ステージの
 全体順序は spec/kvs/api.md を正典とする。

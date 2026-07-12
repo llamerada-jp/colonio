@@ -321,21 +321,21 @@ func TestOperator_cas(t *testing.T) {
 	require.NoError(t, o.SetRange(o.head)) // whole ring
 
 	// creation guarded by absence succeeds once...
-	revision1, err := o.Set("key1", []byte("value1"), &CasCondition{Absent: true})
+	revision1, err := o.Set("key1", []byte("value1"), &WriteCondition{Absent: true})
 	require.NoError(t, err)
 	require.NotZero(t, revision1)
 
 	// ...and conflicts once the record exists
-	_, err = o.Set("key1", []byte("value2"), &CasCondition{Absent: true})
+	_, err = o.Set("key1", []byte("value2"), &WriteCondition{Absent: true})
 	require.ErrorIs(t, err, kvsTypes.ErrorCasConflict)
 
 	// conditional overwrite with the current revision succeeds
-	revision2, err := o.Set("key1", []byte("value2"), &CasCondition{Revision: revision1})
+	revision2, err := o.Set("key1", []byte("value2"), &WriteCondition{Revision: revision1})
 	require.NoError(t, err)
 	require.Greater(t, revision2, revision1)
 
 	// the stale revision now conflicts, and the store is left untouched
-	_, err = o.Set("key1", []byte("value3"), &CasCondition{Revision: revision1})
+	_, err = o.Set("key1", []byte("value3"), &WriteCondition{Revision: revision1})
 	require.ErrorIs(t, err, kvsTypes.ErrorCasConflict)
 	value, revision, err := o.Get("key1")
 	require.NoError(t, err)
@@ -343,13 +343,13 @@ func TestOperator_cas(t *testing.T) {
 	require.Equal(t, revision2, revision)
 
 	// conditional delete: stale revision conflicts, current succeeds
-	require.ErrorIs(t, o.Delete("key1", &CasCondition{Revision: revision1}), kvsTypes.ErrorCasConflict)
-	require.NoError(t, o.Delete("key1", &CasCondition{Revision: revision2}))
+	require.ErrorIs(t, o.Delete("key1", &WriteCondition{Revision: revision1}), kvsTypes.ErrorCasConflict)
+	require.NoError(t, o.Delete("key1", &WriteCondition{Revision: revision2}))
 	_, _, err = o.Get("key1")
 	require.ErrorIs(t, err, kvsTypes.ErrorStoreKeyNotFound)
 
 	// a revision-conditioned write against an absent record conflicts
-	_, err = o.Set("key1", []byte("value"), &CasCondition{Revision: revision2})
+	_, err = o.Set("key1", []byte("value"), &WriteCondition{Revision: revision2})
 	require.ErrorIs(t, err, kvsTypes.ErrorCasConflict)
 }
 
@@ -359,7 +359,7 @@ func TestOperator_importMaxMergesCounter(t *testing.T) {
 	require.NoError(t, o.SetRange(o.head))
 
 	// a record migrated in carries revision 40 from its source sector
-	imported, err := encodeRecord([]byte("imported"), 40)
+	imported, err := encodeRecord([]byte("imported"), 40, nil)
 	require.NoError(t, err)
 	require.NoError(t, o.ImportRecords(map[string][]byte{"moved": imported}, 40))
 
@@ -391,7 +391,7 @@ func TestOperator_replaceRecordsAssignsCounter(t *testing.T) {
 	_, err := o.Set("stale", []byte("stale"), nil)
 	require.NoError(t, err)
 
-	restored, err := encodeRecord([]byte("restored"), 99)
+	restored, err := encodeRecord([]byte("restored"), 99, nil)
 	require.NoError(t, err)
 	require.NoError(t, o.ReplaceRecords(map[string][]byte{"kept": restored}, 100))
 
@@ -467,12 +467,227 @@ func TestOperator_patch(t *testing.T) {
 	require.ErrorIs(t, err, kvsTypes.ErrorStoreKeyNotFound)
 
 	// conditional patch: stale revision conflicts, current succeeds
-	_, err = o.Patch("key1", "append", []byte("+q"), &CasCondition{Revision: revision1})
+	_, err = o.Patch("key1", "append", []byte("+q"), &WriteCondition{Revision: revision1})
 	require.ErrorIs(t, err, kvsTypes.ErrorCasConflict)
-	revision3, err := o.Patch("key1", "append", []byte("+q"), &CasCondition{Revision: revision2})
+	revision3, err := o.Patch("key1", "append", []byte("+q"), &WriteCondition{Revision: revision2})
 	require.NoError(t, err)
 	require.Greater(t, revision3, revision2)
 	value, _, err = o.Get("key1")
 	require.NoError(t, err)
 	require.Equal(t, []byte("base+p+q"), value)
+}
+
+func TestOperator_lockAcquireReleaseRevoke(t *testing.T) {
+	var o *Operator
+	o = newTestOperator(echoHandler(&o))
+	require.NoError(t, o.SetRange(o.head)) // whole ring
+
+	ownerA := types.NewNormalNodeID(0x1111111111111111, 0)
+	ownerB := types.NewNormalNodeID(0x2222222222222222, 0)
+
+	// acquiring an absent key creates an empty record carrying the lease
+	grantA, err := o.LockAcquire("key1", ownerA, 30*time.Second)
+	require.NoError(t, err)
+	require.NotZero(t, grantA.Generation)
+	value, revision, err := o.Get("key1")
+	require.NoError(t, err)
+	require.Empty(t, value)
+	require.NotZero(t, revision)
+
+	// another owner is rejected while the lease is held
+	_, err = o.LockAcquire("key1", ownerB, 30*time.Second)
+	require.ErrorIs(t, err, kvsTypes.ErrorLockHeld)
+
+	// the holder's re-acquire is a renewal: same generation, new deadline
+	renewed, err := o.LockAcquire("key1", ownerA, 30*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, grantA.Generation, renewed.Generation)
+	require.GreaterOrEqual(t, renewed.DeadlineMS, grantA.DeadlineMS)
+
+	// release is a CAS: a stale generation must not clear the lease
+	require.ErrorIs(t, o.LockRelease("key1", ownerA, grantA.Generation+99), kvsTypes.ErrorCasConflict)
+	// wrong owner must not clear it either
+	require.ErrorIs(t, o.LockRelease("key1", ownerB, grantA.Generation), kvsTypes.ErrorCasConflict)
+	// the holder's release clears it, and releasing again is a no-op
+	require.NoError(t, o.LockRelease("key1", ownerA, grantA.Generation))
+	require.NoError(t, o.LockRelease("key1", ownerA, grantA.Generation))
+
+	// now ownerB can take a fresh lease with a LARGER generation (fencing)
+	grantB, err := o.LockAcquire("key1", ownerB, 30*time.Second)
+	require.NoError(t, err)
+	require.Greater(t, grantB.Generation, grantA.Generation)
+}
+
+func TestOperator_lockGuardedWrites(t *testing.T) {
+	var o *Operator
+	o = newTestOperatorWithPatchers(echoHandler(&o))
+	require.NoError(t, o.SetRange(o.head))
+
+	ownerA := types.NewNormalNodeID(0x1111111111111111, 0)
+	ownerB := types.NewNormalNodeID(0x2222222222222222, 0)
+
+	_, err := o.Set("key1", []byte("base"), nil)
+	require.NoError(t, err)
+	grant, err := o.LockAcquire("key1", ownerA, 30*time.Second)
+	require.NoError(t, err)
+
+	// unguarded writes are rejected while the lease is held
+	_, err = o.Set("key1", []byte("plain"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorLockHeld)
+	require.ErrorIs(t, o.Delete("key1", nil), kvsTypes.ErrorLockHeld)
+
+	// a foreign owner with the right generation is still rejected
+	_, err = o.Set("key1", []byte("foreign"), &WriteCondition{LockOwner: ownerB, LockGeneration: grant.Generation})
+	require.ErrorIs(t, err, kvsTypes.ErrorLockHeld)
+
+	// a stale generation of the holder is fenced out
+	_, err = o.Set("key1", []byte("stale"), &WriteCondition{LockOwner: ownerA, LockGeneration: grant.Generation + 99})
+	require.ErrorIs(t, err, kvsTypes.ErrorCasConflict)
+
+	// the holder's guarded write lands, and the lease rides along
+	_, err = o.Set("key1", []byte("guarded"), &WriteCondition{LockOwner: ownerA, LockGeneration: grant.Generation})
+	require.NoError(t, err)
+	value, _, err := o.Get("key1")
+	require.NoError(t, err)
+	require.Equal(t, []byte("guarded"), value)
+	_, err = o.Set("key1", []byte("still locked"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorLockHeld)
+
+	// guarded patch works the same way
+	_, err = o.Patch("key1", "append", []byte("+p"), &WriteCondition{LockOwner: ownerA, LockGeneration: grant.Generation})
+	require.NoError(t, err)
+
+	// reads are never blocked by the lease; the rejected unguarded write is
+	// not visible
+	value, _, err = o.Get("key1")
+	require.NoError(t, err)
+	require.Equal(t, []byte("guarded+p"), value)
+
+	// a token on an unlocked record is a conflict (the lease was lost)
+	require.NoError(t, o.LockRelease("key1", ownerA, grant.Generation))
+	_, err = o.Set("key1", []byte("late"), &WriteCondition{LockOwner: ownerA, LockGeneration: grant.Generation})
+	require.ErrorIs(t, err, kvsTypes.ErrorCasConflict)
+
+	// the holder's guarded delete removes the record together with the lease
+	grant2, err := o.LockAcquire("key1", ownerA, 30*time.Second)
+	require.NoError(t, err)
+	require.NoError(t, o.Delete("key1", &WriteCondition{LockOwner: ownerA, LockGeneration: grant2.Generation}))
+	_, _, err = o.Get("key1")
+	require.ErrorIs(t, err, kvsTypes.ErrorStoreKeyNotFound)
+}
+
+func TestOperator_lockRevokeExpired(t *testing.T) {
+	proposals := make(chan *proto.Operation, 4)
+	var o *Operator
+	o = newTestOperator(&handlerHelper{proposeF: func(operation *proto.Operation) {
+		// apply inline AND record what was proposed
+		_ = o.ApplyProposal(operation)
+		proposals <- operation
+	}})
+	require.NoError(t, o.SetRange(o.head))
+
+	owner := types.NewNormalNodeID(0x1111111111111111, 0)
+	grant, err := o.LockAcquire("key1", owner, 30*time.Second)
+	require.NoError(t, err)
+	<-proposals // consume the acquire
+
+	// not expired: no revocation proposed
+	o.ProposeExpiredLockRevocations()
+	require.Empty(t, proposals)
+
+	// force the deadline into the past (beyond the margin)
+	o.mtx.Lock()
+	o.locks["key1"].deadlineMS = time.Now().Add(-lockRevokeMargin - time.Second).UnixMilli()
+	o.mtx.Unlock()
+
+	o.ProposeExpiredLockRevocations()
+	revoke := <-proposals
+	require.Equal(t, proto.Operation_COMMAND_LOCK_REVOKE, revoke.Command)
+	require.Equal(t, grant.Generation, revoke.LockGeneration)
+
+	// the applied revocation cleared the lease: a new owner can acquire
+	ownerB := types.NewNormalNodeID(0x2222222222222222, 0)
+	grantB, err := o.LockAcquire("key1", ownerB, 30*time.Second)
+	require.NoError(t, err)
+	require.Greater(t, grantB.Generation, grant.Generation)
+	<-proposals
+
+	// a STALE revocation (old generation) must never clear the new lease
+	require.NoError(t, o.ApplyProposal(&proto.Operation{
+		Command:        proto.Operation_COMMAND_LOCK_REVOKE,
+		Key:            "key1",
+		LockOwner:      owner.Proto(),
+		LockGeneration: grant.Generation,
+	}))
+	_, err = o.LockAcquire("key1", owner, 30*time.Second)
+	require.ErrorIs(t, err, kvsTypes.ErrorLockHeld)
+}
+
+func TestOperator_lockSurvivesImportAndSnapshot(t *testing.T) {
+	var src *Operator
+	src = newTestOperator(echoHandler(&src))
+	require.NoError(t, src.SetRange(src.head))
+
+	owner := types.NewNormalNodeID(0x1111111111111111, 0)
+	grant, err := src.LockAcquire("key1", owner, 30*time.Second)
+	require.NoError(t, err)
+
+	records, counter, err := src.ExportAllRecords()
+	require.NoError(t, err)
+
+	// a replica restored from the snapshot enforces the same lease and
+	// rebuilds the expiry index
+	var dst *Operator
+	dst = newTestOperator(echoHandler(&dst))
+	require.NoError(t, dst.SetRange(dst.head))
+	require.NoError(t, dst.ReplaceRecords(records, counter))
+
+	_, err = dst.Set("key1", []byte("plain"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorLockHeld)
+	dst.mtx.RLock()
+	entry := dst.locks["key1"]
+	dst.mtx.RUnlock()
+	require.NotNil(t, entry)
+	require.Equal(t, grant.Generation, entry.generation)
+}
+
+// TestOperator_lockAcquireFastPath: while another owner's unexpired lease is
+// applied locally, a foreign acquire is rejected WITHOUT a raft proposal
+// (contention polls must not become a proposal storm); once the deadline
+// passes, the request falls through to the proposal so a takeover never
+// depends on the local view.
+func TestOperator_lockAcquireFastPath(t *testing.T) {
+	proposals := make(chan *proto.Operation, 4)
+	var o *Operator
+	o = newTestOperator(&handlerHelper{proposeF: func(operation *proto.Operation) {
+		_ = o.ApplyProposal(operation)
+		proposals <- operation
+	}})
+	require.NoError(t, o.SetRange(o.head))
+
+	ownerA := types.NewNormalNodeID(0x1111111111111111, 0)
+	ownerB := types.NewNormalNodeID(0x2222222222222222, 0)
+
+	_, err := o.LockAcquire("key1", ownerA, 30*time.Second)
+	require.NoError(t, err)
+	<-proposals
+
+	// the foreign acquire is rejected before proposing
+	_, err = o.LockAcquire("key1", ownerB, 30*time.Second)
+	require.ErrorIs(t, err, kvsTypes.ErrorLockHeld)
+	require.Empty(t, proposals)
+
+	// the holder's renewal still goes through (owner match skips the gate)
+	_, err = o.LockAcquire("key1", ownerA, 30*time.Second)
+	require.NoError(t, err)
+	<-proposals
+
+	// past deadline+margin the gate opens; the apply still rejects (expiry is
+	// revoke's job), but the request must reach the group
+	o.mtx.Lock()
+	o.locks["key1"].deadlineMS = time.Now().Add(-lockRevokeMargin - time.Second).UnixMilli()
+	o.mtx.Unlock()
+	_, err = o.LockAcquire("key1", ownerB, 30*time.Second)
+	require.ErrorIs(t, err, kvsTypes.ErrorLockHeld)
+	require.Len(t, proposals, 1)
 }

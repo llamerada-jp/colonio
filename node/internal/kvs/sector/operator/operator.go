@@ -33,22 +33,30 @@ import (
 // not assume the write was lost.
 var ErrOperationTimeout = errors.New("operation was not applied within timeout")
 
-// CasCondition guards a write; nil means unconditional. The check runs at
-// apply time against the record's replicated revision, so it is deterministic
-// across replicas (spec/kvs/lock.md「CAS 操作」).
-type CasCondition struct {
+// WriteCondition guards a write; nil means unconditional. Every check runs at
+// apply time against the record's replicated state, so it is deterministic
+// across replicas (spec/kvs/lock.md).
+type WriteCondition struct {
 	// Revision, when non-zero, requires the record to exist with exactly this
-	// revision. Revisions are assigned from the sector counter and are never 0.
+	// revision (CAS). Revisions are assigned from the sector counter and are
+	// never 0.
 	Revision uint64
 	// Absent requires the record to not exist.
 	Absent bool
+	// LockOwner + LockGeneration form the guarded-write token: when the
+	// record is locked, a write must present the holder's identity and the
+	// current fencing generation (spec/kvs/lock.md「guarded write」).
+	LockOwner      *types.NodeID
+	LockGeneration uint64
 }
 
 type Operations interface {
 	Get(key string) ([]byte, uint64, error)
-	Set(key string, value []byte, cas *CasCondition) (uint64, error)
-	Patch(key string, patcherName string, patch []byte, cas *CasCondition) (uint64, error)
-	Delete(key string, cas *CasCondition) error
+	Set(key string, value []byte, cond *WriteCondition) (uint64, error)
+	Patch(key string, patcherName string, patch []byte, cond *WriteCondition) (uint64, error)
+	Delete(key string, cond *WriteCondition) error
+	LockAcquire(key string, owner *types.NodeID, ttl time.Duration) (*kvsTypes.LockResult, error)
+	LockRelease(key string, owner *types.NodeID, generation uint64) error
 }
 
 // recordMarshal serializes the KvsRecord envelope. Deterministic marshaling
@@ -57,10 +65,11 @@ type Operations interface {
 // bytes for identical logical records.
 var recordMarshal = proto3.MarshalOptions{Deterministic: true}
 
-func encodeRecord(value []byte, revision uint64) ([]byte, error) {
+func encodeRecord(value []byte, revision uint64, lock *proto.KvsLock) ([]byte, error) {
 	return recordMarshal.Marshal(&proto.KvsRecord{
 		Value:    value,
 		Revision: revision,
+		Lock:     lock,
 	})
 }
 
@@ -75,8 +84,22 @@ func decodeRecord(data []byte) (*proto.KvsRecord, error) {
 // applyResult is what ApplyProposal reports back to the proposing waiter.
 type applyResult struct {
 	err error
-	// revision is the newly assigned revision for an applied SET, 0 otherwise.
+	// revision is the newly assigned revision for an applied SET/PATCH,
+	// 0 otherwise.
 	revision uint64
+	// lockGeneration / lockDeadlineMS carry the granted lease of an applied
+	// LOCK_ACQUIRE.
+	lockGeneration uint64
+	lockDeadlineMS int64
+}
+
+// lockIndexEntry is the operator's derived (non-replicated) view of one held
+// lease, kept for the host's expiry scan. Rebuilt deterministically from the
+// same applies on every replica; only the hosting operator acts on it.
+type lockIndexEntry struct {
+	owner      *proto.NodeID
+	generation uint64
+	deadlineMS int64
 }
 
 type Handler interface {
@@ -104,6 +127,10 @@ type Operator struct {
 	tail             *types.NodeID
 	splittingAddress *types.NodeID
 	keys             map[string]any
+	// locks is the derived index of held leases (key → lease), maintained on
+	// every path that mutates record state (applies, import, replace, range
+	// shrink) and consumed by the host's expiry scan (ExpiredLockRevocations).
+	locks map[string]*lockIndexEntry
 
 	// revisionCounter is replicated state: it grows by one on every applied
 	// SET (the new value becomes the record's revision), max-merges with the
@@ -145,6 +172,7 @@ func NewOperator(config *Config) *Operator {
 		patchers:         config.Patchers,
 		head:             *config.Head,
 		keys:             make(map[string]any),
+		locks:            make(map[string]*lockIndexEntry),
 		operationTimeout: 10 * time.Second,
 		waiters:          make(map[uint32]chan *applyResult),
 	}
@@ -214,29 +242,104 @@ func (s *Operator) Get(key string) ([]byte, uint64, error) {
 }
 
 // Set writes the value under the key and returns the newly assigned revision.
-func (s *Operator) Set(key string, value []byte, cas *CasCondition) (uint64, error) {
-	return s.proposeOperation(proto.Operation_COMMAND_SET, key, value, cas)
+// An existing lease lock rides along unchanged (the write must satisfy the
+// guarded-write check to get here at all).
+func (s *Operator) Set(key string, value []byte, cond *WriteCondition) (uint64, error) {
+	result, err := s.proposeOperation(proto.Operation_COMMAND_SET, key, value, cond)
+	if err != nil {
+		return 0, err
+	}
+	return result.revision, nil
 }
 
 // Patch applies the named node-registered Patcher to the record inside the
 // raft apply (the patch document is what travels, not the value). The
 // registry gate here rejects an unregistered name before proposing — a
 // definite misconfiguration answer; the apply re-checks it deterministically.
-func (s *Operator) Patch(key string, patcherName string, patch []byte, cas *CasCondition) (uint64, error) {
+func (s *Operator) Patch(key string, patcherName string, patch []byte, cond *WriteCondition) (uint64, error) {
 	if _, ok := s.patchers[patcherName]; !ok {
 		return 0, fmt.Errorf("patcher %q is not registered on this node: %w",
 			patcherName, kvsTypes.ErrorPatchFailed)
 	}
-	return s.proposeOperationFull(&proto.Operation{
+	result, err := s.proposeOperationFull(&proto.Operation{
 		Command: proto.Operation_COMMAND_PATCH,
 		Key:     key,
 		Value:   patch,
 		Patcher: patcherName,
-	}, cas)
+	}, cond)
+	if err != nil {
+		return 0, err
+	}
+	return result.revision, nil
 }
 
-func (s *Operator) Delete(key string, cas *CasCondition) error {
-	_, err := s.proposeOperation(proto.Operation_COMMAND_DELETE, key, nil, cas)
+func (s *Operator) Delete(key string, cond *WriteCondition) error {
+	_, err := s.proposeOperation(proto.Operation_COMMAND_DELETE, key, nil, cond)
+	return err
+}
+
+// Lease TTL clamps: the floor keeps a lease from expiring inside the ordinary
+// churn windows (PREPARING can last 十数秒), the ceiling bounds how long a
+// dead client can block a record.
+const (
+	lockTTLMin = 5 * time.Second
+	lockTTLMax = time.Hour
+)
+
+// LockAcquire takes (or, for the current holder, renews) the record's lease
+// lock. The deadline is computed HERE on the host's clock and travels inside
+// the proposal, so the apply never reads a clock (spec/kvs/lock.md). Acquiring
+// an absent key creates an empty record carrying the lock. Owner-idempotent:
+// a retry of an applied acquire is a renewal that keeps the generation, so
+// unknown-outcome retries are safe.
+func (s *Operator) LockAcquire(key string, owner *types.NodeID, ttl time.Duration) (*kvsTypes.LockResult, error) {
+	ttl = min(max(ttl, lockTTLMin), lockTTLMax)
+
+	// Fast-path rejection without a raft proposal: while another owner's
+	// unexpired lease is applied locally, the proposal could only come back
+	// as LOCKED anyway. Every waiter polls its lock key about once a second,
+	// so under contention these polls otherwise become a proposal storm on
+	// the key's raft group (run 2026-07-12: acquire unknown-outcome 13-20%
+	// steady from proposal pile-up). The applied view may lag — a lease just
+	// released still looks held for one poll — which only delays the waiter
+	// by a round; past the deadline (plus the revoke margin) the request
+	// falls through so a takeover never depends on this gate.
+	ownerProto := owner.Proto()
+	s.mtx.RLock()
+	if entry, ok := s.locks[key]; ok &&
+		!proto3.Equal(entry.owner, ownerProto) &&
+		time.Now().UnixMilli() <= entry.deadlineMS+lockRevokeMargin.Milliseconds() {
+		s.mtx.RUnlock()
+		return nil, kvsTypes.ErrorLockHeld
+	}
+	s.mtx.RUnlock()
+
+	result, err := s.proposeOperationFull(&proto.Operation{
+		Command:        proto.Operation_COMMAND_LOCK_ACQUIRE,
+		Key:            key,
+		LockOwner:      ownerProto,
+		LockDeadlineMs: time.Now().Add(ttl).UnixMilli(),
+	}, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &kvsTypes.LockResult{
+		Generation: result.lockGeneration,
+		DeadlineMS: result.lockDeadlineMS,
+	}, nil
+}
+
+// LockRelease clears the lease when (owner, generation) still matches — a
+// CAS, so a release racing a newer acquisition never clears the newer lease.
+// Releasing an unlocked record succeeds as a no-op (retry safety); a
+// mismatch reports ErrorCasConflict (the lease is not the caller's anymore).
+func (s *Operator) LockRelease(key string, owner *types.NodeID, generation uint64) error {
+	_, err := s.proposeOperationFull(&proto.Operation{
+		Command:        proto.Operation_COMMAND_LOCK_RELEASE,
+		Key:            key,
+		LockOwner:      owner.Proto(),
+		LockGeneration: generation,
+	}, nil)
 	return err
 }
 
@@ -246,24 +349,23 @@ func (s *Operator) Delete(key string, cas *CasCondition) error {
 // accepted before a fence (SetSplitting) is always visible to the fence's
 // drain loop. The propose itself runs outside the lock — sending under a held
 // mutex is the Transferer self-deadlock pattern (2026-07-11).
-// It returns the newly assigned revision for an applied SET/PATCH (0 otherwise).
-func (s *Operator) proposeOperation(command proto.Operation_Command, key string, value []byte, cas *CasCondition) (uint64, error) {
+func (s *Operator) proposeOperation(command proto.Operation_Command, key string, value []byte, cond *WriteCondition) (*applyResult, error) {
 	return s.proposeOperationFull(&proto.Operation{
 		Command: command,
 		Key:     key,
 		Value:   value,
-	}, cas)
+	}, cond)
 }
 
 // proposeOperationFull is proposeOperation for a caller-built Operation
-// (operation_id and the CAS fields are filled in here).
-func (s *Operator) proposeOperationFull(operation *proto.Operation, cas *CasCondition) (uint64, error) {
+// (operation_id and the write-condition fields are filled in here).
+func (s *Operator) proposeOperationFull(operation *proto.Operation, cond *WriteCondition) (*applyResult, error) {
 	keyHash := types.NewHashedNodeID([]byte(operation.Key))
 
 	s.mtx.Lock()
 	if err := s.writableLocked(keyHash); err != nil {
 		s.mtx.Unlock()
-		return 0, err
+		return nil, err
 	}
 	s.nextOperationID++
 	operationID := s.nextOperationID
@@ -272,15 +374,19 @@ func (s *Operator) proposeOperationFull(operation *proto.Operation, cas *CasCond
 	s.mtx.Unlock()
 
 	operation.OperationId = operationID
-	if cas != nil {
-		operation.CasRevision = cas.Revision
-		operation.CasAbsent = cas.Absent
+	if cond != nil {
+		operation.CasRevision = cond.Revision
+		operation.CasAbsent = cond.Absent
+		if cond.LockOwner != nil {
+			operation.LockOwner = cond.LockOwner.Proto()
+		}
+		operation.LockGeneration = cond.LockGeneration
 	}
 	s.handler.OperatorProposeOperation(operation)
 
 	select {
 	case result := <-waiter:
-		return result.revision, result.err
+		return result, result.err
 
 	case <-time.After(s.operationTimeout):
 		s.mtx.Lock()
@@ -289,10 +395,10 @@ func (s *Operator) proposeOperationFull(operation *proto.Operation, cas *CasCond
 		// The apply may have signaled between the timeout and the delete.
 		select {
 		case result := <-waiter:
-			return result.revision, result.err
+			return result, result.err
 		default:
 		}
-		return 0, ErrOperationTimeout
+		return nil, ErrOperationTimeout
 	}
 }
 
@@ -316,6 +422,7 @@ func (s *Operator) SetRange(tail types.NodeID) error {
 			return err
 		}
 		delete(s.keys, key)
+		delete(s.locks, key)
 	}
 
 	s.tail = &tail
@@ -373,36 +480,54 @@ func (s *Operator) SetMergeFence(fenced bool) {
 	s.mtx.Unlock()
 }
 
-// casConflictLocked checks the operation's CAS condition against the record's
-// current revision. Deterministic across replicas: keys, the stored envelopes
-// and the revision inside them are all replicated state. A decode failure is
-// also deterministic (the stored bytes are identical on every replica).
-// Call with s.mtx held.
-func (s *Operator) casConflictLocked(operation *proto.Operation) error {
+// casConflict checks the operation's CAS condition against the current
+// record. Deterministic across replicas: the record (and the revision inside
+// its envelope) is replicated state.
+func casConflict(current *proto.KvsRecord, operation *proto.Operation) error {
 	if operation.CasRevision == 0 && !operation.CasAbsent {
 		return nil // unconditional
 	}
-
-	var current uint64 // 0 = absent (revisions are never assigned 0)
-	if _, ok := s.keys[operation.Key]; ok {
-		data, err := s.store.Get(&s.sectorKey, operation.Key)
-		if err != nil {
-			return err
-		}
-		record, err := decodeRecord(data)
-		if err != nil {
-			return err
-		}
-		current = record.Revision
+	var revision uint64 // 0 = absent (revisions are never assigned 0)
+	if current != nil {
+		revision = current.Revision
 	}
-
 	if operation.CasAbsent {
-		if current != 0 {
+		if revision != 0 {
 			return kvsTypes.ErrorCasConflict
 		}
 		return nil
 	}
-	if current != operation.CasRevision {
+	if revision != operation.CasRevision {
+		return kvsTypes.ErrorCasConflict
+	}
+	return nil
+}
+
+// lockGuard enforces the guarded-write rule of the lease lock
+// (spec/kvs/lock.md「guarded write」) for SET/PATCH/DELETE:
+//   - unlocked record + no token   → allowed
+//   - unlocked record + token      → ErrorCasConflict (the lease was lost —
+//     released, revoked, or the record is gone)
+//   - locked + no/foreign token    → ErrorLockHeld (wait for the lease)
+//   - locked + holder, stale gen   → ErrorCasConflict (fencing: a previous
+//     lease's writes must not land)
+//   - locked + holder, current gen → allowed
+func lockGuard(current *proto.KvsRecord, operation *proto.Operation) error {
+	var lock *proto.KvsLock
+	if current != nil {
+		lock = current.Lock
+	}
+	hasToken := operation.LockGeneration != 0
+	if lock == nil {
+		if hasToken {
+			return kvsTypes.ErrorCasConflict
+		}
+		return nil
+	}
+	if !hasToken || !proto3.Equal(lock.Owner, operation.LockOwner) {
+		return kvsTypes.ErrorLockHeld
+	}
+	if lock.Generation != operation.LockGeneration {
 		return kvsTypes.ErrorCasConflict
 	}
 	return nil
@@ -415,8 +540,9 @@ func (s *Operator) casConflictLocked(operation *proto.Operation) error {
 // key out — and is deterministic across replicas because tail is replicated
 // state. A skipped operation fails only the local waiter (the client retries
 // against the new owner); it is not an apply divergence, so the consensus
-// layer still gets nil. The same holds for a CAS conflict: the store is left
-// untouched deterministically and only the waiter learns the conflict.
+// layer still gets nil. The same holds for CAS conflicts, lock-guard
+// rejections and patch failures: the store is left untouched
+// deterministically and only the waiter learns the outcome.
 func (s *Operator) ApplyProposal(operation *proto.Operation) error {
 	keyHash := types.NewHashedNodeID([]byte(operation.Key))
 
@@ -424,95 +550,53 @@ func (s *Operator) ApplyProposal(operation *proto.Operation) error {
 
 	var waiterErr error // outcome reported to the local waiter
 	var storeErr error  // real store failure, reported to the consensus layer
-	var appliedRevision uint64
+	result := &applyResult{}
 	if !s.inRangeLocked(keyHash) {
 		waiterErr = kvsTypes.ErrorSectorNotReady
-	} else if casErr := s.casConflictLocked(operation); casErr != nil {
-		waiterErr = casErr
 	} else {
-		switch operation.Command {
-		case proto.Operation_COMMAND_SET:
-			// The counter advances only when the write lands, so a store
-			// failure leaves the replicated state untouched.
-			newRevision := s.revisionCounter + 1
-			data, err := encodeRecord(operation.Value, newRevision)
-			if err != nil {
-				waiterErr = err
-			} else {
-				storeErr = s.store.Set(&s.sectorKey, operation.Key, data)
-				if storeErr == nil {
-					s.revisionCounter = newRevision
-					s.keys[operation.Key] = struct{}{}
-					appliedRevision = newRevision
-				}
-			}
-
-		case proto.Operation_COMMAND_PATCH:
-			// store.Get → Patcher.Apply → store.Set, all inside the apply.
-			// Every failure below is a waiter-level rejection that leaves the
-			// store untouched, and each is deterministic across replicas: the
-			// record bytes and the operation are replicated state, the
-			// registry is required to be cluster-homogeneous, and the Patcher
-			// is required to be a deterministic pure function (the contract
-			// of kvsTypes.Patcher).
-			if _, ok := s.keys[operation.Key]; !ok {
-				// partial update of a nonexistent record; creation is Set's job
-				waiterErr = kvsTypes.ErrorStoreKeyNotFound
-				break
-			}
-			patcher, ok := s.patchers[operation.Patcher]
-			if !ok {
-				waiterErr = fmt.Errorf("patcher %q is not registered on this node: %w",
-					operation.Patcher, kvsTypes.ErrorPatchFailed)
-				break
-			}
+		// Load and decode the current record once; every check and command
+		// below works on this consistent view. A store failure is a real
+		// apply problem; a decode failure is deterministic (identical bytes
+		// on every replica) and fails only the waiter.
+		var current *proto.KvsRecord
+		if _, ok := s.keys[operation.Key]; ok {
 			data, err := s.store.Get(&s.sectorKey, operation.Key)
 			if err != nil {
 				storeErr = err
-				break
-			}
-			record, err := decodeRecord(data)
-			if err != nil {
+			} else if current, err = decodeRecord(data); err != nil {
 				waiterErr = err
-				break
 			}
-			patched, err := patcher.Apply(record.Value, operation.Value)
-			if err != nil {
-				waiterErr = fmt.Errorf("%w: %w", kvsTypes.ErrorPatchFailed, err)
-				break
-			}
-			newRevision := s.revisionCounter + 1
-			encoded, err := encodeRecord(patched, newRevision)
-			if err != nil {
-				waiterErr = err
-				break
-			}
-			storeErr = s.store.Set(&s.sectorKey, operation.Key, encoded)
-			if storeErr == nil {
-				s.revisionCounter = newRevision
-				appliedRevision = newRevision
-			}
+		}
 
-		case proto.Operation_COMMAND_DELETE:
-			if _, ok := s.keys[operation.Key]; !ok {
-				// deleting an absent key is a client-level miss, not an apply
-				// failure; keys is derived from the same replicated operations
-				// on every replica, so the check is deterministic
-				waiterErr = kvsTypes.ErrorStoreKeyNotFound
-			} else {
-				storeErr = s.store.Delete(&s.sectorKey, operation.Key)
-				if storeErr == nil {
-					delete(s.keys, operation.Key)
+		if waiterErr == nil && storeErr == nil {
+			switch operation.Command {
+			case proto.Operation_COMMAND_SET,
+				proto.Operation_COMMAND_PATCH,
+				proto.Operation_COMMAND_DELETE:
+				if err := lockGuard(current, operation); err != nil {
+					waiterErr = err
+				} else if err := casConflict(current, operation); err != nil {
+					waiterErr = err
+				} else {
+					waiterErr, storeErr = s.applyWriteLocked(operation, current, result)
 				}
-			}
 
-		default:
-			waiterErr = fmt.Errorf("unsupported operation command: %d", operation.Command)
+			case proto.Operation_COMMAND_LOCK_ACQUIRE:
+				waiterErr, storeErr = s.applyLockAcquireLocked(operation, current, result)
+
+			case proto.Operation_COMMAND_LOCK_RELEASE,
+				proto.Operation_COMMAND_LOCK_REVOKE:
+				waiterErr, storeErr = s.applyLockClearLocked(operation, current)
+
+			default:
+				waiterErr = fmt.Errorf("unsupported operation command: %d", operation.Command)
+			}
 		}
 	}
 	if storeErr != nil {
 		waiterErr = storeErr
 	}
+	result.err = waiterErr
 
 	waiter := s.waiters[operation.OperationId]
 	delete(s.waiters, operation.OperationId)
@@ -520,10 +604,187 @@ func (s *Operator) ApplyProposal(operation *proto.Operation) error {
 	s.mtx.Unlock()
 
 	if waiter != nil {
-		waiter <- &applyResult{err: waiterErr, revision: appliedRevision}
+		waiter <- result
 	}
 
 	return storeErr
+}
+
+// applyWriteLocked lands SET/PATCH/DELETE after the guard checks passed. An
+// existing lease lock rides along unchanged on SET/PATCH; DELETE removes the
+// record together with its lease (a holder-guarded delete is the atomic
+// release+delete). Call with s.mtx held.
+func (s *Operator) applyWriteLocked(operation *proto.Operation, current *proto.KvsRecord, result *applyResult) (error, error) {
+	var lock *proto.KvsLock
+	if current != nil {
+		lock = current.Lock
+	}
+
+	switch operation.Command {
+	case proto.Operation_COMMAND_SET:
+		// The counter advances only when the write lands, so a store failure
+		// leaves the replicated state untouched.
+		newRevision := s.revisionCounter + 1
+		data, err := encodeRecord(operation.Value, newRevision, lock)
+		if err != nil {
+			return err, nil
+		}
+		if err := s.store.Set(&s.sectorKey, operation.Key, data); err != nil {
+			return nil, err
+		}
+		s.revisionCounter = newRevision
+		s.keys[operation.Key] = struct{}{}
+		result.revision = newRevision
+		return nil, nil
+
+	case proto.Operation_COMMAND_PATCH:
+		// The patcher runs inside the apply: deterministic by the contract of
+		// kvsTypes.Patcher, homogeneous by the registration rule.
+		if current == nil {
+			// partial update of a nonexistent record; creation is Set's job
+			return kvsTypes.ErrorStoreKeyNotFound, nil
+		}
+		patcher, ok := s.patchers[operation.Patcher]
+		if !ok {
+			return fmt.Errorf("patcher %q is not registered on this node: %w",
+				operation.Patcher, kvsTypes.ErrorPatchFailed), nil
+		}
+		patched, err := patcher.Apply(current.Value, operation.Value)
+		if err != nil {
+			return fmt.Errorf("%w: %w", kvsTypes.ErrorPatchFailed, err), nil
+		}
+		newRevision := s.revisionCounter + 1
+		encoded, err := encodeRecord(patched, newRevision, lock)
+		if err != nil {
+			return err, nil
+		}
+		if err := s.store.Set(&s.sectorKey, operation.Key, encoded); err != nil {
+			return nil, err
+		}
+		s.revisionCounter = newRevision
+		result.revision = newRevision
+		return nil, nil
+
+	case proto.Operation_COMMAND_DELETE:
+		if current == nil {
+			// deleting an absent key is a client-level miss, not an apply
+			// failure; keys is derived from the same replicated operations on
+			// every replica, so the check is deterministic
+			return kvsTypes.ErrorStoreKeyNotFound, nil
+		}
+		if err := s.store.Delete(&s.sectorKey, operation.Key); err != nil {
+			return nil, err
+		}
+		delete(s.keys, operation.Key)
+		delete(s.locks, operation.Key)
+		return nil, nil
+	}
+	return fmt.Errorf("unsupported write command: %d", operation.Command), nil
+}
+
+// applyLockAcquireLocked grants or renews the record's lease
+// (spec/kvs/lock.md). Absent record → create an empty one carrying the lease;
+// unlocked → grant with a fresh generation from the counter; same owner →
+// renewal keeping the generation (this is what makes acquire retries and the
+// client's renewal loop idempotent); other owner → ErrorLockHeld. Expiry is
+// NOT evaluated here — no clock reads in the apply; the host proposes
+// LOCK_REVOKE instead. Call with s.mtx held.
+func (s *Operator) applyLockAcquireLocked(operation *proto.Operation, current *proto.KvsRecord, result *applyResult) (error, error) {
+	if operation.LockOwner == nil {
+		return fmt.Errorf("lock acquire without an owner"), nil
+	}
+
+	grant := func(value []byte, revision uint64, lock *proto.KvsLock, advanceCounter uint64, createKey bool) (error, error) {
+		data, err := encodeRecord(value, revision, lock)
+		if err != nil {
+			return err, nil
+		}
+		if err := s.store.Set(&s.sectorKey, operation.Key, data); err != nil {
+			return nil, err
+		}
+		if advanceCounter != 0 {
+			s.revisionCounter = advanceCounter
+		}
+		if createKey {
+			s.keys[operation.Key] = struct{}{}
+		}
+		s.locks[operation.Key] = &lockIndexEntry{
+			owner:      lock.Owner,
+			generation: lock.Generation,
+			deadlineMS: lock.DeadlineMs,
+		}
+		result.lockGeneration = lock.Generation
+		result.lockDeadlineMS = lock.DeadlineMs
+		return nil, nil
+	}
+
+	switch {
+	case current == nil:
+		// lock on an absent key creates an empty record carrying the lease
+		newCounter := s.revisionCounter + 1
+		lock := &proto.KvsLock{
+			Owner:      operation.LockOwner,
+			Generation: newCounter,
+			DeadlineMs: operation.LockDeadlineMs,
+		}
+		waiterErr, storeErr := grant(nil, newCounter, lock, newCounter, true)
+		if waiterErr == nil && storeErr == nil {
+			result.revision = newCounter
+		}
+		return waiterErr, storeErr
+
+	case current.Lock == nil:
+		newCounter := s.revisionCounter + 1
+		lock := &proto.KvsLock{
+			Owner:      operation.LockOwner,
+			Generation: newCounter,
+			DeadlineMs: operation.LockDeadlineMs,
+		}
+		return grant(current.Value, current.Revision, lock, newCounter, false)
+
+	case proto3.Equal(current.Lock.Owner, operation.LockOwner):
+		// renewal: extend the deadline, keep the generation
+		lock := &proto.KvsLock{
+			Owner:      current.Lock.Owner,
+			Generation: current.Lock.Generation,
+			DeadlineMs: operation.LockDeadlineMs,
+		}
+		return grant(current.Value, current.Revision, lock, 0, false)
+
+	default:
+		return kvsTypes.ErrorLockHeld, nil
+	}
+}
+
+// applyLockClearLocked applies LOCK_RELEASE / LOCK_REVOKE: a CAS on
+// (owner, generation), so a clear racing a newer acquisition never clears the
+// newer lease — the ReleaseMerge pattern. Clearing an unlocked record is a
+// successful no-op (retry safety). On a mismatch, RELEASE reports
+// ErrorCasConflict (the lease is not the caller's anymore) while REVOKE stays
+// silent (the host's stale revocation must simply not fire). Call with s.mtx
+// held.
+func (s *Operator) applyLockClearLocked(operation *proto.Operation, current *proto.KvsRecord) (error, error) {
+	if current == nil || current.Lock == nil {
+		delete(s.locks, operation.Key)
+		return nil, nil
+	}
+	if !proto3.Equal(current.Lock.Owner, operation.LockOwner) ||
+		current.Lock.Generation != operation.LockGeneration {
+		if operation.Command == proto.Operation_COMMAND_LOCK_REVOKE {
+			return nil, nil
+		}
+		return kvsTypes.ErrorCasConflict, nil
+	}
+
+	data, err := encodeRecord(current.Value, current.Revision, nil)
+	if err != nil {
+		return err, nil
+	}
+	if err := s.store.Set(&s.sectorKey, operation.Key, data); err != nil {
+		return nil, err
+	}
+	delete(s.locks, operation.Key)
+	return nil, nil
 }
 
 // ExportRecords exports the records in [head, tail) as opaque envelope bytes,
@@ -566,10 +827,27 @@ func (s *Operator) ImportRecords(records map[string][]byte, revisionCounter uint
 			return err
 		}
 		s.keys[key] = struct{}{}
+		s.indexLockLocked(key, value)
 	}
 	s.revisionCounter = max(s.revisionCounter, revisionCounter)
 
 	return nil
+}
+
+// indexLockLocked syncs the derived lease index for one record from its
+// envelope bytes. A record that does not decode (possible only in tests that
+// import raw bytes) simply carries no lease. Call with s.mtx held.
+func (s *Operator) indexLockLocked(key string, envelope []byte) {
+	record, err := decodeRecord(envelope)
+	if err != nil || record.Lock == nil {
+		delete(s.locks, key)
+		return
+	}
+	s.locks[key] = &lockIndexEntry{
+		owner:      record.Lock.Owner,
+		generation: record.Lock.Generation,
+		deadlineMS: record.Lock.DeadlineMs,
+	}
 }
 
 // ExportAllRecords dumps every record of the sector without range filtering,
@@ -606,13 +884,58 @@ func (s *Operator) ReplaceRecords(records map[string][]byte, revisionCounter uin
 	defer s.mtx.Unlock()
 
 	s.keys = make(map[string]any)
+	s.locks = make(map[string]*lockIndexEntry)
 	for key, value := range records {
 		if err := s.store.Set(&s.sectorKey, key, value); err != nil {
 			return err
 		}
 		s.keys[key] = struct{}{}
+		s.indexLockLocked(key, value)
 	}
 	s.revisionCounter = revisionCounter
 
 	return nil
+}
+
+// lockRevokeMargin is how far past a lease deadline the host waits before
+// proposing the revocation, absorbing clock skew between successive hosts
+// (the deadline was stamped by whichever host handled the acquire). NTP-level
+// sync assumed; the margin errs on the safe side — a late revoke only delays
+// the next acquirer, an early one merely restores the fencing-guarded
+// interleaving.
+const lockRevokeMargin = 3 * time.Second
+
+// ProposeExpiredLockRevocations proposes LOCK_REVOKE for every lease whose
+// deadline passed more than lockRevokeMargin ago. Driven by the hosting
+// sector's tick (only the host proposes — replicas keep the same derived
+// index but stay quiet). The clock is read HERE, never in the apply; the
+// apply is a CAS on (owner, generation), so a stale revocation racing a
+// renewal or a newer lease never clears it. Re-proposing every tick until the
+// clear lands is harmless for the same reason.
+func (s *Operator) ProposeExpiredLockRevocations() {
+	now := time.Now().UnixMilli()
+
+	var revokes []*proto.Operation
+	s.mtx.RLock()
+	if s.tail != nil { // only an active sector serves (and thus revokes) leases
+		for key, entry := range s.locks {
+			if now > entry.deadlineMS+lockRevokeMargin.Milliseconds() {
+				revokes = append(revokes, &proto.Operation{
+					Command:        proto.Operation_COMMAND_LOCK_REVOKE,
+					Key:            key,
+					LockOwner:      entry.owner,
+					LockGeneration: entry.generation,
+				})
+			}
+		}
+	}
+	s.mtx.RUnlock()
+
+	// propose outside the lock (the Transferer contract)
+	for _, operation := range revokes {
+		// the "@@" marker is kept by the simulator's log collection
+		fmt.Println(time.Now(), s.head.String(), "@@ lock revoke:", operation.Key,
+			"generation", operation.LockGeneration)
+		s.handler.OperatorProposeOperation(operation)
+	}
 }

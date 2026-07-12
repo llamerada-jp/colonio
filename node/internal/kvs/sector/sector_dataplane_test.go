@@ -20,6 +20,7 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/node/internal/kvs/sector/operator"
 	"github.com/llamerada-jp/colonio/types"
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	"github.com/stretchr/testify/require"
@@ -204,4 +205,45 @@ func TestSector_dataplane_patch(t *testing.T) {
 	// patching an absent record is a miss, not a creation
 	_, err = operator.Patch("absent", "append", []byte("x"), nil)
 	require.ErrorIs(t, err, kvsTypes.ErrorStoreKeyNotFound)
+}
+
+// TestSector_dataplane_lock drives the lease lock through a real
+// single-member raft group: acquire → guarded write → release, plus the
+// fencing rejections in between.
+func TestSector_dataplane_lock(t *testing.T) {
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	owner := types.NewNormalNodeID(0x1111111111111111, 0)
+	other := types.NewNormalNodeID(0x2222222222222222, 0)
+
+	s := newSnapshotTestSector(t, localNodeID, &sectorHandlerHelper{}, newRecordStoreHelper())
+	s.Start(t.Context())
+	defer s.Stop()
+
+	s.Activate(*localNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+
+	op := s.GetOperator()
+	_, err := op.Set("key1", []byte("base"), nil)
+	require.NoError(t, err)
+
+	grant, err := op.LockAcquire("key1", owner, 30*time.Second)
+	require.NoError(t, err)
+	require.NotZero(t, grant.Generation)
+
+	// the lease is committed state: unguarded writes and foreign acquires
+	// are rejected, the guarded write lands
+	_, err = op.Set("key1", []byte("plain"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorLockHeld)
+	_, err = op.LockAcquire("key1", other, 30*time.Second)
+	require.ErrorIs(t, err, kvsTypes.ErrorLockHeld)
+	_, err = op.Set("key1", []byte("guarded"), &operator.WriteCondition{
+		LockOwner: owner, LockGeneration: grant.Generation,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, op.LockRelease("key1", owner, grant.Generation))
+	_, err = op.Set("key1", []byte("unlocked"), nil)
+	require.NoError(t, err)
 }

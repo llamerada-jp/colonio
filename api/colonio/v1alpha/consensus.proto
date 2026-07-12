@@ -81,8 +81,26 @@ message KvsRecord {
   // within a sector lineage (the counter only grows and max-merges on
   // import). 0 is never assigned: it is the CAS sentinel for "absent".
   uint64 revision = 2;
-  // Field 3 is reserved for the lease lock (KvsLock, spec/kvs/lock.md
-  // Stage D).
+  // Lease lock; unset means unlocked (spec/kvs/lock.md).
+  KvsLock lock = 3;
+}
+
+// KvsLock is the per-record lease lock, replicated as part of the record
+// envelope. Expiry is never evaluated inside the apply (replicas must not
+// read clocks): the hosting operator observes deadline_ms on its own clock
+// and proposes COMMAND_LOCK_REVOKE, whose apply is a CAS on
+// (owner, generation) — the same pattern as ReleaseMerge.
+message KvsLock {
+  // The node holding the lock (implicitly the requesting node: the host
+  // takes it from the packet source, so there is no spoofable field).
+  colonio.v1alpha.NodeID owner = 1;
+  // Fencing token, assigned from the sector's revision counter on acquire
+  // and kept across renewals. Guarded writes must present it; a holder that
+  // lost the lock cannot corrupt the record even if it never noticed.
+  uint64 generation = 2;
+  // Lease deadline (unix milliseconds), computed by the hosting operator at
+  // propose time — a committed value, identical on every replica.
+  int64 deadline_ms = 3;
 }
 
 // SectorSnapshot is the sector-layer state machine snapshot: the replicated
@@ -135,6 +153,13 @@ message Operation {
     COMMAND_SET    = 1;
     COMMAND_PATCH  = 2;
     COMMAND_DELETE = 3;
+    // Lease lock operations (spec/kvs/lock.md). ACQUIRE by the current
+    // holder renews the deadline keeping the generation (idempotent for
+    // unknown-outcome retries); RELEASE/REVOKE apply as a CAS on
+    // (owner, generation).
+    COMMAND_LOCK_ACQUIRE = 4;
+    COMMAND_LOCK_RELEASE = 5;
+    COMMAND_LOCK_REVOKE  = 6;
   }
 
   Command command      = 1;
@@ -157,4 +182,15 @@ message Operation {
   // 「Patch」). A missing patcher or a rejected patch is a waiter-level
   // failure, not an apply failure.
   string patcher = 7;
+
+  // Lease lock fields (spec/kvs/lock.md).
+  // LOCK_*: lock_owner is the requester (ACQUIRE) or the expected holder
+  // (RELEASE/REVOKE); lock_generation is the expected generation for the
+  // RELEASE/REVOKE CAS; lock_deadline_ms is the new deadline of an ACQUIRE,
+  // computed by the host at propose time.
+  // SET/PATCH/DELETE: lock_owner + lock_generation form the guarded-write
+  // token, verified against the record's lock at apply time.
+  colonio.v1alpha.NodeID lock_owner       = 8;
+  uint64                 lock_generation  = 9;
+  int64                  lock_deadline_ms = 10;
 }

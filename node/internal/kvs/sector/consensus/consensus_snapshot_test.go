@@ -63,7 +63,7 @@ func TestConsensusSnapshot_membersRoundTrip(t *testing.T) {
 	sectorState := []byte("sector-state")
 
 	src := NewConsensus(&Config{
-		Logger:     testUtil.Logger(t),
+		Logger: testUtil.Logger(t),
 		Handler: &consensusHandlerHelper{
 			t: t,
 			consensusGetSnapshotF: func() ([]byte, error) {
@@ -84,7 +84,7 @@ func TestConsensusSnapshot_membersRoundTrip(t *testing.T) {
 	// the snapshot must overwrite (replace, not merge)
 	var applied []byte
 	dst := NewConsensus(&Config{
-		Logger:     testUtil.Logger(t),
+		Logger: testUtil.Logger(t),
 		Handler: &consensusHandlerHelper{
 			t: t,
 			consensusApplySnapshotF: func(snapshot []byte) error {

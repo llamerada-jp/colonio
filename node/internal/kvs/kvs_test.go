@@ -613,6 +613,10 @@ func TestResponseErrorToError(t *testing.T) {
 		kvsTypes.ErrorSectorNotReady)
 	require.ErrorIs(t, responseErrorToError("set", proto.KvsOperationResponse_ERROR_CONFLICT),
 		kvsTypes.ErrorCasConflict)
+	require.ErrorIs(t, responseErrorToError("set", proto.KvsOperationResponse_ERROR_PATCH_FAILED),
+		kvsTypes.ErrorPatchFailed)
+	require.ErrorIs(t, responseErrorToError("lock acquire", proto.KvsOperationResponse_ERROR_LOCKED),
+		kvsTypes.ErrorLockHeld)
 	require.ErrorIs(t, responseErrorToError("set", proto.KvsOperationResponse_ERROR_UNKNOWN),
 		kvsTypes.ErrorOperationResultUnknown)
 	// future codes must stay in the not-blindly-retryable unknown class

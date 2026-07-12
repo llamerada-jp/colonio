@@ -26,10 +26,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// casParams records the CAS condition a backend call carried.
+// casParams records the CAS / guard condition a backend call carried.
 type casParams struct {
 	revision uint64
 	absent   bool
+	lockGen  uint64
 }
 
 // fakeBackend scripts one response per call in order; when the script is
@@ -50,6 +51,10 @@ type fakeBackend struct {
 	delCas          []casParams
 	gotWithoutValue []bool
 	gotPatcher      []string
+	acquireResults  []*kvsTypes.LockResult
+	releaseErrors   []*error
+	acquireCalls    []lockCall
+	releaseCalls    []lockCall
 }
 
 func (f *fakeBackend) Get(key string, withoutValue bool) chan *kvsTypes.GetResult {
@@ -71,13 +76,13 @@ func (f *fakeBackend) Get(key string, withoutValue bool) chan *kvsTypes.GetResul
 	return c
 }
 
-func (f *fakeBackend) Patch(key string, patcher string, patch []byte, casRevision uint64, casAbsent bool) chan *kvsTypes.SetResult {
+func (f *fakeBackend) Patch(key string, patcher string, patch []byte, casRevision uint64, casAbsent bool, lockGeneration uint64) chan *kvsTypes.SetResult {
 	c := make(chan *kvsTypes.SetResult, 1)
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 	f.patchCalls++
 	f.gotPatcher = append(f.gotPatcher, patcher)
-	f.patchCas = append(f.patchCas, casParams{revision: casRevision, absent: casAbsent})
+	f.patchCas = append(f.patchCas, casParams{revision: casRevision, absent: casAbsent, lockGen: lockGeneration})
 	if len(f.patchResults) == 0 {
 		return c // hang
 	}
@@ -91,12 +96,12 @@ func (f *fakeBackend) Patch(key string, patcher string, patch []byte, casRevisio
 	return c
 }
 
-func (f *fakeBackend) Set(key string, value []byte, casRevision uint64, casAbsent bool) chan *kvsTypes.SetResult {
+func (f *fakeBackend) Set(key string, value []byte, casRevision uint64, casAbsent bool, lockGeneration uint64) chan *kvsTypes.SetResult {
 	c := make(chan *kvsTypes.SetResult, 1)
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 	f.setCalls++
-	f.setCas = append(f.setCas, casParams{revision: casRevision, absent: casAbsent})
+	f.setCas = append(f.setCas, casParams{revision: casRevision, absent: casAbsent, lockGen: lockGeneration})
 	if len(f.setResults) == 0 {
 		return c // hang
 	}
@@ -110,17 +115,59 @@ func (f *fakeBackend) Set(key string, value []byte, casRevision uint64, casAbsen
 	return c
 }
 
-func (f *fakeBackend) Delete(key string, casRevision uint64, casAbsent bool) chan error {
+func (f *fakeBackend) Delete(key string, casRevision uint64, casAbsent bool, lockGeneration uint64) chan error {
 	c := make(chan error, 1)
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 	f.delCalls++
-	f.delCas = append(f.delCas, casParams{revision: casRevision, absent: casAbsent})
+	f.delCas = append(f.delCas, casParams{revision: casRevision, absent: casAbsent, lockGen: lockGeneration})
 	if len(f.delErrors) == 0 {
 		return c // hang
 	}
 	entry := f.delErrors[0]
 	f.delErrors = f.delErrors[1:]
+	if entry == nil {
+		return c // hang
+	}
+	c <- *entry
+	close(c)
+	return c
+}
+
+type lockCall struct {
+	key   string
+	ttlMS uint64
+	gen   uint64
+}
+
+func (f *fakeBackend) LockAcquire(key string, ttlMS uint64) chan *kvsTypes.LockResult {
+	c := make(chan *kvsTypes.LockResult, 1)
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	f.acquireCalls = append(f.acquireCalls, lockCall{key: key, ttlMS: ttlMS})
+	if len(f.acquireResults) == 0 {
+		return c // hang
+	}
+	result := f.acquireResults[0]
+	f.acquireResults = f.acquireResults[1:]
+	if result == nil {
+		return c // hang
+	}
+	c <- result
+	close(c)
+	return c
+}
+
+func (f *fakeBackend) LockRelease(key string, generation uint64) chan error {
+	c := make(chan error, 1)
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	f.releaseCalls = append(f.releaseCalls, lockCall{key: key, gen: generation})
+	if len(f.releaseErrors) == 0 {
+		return c // hang
+	}
+	entry := f.releaseErrors[0]
+	f.releaseErrors = f.releaseErrors[1:]
 	if entry == nil {
 		return c // hang
 	}

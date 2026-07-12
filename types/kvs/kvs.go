@@ -43,6 +43,10 @@ var (
 	// is not registered on the handling node, or it rejected the patch
 	// document. The store was left untouched; this is a definite outcome.
 	ErrorPatchFailed = fmt.Errorf("patch failed")
+	// ErrorLockHeld means the record's lease lock is held by another owner:
+	// a lock acquisition or an unguarded write was rejected. Definite
+	// outcome; wait (for the lease to be released or revoked) and retry.
+	ErrorLockHeld = fmt.Errorf("lock is held by another owner")
 )
 
 // Patcher applies a partial-update document to a record value. Applications
@@ -89,4 +93,16 @@ type SetResult struct {
 	// Revision is the newly assigned revision of the written record.
 	Revision uint64
 	Err      error
+}
+
+type LockResult struct {
+	// Generation is the granted fencing token: guarded writes present it and
+	// the apply rejects a stale one, so a holder that lost the lease cannot
+	// corrupt the record.
+	Generation uint64
+	// DeadlineMS is the lease deadline in unix milliseconds on the HOST's
+	// clock — informational; the client self-fences on its own monotonic
+	// clock instead of trusting it.
+	DeadlineMS int64
+	Err        error
 }

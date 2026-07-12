@@ -113,22 +113,22 @@ type Sector struct {
 	triggerCh          chan struct{}
 	stopCtx            context.CancelFunc
 
-	mtx                        sync.RWMutex
-	cond                       *sync.Cond
-	stopped                    bool
-	tail                       *types.NodeID
-	mergeBy                    *types.NodeID
-	terminated                 bool
-	proposalAppendingNodes     map[kvsTypes.SectorNo]*types.NodeID
-	proposalRemovingNodes      map[kvsTypes.SectorNo]struct{}
-	proposalActivating         *types.NodeID // tail
-	proposalTerminating        bool
-	proposalExtending          *types.NodeID // tail
-	proposalImporting          []*proto.Import_Record
+	mtx                    sync.RWMutex
+	cond                   *sync.Cond
+	stopped                bool
+	tail                   *types.NodeID
+	mergeBy                *types.NodeID
+	terminated             bool
+	proposalAppendingNodes map[kvsTypes.SectorNo]*types.NodeID
+	proposalRemovingNodes  map[kvsTypes.SectorNo]struct{}
+	proposalActivating     *types.NodeID // tail
+	proposalTerminating    bool
+	proposalExtending      *types.NodeID // tail
+	proposalImporting      []*proto.Import_Record
 	// proposalImportingCounter is the source sector's revision counter taken
 	// with the exported records; it travels inside the Import proposal so the
 	// apply can max-merge it deterministically on every replica.
-	proposalImportingCounter uint64
+	proposalImportingCounter   uint64
 	proposalPreCommitSplitting *types.NodeID // frontwardNodeID
 	proposalCommittingSplit    *types.NodeID // tail
 	proposalPrepareMerge       *types.NodeID // proposed by
@@ -202,6 +202,11 @@ func (s *Sector) Start(ctx context.Context) {
 			case <-timer.C:
 				s.checkQuorumLoss()
 				s.checkMergeRelease()
+				// only the host proposes lease revocations; replicas keep the
+				// same derived lock index but stay quiet
+				if s.isHosting {
+					s.operator.ProposeExpiredLockRevocations()
+				}
 				s.applyProposals(true)
 
 			case <-s.triggerCh:

@@ -255,6 +255,7 @@ func (n *Node) runNode(ctx context.Context) error {
 	// KVS write load for the snapshot Stage 6 verification (no-op unless
 	// COLONIO_SIM_KVS_INTERVAL_MS is set; see kvsload.go)
 	n.startKvsLoad(ctx)
+	n.startKvsLockLoad(ctx)
 
 	n.Write(func() error {
 		r := n.Record.GetRecord()

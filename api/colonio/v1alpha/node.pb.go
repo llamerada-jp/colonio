@@ -29,6 +29,10 @@ const (
 	KvsOperation_COMMAND_SET    KvsOperation_Command = 1
 	KvsOperation_COMMAND_PATCH  KvsOperation_Command = 2
 	KvsOperation_COMMAND_DELETE KvsOperation_Command = 3
+	// Lease lock operations; the lock owner is implicitly the packet source
+	// (no spoofable owner field).
+	KvsOperation_COMMAND_LOCK_ACQUIRE KvsOperation_Command = 4
+	KvsOperation_COMMAND_LOCK_RELEASE KvsOperation_Command = 5
 )
 
 // Enum value maps for KvsOperation_Command.
@@ -38,12 +42,16 @@ var (
 		1: "COMMAND_SET",
 		2: "COMMAND_PATCH",
 		3: "COMMAND_DELETE",
+		4: "COMMAND_LOCK_ACQUIRE",
+		5: "COMMAND_LOCK_RELEASE",
 	}
 	KvsOperation_Command_value = map[string]int32{
-		"COMMAND_GET":    0,
-		"COMMAND_SET":    1,
-		"COMMAND_PATCH":  2,
-		"COMMAND_DELETE": 3,
+		"COMMAND_GET":          0,
+		"COMMAND_SET":          1,
+		"COMMAND_PATCH":        2,
+		"COMMAND_DELETE":       3,
+		"COMMAND_LOCK_ACQUIRE": 4,
+		"COMMAND_LOCK_RELEASE": 5,
 	}
 )
 
@@ -82,8 +90,9 @@ const (
 	KvsOperationResponse_ERROR_UNKNOWN      KvsOperationResponse_Error = 1
 	KvsOperationResponse_ERROR_PREPARING    KvsOperationResponse_Error = 2
 	KvsOperationResponse_ERROR_NOT_FOUND    KvsOperationResponse_Error = 3 // used for GET / PATCH / DELETE
-	KvsOperationResponse_ERROR_CONFLICT     KvsOperationResponse_Error = 4 // CAS condition failed; re-read before retrying
+	KvsOperationResponse_ERROR_CONFLICT     KvsOperationResponse_Error = 4 // CAS / guarded-write token failed; re-read before retrying
 	KvsOperationResponse_ERROR_PATCH_FAILED KvsOperationResponse_Error = 5 // patcher missing or it rejected the patch; store untouched
+	KvsOperationResponse_ERROR_LOCKED       KvsOperationResponse_Error = 6 // held by another owner; wait and retry
 )
 
 // Enum value maps for KvsOperationResponse_Error.
@@ -95,6 +104,7 @@ var (
 		3: "ERROR_NOT_FOUND",
 		4: "ERROR_CONFLICT",
 		5: "ERROR_PATCH_FAILED",
+		6: "ERROR_LOCKED",
 	}
 	KvsOperationResponse_Error_value = map[string]int32{
 		"ERROR_NONE":         0,
@@ -103,6 +113,7 @@ var (
 		"ERROR_NOT_FOUND":    3,
 		"ERROR_CONFLICT":     4,
 		"ERROR_PATCH_FAILED": 5,
+		"ERROR_LOCKED":       6,
 	}
 )
 
@@ -980,9 +991,15 @@ type KvsOperation struct {
 	Patcher string `protobuf:"bytes,6,opt,name=patcher,proto3" json:"patcher,omitempty"`
 	// GET: respond with the revision only, omitting the value (HEAD-like;
 	// cheap CAS base fetch for large values).
-	WithoutValue  bool `protobuf:"varint,7,opt,name=without_value,json=withoutValue,proto3" json:"without_value,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	WithoutValue bool `protobuf:"varint,7,opt,name=without_value,json=withoutValue,proto3" json:"without_value,omitempty"`
+	// LOCK_ACQUIRE: requested lease duration (clamped by the host).
+	LockTtlMs uint64 `protobuf:"varint,8,opt,name=lock_ttl_ms,json=lockTtlMs,proto3" json:"lock_ttl_ms,omitempty"`
+	// LOCK_RELEASE: the expected generation (CAS).
+	// SET / PATCH / DELETE: guarded-write token; the owner is implicitly the
+	// packet source.
+	LockGeneration uint64 `protobuf:"varint,9,opt,name=lock_generation,json=lockGeneration,proto3" json:"lock_generation,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *KvsOperation) Reset() {
@@ -1064,15 +1081,34 @@ func (x *KvsOperation) GetWithoutValue() bool {
 	return false
 }
 
+func (x *KvsOperation) GetLockTtlMs() uint64 {
+	if x != nil {
+		return x.LockTtlMs
+	}
+	return 0
+}
+
+func (x *KvsOperation) GetLockGeneration() uint64 {
+	if x != nil {
+		return x.LockGeneration
+	}
+	return 0
+}
+
 type KvsOperationResponse struct {
 	state protoimpl.MessageState     `protogen:"open.v1"`
 	Error KvsOperationResponse_Error `protobuf:"varint,1,opt,name=error,proto3,enum=api.colonio.v1alpha.KvsOperationResponse_Error" json:"error,omitempty"`
 	Value []byte                     `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"` // used for GET
 	// GET: the record's current revision. SET / PATCH: the newly assigned
 	// revision.
-	Revision      uint64 `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Revision uint64 `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	// LOCK_ACQUIRE: the granted fencing token and lease deadline (host clock
+	// basis; informational for the client, which self-fences on its own
+	// monotonic clock).
+	LockGeneration uint64 `protobuf:"varint,4,opt,name=lock_generation,json=lockGeneration,proto3" json:"lock_generation,omitempty"`
+	LockDeadlineMs int64  `protobuf:"varint,5,opt,name=lock_deadline_ms,json=lockDeadlineMs,proto3" json:"lock_deadline_ms,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *KvsOperationResponse) Reset() {
@@ -1122,6 +1158,20 @@ func (x *KvsOperationResponse) GetValue() []byte {
 func (x *KvsOperationResponse) GetRevision() uint64 {
 	if x != nil {
 		return x.Revision
+	}
+	return 0
+}
+
+func (x *KvsOperationResponse) GetLockGeneration() uint64 {
+	if x != nil {
+		return x.LockGeneration
+	}
+	return 0
+}
+
+func (x *KvsOperationResponse) GetLockDeadlineMs() int64 {
+	if x != nil {
+		return x.LockDeadlineMs
 	}
 	return 0
 }
@@ -1870,7 +1920,7 @@ const file_api_colonio_v1alpha_node_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\fR\amessage\"/\n" +
 	"\x11MessagingResponse\x12\x1a\n" +
-	"\bresponse\x18\x01 \x01(\fR\bresponse\"\xd0\x02\n" +
+	"\bresponse\x18\x01 \x01(\fR\bresponse\"\xce\x03\n" +
 	"\fKvsOperation\x12C\n" +
 	"\acommand\x18\x01 \x01(\x0e2).api.colonio.v1alpha.KvsOperation.CommandR\acommand\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12\x14\n" +
@@ -1879,16 +1929,22 @@ const file_api_colonio_v1alpha_node_proto_rawDesc = "" +
 	"\n" +
 	"cas_absent\x18\x05 \x01(\bR\tcasAbsent\x12\x18\n" +
 	"\apatcher\x18\x06 \x01(\tR\apatcher\x12#\n" +
-	"\rwithout_value\x18\a \x01(\bR\fwithoutValue\"R\n" +
+	"\rwithout_value\x18\a \x01(\bR\fwithoutValue\x12\x1e\n" +
+	"\vlock_ttl_ms\x18\b \x01(\x04R\tlockTtlMs\x12'\n" +
+	"\x0flock_generation\x18\t \x01(\x04R\x0elockGeneration\"\x86\x01\n" +
 	"\aCommand\x12\x0f\n" +
 	"\vCOMMAND_GET\x10\x00\x12\x0f\n" +
 	"\vCOMMAND_SET\x10\x01\x12\x11\n" +
 	"\rCOMMAND_PATCH\x10\x02\x12\x12\n" +
-	"\x0eCOMMAND_DELETE\x10\x03\"\x92\x02\n" +
+	"\x0eCOMMAND_DELETE\x10\x03\x12\x18\n" +
+	"\x14COMMAND_LOCK_ACQUIRE\x10\x04\x12\x18\n" +
+	"\x14COMMAND_LOCK_RELEASE\x10\x05\"\xf7\x02\n" +
 	"\x14KvsOperationResponse\x12E\n" +
 	"\x05error\x18\x01 \x01(\x0e2/.api.colonio.v1alpha.KvsOperationResponse.ErrorR\x05error\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\fR\x05value\x12\x1a\n" +
-	"\brevision\x18\x03 \x01(\x04R\brevision\"\x80\x01\n" +
+	"\brevision\x18\x03 \x01(\x04R\brevision\x12'\n" +
+	"\x0flock_generation\x18\x04 \x01(\x04R\x0elockGeneration\x12(\n" +
+	"\x10lock_deadline_ms\x18\x05 \x01(\x03R\x0elockDeadlineMs\"\x92\x01\n" +
 	"\x05Error\x12\x0e\n" +
 	"\n" +
 	"ERROR_NONE\x10\x00\x12\x11\n" +
@@ -1896,7 +1952,8 @@ const file_api_colonio_v1alpha_node_proto_rawDesc = "" +
 	"\x0fERROR_PREPARING\x10\x02\x12\x13\n" +
 	"\x0fERROR_NOT_FOUND\x10\x03\x12\x12\n" +
 	"\x0eERROR_CONFLICT\x10\x04\x12\x16\n" +
-	"\x12ERROR_PATCH_FAILED\x10\x05\"f\n" +
+	"\x12ERROR_PATCH_FAILED\x10\x05\x12\x10\n" +
+	"\fERROR_LOCKED\x10\x06\"f\n" +
 	"\x10ConsensusMessage\x12\x1b\n" +
 	"\tsector_id\x18\x01 \x01(\fR\bsectorId\x12\x1b\n" +
 	"\tsector_no\x18\x02 \x01(\x04R\bsectorNo\x12\x18\n" +

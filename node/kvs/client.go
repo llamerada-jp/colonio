@@ -68,6 +68,11 @@ var (
 	// mismatch) or it refused the patch document — and the store was left
 	// untouched.
 	ErrPatchFailed = kvsTypes.ErrorPatchFailed
+
+	// ErrLockHeld means the record's lease lock is held by another owner: a
+	// Lock() attempt or an unguarded write to a locked record was rejected.
+	// Wait for the lease to end (Lock() without WithTryOnce waits for you).
+	ErrLockHeld = kvsTypes.ErrorLockHeld
 )
 
 const (
@@ -82,9 +87,11 @@ const (
 // safely.
 type Backend interface {
 	Get(key string, withoutValue bool) chan *kvsTypes.GetResult
-	Set(key string, value []byte, casRevision uint64, casAbsent bool) chan *kvsTypes.SetResult
-	Patch(key string, patcher string, patch []byte, casRevision uint64, casAbsent bool) chan *kvsTypes.SetResult
-	Delete(key string, casRevision uint64, casAbsent bool) chan error
+	Set(key string, value []byte, casRevision uint64, casAbsent bool, lockGeneration uint64) chan *kvsTypes.SetResult
+	Patch(key string, patcher string, patch []byte, casRevision uint64, casAbsent bool, lockGeneration uint64) chan *kvsTypes.SetResult
+	Delete(key string, casRevision uint64, casAbsent bool, lockGeneration uint64) chan error
+	LockAcquire(key string, ttlMS uint64) chan *kvsTypes.LockResult
+	LockRelease(key string, generation uint64) chan error
 }
 
 // Client is the public handle of the KVS module. Obtain it from Node.KVS().
@@ -138,6 +145,7 @@ type writeOptions struct {
 	casRevision    uint64
 	casRevisionSet bool
 	casAbsent      bool
+	lockGeneration uint64
 }
 
 // WithoutRetry disables the internal ErrPreparing retry: the operation runs
@@ -164,6 +172,16 @@ func WithRevision(revision uint64) WriteOption {
 // Like WithRevision, it enables the unknown-outcome auto-retry.
 func WithAbsent() WriteOption {
 	return func(o *writeOptions) { o.casAbsent = true }
+}
+
+// WithLockToken attaches the fencing token of a held Lock (Lock.Token()) to
+// the write. Writing to a locked record requires it; a stale token — the
+// lease was lost and re-granted — fails with ErrConflict, so a holder that
+// missed its own expiry cannot corrupt the record. The token alone does NOT
+// make unknown-outcome retries safe (the guard passes again on a re-send);
+// combine with WithRevision for at-most-once.
+func WithLockToken(generation uint64) WriteOption {
+	return func(o *writeOptions) { o.lockGeneration = generation }
 }
 
 // Get reads the current value of the key from its host replica. The read does
@@ -207,7 +225,7 @@ func (c *Client) Set(ctx context.Context, key string, value []byte, opts ...Writ
 	var revision uint64
 	err = c.withRetry(ctx, "set", key, options, func() error {
 		select {
-		case result := <-c.backend.Set(key, value, options.casRevision, options.casAbsent):
+		case result := <-c.backend.Set(key, value, options.casRevision, options.casAbsent, options.lockGeneration):
 			if result.Err != nil {
 				return result.Err
 			}
@@ -250,7 +268,7 @@ func (c *Client) Patch(ctx context.Context, key string, patcher string, patch []
 	var revision uint64
 	err = c.withRetry(ctx, "patch", key, options, func() error {
 		select {
-		case result := <-c.backend.Patch(key, patcher, patch, options.casRevision, options.casAbsent):
+		case result := <-c.backend.Patch(key, patcher, patch, options.casRevision, options.casAbsent, options.lockGeneration):
 			if result.Err != nil {
 				return result.Err
 			}
@@ -275,7 +293,7 @@ func (c *Client) Delete(ctx context.Context, key string, opts ...WriteOption) er
 	}
 	return c.withRetry(ctx, "delete", key, options, func() error {
 		select {
-		case err := <-c.backend.Delete(key, options.casRevision, options.casAbsent):
+		case err := <-c.backend.Delete(key, options.casRevision, options.casAbsent, options.lockGeneration):
 			return err
 		case <-ctx.Done():
 			return fmt.Errorf("%w: %w", ErrResultUnknown, ctx.Err())

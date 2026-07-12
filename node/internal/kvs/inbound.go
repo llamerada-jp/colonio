@@ -25,8 +25,18 @@ import (
 	networkTypes "github.com/llamerada-jp/colonio/types/network"
 )
 
+type kvsOperateResult struct {
+	value    []byte
+	revision uint64
+	// lock fields of an applied LOCK_ACQUIRE
+	lockGeneration uint64
+	lockDeadlineMS int64
+}
+
 type inboundPort interface {
-	kvsOperate(operation *proto.KvsOperation) (proto.KvsOperationResponse_Error, []byte, uint64)
+	// srcNodeID is the requesting node: the implicit lock owner (there is no
+	// spoofable owner field on the wire).
+	kvsOperate(operation *proto.KvsOperation, srcNodeID *types.NodeID) (proto.KvsOperationResponse_Error, *kvsOperateResult)
 	processConsensusMessage(key kvsTypes.SectorKey, content *proto.ConsensusMessage)
 	sectorManageMember(param *sectorManageMemberParam) error
 	sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID) bool
@@ -58,15 +68,18 @@ func SetupInbound(l *slog.Logger, t *transferer.Transferer, c inboundPort) {
 func (i *inboundAdapter) recvKvsOperation(packet *networkTypes.Packet) {
 	content := packet.Content.GetKvsOperation()
 
-	errCode, resValue, revision := i.core.kvsOperate(content)
+	errCode, result := i.core.kvsOperate(content, packet.SrcNodeID)
 
+	response := &proto.KvsOperationResponse{Error: errCode}
+	if result != nil {
+		response.Value = result.value
+		response.Revision = result.revision
+		response.LockGeneration = result.lockGeneration
+		response.LockDeadlineMs = result.lockDeadlineMS
+	}
 	i.transferer.Response(packet, &proto.PacketContent{
 		Content: &proto.PacketContent_KvsOperationResponse{
-			KvsOperationResponse: &proto.KvsOperationResponse{
-				Error:    errCode,
-				Value:    resValue,
-				Revision: revision,
-			},
+			KvsOperationResponse: response,
 		},
 	})
 }

@@ -43,7 +43,12 @@ type operationParam struct {
 	patcher string
 	// withoutValue makes COMMAND_GET respond with the revision only.
 	withoutValue bool
-	receiver     func(res *proto.KvsOperationResponse, err error)
+	// lockTTLMS is the requested lease duration of COMMAND_LOCK_ACQUIRE.
+	lockTTLMS uint64
+	// lockGeneration is the expected generation of COMMAND_LOCK_RELEASE, or
+	// the guarded-write token of SET/PATCH/DELETE (owner = packet source).
+	lockGeneration uint64
+	receiver       func(res *proto.KvsOperationResponse, err error)
 }
 
 type SectorManageMemberParam struct {
@@ -101,13 +106,15 @@ func (o *outboundAdapter) sendKvsOperation(param *operationParam) {
 	content := &proto.PacketContent{
 		Content: &proto.PacketContent_KvsOperation{
 			KvsOperation: &proto.KvsOperation{
-				Command:      param.command,
-				Key:          param.key,
-				Value:        param.value,
-				CasRevision:  param.casRevision,
-				CasAbsent:    param.casAbsent,
-				Patcher:      param.patcher,
-				WithoutValue: param.withoutValue,
+				Command:        param.command,
+				Key:            param.key,
+				Value:          param.value,
+				CasRevision:    param.casRevision,
+				CasAbsent:      param.casAbsent,
+				Patcher:        param.patcher,
+				WithoutValue:   param.withoutValue,
+				LockTtlMs:      param.lockTTLMS,
+				LockGeneration: param.lockGeneration,
 			},
 		},
 	}

@@ -395,17 +395,80 @@ Stage B に依存(envelope、revision 返却、`WithRevision` の at-most-once)�
      merge/overlap 抗争クラス。design.md の未解決課題のまま)。
    **Stage A〜C はデータプレーン全体として長時間 churn 検証済み。**
 
-### Stage D: lease lock(lock.md の層 2)
+### Stage D: lease lock(lock.md の層 2)— 実装済み (2026-07-13)
 
-1. proto: `KvsLock`、LOCK_* コマンド、`Operation.lock_owner/lock_generation`、
-   ERROR_LOCKED。
-2. operator / sector: lock apply(acquire=renewal 兼用・release/revoke の
-   CAS)、guarded write 検証、lock index と失効スキャン(subRoutine tick)。
-3. 公開面: `Client.Lock` と managed `Lock`(renewal ループ、self-fencing、
-   `Done()`)。低レベル API は公開しない。
-4. simulator: 二重起動防止シナリオ(複数 node が同一 key の Lock を奪い合い、
-   guarded write の交錯が store を壊さないこと、`Done()` 後の書き込みが
-   ErrConflict になること)を検証。
+1. ~~proto~~ → 実装済み: `KvsRecord.lock`(envelope field 3。移送・snapshot に
+   自動で乗る)、LOCK_ACQUIRE/RELEASE/REVOKE、`Operation.lock_owner /
+   lock_generation / lock_deadline_ms`、`KvsOperation` の LOCK_* +
+   `lock_ttl_ms` / `lock_generation`、応答の `lock_generation /
+   lock_deadline_ms` + ERROR_LOCKED。**owner は packet source を host が
+   採用**(偽装可能な owner フィールドを wire に置かない、設計どおり)。
+2. ~~operator / sector~~ → 実装済み:
+   - acquire は renewal 兼用(同一 owner は generation 維持で deadline 延長 =
+     owner 冪等)、不在 key は lease 付き空レコードを作成。generation は
+     revision counter から採番。
+   - release/revoke は (owner, generation) の CAS。unlocked への release は
+     no-op 成功(再送安全)、不一致は release→CONFLICT / revoke→沈黙
+     (stale 失効が新 lease を壊さない)。
+   - guarded write(lockGuard): unlocked+token→CONFLICT(lease 喪失)、
+     locked+無/他者 token→LOCKED、locked+旧 generation→CONFLICT(fencing)。
+     SET/PATCH で lease は ride along、holder の guarded DELETE は
+     release+delete の atomic。読み取りは lease で阻まれない。
+   - 失効スキャン: lock index は導出状態(apply/Import/Replace/SetRange で
+     同期)、hosting sector の 3 秒 tick が deadline+margin(3s) 超過を検知して
+     LOCK_REVOKE を propose(`@@ lock revoke` ログ)。apply は時計を読まない。
+     TTL は host 側 clamp [5s, 1h]。
+3. ~~公開面~~ → 実装済み: `Client.Lock`(`WithTTL` 既定 30s・クライアント側
+   最小 10s、`WithTryOnce`)、managed `Lock`(renewal TTL/3、self-fencing =
+   最終証明から TTL−interval で `Done()` close、`Token/Key/Done/Err/Release` +
+   guarded `Set/Patch/Delete` 糖衣)。renewal が「失効後の再交付」を受けた
+   場合は新 lease を release して喪失として報告(古い token は死んでいるため
+   黙って続行しない)。`Release` の CONFLICT は「もう自分のものではない」=
+   成功扱い。`WithLockToken` は guarded write 用で、**単独では
+   at-most-once にしない**(再送で guard は再び通る。必要なら WithRevision
+   併用)ことを明記。低レベル acquire/release は非公開。
+4. ~~simulator~~ → 実装済み(`kvslockload.go`): 二重起動防止サイクル
+   (共有 32 key の Lock を奪い合い、保持中のみ 2 秒間隔で guarded write、
+   5〜15 秒保持 → release)。監査: `@@ kvs lock ok/end: <key> <generation>`
+   の**同一 key の区間重複 = double grant**、(key, generation) の
+   クラスタ一意性(counter リセットの偽陽性は CAS 監査と同じ)、
+   `@@ kvs lock` 分計(acq/held/prep/unk/err, guard ok/conf/locked/err,
+   lost/rel)。guard conf は「自分は保持中と思っているのに fence された」=
+   lost と対で現れるのが正常。
+
+   **run 検証済み (2026-07-12 run, 40min, 激 churn)**:
+   - acquire 成功 4,820 / guarded write 23,159 / corrupt 0。
+   - **相互排除監査**: 保持区間の重複 26/5,031 (0.5%)。全件が「後側の
+     generation が極小(counter リセット後の新系譜での再交付)」=
+     sector データ喪失クラス(force terminate 164 回・merge 抗争環境)で、
+     **fencing が全件捕捉**(guard locked 22 + conf 6 ≒ 重複件数、黙って
+     続行した holder は 0)。設計どおり「二重交付は起こり得るが guarded
+     状態は壊れない」を実測確認。
+   - 失効スキャン(`@@ lock revoke`)130 回 ≒ 死亡 holder 数(shutdown 82 +
+     end なし 24 + fence 切断 31)と整合。
+   - **課題発見→修正**: acquire の unk が定常 13〜20% と高かった。原因は
+     「保持中でも acquire が毎回 raft propose になる」ため、待機 node の
+     1 秒ポーリング(数百 node × 32 key)が lock key の host group への
+     proposal 殺到になっていたこと。**host 側 fast-path 拒否**(未失効の
+     他者 lease が applied 済みなら propose せず LOCKED 即返し。deadline+
+     margin 超過後は素通しなので takeover はこのゲートに依存しない)を
+     実装済み(回帰テストあり)。unk 正常化は次回 run で確認する。
+   - lost=0 は正常(renewal 間隔 10s より guarded write 間隔 2s が先に
+     fence を検知するため。lease 喪失は guard-locked/conf として現れた)。
+
+   **再 run 検証 (2026-07-16 run, ~15min)**:
+   - **fast-path の効果を確認**: acquire unk 13〜20% → **8.5%** に半減。
+     区間重複は **1/1,863 (0.05%)**(0.6 秒、後側 generation=3 = counter
+     リセット指紋、guard locked 1 で fencing 捕捉)。corrupt 0、データ
+     プレーンの unk は全操作 0.5% 以下を維持。
+   - 残る unk 8.5% の大半は**クライアント分類のアーティファクト**と特定:
+     競合待ちの 45s deadline が「ポーリングの in-flight 中」に切れると、
+     直前まで LOCKED を観測していても unk に分類されていた
+     (unk/(held+unk)=19% ≒ RTT/(RTT+poll 1s) と整合)。
+     → `Client.Lock` を修正済み: deadline 時に直近の確定観測が「保持中」
+     なら ErrLockHeld として報告(回帰テストあり)。12:55〜58 の
+     churn バンプ(15〜18%)は本物の混雑で、既知の churn 挙動の範囲。
+   - **Stage D 完了**。unk 指標のベースライン確認は次回の通常 run に相乗り。
 
 ### Stage E: Watch(必要になったら)
 

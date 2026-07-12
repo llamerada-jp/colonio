@@ -93,6 +93,10 @@ message KvsOperation {
     COMMAND_SET    = 1;
     COMMAND_PATCH  = 2;
     COMMAND_DELETE = 3;
+    // Lease lock operations; the lock owner is implicitly the packet source
+    // (no spoofable owner field).
+    COMMAND_LOCK_ACQUIRE = 4;
+    COMMAND_LOCK_RELEASE = 5;
   }
 
   Command command = 1;
@@ -110,6 +114,14 @@ message KvsOperation {
   // GET: respond with the revision only, omitting the value (HEAD-like;
   // cheap CAS base fetch for large values).
   bool without_value = 7;
+
+  // LOCK_ACQUIRE: requested lease duration (clamped by the host).
+  uint64 lock_ttl_ms = 8;
+
+  // LOCK_RELEASE: the expected generation (CAS).
+  // SET / PATCH / DELETE: guarded-write token; the owner is implicitly the
+  // packet source.
+  uint64 lock_generation = 9;
 }
 
 message KvsOperationResponse {
@@ -119,8 +131,9 @@ message KvsOperationResponse {
     ERROR_UNKNOWN      = 1;
     ERROR_PREPARING    = 2;
     ERROR_NOT_FOUND    = 3; // used for GET / PATCH / DELETE
-    ERROR_CONFLICT     = 4; // CAS condition failed; re-read before retrying
+    ERROR_CONFLICT     = 4; // CAS / guarded-write token failed; re-read before retrying
     ERROR_PATCH_FAILED = 5; // patcher missing or it rejected the patch; store untouched
+    ERROR_LOCKED       = 6; // held by another owner; wait and retry
   }
   Error error = 1;
   bytes value = 2; // used for GET
@@ -128,6 +141,12 @@ message KvsOperationResponse {
   // GET: the record's current revision. SET / PATCH: the newly assigned
   // revision.
   uint64 revision = 3;
+
+  // LOCK_ACQUIRE: the granted fencing token and lease deadline (host clock
+  // basis; informational for the client, which self-fences on its own
+  // monotonic clock).
+  uint64 lock_generation  = 4;
+  int64  lock_deadline_ms = 5;
 }
 
 message ConsensusMessage {

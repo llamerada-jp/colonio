@@ -158,6 +158,9 @@ func responseErrorToError(command string, code proto.KvsOperationResponse_Error)
 		// Definite as well: the patcher is missing or rejected the patch and
 		// the store was left untouched.
 		return kvsTypes.ErrorPatchFailed
+	case proto.KvsOperationResponse_ERROR_LOCKED:
+		// Definite: held by another owner; wait and retry.
+		return kvsTypes.ErrorLockHeld
 	default:
 		return fmt.Errorf("kvs %s failed with code %d: %w", command, code, kvsTypes.ErrorOperationResultUnknown)
 	}
@@ -192,14 +195,15 @@ func (k *KVS) Get(key string, withoutValue bool) chan *kvsTypes.GetResult {
 	return c
 }
 
-func (k *KVS) Set(key string, value []byte, casRevision uint64, casAbsent bool) chan *kvsTypes.SetResult {
+func (k *KVS) Set(key string, value []byte, casRevision uint64, casAbsent bool, lockGeneration uint64) chan *kvsTypes.SetResult {
 	c := make(chan *kvsTypes.SetResult, 1)
 	k.outbound.sendKvsOperation(&operationParam{
-		command:     proto.KvsOperation_COMMAND_SET,
-		key:         key,
-		value:       value,
-		casRevision: casRevision,
-		casAbsent:   casAbsent,
+		command:        proto.KvsOperation_COMMAND_SET,
+		key:            key,
+		value:          value,
+		casRevision:    casRevision,
+		casAbsent:      casAbsent,
+		lockGeneration: lockGeneration,
 		receiver: func(res *proto.KvsOperationResponse, err error) {
 			defer close(c)
 
@@ -220,15 +224,16 @@ func (k *KVS) Set(key string, value []byte, casRevision uint64, casAbsent bool) 
 	return c
 }
 
-func (k *KVS) Patch(key string, patcher string, patch []byte, casRevision uint64, casAbsent bool) chan *kvsTypes.SetResult {
+func (k *KVS) Patch(key string, patcher string, patch []byte, casRevision uint64, casAbsent bool, lockGeneration uint64) chan *kvsTypes.SetResult {
 	c := make(chan *kvsTypes.SetResult, 1)
 	k.outbound.sendKvsOperation(&operationParam{
-		command:     proto.KvsOperation_COMMAND_PATCH,
-		key:         key,
-		value:       patch,
-		patcher:     patcher,
-		casRevision: casRevision,
-		casAbsent:   casAbsent,
+		command:        proto.KvsOperation_COMMAND_PATCH,
+		key:            key,
+		value:          patch,
+		patcher:        patcher,
+		casRevision:    casRevision,
+		casAbsent:      casAbsent,
+		lockGeneration: lockGeneration,
 		receiver: func(res *proto.KvsOperationResponse, err error) {
 			defer close(c)
 
@@ -249,14 +254,65 @@ func (k *KVS) Patch(key string, patcher string, patch []byte, casRevision uint64
 	return c
 }
 
-func (k *KVS) Delete(key string, casRevision uint64, casAbsent bool) chan error {
+func (k *KVS) LockAcquire(key string, ttlMS uint64) chan *kvsTypes.LockResult {
+	c := make(chan *kvsTypes.LockResult, 1)
+	k.outbound.sendKvsOperation(&operationParam{
+		command:   proto.KvsOperation_COMMAND_LOCK_ACQUIRE,
+		key:       key,
+		lockTTLMS: ttlMS,
+		receiver: func(res *proto.KvsOperationResponse, err error) {
+			defer close(c)
+
+			if err != nil {
+				c <- &kvsTypes.LockResult{Err: err}
+				return
+			}
+
+			if err := responseErrorToError("lock acquire", res.Error); err != nil {
+				c <- &kvsTypes.LockResult{Err: err}
+				return
+			}
+
+			c <- &kvsTypes.LockResult{
+				Generation: res.LockGeneration,
+				DeadlineMS: res.LockDeadlineMs,
+			}
+		},
+	})
+
+	return c
+}
+
+func (k *KVS) LockRelease(key string, generation uint64) chan error {
 	c := make(chan error, 1)
 	k.outbound.sendKvsOperation(&operationParam{
-		command:     proto.KvsOperation_COMMAND_DELETE,
-		key:         key,
-		value:       nil,
-		casRevision: casRevision,
-		casAbsent:   casAbsent,
+		command:        proto.KvsOperation_COMMAND_LOCK_RELEASE,
+		key:            key,
+		lockGeneration: generation,
+		receiver: func(res *proto.KvsOperationResponse, err error) {
+			defer close(c)
+
+			if err != nil {
+				c <- err
+				return
+			}
+
+			c <- responseErrorToError("lock release", res.Error)
+		},
+	})
+
+	return c
+}
+
+func (k *KVS) Delete(key string, casRevision uint64, casAbsent bool, lockGeneration uint64) chan error {
+	c := make(chan error, 1)
+	k.outbound.sendKvsOperation(&operationParam{
+		command:        proto.KvsOperation_COMMAND_DELETE,
+		key:            key,
+		value:          nil,
+		casRevision:    casRevision,
+		casAbsent:      casAbsent,
+		lockGeneration: lockGeneration,
 		receiver: func(res *proto.KvsOperationResponse, err error) {
 			defer close(c)
 
@@ -277,11 +333,11 @@ func (k *KVS) Delete(key string, casRevision uint64, casAbsent bool) chan error 
 	return c
 }
 
-func (k *KVS) kvsOperate(operation *proto.KvsOperation) (proto.KvsOperationResponse_Error, []byte, uint64) {
+func (k *KVS) kvsOperate(operation *proto.KvsOperation, srcNodeID *types.NodeID) (proto.KvsOperationResponse_Error, *kvsOperateResult) {
 	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
 	if hostingSectorKey == nil {
 		k.logger.Debug("preparing hosting sector key")
-		return proto.KvsOperationResponse_ERROR_PREPARING, nil, 0
+		return proto.KvsOperationResponse_ERROR_PREPARING, nil
 	}
 
 	k.mtx.RLock()
@@ -289,7 +345,7 @@ func (k *KVS) kvsOperate(operation *proto.KvsOperation) (proto.KvsOperationRespo
 	k.mtx.RUnlock()
 	if hostingSector == nil {
 		k.logger.Debug("preparing hosting sector")
-		return proto.KvsOperationResponse_ERROR_PREPARING, nil, 0
+		return proto.KvsOperationResponse_ERROR_PREPARING, nil
 	}
 	op := hostingSector.GetOperator()
 
@@ -297,8 +353,8 @@ func (k *KVS) kvsOperate(operation *proto.KvsOperation) (proto.KvsOperationRespo
 	// yet, key out of range (stale routing / range moved), or the range is
 	// being handed over (split export, merge lock). A timeout maps to UNKNOWN
 	// because the outcome is genuinely unknown (the proposal may still commit).
-	// A CAS conflict and a patch failure are definite outcomes of their own:
-	// the store was left untouched, and the client decides what to do next.
+	// CAS conflicts, patch failures and held locks are definite outcomes of
+	// their own: the store was left untouched, and the client decides next.
 	toResponseError := func(err error) proto.KvsOperationResponse_Error {
 		switch {
 		case err == nil:
@@ -311,16 +367,23 @@ func (k *KVS) kvsOperate(operation *proto.KvsOperation) (proto.KvsOperationRespo
 			return proto.KvsOperationResponse_ERROR_CONFLICT
 		case errors.Is(err, kvsTypes.ErrorPatchFailed):
 			return proto.KvsOperationResponse_ERROR_PATCH_FAILED
+		case errors.Is(err, kvsTypes.ErrorLockHeld):
+			return proto.KvsOperationResponse_ERROR_LOCKED
 		default:
 			return proto.KvsOperationResponse_ERROR_UNKNOWN
 		}
 	}
 
-	var cas *operator.CasCondition
-	if operation.CasRevision != 0 || operation.CasAbsent {
-		cas = &operator.CasCondition{
+	var cond *operator.WriteCondition
+	if operation.CasRevision != 0 || operation.CasAbsent || operation.LockGeneration != 0 {
+		cond = &operator.WriteCondition{
 			Revision: operation.CasRevision,
 			Absent:   operation.CasAbsent,
+		}
+		if operation.LockGeneration != 0 {
+			// the guarded-write owner is the requesting node itself
+			cond.LockOwner = srcNodeID
+			cond.LockGeneration = operation.LockGeneration
 		}
 	}
 
@@ -332,21 +395,35 @@ func (k *KVS) kvsOperate(operation *proto.KvsOperation) (proto.KvsOperationRespo
 			// (potentially large) value is not transferred back.
 			data = nil
 		}
-		return toResponseError(err), data, revision
+		return toResponseError(err), &kvsOperateResult{value: data, revision: revision}
 
 	case proto.KvsOperation_COMMAND_SET:
-		revision, err := op.Set(operation.Key, operation.Value, cas)
-		return toResponseError(err), nil, revision
+		revision, err := op.Set(operation.Key, operation.Value, cond)
+		return toResponseError(err), &kvsOperateResult{revision: revision}
 
 	case proto.KvsOperation_COMMAND_PATCH:
-		revision, err := op.Patch(operation.Key, operation.Patcher, operation.Value, cas)
-		return toResponseError(err), nil, revision
+		revision, err := op.Patch(operation.Key, operation.Patcher, operation.Value, cond)
+		return toResponseError(err), &kvsOperateResult{revision: revision}
 
 	case proto.KvsOperation_COMMAND_DELETE:
-		return toResponseError(op.Delete(operation.Key, cas)), nil, 0
+		return toResponseError(op.Delete(operation.Key, cond)), nil
+
+	case proto.KvsOperation_COMMAND_LOCK_ACQUIRE:
+		result, err := op.LockAcquire(operation.Key, srcNodeID,
+			time.Duration(operation.LockTtlMs)*time.Millisecond)
+		if err != nil {
+			return toResponseError(err), nil
+		}
+		return proto.KvsOperationResponse_ERROR_NONE, &kvsOperateResult{
+			lockGeneration: result.Generation,
+			lockDeadlineMS: result.DeadlineMS,
+		}
+
+	case proto.KvsOperation_COMMAND_LOCK_RELEASE:
+		return toResponseError(op.LockRelease(operation.Key, srcNodeID, operation.LockGeneration)), nil
 
 	default:
-		return proto.KvsOperationResponse_ERROR_UNKNOWN, nil, 0
+		return proto.KvsOperationResponse_ERROR_UNKNOWN, nil
 	}
 }
 
