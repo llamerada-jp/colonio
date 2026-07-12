@@ -130,6 +130,31 @@ func (k *KVS) Start(ctx context.Context, localNodeID *types.NodeID) {
 	}()
 }
 
+// responseErrorToError maps response codes to the typed errors of types/kvs
+// so callers can distinguish the retryable class (ErrorSectorNotReady →
+// routing not settled / range moving, retry later) from misses and failures.
+//
+// TODO: Get/Set/Patch/Delete return these errors as-is, so retrying is
+// entirely the caller's job. That is not viable for real clients: under churn
+// a range can stay PREPARING for over 3 seconds (split/merge fence,
+// re-activation), and the Stage 6 load run (2026-07-12) showed ~9% of
+// operations failing even with 5 backoff retries. A client-side retry layer
+// is needed here; retrying PREPARING is safe as-is (rejected before
+// acceptance), but retrying UNKNOWN (timeout, outcome uncertain) first needs
+// operation dedup. See spec/kvs/dataplane.md TODO.
+func responseErrorToError(command string, code proto.KvsOperationResponse_Error) error {
+	switch code {
+	case proto.KvsOperationResponse_ERROR_NONE:
+		return nil
+	case proto.KvsOperationResponse_ERROR_NOT_FOUND:
+		return kvsTypes.ErrorStoreKeyNotFound
+	case proto.KvsOperationResponse_ERROR_PREPARING:
+		return kvsTypes.ErrorSectorNotReady
+	default:
+		return fmt.Errorf("kvs %s error: %d", command, code)
+	}
+}
+
 func (k *KVS) Get(key string) chan *kvsTypes.GetResult {
 	c := make(chan *kvsTypes.GetResult, 1)
 	k.outbound.sendKvsOperation(&operationParam{
@@ -147,25 +172,16 @@ func (k *KVS) Get(key string) chan *kvsTypes.GetResult {
 				return
 			}
 
-			switch res.Error {
-			case proto.KvsOperationResponse_ERROR_NONE:
-				// ok
-				c <- &kvsTypes.GetResult{
-					Data: res.Value,
-					Err:  nil,
-				}
-
-			case proto.KvsOperationResponse_ERROR_NOT_FOUND:
+			if err := responseErrorToError("get", res.Error); err != nil {
 				c <- &kvsTypes.GetResult{
 					Data: nil,
-					Err:  fmt.Errorf("key not found: %s", key),
+					Err:  err,
 				}
-
-			default:
-				c <- &kvsTypes.GetResult{
-					Data: nil,
-					Err:  fmt.Errorf("unknown error: %d", res.Error),
-				}
+				return
+			}
+			c <- &kvsTypes.GetResult{
+				Data: res.Value,
+				Err:  nil,
 			}
 		},
 	})
@@ -187,8 +203,8 @@ func (k *KVS) Set(key string, value []byte) chan error {
 				return
 			}
 
-			if res.Error != proto.KvsOperationResponse_ERROR_NONE {
-				c <- fmt.Errorf("kvs set error: %d", res.Error)
+			if err := responseErrorToError("set", res.Error); err != nil {
+				c <- err
 				return
 			}
 
@@ -213,8 +229,8 @@ func (k *KVS) Patch(key string, value []byte) chan error {
 				return
 			}
 
-			if res.Error != proto.KvsOperationResponse_ERROR_NONE {
-				c <- fmt.Errorf("kvs patch error: %d", res.Error)
+			if err := responseErrorToError("patch", res.Error); err != nil {
+				c <- err
 				return
 			}
 
@@ -239,8 +255,8 @@ func (k *KVS) Delete(key string) chan error {
 				return
 			}
 
-			if res.Error != proto.KvsOperationResponse_ERROR_NONE {
-				c <- fmt.Errorf("kvs delete error: %d", res.Error)
+			if err := responseErrorToError("delete", res.Error); err != nil {
+				c <- err
 				return
 			}
 
