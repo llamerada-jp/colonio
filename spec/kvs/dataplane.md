@@ -136,7 +136,17 @@ simulator に env ゲート付きの KVS 書き込み負荷を実装済み
   済みだが、`SimpleStore.Patch` は「未サポート」エラーを返す（apply 経路での
   panic は全 replica の consensus loop を落とすため error 化した）。部分更新
   フォーマットを決めたら store 実装と合わせて定義する。
+  → **pluggable Patcher として再定義（2026-07-12）**: 大 value の部分更新は
+  patch 文書だけを流すサーバ側 patch が CAS の read-modify-write より帯域・
+  raft ログサイズで構造的に有利なため存置。適用形式（JSON Patch 等）は
+  利用者が `Patcher`（決定的純関数の契約付き）として node に登録する。
+  現行の未定義経路と `Store.Patch` は api.md Stage A で削除し、Stage C で
+  再実装する。正典は spec/kvs/api.md「Patch」。
 - **クライアント側リトライ層が必要**（Stage 6 run 2026-07-12 で定量確認）。
+  → **設計済み（2026-07-12）**: spec/kvs/api.md で PREPARING リトライを
+  ライブラリに内蔵する（ctx deadline まで粘る）方針とした。UNKNOWN の再送は
+  CAS 付き操作に限って安全（spec/kvs/lock.md「CAS 操作」の at-most-once 性）。
+  実装は api.md Stage A/B。以下は当時の分析記録として残す。
   ERROR_PREPARING を受けた `KVS.Set` 等は現状そのままエラーを返すため、
   リトライ責務は全面的に呼び出し側にある。simulator の書き込み負荷 run
   （激しい churn: node 寿命 1〜19 分、200 node）では、5 回・逓増バックオフ

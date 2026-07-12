@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	colonioNode "github.com/llamerada-jp/colonio/node"
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 )
 
@@ -104,8 +105,17 @@ func (n *Node) startKvsLoad(ctx context.Context) {
 	}
 	startKvsMemReporter()
 
+	// Capture the colonio instance of THIS run. n.Col is replaced by
+	// renewColonio for the next run while this goroutine may still be inside
+	// a retry backoff, and calling into the swapped-in, not-yet-started
+	// instance crashes in the routing layer (routing1D is created by Start;
+	// SIGSEGV via KvsSet, 2026-07-12 run). The captured instance was already
+	// started when startKvsLoad runs, so it stays safe to call after Stop —
+	// requests then just resolve as errors or never resolve (see kvsAwait*).
+	col := n.Col
+
 	go func() {
-		localNodeID := n.Col.GetLocalNodeID()
+		localNodeID := col.GetLocalNodeID()
 		stats := &kvsLoadStats{}
 		lastDump := time.Now()
 
@@ -119,7 +129,7 @@ func (n *Node) startKvsLoad(ctx context.Context) {
 			case <-ticker.C:
 			}
 
-			n.kvsLoadOperation(ctx, stats)
+			kvsLoadOperation(ctx, col, stats)
 
 			if time.Since(lastDump) >= time.Minute {
 				fmt.Println(time.Now(), localNodeID, "@@ kvs load:",
@@ -134,20 +144,42 @@ func (n *Node) startKvsLoad(ctx context.Context) {
 	}()
 }
 
+// kvsAwaitErr / kvsAwaitGet guard a response channel with the run context:
+// when the node is stopped mid-request the channel may never resolve, and
+// the goroutine must not stay blocked into the next run (the abandoned
+// channel is buffered, so a late response is simply dropped).
+func kvsAwaitErr(ctx context.Context, c chan error) error {
+	select {
+	case err := <-c:
+		return err
+	case <-ctx.Done():
+		return kvsTimeout
+	}
+}
+
+func kvsAwaitGet(ctx context.Context, c chan *kvsTypes.GetResult) *kvsTypes.GetResult {
+	select {
+	case result := <-c:
+		return result
+	case <-ctx.Done():
+		return &kvsTypes.GetResult{Err: kvsTimeout}
+	}
+}
+
 // kvsLoadOperation runs one randomly chosen operation: mostly overwrites
 // (they grow the raft log without growing the live data set — exactly the
 // case snapshots must bound), some reads, few deletes.
-func (n *Node) kvsLoadOperation(ctx context.Context, stats *kvsLoadStats) {
+func kvsLoadOperation(ctx context.Context, col colonioNode.Node, stats *kvsLoadStats) {
 	key := fmt.Sprintf("kvs-load-%d", rand.Intn(kvsLoadKeys))
 
 	switch r := rand.Intn(100); {
 	case r < 70: // Set + verify probe
-		err := n.kvsRetry(ctx, func() error { return <-n.Col.KvsSet(key, kvsLoadValue(key)) },
+		err := kvsRetry(ctx, func() error { return kvsAwaitErr(ctx, col.KvsSet(key, kvsLoadValue(key))) },
 			&stats.setPreparing, &stats.retryExhausted)
 		switch {
 		case err == nil:
 			stats.set++
-			n.kvsVerifyProbe(ctx, key, stats)
+			kvsVerifyProbe(ctx, col, key, stats)
 		case errors.Is(err, kvsTimeout):
 			stats.setTimeout++
 		default:
@@ -155,11 +187,11 @@ func (n *Node) kvsLoadOperation(ctx context.Context, stats *kvsLoadStats) {
 		}
 
 	case r < 95: // Get
-		err := n.kvsRetry(ctx, func() error {
-			result := <-n.Col.KvsGet(key)
+		err := kvsRetry(ctx, func() error {
+			result := kvsAwaitGet(ctx, col.KvsGet(key))
 			if result.Err == nil && !kvsValueMatches(key, result.Data) {
 				stats.verifyCorrupt++
-				fmt.Println(time.Now(), n.Col.GetLocalNodeID(), "@@ kvs verify corrupt:", key)
+				fmt.Println(time.Now(), col.GetLocalNodeID(), "@@ kvs verify corrupt:", key)
 			}
 			return result.Err
 		}, &stats.getPreparing, &stats.retryExhausted)
@@ -173,7 +205,7 @@ func (n *Node) kvsLoadOperation(ctx context.Context, stats *kvsLoadStats) {
 		}
 
 	default: // Delete
-		err := n.kvsRetry(ctx, func() error { return <-n.Col.KvsDelete(key) },
+		err := kvsRetry(ctx, func() error { return kvsAwaitErr(ctx, col.KvsDelete(key)) },
 			&stats.delPreparing, &stats.retryExhausted)
 		switch {
 		case err == nil:
@@ -190,18 +222,18 @@ func (n *Node) kvsLoadOperation(ctx context.Context, stats *kvsLoadStats) {
 // means the write disappeared: legitimate only when another node's Delete
 // interleaved (deletes are 5% of the mix, so a sustained miss rate points at
 // a lost-write bug — the fences of spec/kvs/dataplane.md).
-func (n *Node) kvsVerifyProbe(ctx context.Context, key string, stats *kvsLoadStats) {
-	err := n.kvsRetry(ctx, func() error {
-		result := <-n.Col.KvsGet(key)
+func kvsVerifyProbe(ctx context.Context, col colonioNode.Node, key string, stats *kvsLoadStats) {
+	err := kvsRetry(ctx, func() error {
+		result := kvsAwaitGet(ctx, col.KvsGet(key))
 		if result.Err == nil && !kvsValueMatches(key, result.Data) {
 			stats.verifyCorrupt++
-			fmt.Println(time.Now(), n.Col.GetLocalNodeID(), "@@ kvs verify corrupt:", key)
+			fmt.Println(time.Now(), col.GetLocalNodeID(), "@@ kvs verify corrupt:", key)
 		}
 		return result.Err
 	}, &stats.getPreparing, &stats.retryExhausted)
 	if errors.Is(err, kvsTypes.ErrorStoreKeyNotFound) {
 		stats.verifyMiss++
-		fmt.Println(time.Now(), n.Col.GetLocalNodeID(), "@@ kvs verify miss:", key)
+		fmt.Println(time.Now(), col.GetLocalNodeID(), "@@ kvs verify miss:", key)
 	}
 }
 
@@ -212,7 +244,7 @@ var kvsTimeout = errors.New("kvs operation retries exhausted")
 // kvsRetry retries the operation while it fails with the retryable
 // ErrorSectorNotReady (routing not settled, range mid-split/merge). Bounded:
 // the load must not pile up goroutines against a stuck range.
-func (n *Node) kvsRetry(ctx context.Context, operation func() error, preparing *int, exhausted *int) error {
+func kvsRetry(ctx context.Context, operation func() error, preparing *int, exhausted *int) error {
 	const attempts = 5
 	for i := 0; ; i++ {
 		err := operation()
