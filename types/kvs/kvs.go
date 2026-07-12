@@ -28,6 +28,13 @@ var (
 	// being handed over (split export in progress / merge lock held). Mapped
 	// to KvsOperationResponse ERROR_PREPARING so the client can retry.
 	ErrorSectorNotReady = fmt.Errorf("sector is not ready for the operation")
+	// ErrorOperationResultUnknown marks a write whose outcome is genuinely
+	// unknown: the proposal timed out on the host (or the response carried an
+	// unexpected code), but raft gives no negative acknowledgment, so it may
+	// still commit later. Retrying blindly can apply the write twice; the
+	// public client (node/kvs) only auto-retries this class for conditional
+	// (CAS) operations.
+	ErrorOperationResultUnknown = fmt.Errorf("operation result is unknown")
 )
 
 type Store interface {
@@ -36,7 +43,6 @@ type Store interface {
 
 	Get(sectorKey *SectorKey, key string) ([]byte, error)
 	Set(sectorKey *SectorKey, key string, value []byte) error
-	Patch(sectorKey *SectorKey, key string, value []byte) error
 	Delete(sectorKey *SectorKey, key string) error
 }
 

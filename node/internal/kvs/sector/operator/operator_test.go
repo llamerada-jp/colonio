@@ -60,10 +60,6 @@ func (s *storeHelper) Set(sectorKey *kvsTypes.SectorKey, key string, value []byt
 	return nil
 }
 
-func (s *storeHelper) Patch(sectorKey *kvsTypes.SectorKey, key string, value []byte) error {
-	return fmt.Errorf("patch is not supported")
-}
-
 func (s *storeHelper) Delete(sectorKey *kvsTypes.SectorKey, key string) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()

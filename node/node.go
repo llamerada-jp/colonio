@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/llamerada-jp/colonio/node/internal/geometry"
-	"github.com/llamerada-jp/colonio/node/internal/kvs"
+	internalKvs "github.com/llamerada-jp/colonio/node/internal/kvs"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/activation"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/hosting"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/sector/consensus"
@@ -32,6 +32,7 @@ import (
 	"github.com/llamerada-jp/colonio/node/internal/network"
 	"github.com/llamerada-jp/colonio/node/internal/network/node_accessor"
 	"github.com/llamerada-jp/colonio/node/internal/spread"
+	"github.com/llamerada-jp/colonio/node/kvs"
 	"github.com/llamerada-jp/colonio/node/observation"
 	"github.com/llamerada-jp/colonio/types"
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
@@ -62,11 +63,8 @@ type Node interface {
 	IsStable() bool
 	GetLocalNodeID() string
 	UpdateLocalPosition(x, y float64) error
-	// kvs
-	KvsGet(key string) chan *kvsTypes.GetResult
-	KvsSet(key string, value []byte) chan error
-	KvsPatch(key string, value []byte) chan error
-	KvsDelete(key string) chan error
+	// KVS returns the client of the KVS module (spec/kvs/api.md).
+	KVS() *kvs.Client
 	// messaging
 	MessagingPost(dst, name string, val []byte, setters ...MessagingOptionSetter) ([]byte, error)
 	MessagingSetHandler(name string, handler func(*MessagingRequest, MessagingResponseWriter))
@@ -174,7 +172,8 @@ type colonioImpl struct {
 	cancel      context.CancelFunc
 	localNodeID *types.NodeID
 	network     *network.Network
-	kvs         *kvs.KVS
+	kvs         *internalKvs.KVS
+	kvsClient   *kvs.Client
 	messaging   *messaging.Messaging
 	spread      *spread.Spread
 }
@@ -216,7 +215,7 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 	}
 
 	if config.KvsStore == nil {
-		config.KvsStore = kvs.NewSimpleStore()
+		config.KvsStore = internalKvs.NewSimpleStore()
 	}
 
 	impl := &colonioImpl{
@@ -294,18 +293,19 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 	})
 	hosting.SetupInbound(impl.logger, net.GetTransferer(), hostingManager)
 
-	impl.kvs = kvs.NewKVS(&kvs.Config{
+	impl.kvs = internalKvs.NewKVS(&internalKvs.Config{
 		Logger:             config.Logger,
 		EnableRaftLogging:  config.EnableRaftLogging,
 		Handler:            impl,
-		Outbound:           kvs.NewOutbound(net.GetTransferer()),
+		Outbound:           internalKvs.NewOutbound(net.GetTransferer()),
 		ConsensusOutbound:  consensus.NewOutbound(net.GetTransferer()),
 		ActivationResolver: activationResolver,
 		HostingManager:     hostingManager,
 		Observation:        observation,
 		Store:              config.KvsStore,
 	})
-	kvs.SetupInbound(impl.logger, net.GetTransferer(), impl.kvs)
+	internalKvs.SetupInbound(impl.logger, net.GetTransferer(), impl.kvs)
+	impl.kvsClient = kvs.NewClient(impl.kvs)
 
 	impl.messaging = messaging.NewMessaging(&messaging.Config{
 		Logger:     config.Logger,
@@ -371,20 +371,8 @@ func (c *colonioImpl) KvsGetStability() (bool, []*types.NodeID, []*types.NodeID)
 	return c.network.GetStability()
 }
 
-func (c *colonioImpl) KvsGet(key string) chan *kvsTypes.GetResult {
-	return c.kvs.Get(key)
-}
-
-func (c *colonioImpl) KvsSet(key string, value []byte) chan error {
-	return c.kvs.Set(key, value)
-}
-
-func (c *colonioImpl) KvsPatch(key string, value []byte) chan error {
-	return c.kvs.Patch(key, value)
-}
-
-func (c *colonioImpl) KvsDelete(key string) chan error {
-	return c.kvs.Delete(key)
+func (c *colonioImpl) KVS() *kvs.Client {
+	return c.kvsClient
 }
 
 // messaging

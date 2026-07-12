@@ -130,18 +130,10 @@ func (k *KVS) Start(ctx context.Context, localNodeID *types.NodeID) {
 	}()
 }
 
-// responseErrorToError maps response codes to the typed errors of types/kvs
-// so callers can distinguish the retryable class (ErrorSectorNotReady →
-// routing not settled / range moving, retry later) from misses and failures.
-//
-// TODO: Get/Set/Patch/Delete return these errors as-is, so retrying is
-// entirely the caller's job. That is not viable for real clients: under churn
-// a range can stay PREPARING for over 3 seconds (split/merge fence,
-// re-activation), and the Stage 6 load run (2026-07-12) showed ~9% of
-// operations failing even with 5 backoff retries. A client-side retry layer
-// is needed here; retrying PREPARING is safe as-is (rejected before
-// acceptance), but retrying UNKNOWN (timeout, outcome uncertain) first needs
-// operation dedup. See spec/kvs/dataplane.md TODO.
+// responseErrorToError maps response codes to the typed errors of types/kvs.
+// The retryable class (ErrorSectorNotReady) is consumed by the public client's
+// built-in retry (node/kvs); UNKNOWN maps to ErrorOperationResultUnknown
+// because the proposal may still commit later (spec/kvs/api.md).
 func responseErrorToError(command string, code proto.KvsOperationResponse_Error) error {
 	switch code {
 	case proto.KvsOperationResponse_ERROR_NONE:
@@ -151,7 +143,7 @@ func responseErrorToError(command string, code proto.KvsOperationResponse_Error)
 	case proto.KvsOperationResponse_ERROR_PREPARING:
 		return kvsTypes.ErrorSectorNotReady
 	default:
-		return fmt.Errorf("kvs %s error: %d", command, code)
+		return fmt.Errorf("kvs %s failed with code %d: %w", command, code, kvsTypes.ErrorOperationResultUnknown)
 	}
 }
 
@@ -204,32 +196,6 @@ func (k *KVS) Set(key string, value []byte) chan error {
 			}
 
 			if err := responseErrorToError("set", res.Error); err != nil {
-				c <- err
-				return
-			}
-
-			c <- nil
-		},
-	})
-
-	return c
-}
-
-func (k *KVS) Patch(key string, value []byte) chan error {
-	c := make(chan error, 1)
-	k.outbound.sendKvsOperation(&operationParam{
-		command: proto.KvsOperation_COMMAND_PATCH,
-		key:     key,
-		value:   value,
-		receiver: func(res *proto.KvsOperationResponse, err error) {
-			defer close(c)
-
-			if err != nil {
-				c <- err
-				return
-			}
-
-			if err := responseErrorToError("patch", res.Error); err != nil {
 				c <- err
 				return
 			}
@@ -308,8 +274,9 @@ func (k *KVS) kvsOperate(command proto.KvsOperation_Command, key string, value [
 	case proto.KvsOperation_COMMAND_SET:
 		return toResponseError(operator.Set(key, value)), nil
 
-	case proto.KvsOperation_COMMAND_PATCH:
-		return toResponseError(operator.Patch(key, value)), nil
+	// COMMAND_PATCH is deliberately unhandled (falls to default → UNKNOWN):
+	// the old pass-through-to-store patch was removed, and the pluggable
+	// Patcher redefinition arrives with spec/kvs/api.md Stage C.
 
 	case proto.KvsOperation_COMMAND_DELETE:
 		return toResponseError(operator.Delete(key)), nil

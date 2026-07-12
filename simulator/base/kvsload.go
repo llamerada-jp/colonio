@@ -28,7 +28,7 @@ import (
 	"time"
 
 	colonioNode "github.com/llamerada-jp/colonio/node"
-	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
+	nodeKvs "github.com/llamerada-jp/colonio/node/kvs"
 )
 
 // KVS write-load generator for the Stage 6 verification of the raft snapshot
@@ -42,6 +42,10 @@ import (
 // detect cross-key corruption, and a successful Set is immediately probed
 // with a Get to catch acknowledged-but-lost writes (rare concurrent Deletes
 // by other nodes are the only legitimate cause of a probe miss).
+//
+// PREPARING retries are handled by the public client (node/kvs) itself; each
+// operation is bounded by kvsLoadOpTimeout through the context deadline, so a
+// range stuck in preparing longer than that shows up as the "prep" counter.
 var (
 	// kvsLoadInterval is the delay between operations per node; 0 disables the load.
 	kvsLoadInterval = time.Duration(envInt("COLONIO_SIM_KVS_INTERVAL_MS", 0)) * time.Millisecond
@@ -50,6 +54,12 @@ var (
 	// kvsLoadValueSize is the value payload size in bytes.
 	kvsLoadValueSize = envInt("COLONIO_SIM_KVS_VALUE_SIZE", 4096)
 )
+
+// kvsLoadOpTimeout bounds one operation including the client's built-in
+// PREPARING retries. Longer than the churn fence windows the retry is meant
+// to ride out (十数秒, spec/kvs/dataplane.md), yet short enough to keep the
+// per-node load loop from stalling across runs.
+const kvsLoadOpTimeout = 15 * time.Second
 
 func envInt(name string, defaultValue int) int {
 	value := os.Getenv(name)
@@ -64,12 +74,15 @@ func envInt(name string, defaultValue int) int {
 }
 
 // kvsLoadStats accumulates per-node counters, dumped every minute with the
-// "@@" marker so the simulator's log collection keeps them.
+// "@@" marker so the simulator's log collection keeps them. "prep" counts
+// operations whose deadline expired while the range was still preparing
+// (nothing was accepted); "unk" counts writes with an unknown outcome
+// (timeout in flight — the write may still apply).
 type kvsLoadStats struct {
-	set, setPreparing, setTimeout, setError    int
-	get, getNotFound, getPreparing, getError   int
-	del, delNotFound, delPreparing, delError   int
-	verifyMiss, verifyCorrupt, retryExhausted  int
+	set, setPreparing, setUnknown, setError            int
+	get, getNotFound, getPreparing, getError           int
+	del, delNotFound, delPreparing, delUnknown, delErr int
+	verifyMiss, verifyCorrupt                          int
 }
 
 // memReporterOnce starts one memory reporter per process: the raft logs of
@@ -107,11 +120,11 @@ func (n *Node) startKvsLoad(ctx context.Context) {
 
 	// Capture the colonio instance of THIS run. n.Col is replaced by
 	// renewColonio for the next run while this goroutine may still be inside
-	// a retry backoff, and calling into the swapped-in, not-yet-started
-	// instance crashes in the routing layer (routing1D is created by Start;
-	// SIGSEGV via KvsSet, 2026-07-12 run). The captured instance was already
-	// started when startKvsLoad runs, so it stays safe to call after Stop —
-	// requests then just resolve as errors or never resolve (see kvsAwait*).
+	// an operation, and calling into the swapped-in, not-yet-started instance
+	// crashes in the routing layer (routing1D is created by Start; SIGSEGV
+	// via the KVS Set path, 2026-07-12 run). The captured instance was
+	// already started when startKvsLoad runs, so it stays safe to call after
+	// Stop — requests then resolve as errors or hit the context deadline.
 	col := n.Col
 
 	go func() {
@@ -133,10 +146,10 @@ func (n *Node) startKvsLoad(ctx context.Context) {
 
 			if time.Since(lastDump) >= time.Minute {
 				fmt.Println(time.Now(), localNodeID, "@@ kvs load:",
-					"set", stats.set, "/prep", stats.setPreparing, "/timeout", stats.setTimeout, "/err", stats.setError, ",",
+					"set", stats.set, "/prep", stats.setPreparing, "/unk", stats.setUnknown, "/err", stats.setError, ",",
 					"get", stats.get, "/nf", stats.getNotFound, "/prep", stats.getPreparing, "/err", stats.getError, ",",
-					"del", stats.del, "/nf", stats.delNotFound, "/prep", stats.delPreparing, "/err", stats.delError, ",",
-					"miss", stats.verifyMiss, "corrupt", stats.verifyCorrupt, "exhausted", stats.retryExhausted)
+					"del", stats.del, "/nf", stats.delNotFound, "/prep", stats.delPreparing, "/unk", stats.delUnknown, "/err", stats.delErr, ",",
+					"miss", stats.verifyMiss, "corrupt", stats.verifyCorrupt)
 				*stats = kvsLoadStats{}
 				lastDump = time.Now()
 			}
@@ -144,76 +157,61 @@ func (n *Node) startKvsLoad(ctx context.Context) {
 	}()
 }
 
-// kvsAwaitErr / kvsAwaitGet guard a response channel with the run context:
-// when the node is stopped mid-request the channel may never resolve, and
-// the goroutine must not stay blocked into the next run (the abandoned
-// channel is buffered, so a late response is simply dropped).
-func kvsAwaitErr(ctx context.Context, c chan error) error {
-	select {
-	case err := <-c:
-		return err
-	case <-ctx.Done():
-		return kvsTimeout
-	}
-}
-
-func kvsAwaitGet(ctx context.Context, c chan *kvsTypes.GetResult) *kvsTypes.GetResult {
-	select {
-	case result := <-c:
-		return result
-	case <-ctx.Done():
-		return &kvsTypes.GetResult{Err: kvsTimeout}
-	}
-}
-
 // kvsLoadOperation runs one randomly chosen operation: mostly overwrites
 // (they grow the raft log without growing the live data set — exactly the
 // case snapshots must bound), some reads, few deletes.
 func kvsLoadOperation(ctx context.Context, col colonioNode.Node, stats *kvsLoadStats) {
 	key := fmt.Sprintf("kvs-load-%d", rand.Intn(kvsLoadKeys))
+	kv := col.KVS()
+
+	opCtx, cancel := context.WithTimeout(ctx, kvsLoadOpTimeout)
+	defer cancel()
 
 	switch r := rand.Intn(100); {
 	case r < 70: // Set + verify probe
-		err := kvsRetry(ctx, func() error { return kvsAwaitErr(ctx, col.KvsSet(key, kvsLoadValue(key))) },
-			&stats.setPreparing, &stats.retryExhausted)
+		_, err := kv.Set(opCtx, key, kvsLoadValue(key))
 		switch {
 		case err == nil:
 			stats.set++
 			kvsVerifyProbe(ctx, col, key, stats)
-		case errors.Is(err, kvsTimeout):
-			stats.setTimeout++
+		case errors.Is(err, nodeKvs.ErrPreparing):
+			stats.setPreparing++
+		case errors.Is(err, nodeKvs.ErrResultUnknown):
+			stats.setUnknown++
 		default:
 			stats.setError++
 		}
 
 	case r < 95: // Get
-		err := kvsRetry(ctx, func() error {
-			result := kvsAwaitGet(ctx, col.KvsGet(key))
-			if result.Err == nil && !kvsValueMatches(key, result.Data) {
-				stats.verifyCorrupt++
-				fmt.Println(time.Now(), col.GetLocalNodeID(), "@@ kvs verify corrupt:", key)
-			}
-			return result.Err
-		}, &stats.getPreparing, &stats.retryExhausted)
+		result, err := kv.Get(opCtx, key)
 		switch {
 		case err == nil:
 			stats.get++
-		case errors.Is(err, kvsTypes.ErrorStoreKeyNotFound):
+			if !kvsValueMatches(key, result.Value) {
+				stats.verifyCorrupt++
+				fmt.Println(time.Now(), col.GetLocalNodeID(), "@@ kvs verify corrupt:", key)
+			}
+		case errors.Is(err, nodeKvs.ErrNotFound):
 			stats.getNotFound++
+		case errors.Is(err, nodeKvs.ErrPreparing):
+			stats.getPreparing++
 		default:
 			stats.getError++
 		}
 
 	default: // Delete
-		err := kvsRetry(ctx, func() error { return kvsAwaitErr(ctx, col.KvsDelete(key)) },
-			&stats.delPreparing, &stats.retryExhausted)
+		err := kv.Delete(opCtx, key)
 		switch {
 		case err == nil:
 			stats.del++
-		case errors.Is(err, kvsTypes.ErrorStoreKeyNotFound):
+		case errors.Is(err, nodeKvs.ErrNotFound):
 			stats.delNotFound++
+		case errors.Is(err, nodeKvs.ErrPreparing):
+			stats.delPreparing++
+		case errors.Is(err, nodeKvs.ErrResultUnknown):
+			stats.delUnknown++
 		default:
-			stats.delError++
+			stats.delErr++
 		}
 	}
 }
@@ -221,46 +219,26 @@ func kvsLoadOperation(ctx context.Context, col colonioNode.Node, stats *kvsLoadS
 // kvsVerifyProbe reads back a key right after its acknowledged Set. A miss
 // means the write disappeared: legitimate only when another node's Delete
 // interleaved (deletes are 5% of the mix, so a sustained miss rate points at
-// a lost-write bug — the fences of spec/kvs/dataplane.md).
+// a lost-write bug — the fences of spec/kvs/dataplane.md). Preparing/other
+// probe failures are not counted as misses: the probe is best-effort.
 func kvsVerifyProbe(ctx context.Context, col colonioNode.Node, key string, stats *kvsLoadStats) {
-	err := kvsRetry(ctx, func() error {
-		result := kvsAwaitGet(ctx, col.KvsGet(key))
-		if result.Err == nil && !kvsValueMatches(key, result.Data) {
+	opCtx, cancel := context.WithTimeout(ctx, kvsLoadOpTimeout)
+	defer cancel()
+
+	result, err := col.KVS().Get(opCtx, key)
+	switch {
+	case err == nil:
+		if !kvsValueMatches(key, result.Value) {
 			stats.verifyCorrupt++
 			fmt.Println(time.Now(), col.GetLocalNodeID(), "@@ kvs verify corrupt:", key)
 		}
-		return result.Err
-	}, &stats.getPreparing, &stats.retryExhausted)
-	if errors.Is(err, kvsTypes.ErrorStoreKeyNotFound) {
+	case errors.Is(err, nodeKvs.ErrNotFound):
 		stats.verifyMiss++
 		fmt.Println(time.Now(), col.GetLocalNodeID(), "@@ kvs verify miss:", key)
-	}
-}
-
-// kvsTimeout marks retry exhaustion on the retryable (PREPARING) class; the
-// operation may or may not have taken effect.
-var kvsTimeout = errors.New("kvs operation retries exhausted")
-
-// kvsRetry retries the operation while it fails with the retryable
-// ErrorSectorNotReady (routing not settled, range mid-split/merge). Bounded:
-// the load must not pile up goroutines against a stuck range.
-func kvsRetry(ctx context.Context, operation func() error, preparing *int, exhausted *int) error {
-	const attempts = 5
-	for i := 0; ; i++ {
-		err := operation()
-		if !errors.Is(err, kvsTypes.ErrorSectorNotReady) {
-			return err
-		}
-		*preparing++
-		if i >= attempts-1 {
-			*exhausted++
-			return kvsTimeout
-		}
-		select {
-		case <-ctx.Done():
-			return kvsTimeout
-		case <-time.After(time.Duration(200*(i+1)) * time.Millisecond):
-		}
+	case errors.Is(err, nodeKvs.ErrPreparing):
+		stats.getPreparing++
+	default:
+		stats.getError++
 	}
 }
 

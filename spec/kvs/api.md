@@ -40,11 +40,14 @@ func WithAbsent() WriteOption              // 「レコード不在」を期待�
 func WithLockToken(gen uint64) WriteOption // guarded write (lock.md)
 func WithoutRetry() WriteOption            // 内蔵リトライの無効化 (一発勝負)
 
-// typed error (errors.Is で判定)
+// typed error (errors.Is で判定。実装は types/kvs の sentinel の alias)
 var (
-    ErrNotFound  = ...
-    ErrConflict  = ... // revision / generation 不一致。再読み取りしてから再試行
-    ErrLockHeld  = ... // 他 owner が保持中
+    ErrNotFound      = ... // Get/Delete: key 不在
+    ErrPreparing     = ... // リトライ可能クラス。通常は内蔵リトライが消費し、
+                           // deadline 超過時に ctx エラーと併せて wrap されて届く
+    ErrResultUnknown = ... // 書き込み結果不定 (timeout)。CAS なしの盲目再送は不可
+    ErrConflict      = ... // Stage B: revision / generation 不一致。再読み取りしてから再試行
+    ErrLockHeld      = ... // Stage D: 他 owner が保持中
 )
 ```
 
@@ -257,22 +260,30 @@ func WithSinceRevision(rev uint64) WatchOption // これより後の変更から
 lock.md の実装ステップを置き換える全体順序。API 再編を先に行うことで、
 以降の機能追加が公開面の破壊的変更を伴わなくなる。
 
-### Stage A: 公開 API 再編(proto 変更なし・機能同等)
+### Stage A: 公開 API 再編(proto 変更なし・機能同等)— 実装済み (2026-07-12)
 
-1. `kvs.Client`(公開パッケージ)新設: `Get` / `Set` / `Delete` を
-   ctx + 同期返しで実装。内部は既存の internal/kvs をそのまま呼ぶ。
-2. PREPARING の内蔵リトライ(バックオフ、ctx deadline まで)。
-   `WithoutRetry` も同時に。
-3. `Colonio` から `Kvs*` メソッドを削除し `KVS()` アクセサに置換。
-   `KvsGetStability` はデバッグ用途なので `Client` の別メソッドか
-   simulator 専用に降格するかをこの時点で判断。
-4. 呼び出し箇所の移行: node.go の配線、test/e2e/e2e.go、
-   simulator/base/kvsload.go。**kvsload の自前リトライ層
-   (5 回・逓増バックオフ)は削除して内蔵リトライに置き換え**、
-   dataplane.md Stage 6 の合格基準(err/exhausted が少数)を新 API で
-   再確認する。
-5. 現行の未定義 `COMMAND_PATCH` 経路と `kvsTypes.Store.Patch` は削除する
-   (Stage C で pluggable Patcher として再実装する。「Patch」の節を参照)。
+1. ~~`kvs.Client`(公開パッケージ)新設~~ → **`node/kvs` パッケージとして実装**。
+   internal を import しない構造的 `Backend` インタフェース経由で
+   internal/kvs.KVS を呼ぶ。typed error は types/kvs の sentinel の alias
+   (`ErrNotFound` / `ErrPreparing` / `ErrResultUnknown`。
+   `ErrorOperationResultUnknown` を types/kvs に追加し、従来 UNKNOWN で
+   潰れていたコードを typed 化)。
+2. ~~PREPARING の内蔵リトライ~~ → 実装済み(backoff 100ms→2 倍→上限 2s、
+   ctx deadline まで。deadline 超過時は `ErrPreparing` と ctx エラーの
+   多重 wrap で返し、in-flight timeout の `ErrResultUnknown` と区別できる)。
+   `WithoutRetry` も実装。
+3. ~~`Kvs*` メソッド削除 → `KVS()` アクセサ~~ → 実装済み。
+   `KvsGetStability` は公開 `Node` インタフェースに元々含まれておらず
+   (internal kvs.Handler の実装メソッド)、対応不要だった。
+4. ~~呼び出し箇所の移行~~ → 実装済み。kvsload の自前リトライ層
+   (kvsRetry/kvsAwait*)を削除し、per-op 15s deadline + 内蔵リトライに
+   置き換え。`@@ kvs load` の出力形式が変更:
+   旧 `prep(試行回数)/timeout/exhausted` → 新 `prep(deadline 時 preparing)/
+   unk(結果不定)/err`。Stage 6 合格基準の読み替えに注意。
+   test/e2e の KVS 利用は元々コメントアウト済みで変更なし。
+5. ~~旧 `COMMAND_PATCH` 経路と `kvsTypes.Store.Patch` の削除~~ → 実装済み。
+   apply に届いた COMMAND_PATCH は default 分岐で決定的な waiter エラーに
+   落ちる(apply 失敗ではない)。
 
 ### Stage B: revision / CAS(lock.md の層 1)
 

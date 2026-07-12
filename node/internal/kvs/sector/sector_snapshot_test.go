@@ -94,10 +94,6 @@ func (s *recordStoreHelper) Set(sectorKey *kvsTypes.SectorKey, key string, value
 	return nil
 }
 
-func (s *recordStoreHelper) Patch(sectorKey *kvsTypes.SectorKey, key string, value []byte) error {
-	return s.Set(sectorKey, key, value)
-}
-
 func (s *recordStoreHelper) Delete(sectorKey *kvsTypes.SectorKey, key string) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()

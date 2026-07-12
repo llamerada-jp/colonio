@@ -81,13 +81,6 @@ func (s *SimpleStore) Get(sectorKey *kvsTypes.SectorKey, key string) ([]byte, er
 	return value, nil
 }
 
-// Patch semantics (partial update format) are not defined yet; failing the
-// operation is safer than a panic, which on the apply path would kill the
-// consensus loop of every replica at once.
-func (s *SimpleStore) Patch(sectorKey *kvsTypes.SectorKey, key string, value []byte) error {
-	return fmt.Errorf("patch is not supported by SimpleStore")
-}
-
 func (s *SimpleStore) Delete(sectorKey *kvsTypes.SectorKey, key string) error {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()

@@ -35,7 +35,6 @@ var ErrOperationTimeout = errors.New("operation was not applied within timeout")
 type Operations interface {
 	Get(key string) ([]byte, error)
 	Set(key string, value []byte) error
-	Patch(key string, value []byte) error
 	Delete(key string) error
 }
 
@@ -151,10 +150,6 @@ func (s *Operator) Get(key string) ([]byte, error) {
 
 func (s *Operator) Set(key string, value []byte) error {
 	return s.proposeOperation(proto.Operation_COMMAND_SET, key, value)
-}
-
-func (s *Operator) Patch(key string, value []byte) error {
-	return s.proposeOperation(proto.Operation_COMMAND_PATCH, key, value)
 }
 
 func (s *Operator) Delete(key string) error {
@@ -308,11 +303,9 @@ func (s *Operator) ApplyProposal(operation *proto.Operation) error {
 				s.keys[operation.Key] = struct{}{}
 			}
 
-		case proto.Operation_COMMAND_PATCH:
-			storeErr = s.store.Patch(&s.sectorKey, operation.Key, operation.Value)
-			if storeErr == nil {
-				s.keys[operation.Key] = struct{}{}
-			}
+		// Operation_COMMAND_PATCH falls to default (a deterministic waiter
+		// error, not an apply failure) until the pluggable Patcher stage
+		// (spec/kvs/api.md Stage C) redefines it.
 
 		case proto.Operation_COMMAND_DELETE:
 			if _, ok := s.keys[operation.Key]; !ok {

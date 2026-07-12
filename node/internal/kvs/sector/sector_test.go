@@ -129,9 +129,6 @@ func (s *storeHelper) Get(sectorKey *kvsTypes.SectorKey, key string) ([]byte, er
 	return nil, kvsTypes.ErrorStoreKeyNotFound
 }
 func (s *storeHelper) Set(sectorKey *kvsTypes.SectorKey, key string, value []byte) error { return nil }
-func (s *storeHelper) Patch(sectorKey *kvsTypes.SectorKey, key string, value []byte) error {
-	return nil
-}
 func (s *storeHelper) Delete(sectorKey *kvsTypes.SectorKey, key string) error { return nil }
 
 // newTestSector builds a hosting sector whose raft members are the local node
