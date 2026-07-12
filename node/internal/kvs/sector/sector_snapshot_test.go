@@ -130,6 +130,7 @@ func newSnapshotTestSector(t *testing.T, localNodeID *types.NodeID, handler *sec
 		Handler:    handler,
 		Outbound:   consensus.NewOutbound(tr),
 		Store:      store,
+		Patchers:   map[string]kvsTypes.Patcher{"append": appendPatcher{}},
 		SectorKey: &kvsTypes.SectorKey{
 			SectorID: kvsTypes.SectorID(uuid.New()),
 			SectorNo: kvsTypes.HostNodeSectorNo,

@@ -149,4 +149,12 @@ message Operation {
   // waiter-level conflict, not an apply failure.
   uint64 cas_revision = 5;
   bool   cas_absent   = 6;
+
+  // COMMAND_PATCH: name of the node-registered Patcher that applies the
+  // patch document (carried in `value`) to the record. The patcher runs
+  // inside the apply on every replica, so it must be registered identically
+  // cluster-wide and be a deterministic pure function (spec/kvs/api.md
+  // 「Patch」). A missing patcher or a rejected patch is a waiter-level
+  // failure, not an apply failure.
+  string patcher = 7;
 }

@@ -49,6 +49,9 @@ type Config struct {
 	HostingManager     *hosting.Manager
 	Observation        observation.Caller
 	Store              kvsTypes.Store
+	// Patchers is the node-wide Patcher registry (name → implementation),
+	// shared by every sector operator. Immutable after construction.
+	Patchers map[string]kvsTypes.Patcher
 }
 
 type KVS struct {
@@ -62,6 +65,7 @@ type KVS struct {
 	hostingManager     *hosting.Manager
 	observation        observation.Caller
 	store              kvsTypes.Store
+	patchers           map[string]kvsTypes.Patcher
 	localNodeID        *types.NodeID
 	// mtx protects sectors, sectorUpdated.
 	// Lock order: hosting.Manager's lock may be held when acquiring k.mtx
@@ -93,6 +97,7 @@ func NewKVS(conf *Config) *KVS {
 		hostingManager:     conf.HostingManager,
 		observation:        conf.Observation,
 		store:              conf.Store,
+		patchers:           conf.Patchers,
 		sectors:            make(map[kvsTypes.SectorKey]*sector.Sector),
 		sectorTombstones:   make(map[kvsTypes.SectorKey]time.Time),
 	}
@@ -149,17 +154,22 @@ func responseErrorToError(command string, code proto.KvsOperationResponse_Error)
 		// genuine conflicts until their deadline (simulator run 2026-07-12:
 		// cas conf=0, unk=15.5% — every conflict burned its full 15s budget).
 		return kvsTypes.ErrorCasConflict
+	case proto.KvsOperationResponse_ERROR_PATCH_FAILED:
+		// Definite as well: the patcher is missing or rejected the patch and
+		// the store was left untouched.
+		return kvsTypes.ErrorPatchFailed
 	default:
 		return fmt.Errorf("kvs %s failed with code %d: %w", command, code, kvsTypes.ErrorOperationResultUnknown)
 	}
 }
 
-func (k *KVS) Get(key string) chan *kvsTypes.GetResult {
+func (k *KVS) Get(key string, withoutValue bool) chan *kvsTypes.GetResult {
 	c := make(chan *kvsTypes.GetResult, 1)
 	k.outbound.sendKvsOperation(&operationParam{
-		command: proto.KvsOperation_COMMAND_GET,
-		key:     key,
-		value:   nil,
+		command:      proto.KvsOperation_COMMAND_GET,
+		key:          key,
+		value:        nil,
+		withoutValue: withoutValue,
 		receiver: func(res *proto.KvsOperationResponse, err error) {
 			defer close(c)
 
@@ -199,6 +209,35 @@ func (k *KVS) Set(key string, value []byte, casRevision uint64, casAbsent bool) 
 			}
 
 			if err := responseErrorToError("set", res.Error); err != nil {
+				c <- &kvsTypes.SetResult{Err: err}
+				return
+			}
+
+			c <- &kvsTypes.SetResult{Revision: res.Revision}
+		},
+	})
+
+	return c
+}
+
+func (k *KVS) Patch(key string, patcher string, patch []byte, casRevision uint64, casAbsent bool) chan *kvsTypes.SetResult {
+	c := make(chan *kvsTypes.SetResult, 1)
+	k.outbound.sendKvsOperation(&operationParam{
+		command:     proto.KvsOperation_COMMAND_PATCH,
+		key:         key,
+		value:       patch,
+		patcher:     patcher,
+		casRevision: casRevision,
+		casAbsent:   casAbsent,
+		receiver: func(res *proto.KvsOperationResponse, err error) {
+			defer close(c)
+
+			if err != nil {
+				c <- &kvsTypes.SetResult{Err: err}
+				return
+			}
+
+			if err := responseErrorToError("patch", res.Error); err != nil {
 				c <- &kvsTypes.SetResult{Err: err}
 				return
 			}
@@ -258,8 +297,8 @@ func (k *KVS) kvsOperate(operation *proto.KvsOperation) (proto.KvsOperationRespo
 	// yet, key out of range (stale routing / range moved), or the range is
 	// being handed over (split export, merge lock). A timeout maps to UNKNOWN
 	// because the outcome is genuinely unknown (the proposal may still commit).
-	// A CAS conflict is a definite outcome of its own: the store was left
-	// untouched, and the client must re-read before deciding to retry.
+	// A CAS conflict and a patch failure are definite outcomes of their own:
+	// the store was left untouched, and the client decides what to do next.
 	toResponseError := func(err error) proto.KvsOperationResponse_Error {
 		switch {
 		case err == nil:
@@ -270,6 +309,8 @@ func (k *KVS) kvsOperate(operation *proto.KvsOperation) (proto.KvsOperationRespo
 			return proto.KvsOperationResponse_ERROR_PREPARING
 		case errors.Is(err, kvsTypes.ErrorCasConflict):
 			return proto.KvsOperationResponse_ERROR_CONFLICT
+		case errors.Is(err, kvsTypes.ErrorPatchFailed):
+			return proto.KvsOperationResponse_ERROR_PATCH_FAILED
 		default:
 			return proto.KvsOperationResponse_ERROR_UNKNOWN
 		}
@@ -286,15 +327,20 @@ func (k *KVS) kvsOperate(operation *proto.KvsOperation) (proto.KvsOperationRespo
 	switch operation.Command {
 	case proto.KvsOperation_COMMAND_GET:
 		data, revision, err := op.Get(operation.Key)
+		if operation.WithoutValue {
+			// HEAD-like read: the revision is what the client wants; the
+			// (potentially large) value is not transferred back.
+			data = nil
+		}
 		return toResponseError(err), data, revision
 
 	case proto.KvsOperation_COMMAND_SET:
 		revision, err := op.Set(operation.Key, operation.Value, cas)
 		return toResponseError(err), nil, revision
 
-	// COMMAND_PATCH is deliberately unhandled (falls to default → UNKNOWN):
-	// the old pass-through-to-store patch was removed, and the pluggable
-	// Patcher redefinition arrives with spec/kvs/api.md Stage C.
+	case proto.KvsOperation_COMMAND_PATCH:
+		revision, err := op.Patch(operation.Key, operation.Patcher, operation.Value, cas)
+		return toResponseError(err), nil, revision
 
 	case proto.KvsOperation_COMMAND_DELETE:
 		return toResponseError(op.Delete(operation.Key, cas)), nil, 0
@@ -577,6 +623,7 @@ func (k *KVS) allocateSector(
 		Join:       append,
 		Members:    members,
 		Store:      k.store,
+		Patchers:   k.patchers,
 		Head:       head,
 	})
 

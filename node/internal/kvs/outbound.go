@@ -38,7 +38,12 @@ type operationParam struct {
 	// casAbsent makes the write conditional.
 	casRevision uint64
 	casAbsent   bool
-	receiver    func(res *proto.KvsOperationResponse, err error)
+	// patcher names the node-registered Patcher for COMMAND_PATCH (value
+	// carries the patch document).
+	patcher string
+	// withoutValue makes COMMAND_GET respond with the revision only.
+	withoutValue bool
+	receiver     func(res *proto.KvsOperationResponse, err error)
 }
 
 type SectorManageMemberParam struct {
@@ -96,11 +101,13 @@ func (o *outboundAdapter) sendKvsOperation(param *operationParam) {
 	content := &proto.PacketContent{
 		Content: &proto.PacketContent_KvsOperation{
 			KvsOperation: &proto.KvsOperation{
-				Command:     param.command,
-				Key:         param.key,
-				Value:       param.value,
-				CasRevision: param.casRevision,
-				CasAbsent:   param.casAbsent,
+				Command:      param.command,
+				Key:          param.key,
+				Value:        param.value,
+				CasRevision:  param.casRevision,
+				CasAbsent:    param.casAbsent,
+				Patcher:      param.patcher,
+				WithoutValue: param.withoutValue,
 			},
 		},
 	}

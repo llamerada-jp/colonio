@@ -166,6 +166,9 @@ func (n *Node) renewColonio() error {
 		colonioNode.WithLogger(n.Logger),
 		colonioNode.WithHttpClient(util.NewInsecureHttpClient()),
 		colonioNode.WithSeedURL(n.seedURL),
+		// reference Patcher for the KVS patch load (kvsload.go); registered on
+		// every simulator node, as the homogeneity contract requires
+		colonioNode.WithKvsPatcher(kvsLoadPatcherName, &kvsLoadIncPatcher{}),
 		colonioNode.WithICEServers([]*networkTypes.ICEServer{
 			{
 				URLs: []string{},

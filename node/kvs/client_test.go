@@ -36,27 +36,53 @@ type casParams struct {
 // exhausted or an entry is nil, the response channel never resolves
 // (emulating a request lost in flight).
 type fakeBackend struct {
-	mtx        sync.Mutex
-	getResults []*kvsTypes.GetResult
-	setResults []*kvsTypes.SetResult
-	delErrors  []*error
-	getCalls   int
-	setCalls   int
-	delCalls   int
-	setCas     []casParams
-	delCas     []casParams
+	mtx             sync.Mutex
+	getResults      []*kvsTypes.GetResult
+	setResults      []*kvsTypes.SetResult
+	patchResults    []*kvsTypes.SetResult
+	delErrors       []*error
+	getCalls        int
+	setCalls        int
+	patchCalls      int
+	delCalls        int
+	setCas          []casParams
+	patchCas        []casParams
+	delCas          []casParams
+	gotWithoutValue []bool
+	gotPatcher      []string
 }
 
-func (f *fakeBackend) Get(key string) chan *kvsTypes.GetResult {
+func (f *fakeBackend) Get(key string, withoutValue bool) chan *kvsTypes.GetResult {
 	c := make(chan *kvsTypes.GetResult, 1)
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 	f.getCalls++
+	f.gotWithoutValue = append(f.gotWithoutValue, withoutValue)
 	if len(f.getResults) == 0 {
 		return c // hang
 	}
 	result := f.getResults[0]
 	f.getResults = f.getResults[1:]
+	if result == nil {
+		return c // hang
+	}
+	c <- result
+	close(c)
+	return c
+}
+
+func (f *fakeBackend) Patch(key string, patcher string, patch []byte, casRevision uint64, casAbsent bool) chan *kvsTypes.SetResult {
+	c := make(chan *kvsTypes.SetResult, 1)
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	f.patchCalls++
+	f.gotPatcher = append(f.gotPatcher, patcher)
+	f.patchCas = append(f.patchCas, casParams{revision: casRevision, absent: casAbsent})
+	if len(f.patchResults) == 0 {
+		return c // hang
+	}
+	result := f.patchResults[0]
+	f.patchResults = f.patchResults[1:]
 	if result == nil {
 		return c // hang
 	}
@@ -303,4 +329,77 @@ func TestClientDeleteCasConflict(t *testing.T) {
 	err := client.Delete(t.Context(), "key", WithRevision(3))
 	assert.ErrorIs(t, err, ErrConflict)
 	assert.Equal(t, casParams{revision: 3}, backend.delCas[0])
+}
+
+func TestClientGetWithoutValue(t *testing.T) {
+	backend := &fakeBackend{getResults: []*kvsTypes.GetResult{
+		{Revision: 9}, // the host already omitted the value
+	}}
+	client := NewClient(backend)
+
+	res, err := client.Get(t.Context(), "key", WithoutValue())
+	require.NoError(t, err)
+	assert.Nil(t, res.Value)
+	assert.Equal(t, uint64(9), res.Revision)
+	assert.Equal(t, []bool{true}, backend.gotWithoutValue)
+}
+
+func TestClientPatch(t *testing.T) {
+	backend := &fakeBackend{patchResults: []*kvsTypes.SetResult{
+		{Revision: 12},
+	}}
+	client := NewClient(backend)
+
+	res, err := client.Patch(t.Context(), "key", "inc", []byte("patch"))
+	require.NoError(t, err)
+	assert.Equal(t, uint64(12), res.Revision)
+	assert.Equal(t, []string{"inc"}, backend.gotPatcher)
+	assert.Equal(t, casParams{}, backend.patchCas[0])
+}
+
+func TestClientPatchValidation(t *testing.T) {
+	backend := &fakeBackend{}
+	client := NewClient(backend)
+
+	// a patch requires the record to exist, so WithAbsent is a misuse
+	_, err := client.Patch(t.Context(), "key", "inc", []byte("patch"), WithAbsent())
+	assert.Error(t, err)
+
+	_, err = client.Patch(t.Context(), "key", "", []byte("patch"))
+	assert.Error(t, err)
+
+	assert.Equal(t, 0, backend.patchCalls)
+}
+
+func TestClientPatchFailedNotRetried(t *testing.T) {
+	backend := &fakeBackend{patchResults: []*kvsTypes.SetResult{
+		{Err: kvsTypes.ErrorPatchFailed},
+	}}
+	client := NewClient(backend)
+
+	_, err := client.Patch(t.Context(), "key", "inc", []byte("patch"))
+	assert.ErrorIs(t, err, ErrPatchFailed)
+	assert.Equal(t, 1, backend.patchCalls)
+}
+
+func TestClientPatchUnknownRetryOnlyWithRevision(t *testing.T) {
+	// bare patch: non-idempotent, unknown outcome must surface
+	backend := &fakeBackend{patchResults: []*kvsTypes.SetResult{
+		{Err: kvsTypes.ErrorOperationResultUnknown},
+	}}
+	client := NewClient(backend)
+	_, err := client.Patch(t.Context(), "key", "inc", []byte("patch"))
+	assert.ErrorIs(t, err, ErrResultUnknown)
+	assert.Equal(t, 1, backend.patchCalls)
+
+	// conditional patch: the CAS makes the retry at-most-once
+	backend = &fakeBackend{patchResults: []*kvsTypes.SetResult{
+		{Err: kvsTypes.ErrorOperationResultUnknown},
+		{Revision: 8},
+	}}
+	client = NewClient(backend)
+	res, err := client.Patch(t.Context(), "key", "inc", []byte("patch"), WithRevision(7))
+	require.NoError(t, err)
+	assert.Equal(t, uint64(8), res.Revision)
+	assert.Equal(t, 2, backend.patchCalls)
 }

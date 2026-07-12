@@ -341,19 +341,59 @@ lock.md の実装ステップを置き換える全体順序。API 再編を先�
      「merge 前の leftover host 生存確認」等の activation 層の課題
      (design.md「churn 下のメンバーシップ管理の課題」ファミリー)。
 
-### Stage C: Patch(pluggable Patcher)
+### Stage C: Patch(pluggable Patcher)— 実装済み (2026-07-13)
 
 Stage B に依存(envelope、revision 返却、`WithRevision` の at-most-once)。
 
-1. proto: `Operation` に patcher 名と patch bytes(COMMAND_PATCH の再定義)。
-2. operator: apply での「store.Get → Patcher.Apply → store.Set」、未登録
-   patcher / patch 失敗の waiterErr 化。host 側の propose 前ゲート
-   (未登録名の即エラー)。
-3. 公開面: `Client.Patch`、`node.WithKvsPatcher`、`Patcher` インタフェース、
-   `WithoutValue`(GetOption)。`patchertest.AssertDeterministic` ヘルパ。
-4. simulator: 複数 node から同一 key への並行 patch 後に**全 replica の
-   value が一致する**こと(決定性の実地検証)を `@@ kvs verify` に追加。
-   参照 Patcher(JSON Patch 実装)を負荷生成器用に用意する。
+1. ~~proto~~ → 実装済み: `Operation.patcher`(patch 文書は `value` に載せる)、
+   `KvsOperation.patcher` / `without_value`、ERROR_PATCH_FAILED
+   (定性的失敗: store 未変更)。
+2. ~~operator~~ → 実装済み: `Patcher` registry は node 全体で 1 つの
+   immutable map を全 operator が共有。propose 前ゲート(未登録名は
+   `ErrorPatchFailed` 即返し)+ apply 内の決定的再検査。apply は
+   store.Get → envelope decode → Patcher.Apply → counter++ で再 encode →
+   store.Set。不在 key は NOT_FOUND(作成は Set の仕事)、patcher 拒否・
+   未登録・decode 失敗はすべて waiterErr(apply 失敗ではない)。
+   CAS 併用可(casConflictLocked が先に走る)。
+3. ~~公開面~~ → 実装済み: `Client.Patch(ctx, key, patcher, patch, opts...)`
+   (`WithAbsent` は misuse として即エラー、patcher 名必須)、
+   `node.WithKvsPatcher(name, patcher)`、`kvsTypes.Patcher`(決定性・
+   クラスタ均質性の契約を godoc に明文化)、`Get(..., WithoutValue())`
+   (host 側で value を落とす HEAD 相当)、`ErrPatchFailed`。
+   素の Patch は UNKNOWN を再送しない(非冪等)、`WithRevision` 併用時のみ
+   自動再送 — Stage A/B の retry 機構にそのまま乗る。
+   `patchertest.AssertDeterministic`(逐次+並行反復・入力非破壊の検査。
+   純粋性の証明ではなくヒューリスティックである旨を明記)も追加、
+   stateful な patcher を検出する self-test 付き。
+4. ~~simulator~~ → 実装済み: JSON Patch でなく **counter increment
+   patcher(`sim-inc`)** を参照実装とした(外部依存なし・バイト列直接操作で
+   決定性の罠がない)。value 形式 `key|N|padding` の N を +1 する。
+   負荷 mix は Set 50% / CAS 15% / **Patch 5%** / Get 25% / Delete 5%。
+   patch 成功後は verify probe(key プレフィックス検査)を通すため、
+   非決定 patcher や移送での乖離は `@@ kvs verify corrupt` に現れる。
+   `@@ kvs load` に `patch/nf/prep/unk/err` を追加(err は
+   ERROR_PATCH_FAILED を含む=0 が正常)。
+
+   **run 検証済み (2026-07-12 run, ~5.4min)**:
+   - patch 成功 523 / **err 0**(ERROR_PATCH_FAILED ゼロ = registry 均質・
+     value 形式健全)、**corrupt 0**(非決定 patcher・移送乖離の兆候なし)。
+   - patch nf 11% ≒ get nf 10%(Delete 5% 環境の正常系)、
+     patch unk 2.6% ≒ set unk 1.7% と同オーダー。
+   - 短時間 run のため snapshot 発火なし・prep 比率は立ち上がり支配で高め。
+     cas ok 重複 2/2355 は既知クラス(counter リセット / merge 抗争)。
+     長時間 run での snapshot 併用検証は次回以降の通常 run に相乗りで足りる。
+
+   **長時間 run 検証済み (2026-07-12 run, 4.3h, 155 万操作)**:
+   - **corrupt 0**(set 791k / cas 222k / patch 73k / get 386k)、
+     **patch err 0**、watchdog 0 — snapshot 1,405 回発火・force terminate
+     1,010 回の churn 下で patcher 決定性と envelope 移送が維持された。
+   - **メモリ有界**: クラスタ平均 heapAlloc は 750〜920MiB で 4 時間以上振動、
+     単調増加なし(envelope + patch 負荷でも snapshot/compaction が有効)。
+   - unk は全操作 0.3〜0.6%、miss 0.42%(過去 run の 0.64〜0.77% より改善)。
+   - cas ok 重複 1,957/217k (0.9%): 97% が 5 分超(counter リセット偽陽性、
+     force terminate 1,010 回と整合)、10 秒未満は 13 件(~3/h、既知の
+     merge/overlap 抗争クラス。design.md の未解決課題のまま)。
+   **Stage A〜C はデータプレーン全体として長時間 churn 検証済み。**
 
 ### Stage D: lease lock(lock.md の層 2)
 

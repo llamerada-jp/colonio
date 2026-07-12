@@ -404,3 +404,75 @@ func TestOperator_replaceRecordsAssignsCounter(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(101), revision)
 }
+
+// testAppendPatcher appends the patch document to the current value.
+type testAppendPatcher struct{}
+
+func (testAppendPatcher) Apply(current []byte, patch []byte) ([]byte, error) {
+	result := make([]byte, 0, len(current)+len(patch))
+	result = append(result, current...)
+	return append(result, patch...), nil
+}
+
+// testFailPatcher deterministically rejects every patch.
+type testFailPatcher struct{}
+
+func (testFailPatcher) Apply(current []byte, patch []byte) ([]byte, error) {
+	return nil, fmt.Errorf("rejected")
+}
+
+func newTestOperatorWithPatchers(handler Handler) *Operator {
+	o := newTestOperator(handler)
+	o.patchers = map[string]kvsTypes.Patcher{
+		"append": testAppendPatcher{},
+		"fail":   testFailPatcher{},
+	}
+	return o
+}
+
+func TestOperator_patch(t *testing.T) {
+	var o *Operator
+	o = newTestOperatorWithPatchers(echoHandler(&o))
+	require.NoError(t, o.SetRange(o.head)) // whole ring
+
+	revision1, err := o.Set("key1", []byte("base"), nil)
+	require.NoError(t, err)
+
+	// happy path: the patcher transforms the stored value, revision grows
+	revision2, err := o.Patch("key1", "append", []byte("+p"), nil)
+	require.NoError(t, err)
+	require.Greater(t, revision2, revision1)
+	value, revision, err := o.Get("key1")
+	require.NoError(t, err)
+	require.Equal(t, []byte("base+p"), value)
+	require.Equal(t, revision2, revision)
+
+	// unregistered patcher: rejected before proposing (no waiter left behind)
+	_, err = o.Patch("key1", "nope", []byte("x"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorPatchFailed)
+	o.mtx.RLock()
+	require.Empty(t, o.waiters)
+	o.mtx.RUnlock()
+
+	// patcher rejection: waiter-level failure, store untouched
+	_, err = o.Patch("key1", "fail", []byte("x"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorPatchFailed)
+	value, revision, err = o.Get("key1")
+	require.NoError(t, err)
+	require.Equal(t, []byte("base+p"), value)
+	require.Equal(t, revision2, revision)
+
+	// absent record: a miss, creation is Set's job
+	_, err = o.Patch("absent", "append", []byte("x"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorStoreKeyNotFound)
+
+	// conditional patch: stale revision conflicts, current succeeds
+	_, err = o.Patch("key1", "append", []byte("+q"), &CasCondition{Revision: revision1})
+	require.ErrorIs(t, err, kvsTypes.ErrorCasConflict)
+	revision3, err := o.Patch("key1", "append", []byte("+q"), &CasCondition{Revision: revision2})
+	require.NoError(t, err)
+	require.Greater(t, revision3, revision2)
+	value, _, err = o.Get("key1")
+	require.NoError(t, err)
+	require.Equal(t, []byte("base+p+q"), value)
+}

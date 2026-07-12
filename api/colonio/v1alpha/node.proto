@@ -97,26 +97,36 @@ message KvsOperation {
 
   Command command = 1;
   string  key     = 2;
-  bytes   value   = 3; // used for SET and PATCH
+  bytes   value   = 3; // SET: the value. PATCH: the patch document.
 
-  // CAS condition for SET / DELETE (see consensus.proto Operation).
+  // CAS condition for SET / PATCH / DELETE (see consensus.proto Operation).
   uint64 cas_revision = 4;
   bool   cas_absent   = 5;
+
+  // PATCH: name of the node-registered Patcher (see consensus.proto
+  // Operation.patcher).
+  string patcher = 6;
+
+  // GET: respond with the revision only, omitting the value (HEAD-like;
+  // cheap CAS base fetch for large values).
+  bool without_value = 7;
 }
 
 message KvsOperationResponse {
   enum Error {
     // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
-    ERROR_NONE      = 0;
-    ERROR_UNKNOWN   = 1;
-    ERROR_PREPARING = 2;
-    ERROR_NOT_FOUND = 3; // used for GET
-    ERROR_CONFLICT  = 4; // CAS condition failed; re-read before retrying
+    ERROR_NONE         = 0;
+    ERROR_UNKNOWN      = 1;
+    ERROR_PREPARING    = 2;
+    ERROR_NOT_FOUND    = 3; // used for GET / PATCH / DELETE
+    ERROR_CONFLICT     = 4; // CAS condition failed; re-read before retrying
+    ERROR_PATCH_FAILED = 5; // patcher missing or it rejected the patch; store untouched
   }
   Error error = 1;
   bytes value = 2; // used for GET
 
-  // GET: the record's current revision. SET: the newly assigned revision.
+  // GET: the record's current revision. SET / PATCH: the newly assigned
+  // revision.
   uint64 revision = 3;
 }
 

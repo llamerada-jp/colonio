@@ -47,6 +47,7 @@ type CasCondition struct {
 type Operations interface {
 	Get(key string) ([]byte, uint64, error)
 	Set(key string, value []byte, cas *CasCondition) (uint64, error)
+	Patch(key string, patcherName string, patch []byte, cas *CasCondition) (uint64, error)
 	Delete(key string, cas *CasCondition) error
 }
 
@@ -87,6 +88,10 @@ type Config struct {
 	Handler   Handler
 	Store     kvsTypes.Store
 	Head      *types.NodeID
+	// Patchers is the node-wide Patcher registry (name → implementation).
+	// Immutable after construction; the same map instance is shared by every
+	// operator of the node.
+	Patchers map[string]kvsTypes.Patcher
 }
 
 type Operator struct {
@@ -94,6 +99,7 @@ type Operator struct {
 	handler          Handler
 	mtx              sync.RWMutex
 	store            kvsTypes.Store
+	patchers         map[string]kvsTypes.Patcher
 	head             types.NodeID
 	tail             *types.NodeID
 	splittingAddress *types.NodeID
@@ -136,6 +142,7 @@ func NewOperator(config *Config) *Operator {
 		sectorKey:        *config.SectorKey,
 		handler:          config.Handler,
 		store:            config.Store,
+		patchers:         config.Patchers,
 		head:             *config.Head,
 		keys:             make(map[string]any),
 		operationTimeout: 10 * time.Second,
@@ -211,6 +218,23 @@ func (s *Operator) Set(key string, value []byte, cas *CasCondition) (uint64, err
 	return s.proposeOperation(proto.Operation_COMMAND_SET, key, value, cas)
 }
 
+// Patch applies the named node-registered Patcher to the record inside the
+// raft apply (the patch document is what travels, not the value). The
+// registry gate here rejects an unregistered name before proposing — a
+// definite misconfiguration answer; the apply re-checks it deterministically.
+func (s *Operator) Patch(key string, patcherName string, patch []byte, cas *CasCondition) (uint64, error) {
+	if _, ok := s.patchers[patcherName]; !ok {
+		return 0, fmt.Errorf("patcher %q is not registered on this node: %w",
+			patcherName, kvsTypes.ErrorPatchFailed)
+	}
+	return s.proposeOperationFull(&proto.Operation{
+		Command: proto.Operation_COMMAND_PATCH,
+		Key:     key,
+		Value:   patch,
+		Patcher: patcherName,
+	}, cas)
+}
+
 func (s *Operator) Delete(key string, cas *CasCondition) error {
 	_, err := s.proposeOperation(proto.Operation_COMMAND_DELETE, key, nil, cas)
 	return err
@@ -222,9 +246,19 @@ func (s *Operator) Delete(key string, cas *CasCondition) error {
 // accepted before a fence (SetSplitting) is always visible to the fence's
 // drain loop. The propose itself runs outside the lock — sending under a held
 // mutex is the Transferer self-deadlock pattern (2026-07-11).
-// It returns the newly assigned revision for an applied SET (0 otherwise).
+// It returns the newly assigned revision for an applied SET/PATCH (0 otherwise).
 func (s *Operator) proposeOperation(command proto.Operation_Command, key string, value []byte, cas *CasCondition) (uint64, error) {
-	keyHash := types.NewHashedNodeID([]byte(key))
+	return s.proposeOperationFull(&proto.Operation{
+		Command: command,
+		Key:     key,
+		Value:   value,
+	}, cas)
+}
+
+// proposeOperationFull is proposeOperation for a caller-built Operation
+// (operation_id and the CAS fields are filled in here).
+func (s *Operator) proposeOperationFull(operation *proto.Operation, cas *CasCondition) (uint64, error) {
+	keyHash := types.NewHashedNodeID([]byte(operation.Key))
 
 	s.mtx.Lock()
 	if err := s.writableLocked(keyHash); err != nil {
@@ -237,12 +271,7 @@ func (s *Operator) proposeOperation(command proto.Operation_Command, key string,
 	s.waiters[operationID] = waiter
 	s.mtx.Unlock()
 
-	operation := &proto.Operation{
-		Command:     command,
-		OperationId: operationID,
-		Key:         key,
-		Value:       value,
-	}
+	operation.OperationId = operationID
 	if cas != nil {
 		operation.CasRevision = cas.Revision
 		operation.CasAbsent = cas.Absent
@@ -418,9 +447,51 @@ func (s *Operator) ApplyProposal(operation *proto.Operation) error {
 				}
 			}
 
-		// Operation_COMMAND_PATCH falls to default (a deterministic waiter
-		// error, not an apply failure) until the pluggable Patcher stage
-		// (spec/kvs/api.md Stage C) redefines it.
+		case proto.Operation_COMMAND_PATCH:
+			// store.Get → Patcher.Apply → store.Set, all inside the apply.
+			// Every failure below is a waiter-level rejection that leaves the
+			// store untouched, and each is deterministic across replicas: the
+			// record bytes and the operation are replicated state, the
+			// registry is required to be cluster-homogeneous, and the Patcher
+			// is required to be a deterministic pure function (the contract
+			// of kvsTypes.Patcher).
+			if _, ok := s.keys[operation.Key]; !ok {
+				// partial update of a nonexistent record; creation is Set's job
+				waiterErr = kvsTypes.ErrorStoreKeyNotFound
+				break
+			}
+			patcher, ok := s.patchers[operation.Patcher]
+			if !ok {
+				waiterErr = fmt.Errorf("patcher %q is not registered on this node: %w",
+					operation.Patcher, kvsTypes.ErrorPatchFailed)
+				break
+			}
+			data, err := s.store.Get(&s.sectorKey, operation.Key)
+			if err != nil {
+				storeErr = err
+				break
+			}
+			record, err := decodeRecord(data)
+			if err != nil {
+				waiterErr = err
+				break
+			}
+			patched, err := patcher.Apply(record.Value, operation.Value)
+			if err != nil {
+				waiterErr = fmt.Errorf("%w: %w", kvsTypes.ErrorPatchFailed, err)
+				break
+			}
+			newRevision := s.revisionCounter + 1
+			encoded, err := encodeRecord(patched, newRevision)
+			if err != nil {
+				waiterErr = err
+				break
+			}
+			storeErr = s.store.Set(&s.sectorKey, operation.Key, encoded)
+			if storeErr == nil {
+				s.revisionCounter = newRevision
+				appliedRevision = newRevision
+			}
 
 		case proto.Operation_COMMAND_DELETE:
 			if _, ok := s.keys[operation.Key]; !ok {

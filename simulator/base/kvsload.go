@@ -61,6 +61,29 @@ var (
 // per-node load loop from stalling across runs.
 const kvsLoadOpTimeout = 15 * time.Second
 
+// kvsLoadPatcherName is the reference Patcher registered on every simulator
+// node (renewColonio).
+const kvsLoadPatcherName = "sim-inc"
+
+// kvsLoadIncPatcher increments the middle field of the "key|N|padding" value
+// format in place. A deterministic pure function on the value bytes (the
+// patch document is unused), so replicas stay identical — which is exactly
+// what the run verifies: a divergence would surface as verify corrupt after
+// host changes or snapshot restores.
+type kvsLoadIncPatcher struct{}
+
+func (p *kvsLoadIncPatcher) Apply(current []byte, patch []byte) ([]byte, error) {
+	parts := bytes.SplitN(current, []byte("|"), 3)
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("value is not in key|N|padding format")
+	}
+	n, err := strconv.ParseUint(string(parts[1]), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("counter field is not a number: %w", err)
+	}
+	return bytes.Join([][]byte{parts[0], []byte(strconv.FormatUint(n+1, 10)), parts[2]}, []byte("|")), nil
+}
+
 func envInt(name string, defaultValue int) int {
 	value := os.Getenv(name)
 	if len(value) == 0 {
@@ -83,6 +106,8 @@ func envInt(name string, defaultValue int) int {
 type kvsLoadStats struct {
 	set, setPreparing, setUnknown, setError              int
 	cas, casConflict, casPreparing, casUnknown, casError int
+	patch, patchNotFound, patchPreparing, patchUnknown   int
+	patchError                                           int
 	get, getNotFound, getPreparing, getError             int
 	del, delNotFound, delPreparing, delUnknown, delErr   int
 	verifyMiss, verifyCorrupt                            int
@@ -151,6 +176,7 @@ func (n *Node) startKvsLoad(ctx context.Context) {
 				fmt.Println(time.Now(), localNodeID, "@@ kvs load:",
 					"set", stats.set, "/prep", stats.setPreparing, "/unk", stats.setUnknown, "/err", stats.setError, ",",
 					"cas", stats.cas, "/conf", stats.casConflict, "/prep", stats.casPreparing, "/unk", stats.casUnknown, "/err", stats.casError, ",",
+					"patch", stats.patch, "/nf", stats.patchNotFound, "/prep", stats.patchPreparing, "/unk", stats.patchUnknown, "/err", stats.patchError, ",",
 					"get", stats.get, "/nf", stats.getNotFound, "/prep", stats.getPreparing, "/err", stats.getError, ",",
 					"del", stats.del, "/nf", stats.delNotFound, "/prep", stats.delPreparing, "/unk", stats.delUnknown, "/err", stats.delErr, ",",
 					"miss", stats.verifyMiss, "corrupt", stats.verifyCorrupt)
@@ -173,7 +199,7 @@ func kvsLoadOperation(ctx context.Context, col colonioNode.Node, stats *kvsLoadS
 	defer cancel()
 
 	switch r := rand.Intn(100); {
-	case r < 55: // Set + verify probe
+	case r < 50: // Set + verify probe
 		_, err := kv.Set(opCtx, key, kvsLoadValue(key))
 		switch {
 		case err == nil:
@@ -187,7 +213,7 @@ func kvsLoadOperation(ctx context.Context, col colonioNode.Node, stats *kvsLoadS
 			stats.setError++
 		}
 
-	case r < 70: // CAS read-modify-write
+	case r < 65: // CAS read-modify-write
 		// Read the current revision, then write conditionally on it. Under
 		// contention (the key space is shared cluster-wide) conflicts are the
 		// expected correct outcome; a lost update would show up as two
@@ -234,6 +260,29 @@ func kvsLoadOperation(ctx context.Context, col colonioNode.Node, stats *kvsLoadS
 			stats.casUnknown++
 		default:
 			stats.casError++
+		}
+
+	case r < 70: // Patch (server-side partial update via the registered Patcher)
+		// Only the patch intent travels; every replica increments the value's
+		// counter field locally. The read-back probe checks the value is
+		// still well-formed for its key — a non-deterministic patcher or a
+		// divergence on migration would surface as verify corrupt.
+		_, err := kv.Patch(opCtx, key, kvsLoadPatcherName, nil)
+		switch {
+		case err == nil:
+			stats.patch++
+			kvsVerifyProbe(ctx, col, key, stats)
+		case errors.Is(err, nodeKvs.ErrNotFound):
+			stats.patchNotFound++ // patching an absent record; creation is Set's job
+		case errors.Is(err, nodeKvs.ErrPreparing):
+			stats.patchPreparing++
+		case errors.Is(err, nodeKvs.ErrResultUnknown):
+			stats.patchUnknown++
+		default:
+			// includes ErrPatchFailed, which must not happen: the patcher is
+			// registered on every node and the value format is fixed
+			stats.patchError++
+			fmt.Println(time.Now(), col.GetLocalNodeID(), "@@ kvs patch err:", key, err)
 		}
 
 	case r < 95: // Get

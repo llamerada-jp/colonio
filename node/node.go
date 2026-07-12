@@ -91,6 +91,11 @@ type Config struct {
 	// KvsStore is an actual data store for KVS.
 	KvsStore kvsTypes.Store
 
+	// KvsPatchers is the Patcher registry for KVS partial updates
+	// (name → implementation). See kvsTypes.Patcher for the determinism and
+	// cluster-homogeneity contract every implementation must satisfy.
+	KvsPatchers map[string]kvsTypes.Patcher
+
 	// CacheLifetime is the lifetime of the cache. The spread algorithm is
 	// so simple that the same packet may be received multiple times;
 	// if the same packet is received within the cache lifetime, it can be suppressed
@@ -155,6 +160,21 @@ func WithPlaneGeometry(xMin, xMax, yMin, yMax float64) ConfigSetter {
 func WithKvsStore(store kvsTypes.Store) ConfigSetter {
 	return func(c *Config) {
 		c.KvsStore = store
+	}
+}
+
+// WithKvsPatcher registers a Patcher under a format name for KVS Patch
+// operations (spec/kvs/api.md「Patch」). The patcher runs inside the raft
+// apply on every replica: it must be a deterministic pure function, and every
+// node of the cluster must register the same name with the same behavior
+// before the first use (see kvsTypes.Patcher). Call multiple times to
+// register multiple formats.
+func WithKvsPatcher(name string, patcher kvsTypes.Patcher) ConfigSetter {
+	return func(c *Config) {
+		if c.KvsPatchers == nil {
+			c.KvsPatchers = make(map[string]kvsTypes.Patcher)
+		}
+		c.KvsPatchers[name] = patcher
 	}
 }
 
@@ -303,6 +323,7 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 		HostingManager:     hostingManager,
 		Observation:        observation,
 		Store:              config.KvsStore,
+		Patchers:           config.KvsPatchers,
 	})
 	internalKvs.SetupInbound(impl.logger, net.GetTransferer(), impl.kvs)
 	impl.kvsClient = kvs.NewClient(impl.kvs)

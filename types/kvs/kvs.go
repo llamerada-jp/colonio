@@ -39,7 +39,33 @@ var (
 	// absence) found a different state at apply time. The store was left
 	// untouched. Not blindly retryable: re-read the record and decide.
 	ErrorCasConflict = fmt.Errorf("compare-and-swap conflict")
+	// ErrorPatchFailed means a Patch could not be applied: the named Patcher
+	// is not registered on the handling node, or it rejected the patch
+	// document. The store was left untouched; this is a definite outcome.
+	ErrorPatchFailed = fmt.Errorf("patch failed")
 )
+
+// Patcher applies a partial-update document to a record value. Applications
+// register Patchers per format name (node.WithKvsPatcher); the patch document
+// travels through raft and Apply runs INSIDE the apply on every replica of
+// the record's sector. That imposes two hard requirements (spec/kvs/api.md
+// 「Patch」):
+//
+//   - Apply must be a deterministic pure function: identical (current, patch)
+//     must produce identical bytes on every replica and on every call. No
+//     clocks, randomness, environment, or global state; beware of
+//     re-serialization that does not guarantee canonical output. A
+//     non-deterministic Patcher silently diverges the replicated state.
+//     Use patchertest.AssertDeterministic in the application's tests.
+//   - Every node of the cluster must register the same name with the same
+//     behavior. Roll out a new or changed Patcher to every node BEFORE the
+//     first use.
+//
+// A returned error rejects the patch for the requesting client and leaves the
+// store untouched; the error must be just as deterministic as the result.
+type Patcher interface {
+	Apply(current []byte, patch []byte) ([]byte, error)
+}
 
 type Store interface {
 	AllocateSector(sectorKey *SectorKey) error

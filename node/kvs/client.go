@@ -62,6 +62,12 @@ var (
 	// may have applied — so a conflict after such a write also warrants a
 	// re-read (spec/kvs/lock.md「CAS 操作」).
 	ErrConflict = kvsTypes.ErrorCasConflict
+
+	// ErrPatchFailed means a Patch was definitively rejected — the named
+	// Patcher is not registered on the handling node (a configuration
+	// mismatch) or it refused the patch document — and the store was left
+	// untouched.
+	ErrPatchFailed = kvsTypes.ErrorPatchFailed
 )
 
 const (
@@ -75,8 +81,9 @@ const (
 // buffered and resolve exactly once, so an abandoned response is dropped
 // safely.
 type Backend interface {
-	Get(key string) chan *kvsTypes.GetResult
+	Get(key string, withoutValue bool) chan *kvsTypes.GetResult
 	Set(key string, value []byte, casRevision uint64, casAbsent bool) chan *kvsTypes.SetResult
+	Patch(key string, patcher string, patch []byte, casRevision uint64, casAbsent bool) chan *kvsTypes.SetResult
 	Delete(key string, casRevision uint64, casAbsent bool) chan error
 }
 
@@ -109,11 +116,19 @@ type SetResponse struct {
 	Revision uint64
 }
 
-// GetOption adjusts a single Get. No options exist yet; the parameter
-// reserves the surface for WithoutValue (spec/kvs/api.md Stage C).
+// GetOption adjusts a single Get.
 type GetOption func(*getOptions)
 
-type getOptions struct{}
+type getOptions struct {
+	withoutValue bool
+}
+
+// WithoutValue makes Get return the record's revision only (HEAD-like): the
+// value is not transferred back from the host. Meant as the cheap base fetch
+// of a conditional write on a large value.
+func WithoutValue() GetOption {
+	return func(o *getOptions) { o.withoutValue = true }
+}
 
 // WriteOption adjusts a single Set or Delete.
 type WriteOption func(*writeOptions)
@@ -160,12 +175,11 @@ func (c *Client) Get(ctx context.Context, key string, opts ...GetOption) (*GetRe
 	for _, opt := range opts {
 		opt(options)
 	}
-	_ = options
 
 	var response GetResponse
 	err := c.withRetry(ctx, "get", key, &writeOptions{}, func() error {
 		select {
-		case result := <-c.backend.Get(key):
+		case result := <-c.backend.Get(key, options.withoutValue):
 			if result.Err != nil {
 				return result.Err
 			}
@@ -194,6 +208,49 @@ func (c *Client) Set(ctx context.Context, key string, value []byte, opts ...Writ
 	err = c.withRetry(ctx, "set", key, options, func() error {
 		select {
 		case result := <-c.backend.Set(key, value, options.casRevision, options.casAbsent):
+			if result.Err != nil {
+				return result.Err
+			}
+			revision = result.Revision
+			return nil
+		case <-ctx.Done():
+			// the proposal may still commit later
+			return fmt.Errorf("%w: %w", ErrResultUnknown, ctx.Err())
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &SetResponse{Revision: revision}, nil
+}
+
+// Patch applies a partial update to the record through the node-registered
+// Patcher named by patcher (node.WithKvsPatcher): only the patch document
+// travels to the host and through raft, and every replica applies it to its
+// local copy — the path for updating a small part of a large value. Patching
+// an absent key returns ErrNotFound (creation is Set's job); a missing
+// patcher or a rejected patch returns ErrPatchFailed.
+//
+// A patch is generally NOT idempotent, so an unknown outcome (ErrResultUnknown)
+// is surfaced rather than retried — unless the write is conditional
+// (WithRevision), which makes the retry at-most-once. Get the base revision
+// cheaply with Get(..., WithoutValue()). WithAbsent is rejected: a patch
+// requires the record to exist.
+func (c *Client) Patch(ctx context.Context, key string, patcher string, patch []byte, opts ...WriteOption) (*SetResponse, error) {
+	options, err := newWriteOptions(opts)
+	if err != nil {
+		return nil, fmt.Errorf("kvs patch %q: %w", key, err)
+	}
+	if patcher == "" {
+		return nil, fmt.Errorf("kvs patch %q: patcher name must not be empty", key)
+	}
+	if options.casAbsent {
+		return nil, fmt.Errorf("kvs patch %q: WithAbsent cannot apply to a patch (the record must exist)", key)
+	}
+	var revision uint64
+	err = c.withRetry(ctx, "patch", key, options, func() error {
+		select {
+		case result := <-c.backend.Patch(key, patcher, patch, options.casRevision, options.casAbsent):
 			if result.Err != nil {
 				return result.Err
 			}

@@ -912,8 +912,15 @@ type Operation struct {
 	// record exists with exactly this revision. cas_absent: apply only when the
 	// record does not exist. Both unset = unconditional. A failed check is a
 	// waiter-level conflict, not an apply failure.
-	CasRevision   uint64 `protobuf:"varint,5,opt,name=cas_revision,json=casRevision,proto3" json:"cas_revision,omitempty"`
-	CasAbsent     bool   `protobuf:"varint,6,opt,name=cas_absent,json=casAbsent,proto3" json:"cas_absent,omitempty"`
+	CasRevision uint64 `protobuf:"varint,5,opt,name=cas_revision,json=casRevision,proto3" json:"cas_revision,omitempty"`
+	CasAbsent   bool   `protobuf:"varint,6,opt,name=cas_absent,json=casAbsent,proto3" json:"cas_absent,omitempty"`
+	// COMMAND_PATCH: name of the node-registered Patcher that applies the
+	// patch document (carried in `value`) to the record. The patcher runs
+	// inside the apply on every replica, so it must be registered identically
+	// cluster-wide and be a deterministic pure function (spec/kvs/api.md
+	// 「Patch」). A missing patcher or a rejected patch is a waiter-level
+	// failure, not an apply failure.
+	Patcher       string `protobuf:"bytes,7,opt,name=patcher,proto3" json:"patcher,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -988,6 +995,13 @@ func (x *Operation) GetCasAbsent() bool {
 		return x.CasAbsent
 	}
 	return false
+}
+
+func (x *Operation) GetPatcher() string {
+	if x != nil {
+		return x.Patcher
+	}
+	return ""
 }
 
 type Import_Record struct {
@@ -1097,7 +1111,7 @@ const file_api_colonio_v1alpha_consensus_proto_rawDesc = "" +
 	"\amembers\x18\x02 \x03(\v23.api.colonio.v1alpha.ConsensusSnapshot.MembersEntryR\amembers\x1aW\n" +
 	"\fMembersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x04R\x03key\x121\n" +
-	"\x05value\x18\x02 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x05value:\x028\x01\"\xae\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x05value:\x028\x01\"\xc8\x02\n" +
 	"\tOperation\x12@\n" +
 	"\acommand\x18\x01 \x01(\x0e2&.api.colonio.v1alpha.Operation.CommandR\acommand\x12!\n" +
 	"\foperation_id\x18\x02 \x01(\rR\voperationId\x12\x10\n" +
@@ -1105,7 +1119,8 @@ const file_api_colonio_v1alpha_consensus_proto_rawDesc = "" +
 	"\x05value\x18\x04 \x01(\fR\x05value\x12!\n" +
 	"\fcas_revision\x18\x05 \x01(\x04R\vcasRevision\x12\x1d\n" +
 	"\n" +
-	"cas_absent\x18\x06 \x01(\bR\tcasAbsent\"R\n" +
+	"cas_absent\x18\x06 \x01(\bR\tcasAbsent\x12\x18\n" +
+	"\apatcher\x18\a \x01(\tR\apatcher\"R\n" +
 	"\aCommand\x12\x0f\n" +
 	"\vCOMMAND_GET\x10\x00\x12\x0f\n" +
 	"\vCOMMAND_SET\x10\x01\x12\x11\n" +

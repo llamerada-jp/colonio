@@ -57,11 +57,13 @@ type SectorConfig struct {
 	Handler    SectorHandler
 	Outbound   consensus.OutboundPort
 	Store      kvsTypes.Store
-	SectorKey  *kvsTypes.SectorKey
-	IsHosting  bool
-	Join       bool
-	Members    map[kvsTypes.SectorNo]*types.NodeID
-	Head       *types.NodeID
+	// Patchers is the node-wide Patcher registry, shared by every sector.
+	Patchers  map[string]kvsTypes.Patcher
+	SectorKey *kvsTypes.SectorKey
+	IsHosting bool
+	Join      bool
+	Members   map[kvsTypes.SectorNo]*types.NodeID
+	Head      *types.NodeID
 }
 
 type SectorInfo struct {
@@ -172,6 +174,7 @@ func NewSector(config *SectorConfig) *Sector {
 		SectorKey: config.SectorKey,
 		Handler:   sector,
 		Store:     config.Store,
+		Patchers:  config.Patchers,
 		Head:      config.Head,
 	})
 

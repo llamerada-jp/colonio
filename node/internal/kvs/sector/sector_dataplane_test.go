@@ -157,3 +157,51 @@ func TestSector_dataplane_snapshotIncludesOperationWrites(t *testing.T) {
 	require.Equal(t, []byte("value1"), value)
 	require.Equal(t, revision, restoredRevision)
 }
+
+// appendPatcher is the test Patcher: append the patch document to the current
+// value (a deterministic pure function).
+type appendPatcher struct{}
+
+func (appendPatcher) Apply(current []byte, patch []byte) ([]byte, error) {
+	result := make([]byte, 0, len(current)+len(patch))
+	result = append(result, current...)
+	return append(result, patch...), nil
+}
+
+// TestSector_dataplane_patch drives a Patch through a real single-member raft
+// group: only the patch document is proposed, the apply runs the registered
+// Patcher against the locally stored record, and the acknowledgment carries
+// the new revision.
+func TestSector_dataplane_patch(t *testing.T) {
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+
+	s := newSnapshotTestSector(t, localNodeID, &sectorHandlerHelper{}, newRecordStoreHelper())
+	s.Start(t.Context())
+	defer s.Stop()
+
+	s.Activate(*localNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+
+	operator := s.GetOperator()
+	revision1, err := operator.Set("key1", []byte("base"), nil)
+	require.NoError(t, err)
+
+	revision2, err := operator.Patch("key1", "append", []byte("+patch"), nil)
+	require.NoError(t, err)
+	require.Greater(t, revision2, revision1)
+
+	value, revision, err := operator.Get("key1")
+	require.NoError(t, err)
+	require.Equal(t, []byte("base+patch"), value)
+	require.Equal(t, revision2, revision)
+
+	// an unregistered patcher is rejected before proposing
+	_, err = operator.Patch("key1", "nope", []byte("x"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorPatchFailed)
+
+	// patching an absent record is a miss, not a creation
+	_, err = operator.Patch("absent", "append", []byte("x"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorStoreKeyNotFound)
+}
