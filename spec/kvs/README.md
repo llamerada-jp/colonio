@@ -302,7 +302,7 @@ MC_MaxChurn       == 1
 | explicit パケットの非宛先受理 → ゴーストレプリカ (2026-07-04 run3 発見) | `classifyPacket` はルートテーブルが自ノードを返すと explicit でも `Receive` していた | 死亡ノード宛の SectorManageMember / raft メッセージを別ノードが受理し、**同じ raft メンバー ID を複数の物理ノードが名乗る**。誤ノードへのデータ複製・本来メンバーの永久非同期・二重投票リスク。修正: explicit は宛先一致時のみ受理 |
 | apply エラーで committed entries のバッチが中断 (2026-07-04 run3 発見) | `publishEntries` が apply エラーで即 return するが `Advance()` は実行される | 同一バッチの残り committed entries が**適用されないまま消費**され、そのメンバーだけ状態が乖離。非冪等な `processCommitSplitProposal`（エラー返却 + proposal 未クリア → 3 秒ごと再提案）が毒エントリー化して恒常的にこれを誘発。修正: ログして継続 + CommitSplit apply の冪等化 |
 | 破棄済みレプリカの同一キー復活 → raft panic (2026-07-04 run5 発見) | 非 Normal メンバーへの setting message 毎秒再送 × ローカル強制破棄の組み合わせで、ack 済みレプリカが**同じ {sectorID, sectorNo} で空ログ再作成**される（learner-first で再送窓が拡大し顕在化） | グループはその raft ID の Match・投票を記憶しており、「メンバーはログを失わない」前提が破れて **etcd raft 内部で panic（プロセス停止・recover 不能）**。復活→再破棄のループが破棄数も増幅。修正: sector tombstone で同一キー再作成を拒否 + 停滞メンバーを reap して新 sectorNo で再追加 |
-| snapshot 未実装のまま raft が snapshot 送信を要求 → panic (2026-07-04 run6 発見) | `operator.ExportSnapshot`/`ImportSnapshot` がスタブな上、`appliedIndex` が通常エントリーで更新されず snapshot 作成トリガが不活性。raft はフォロワーの Next がログ範囲外になると `Storage.Snapshot()` を要求し、空だと panic する | churn でフォロワー進捗とリーダーのログがずれた瞬間 **`need non-empty snapshot` でプロセス停止**。修正: `snapshotGuardStorage` が空 snapshot を `ErrSnapshotTemporarilyUnavailable` に変換（送信スキップ → reap による新 sectorNo 再作成で index 1 から追いつく）。snapshot 本実装は TODO |
+| snapshot 未実装のまま raft が snapshot 送信を要求 → panic (2026-07-04 run6 発見) | `operator.ExportSnapshot`/`ImportSnapshot` がスタブな上、`appliedIndex` が通常エントリーで更新されず snapshot 作成トリガが不活性。raft はフォロワーの Next がログ範囲外になると `Storage.Snapshot()` を要求し、空だと panic する | churn でフォロワー進捗とリーダーのログがずれた瞬間 **`need non-empty snapshot` でプロセス停止**。修正: `snapshotGuardStorage` が空 snapshot を `ErrSnapshotTemporarilyUnavailable` に変換（送信スキップ → reap による新 sectorNo 再作成で index 1 から追いつく）。snapshot 本実装は 2026-07-12 に完了 ([snapshot.md](snapshot.md)) |
 
 **教訓**: TLA+ のアクションは原子的にモデル化されるため、アクション「内部」の
 ロック取得順序はモデルの検証対象外。実装側は以下のロック規約で防ぐ
@@ -315,44 +315,6 @@ MC_MaxChurn       == 1
 回帰テスト: `node/internal/kvs/kvs_test.go` の
 `TestKVS_sectorActivate_completes` / `TestKVS_activateHostingSector_singleNode` /
 `TestKVS_sectorActivate_ignoresInactiveSectorBetween`。
-
-### シミュレータ解析からの追加知見（231 ノード・ランダム停止、simulator/dump.json）
-
-- tail が「停止した active ノード」を指すケースは、既存の Merge 修復経路が
-  約 1 分で解消することをログ上で確認（恒久停止ではない）。
-- `is_stable`（seed の reconcile と routing ビューの一致）は、停止ノードが
-  seed の lifespan 失効（約 3 分）で除去されるまで多数のノードでフラップし、
-  一部ノードは hosting sector の作成自体が 3 分遅延した。KVS の進行が
-  seed 側の失効タイマに律速される構造は将来の改善候補。
-- Extend の重なりガード未実装（モデル修正 #6 の Go 側未反映、kvs.go の NOTE 参照）
-  に起因するとみられる active セクターの重複が複数残存していた。
-  TerminateB による修復は重複相手のレプリカを持たないと発火しないため、
-  非隣接ノード間の重複は解消されない。
-  → その後 `hasActiveSectorHeadInRange` (kvs.go) として実装済み。
-
-### シミュレーション解析からの追加知見（100 ノード・ランダム停止、2026-07-04）
-
-`simulator/logs.txt`（2 回の実行、2 回目はタイムスタンプ付き）の解析で、
-活性化チェーンの**恒久停止**を 2 クラス確認した。いずれも
-「**quorum を失った Raft グループは何も commit できない**」ことに起因し、
-上記のモデル前提（提案は必ず commit される）の外側で起きている。
-
-| クラス | 症状 | 機構 |
-|--------|------|------|
-| A: splitSector ハング（1 回目 9 ペア、2 回目 5 件） | hosting 側が `Migrate` から戻らず `mtxOperateSectors` を握ったまま、当該ノードのセクター管理が全停止。frontward 側は `proposedSplitting` を保持したまま待機 | `Migrate` 内の Import 提案が frontward 側グループの quorum 喪失で commit されない。グループが治癒して 23 秒後に回復した例もあるが、過半数喪失時は治癒に必要な ConfChange 自体が commit 不能で永久化 |
-| B: stale active レプリカ（1 回目のみ 2 件） | 離脱ノードを head とする **active な**レプリカが活性化の重なりガード (skip 1) を永久発動させ、チェーンがその点で停止 | レプリカの掃除 (`Terminate` / `SectorRemoveNode`) 自体が死んだグループの raft commit を要するため誰にも消せない。掃除経路は backward の hosting が active になった後にしか走らないという鶏卵もある |
-
-付随する観測:
-
-- **Terminate 自体が raft commit を要する**ため、quorum 喪失グループは自分自身を
-  終了することすらできない。「proposer 離脱を検知して Terminate」「frontward の
-  不一致レプリカを Terminate」がどちらも毎秒空振りし続けるケースを観測。
-- 2026-06 に修正した「重なりガードが inactive レプリカも対象」問題（前節の表参照）は、
-  active なレプリカが残留するケース（クラス B）では不十分だったことが判明。
-- 観測の詳細は `node/internal/kvs/kvs.go` / `node/internal/kvs/sector/sector.go` の
-  NOTE コメント (2026-07-04 付) に記録。`sector.go` の `applyProposals` に
-  リトライ時の Raft ステータス出力（`## retry proposals ... state/lead/term`）を
-  追加済みで、次回実行でリーダー不在を直接確認できる。
 
 ## アルゴリズム改善案（Go 実装側）
 
@@ -544,7 +506,7 @@ func (k *KVS) onAnyCommit() {
 
 ### 優先度サマリ
 
-| 案 | 効果 | 実装コスト | 推奨度 | 状況 (2026-07-04) |
+| 案 | 効果 | 実装コスト | 推奨度 | 状況 (2026-07-17 コード再確認) |
 |---|------|----------|--------|-------------------|
 | A: proposing をセクター内蔵 | バグ予防 (大) | 中 | ★★★ | 未実装。ただし動機の多く（提案スタックの解消）は TODO-3 の timeout+abort と強制破棄で代替済み |
 | B: 操作の冪等化 | バグ予防 (中) | 小 | ★★★ | **おおむね実装済み**: Terminate は必ず完了・CommitSplit は既活性化で no-op・Activate/Import の AllocateSector は割り当て済みを許容（run2/run3 の修正）。CommitMerge の「fs が先に inactive 化された場合の extendTailOnly」は未実装 |
@@ -554,99 +516,53 @@ func (k *KVS) onAnyCommit() {
 | F: Merge 2 コミット化 | レース面縮小 | 中 | ★★ | 未着手 |
 | G: TerminateB 即時化 | 修復遅延短縮 | 小 | ★★ | 未着手 |
 
-## 今後の TODO
+## シミュレーション実行の記録
 
-### 完了済み
+シミュレーション run とその解析・対策・実装の時系列記録。
+ここで見つかった課題（隠れ TODO を含む）は「[今後の TODO](#今後の-todo)」の
+一覧に集約している。
 
-モデル:
+### シミュレータ解析からの追加知見（231 ノード・ランダム停止、simulator/dump.json）
 
-- [x] **routing ビューと sector-store を分離** → `KvsSectorSepView.tla` で実装済
-- [x] **Raft 合意の非原子性をモデル化** → `KvsSectorRaft.tla` で実装済
-      - ActivateFrontward / Split を Propose → Commit の 2 ステップに分割
-      - TerminateB が発火することを確認 (N=3: 8回, N=4: 14回)
-- [x] **複数の Join/Leave 同時発生のレース検証** → N=3 MaxChurn=4 まで検証済
-      - MaxChurn=2 で Merge 吸収側の proposing 未クリア / CommitActivate の anyActive 未更新を発見・修正
-- [x] **Merge も非原子化** → `KvsSectorRaft.tla` で ProposeMerge/CommitMerge に分割
-      - MaxChurn=3 で TerminateB→CommitMerge 間のインターリーブバグ 2 件を発見・修正
-      - TerminateA が MaxChurn=3 で初めて発火 (20回)
+- tail が「停止した active ノード」を指すケースは、既存の Merge 修復経路が
+  約 1 分で解消することをログ上で確認（恒久停止ではない）。
+- `is_stable`（seed の reconcile と routing ビューの一致）は、停止ノードが
+  seed の lifespan 失効（約 3 分）で除去されるまで多数のノードでフラップし、
+  一部ノードは hosting sector の作成自体が 3 分遅延した。KVS の進行が
+  seed 側の失効タイマに律速される構造は将来の改善候補
+  （→ TODO「is_stable ゲートの緩和」）。
+- Extend の重なりガード未実装（モデル修正 #6 の Go 側未反映、kvs.go の NOTE 参照）
+  に起因するとみられる active セクターの重複が複数残存していた。
+  TerminateB による修復は重複相手のレプリカを持たないと発火しないため、
+  非隣接ノード間の重複は解消されない。
+  → その後 `hasActiveSectorHeadInRange` (kvs.go) として実装済み。
 
-Go 実装（いずれも 2026-07-04、詳細は各 run のセクション参照）:
+### シミュレーション解析からの追加知見（100 ノード・ランダム停止、2026-07-04）
 
-- [x] **TODO-3: セクター操作の timeout + abort**（proposalWaitTimeout=15s、
-      Propose の有界化、`applyProposals` のロック外 Propose）
-- [x] **TODO-4: quorum 喪失セクターのローカル強制破棄**（leaderless 30s /
-      pending 停滞 45s の 2 系統 + CheckQuorum 有効化）
-- [x] **apply ハンドラの冪等・必ず完了規約**（terminate 完了保証、CommitSplit
-      no-op 化、AllocateSector 許容、publishEntries のバッチ継続 = 改善案 B の主要部）
-- [x] **learner-first メンバーシップ**（未同期 voter による quorum 毀損の根絶。
-      run7 で「active セクターの破壊 0 件」を確認）
-- [x] **raft メンバー ID の使い捨て化**（sector tombstone + 停滞メンバーの
-      reap/新 slot 再追加）
-- [x] **explicit パケットの非宛先受理ガード**（ゴーストレプリカ対策）
-- [x] **snapshot 未実装対策のガード**（`ErrSnapshotTemporarilyUnavailable` 変換で
-      `need non-empty snapshot` panic を根絶。本実装は未完了 TODO 側）
-- [x] **ManageMember の localNodeID panic ガード** / **sectorPrepareSplit の
-      nil ガード**（クラッシュ系の穴埋め）
+`simulator/logs.txt`（2 回の実行、2 回目はタイムスタンプ付き）の解析で、
+活性化チェーンの**恒久停止**を 2 クラス確認した。いずれも
+「**quorum を失った Raft グループは何も commit できない**」ことに起因し、
+前述のモデル前提（提案は必ず commit される）の外側で起きている。
 
-Go 実装（いずれも 2026-07-06、詳細は run 8〜10 のセクション参照）:
+| クラス | 症状 | 機構 |
+|--------|------|------|
+| A: splitSector ハング（1 回目 9 ペア、2 回目 5 件） | hosting 側が `Migrate` から戻らず `mtxOperateSectors` を握ったまま、当該ノードのセクター管理が全停止。frontward 側は `proposedSplitting` を保持したまま待機 | `Migrate` 内の Import 提案が frontward 側グループの quorum 喪失で commit されない。グループが治癒して 23 秒後に回復した例もあるが、過半数喪失時は治癒に必要な ConfChange 自体が commit 不能で永久化 |
+| B: stale active レプリカ（1 回目のみ 2 件） | 離脱ノードを head とする **active な**レプリカが活性化の重なりガード (skip 1) を永久発動させ、チェーンがその点で停止 | レプリカの掃除 (`Terminate` / `SectorRemoveNode`) 自体が死んだグループの raft commit を要するため誰にも消せない。掃除経路は backward の hosting が active になった後にしか走らないという鶏卵もある |
 
-- [x] **Import / CommitSplit の activation ゲート通過**（split が構造的に
-      不成立だった規約違反の解消。run 8）
-- [x] **bootstrap conf change への nodeID context 付与 + publishEntries の
-      conf change 適用エラー継続 + nodeID 不明 learner の promote 抑止**
-      （join レプリカの恒久乖離 → 強制破棄ストームの正帰還を解消。run 9）
-- [x] **メンバー除去の out-of-band 通知**（COMMAND_REMOVE。除去済みメンバーの
-      stale レプリカが強制破棄まで 30〜60 秒残留する赤の主因を解消。run 10）
+付随する観測:
 
-モデル + Go 実装（2026-07-10、詳細は各対策セクション参照）:
+- **Terminate 自体が raft commit を要する**ため、quorum 喪失グループは自分自身を
+  終了することすらできない。「proposer 離脱を検知して Terminate」「frontward の
+  不一致レプリカを Terminate」がどちらも毎秒空振りし続けるケースを観測。
+- 2026-06 に修正した「重なりガードが inactive レプリカも対象」問題
+  （「モデルのスコープ外で見つかった実装バグ」の表参照）は、
+  active なレプリカが残留するケース（クラス B）では不十分だったことが判明。
+- 観測の詳細は `node/internal/kvs/kvs.go` / `node/internal/kvs/sector/sector.go` の
+  NOTE コメント (2026-07-04 付) に記録。`sector.go` の `applyProposals` に
+  リトライ時の Raft ステータス出力（`## retry proposals ... state/lead/term`）を
+  追加済みで、次回実行でリーダー不在を直接確認できる。
 
-- [x] **prepare_merge (mergeBy) の解放経路**（`KvsSectorMergeLock.tla` で
-      バグ再現 (Phase 1 liveness 違反) → ReleaseMerge で回復 (Phase 2) →
-      誤検知 safety (Phase 3) を検証したうえで、ReleaseMerge 提案 +
-      mergeReleaseDuration ゲートを Go 実装。run 11 (A) の恒久停止を解消）
-- [x] **leftover 循環待ちの解消 = activation の tail 切り詰め**
-      （`KvsSectorLeftover.tla` で leftover をモデル化してバグ再現
-      (Phase L1: 3 liveness 違反) → ClipActivationTail で回復 (Phase L2、
-      EventuallyNoLeftover 含む) → 誤検知 release 併発 safety (Phase L3) を
-      検証したうえで、activateHostingSector の skip 1 を切り詰め activate に
-      変更。run 13 の 14 分 yellow / run 11 の同型を解消。分岐表に行を追加）
-- [x] **disconnect 経路の na.mtx 保持解消**（run 12 の zombie 連鎖の根源。
-      モデルのスコープ外、回帰テストで担保）
-
-### 未完了（2026-07-10 更新）
-
-| 項目 | 種別 | 参照 |
-|------|------|------|
-| ~~seed セッション喪失の「接続黒穴」node（run 14 の最上位残存要因: 26 体、領域単位の yellow 最長 17 分の原因）~~ → challenge 競合を**対策済み (2026-07-11)、run 15 (6.8h) で 0 件を確認**。AssignNode リトライ等の残 TODO は [spec/seed/README.md](../seed/README.md) に移管 | Go 実装 (node/seed) | run 14 / run 15 / spec/seed |
-| ~~disconnect 経路の na.mtx 保持解消~~ → **対策済み (2026-07-10)**。~~残候補: connect() 内 newNodeLink の pion 初期化が na.mtx 下~~ → **run 15 の gdump で無実を確認** (重い ICE/mDNS 生成は非同期側、na.mtx 下の NewPeerConnection は軽量) | Go 実装 (node) | run 12 の対策 / run 15 続報 |
-| simulator の loop-stuck 連鎖死 (Go runtime の sync.Pool convoy、180 node/1 process 起因)。node 数削減 / GOGC / mDNS 無効化で緩和 → **run 16 でプロセス分割を実施、convoy は解消** | simulator | run 15 続報 |
-| ~~Transferer 自己デッドロック (subRoutine が mtx 保持中に再送 → 経路なし → Error が自ノードに同期配送 → Receive で同一 RWMutex 再取得)。run 16 の終端クラスタ (watchdog kill 5 件・never-active 7 体) の根本原因~~ → **修正済み (2026-07-11)**。送信 API を mtx 下で呼ばない規約は残るので新規コードで注意 | Go 実装 (node) | run 16 |
-| ~~leftover 循環待ち（inactive host + 範囲内 active leftover でチェーン恒久停止）~~ → **対策済み (2026-07-10)** | 設計 + Go + モデル | run 13 の対策 |
-| TODO-1: quorum 喪失の拡張モデル（LocalDestroy の safety 検証） | モデル | 下表 |
-| TODO-2: stale active レプリカのガード緩和検証 | モデル | 下表 |
-| snapshot の本実装（operator serialize + appliedIndex + トリガ。ログ無限成長対策と表裏一体） | Go 実装 | run6 の残課題 |
-| is_stable ゲートの緩和（不安定時の修復凍結 = カバレッジ漸減の律速。run 11 で「接続不良 node 1 つで隣接の activation が skip 2 凍結」を確認、sectorActivate の失敗も観測不能。run 14 で「黒穴 1 体 → 隣接 joiner が恒久 unstable → 領域全体のチェーン停止」の伝播経路であることを確認） | 設計 + Go | run4 改善候補 2 / run7 考察 / run 11 (B) / run 14 |
-| ManageMember のヒステリシス | Go 実装 | run4 改善候補 3 |
-| 改善案 A / C / D / E / F / G（B の残り: CommitMerge extendTailOnly を含む） | Go 実装 | アルゴリズム改善案 |
-| 同一 term 二重リーダー疑いの系譜特定（run6 の未特定事項） | 調査 | run6 |
-| Col.Stop() 後のセクター raft goroutine 残留（解析ノイズ） | Go 実装 (node/simulator) | run 11 その他 |
-| **要検証**: `Operator.SetRange` は「全周セクター (head==tail) → 任意の tail」を縮小でなく拡張として扱う（先頭分岐の `s.tail.IsBetween(&s.head, &tail)` が head==tail のとき常に真）。この経路では範囲外レコードの削除・lock index / watch 購読の purge が走らない。単一 node の全周 hosting sector が split（PreCommitSplit → SetRange）で縮小するケースが該当し、移譲済み範囲の stale レコードが store/keys に残留 → 後の Extend で同範囲を再取得すると stale 値が復活する可能性がある。Watch (Stage E) のテスト作成中に発見 (2026-07-16)、実害は未確認 | Go 実装 (operator) | spec/kvs/api.md「Watch」 |
-
-### 状況（2026-07-04 のシミュレーション解析より）
-
-TODO-3 / TODO-4 の Go 実装は 2026-07-04 に先行実装した（下記
-「quorum 喪失対策の実装」参照）。TODO-1 のモデル検証は未着手のため、
-強制破棄の誤発動時の安全性はモデルでは未確認（実装は「誤発動しても既存の
-重複修復経路で収束し、データ喪失は design.md が許容済み」という設計判断に依る）。
-
-| # | 内容 | 種別 | 優先度 | 状況 |
-|---|------|------|--------|------|
-| [TODO-1](#todo-1) | quorum 喪失の故障モードを含む拡張モデル | モデル | 高 | 未着手 |
-| [TODO-2](#todo-2) | stale active レプリカの掃除とガード緩和の検証 | モデル | 高 | 未着手（TODO-1 と独立に着手可）。クラス B' は run4/run7 でも継続観測（短時間で解消し恒久化はしていない） |
-| [TODO-3](#todo-3) | セクター操作の timeout + abort | Go 実装 | 高 | **実装済み (2026-07-04)**、モデル検証は TODO-1 待ち |
-| [TODO-4](#todo-4) | quorum 喪失セクターのローカル強制破棄 | 設計 + Go 実装 | 高 | **実装済み (2026-07-04)**、モデル検証は TODO-1 待ち |
-
-#### quorum 喪失対策の実装（2026-07-04, Go 実装側）
+### quorum 喪失対策の実装（2026-07-04, Go 実装側）
 
 `sector.go` / `consensus.go` に以下の脱出経路を実装した:
 
@@ -686,7 +602,7 @@ TODO-3 / TODO-4 の Go 実装は 2026-07-04 に先行実装した（下記
 `TestSector_import_timeoutOnQuorumLoss` /
 `TestSector_import_unblockedByForceTerminate`。
 
-#### シミュレーション再実行での発見（2026-07-04, simulator/node.log 2 回）
+### シミュレーション再実行での発見（run 1・run 2、2026-07-04, simulator/node.log 2 回）
 
 **run 1（timeout+abort + リーダー不在検知のみ）**: timeout+abort は機能した
 （import timeout 123 件、mtxOperateSectors の恒久ハングは消滅）が、
@@ -735,7 +651,7 @@ store は SimpleStore と同じ「未割り当ての解放はエラー」セマ�
    常にこのバグを踏む）。純粋な quorum 喪失（import timeout が併発する形態）も
    併存するため、修正後の再実行で残存停滞を再分類する必要がある。
 
-#### シミュレーション run 3（terminate apply 修正後、2026-07-04）
+### シミュレーション run 3（terminate apply 修正後、2026-07-04）
 
 修正の効果を定量確認した:
 
@@ -759,7 +675,7 @@ store は SimpleStore と同じ「未割り当ての解放はエラー」セマ�
 選択肢があるが、tail 値自体は後続判定（extend/split）に必要なため応答だけでは足りない。
 メンバー ConfChange の振動（追加→削除→追加）自体の抑制も含めて要設計判断。
 
-#### run 3 深掘り: ゴーストレプリカと apply バッチ中断（2026-07-04, dump.json 解析）
+### run 3 深掘り: ゴーストレプリカと apply バッチ中断（2026-07-04, dump.json 解析）
 
 クラス C の root cause 調査（dump.json でグループ全メンバーのレプリカ推移を追跡）で、
 さらに 2 つの実装バグを発見・修正した。
@@ -798,7 +714,7 @@ proposal クリア）。
 再現条件が複雑なため、次回シミュレーションで `== drop explicit packet` の発火と
 already-activated ループの消長を観測して判定する。クラス B'（TODO-2）は未着手。
 
-#### シミュレーション run 4（全修正後、2026-07-04）
+### シミュレーション run 4（全修正後、2026-07-04）
 
 **恒久停止クラスは全て解消した**:
 
@@ -873,7 +789,7 @@ panic せず黙って自己 append してしまうため、initHostSector と同
 5. しきい値調整は対症療法にしかならない（destroy を遅らせても quorum 喪失自体は
    解消しない）。
 
-#### learner-first メンバーシップの実装（2026-07-04, consensus.go）
+### learner-first メンバーシップの実装（run 4 の対策、2026-07-04, consensus.go）
 
 - **追加は learner から**: `consensus.AppendNode` は `ConfChangeAddLearnerNode` を
   提案する。learner は quorum に入らないため、**未同期/死亡ノードの append が
@@ -902,7 +818,7 @@ panic せず黙って自己 append してしまうため、initHostSector と同
   `TestSector_forceTerminate_leaderWithoutQuorum` は「dead append で quorum が
   壊れる」前提自体が learner-first で成立しなくなったため置き換え）。
 
-#### シミュレーション run 5（learner-first 導入後、2026-07-04）: raft panic
+### シミュレーション run 5（learner-first 導入後、2026-07-04）: raft panic
 
 activate の恒久停止は発生しなかったが、t≈180s から不安定化
 （`node is not stable` が min3: 1504 → min5: 3733/分、強制破棄 990 回）し、
@@ -946,7 +862,7 @@ activate の恒久停止は発生しなかったが、t≈180s から不安定�
 回帰テスト: `TestKVS_sectorManageMember_rejectsTombstonedKey` /
 `TestManager_ManageMember_reapsStaleMember`。
 
-#### シミュレーション run 6（tombstone 導入後、2026-07-04）: `need non-empty snapshot` panic
+### シミュレーション run 6（tombstone 導入後、2026-07-04）: `need non-empty snapshot` panic
 
 m=+161 で `panic: need non-empty snapshot`（`raft.maybeSendSnapshot`、リーダーの
 run goroutine）によりプロセス停止。161 秒の短命 run のため tombstone / reap の
@@ -973,7 +889,7 @@ snapshot 要求を etcd raft 公式のエスケープ **`ErrSnapshotTemporarilyU
 ログは compaction されていないので index 1 から追いつける** — snapshot 本実装なしで
 整合する。回帰テスト: `TestSnapshotGuardStorage`。
 
-#### シミュレーション run 7（snapshot ガード後・70 ノード、2026-07-04）
+### シミュレーション run 7（snapshot ガード後・70 ノード、2026-07-04）
 
 100 ノードは負荷起因とみられる不安定（30 秒〜）のため 70 ノードに変更。
 activate の恒久停止なし。m=+413 で **自前コードの nil 参照 panic**:
@@ -1002,6 +918,7 @@ run 終盤（min6: 破棄 353 回）は kill の累積により inactive レプ�
 
 **残課題（TODO として記録）**: snapshot の本実装
 （operator の store serialize + appliedIndex の更新 + トリガの有効化）。
+→ **その後 2026-07-12 に実装完了**（設計・検証記録は [snapshot.md](snapshot.md)）。
 現状はログ無限成長（MemoryStorage のメモリ増加）とも表裏一体で、長時間運用・
 大量書き込みでは必須になる。実装時は「learner の catch-up が snapshot 経由に
 なる」ため、`ConsensusApplySnapshot` の store 反映と冪等性もセットで設計する。
@@ -1009,7 +926,7 @@ run 終盤（min6: 破棄 353 回）は kill の累積により inactive レプ�
 疑い = 空ログ再作成による votedFor 忘却の残存経路の可能性）は未特定で、
 次回 run の観測対象。
 
-#### シミュレーション run 8（100 ノード、2026-07-06）: split が構造的に不成立
+### シミュレーション run 8（100 ノード、2026-07-06）: split が構造的に不成立
 
 「一度 active になった位置が inactive のまま戻らない」症状を解析。
 終了時 active 22 / inactive 69。dump 解析で「active → inactive に戻った
@@ -1030,7 +947,7 @@ run 終盤（min6: 破棄 353 回）は kill の累積により inactive レプ�
 （両ハンドラは冪等実装済み）。回帰テスト
 `TestSector_import_commitSplit_onInactiveSector`（修正前コードで失敗を確認）。
 
-#### シミュレーション run 9（100 ノード、2026-07-06）: join レプリカの恒久乖離
+### シミュレーション run 9（100 ノード、2026-07-06）: join レプリカの恒久乖離
 
 split 修正の効果確認: `split: done` 119 回、**t≈105s で 97/97 全 active 達成**
 （プロトコル自体の活性が初めて全域で成立）。しかし churn 開始後
@@ -1055,7 +972,7 @@ log-and-continue に（normal entry と同方針。ApplyConfChange は適用済�
 （context 空の AddNode を新規にログへ入れない）。回帰テスト
 `TestConsensus_joinResolvesRemovedBootstrapMember`（修正前コードで失敗を確認）。
 
-#### シミュレーション run 10（100 ノード・15 分、2026-07-06）: 残存赤の分析
+### シミュレーション run 10（100 ノード・15 分、2026-07-06）: 残存赤の分析
 
 run 9 の 2 修正の効果確認: inactive は全期間 0〜3 の transient のみで劣化なし、
 publish 失敗 729→0、`Unknown node sectorNo` 5.1 万→3 千、強制破棄は定常
@@ -1086,7 +1003,7 @@ hosting sector 宛の REMOVE は拒否（host は自グループから除去さ�
 `TestKVS_sectorManageMember_removeDestroysReplica` /
 `TestKVS_sectorManageMember_removeRejectsHostingSector`。
 
-#### run 10 後の node レイヤー修正（2026-07-06〜07-07、モデルのスコープ外）
+### run 10 後の node レイヤー修正（2026-07-06〜07-07、モデルのスコープ外）
 
 run 10 後の再解析で、残存する赤/黄の律速が KVS プロトコルから node レイヤーに
 移ったことを確認し、2 つの修正を実装した:
@@ -1101,7 +1018,7 @@ run 10 後の再解析で、残存する赤/黄の律速が KVS プロトコル�
    `Col.Stop()` による強制停止）。send 中のリンク死亡で na.mtx が凍結し、
    リンク keepalive だけ生き残る「半死 node」が 12 件発生していた。
 
-#### シミュレーション run 11（100 ノード・15 分、2026-07-09）: 非 active セクターの分析
+### シミュレーション run 11（100 ノード・15 分、2026-07-09）: 非 active セクターの分析
 
 上記 2 修正の効果確認と「active（緑）にならないセクター」の原因調査
 （simulator/node.log + dump.json、23:36〜23:51）。
@@ -1183,7 +1100,7 @@ goroutine 終了を確認する余地あり。
 
 3 つの問題は独立しており、(C) を直しても (A)(B) は解決しない。
 
-#### mergeBy 解放のモデル検証と実装（run 11 (A) の対策、2026-07-10）
+### mergeBy 解放のモデル検証と実装（run 11 (A) の対策、2026-07-10）
 
 run 8 の教訓（apply 黙殺は実装先行では見つからない）を踏まえ、今回は
 **モデル反映 → Go 実装**の順で実施した。
@@ -1243,7 +1160,7 @@ Go 回帰テストで担保。
   counterexample と同じ被害経路、tail 非縮小の確認込み）。
   いずれも修正前コードで失敗することを確認済み。
 
-#### シミュレーション run 12（180 ノード・2 時間・生存最長 20 分、2026-07-10）: mergeBy 修正後の確認
+### シミュレーション run 12（180 ノード・2 時間・生存最長 20 分、2026-07-10）: mergeBy 修正後の確認
 
 mergeBy 解放実装後の run（02:26〜04:26。(B) is_stable と (C) disconnect 経路は
 未修正のまま）。
@@ -1276,7 +1193,7 @@ run 終了まで安定** — zombie の発生源さえ止まれば修復機構�
 → 次の優先順位: **(C) disconnect 経路の na.mtx 保持解消**（連鎖の根源）、
 次いで (B) is_stable ゲート（修復テールの律速）。
 
-#### (C) disconnect 経路の修正（run 12 の対策、2026-07-10、モデルのスコープ外）
+### (C) disconnect 経路の修正（run 12 の対策、2026-07-10、モデルのスコープ外）
 
 `NodeAccessor.disconnectLink` を「map からの登録解除は同期（na.mtx 下）、
 `link.disconnect()` は専用 goroutine」に分離した。従来は disconnect()（pion
@@ -1299,7 +1216,7 @@ na.mtx を凍結させ、zombie 連鎖（run 12: 10 ノード）の根源にな�
   gdump に該当スタックが見えたがブロックの確証はない。zombie が再発する
   場合はここを疑う。
 
-#### シミュレーション run 13（180 ノード・18 分・生存最長 20 分、2026-07-10）: leftover 循環待ち
+### シミュレーション run 13（180 ノード・18 分・生存最長 20 分、2026-07-10）: leftover 循環待ち
 
 mergeBy 解放 (run 11 対策) と disconnect 経路修正 (run 12 対策、上記) の後の
 確認 run。**zombie は 0 件** (disconnect 修正が有効)、全体は緑 160〜177/182 で
@@ -1323,7 +1240,7 @@ run 12 のような劣化ウィンドウなし。merge 競合は 1 系統のみ�
    でないと不可」のデッドロック。分岐表に該当行が存在しなかった。
    run 11 でも同型を観測 (当時は偶然の join で解消)。
 
-#### leftover 循環待ちの対策: tail 切り詰め activation（2026-07-10、モデル検証 → Go 実装）
+### leftover 循環待ちの対策: tail 切り詰め activation（run 13 の対策、2026-07-10、モデル検証 → Go 実装）
 
 **モデル**: `KvsSectorLeftover.tla`（MergeLock 版のコピー派生）。従来モデルは
 sector = node の抽象化のため「node は死んだが sector は残る」leftover を
@@ -1375,7 +1292,7 @@ violation になる — Go の seed EntireState は生きているノードの h
   leftover head に切り詰められることを検証）。修正前コードで失敗
   （activation が skip され続けて timeout）することを確認済み。
 
-#### シミュレーション run 14（180 ノード・114 分・生存最長 20 分、2026-07-10）: seed セッション喪失による「接続黒穴」
+### シミュレーション run 14（180 ノード・114 分・生存最長 20 分、2026-07-10）: seed セッション喪失による「接続黒穴」
 
 tail 切り詰め activation 導入後の確認 run。**最終フレームは yellow 0 で、
 これまでの修正はすべて維持されている**:
@@ -1444,7 +1361,7 @@ tail 切り詰め activation 導入後の確認 run。**最終フレームは ye
   着手）、(2) already subscribed の自己修復、(3) 周辺 node 側の防御
   (is_stable 緩和とセットで判断)。
 
-#### シミュレーション run 15（180 ノード・6.8 時間、2026-07-10〜11）: 黒穴修正の確認と残存 tail の分類
+### シミュレーション run 15（180 ノード・6.8 時間、2026-07-10〜11）: 黒穴修正の確認と残存 tail の分類
 
 challenge 競合修正後の長時間 run。node.log は最初の 4 時間で途切れている
 （dump は 6.8 時間分）。churn 率は run 14 と同等 (約 1,000 starts/h) で、
@@ -1495,7 +1412,7 @@ run 14 で黒穴が time-to-first-stable を桁で悪化させていた副作用
    leftover として残留)。再 activate は hop-by-hop なので回復に約 12 分。
    → 起点は下記「反応しない node の調査」で特定 (loop-stuck の連鎖死)。
 
-#### run 15 続報: 「反応しない node」の正体 — loop-stuck 12 体 (newNodeLink 穴は無実、2026-07-11 解析)
+### run 15 続報: 「反応しない node」の正体 — loop-stuck 12 体 (newNodeLink 穴は無実、2026-07-11 解析)
 
 dump 全走査 (6,777 寿命) で無応答系のシグネチャを分類した結果:
 
@@ -1529,7 +1446,7 @@ dump 全走査 (6,777 寿命) で無応答系のシグネチャを分類した�
   調整、pion の mDNS 無効化 (MulticastDNSMode — mDNS socket bind の
   syscall 滞留 10 件も観測)。
 
-#### シミュレーション run 16（150 ノード・6 プロセス・57 分、2026-07-11）: Transferer 自己デッドロックの特定
+### シミュレーション run 16（150 ノード・6 プロセス・57 分、2026-07-11）: Transferer 自己デッドロックの特定
 
 simulator を 6 pod に分割した run。プロセス分割により run 15 の sync.Pool
 convoy ノイズが消え、**loop-stuck の真因が colonio 本体のデッドロックだと
@@ -1583,6 +1500,136 @@ Error → 自ノードへ同期配送」を忠実に模倣) が修正前コー�
 いるため、送信 API の新規呼び出し箇所では同じ規約 (ロック下で送信しない)
 を守る必要がある。Receive のローカル配送を goroutine に逃がす構造的解消は
 順序保証への影響評価が必要なため見送り (規約 + 回帰テストで担保)。
+
+## 今後の TODO
+
+KVS 関連の TODO はこの章に一元化する。マークの読み方: `[x]` = 対応済み /
+`[ ]` = 未対応。対応済み項目の経緯・実測データは
+「シミュレーション実行の記録」の各節、未対応項目の背景は「詳細」の各節を参照。
+関連文書側にも TODO がある: snapshot のパラメータ調整は
+[snapshot.md](snapshot.md)、データプレーンは [dataplane.md](dataplane.md)、
+公開 API は [api.md](api.md)、lock は [lock.md](lock.md)、seed は
+[spec/seed/README.md](../seed/README.md)。
+
+### 一覧
+
+#### モデル (TLA+)
+
+- [x] **routing ビューと sector-store の分離** → `KvsSectorSepView.tla` で実装済
+- [x] **Raft 合意の非原子性のモデル化** → `KvsSectorRaft.tla` で実装済
+      （ActivateFrontward / Split を Propose → Commit に分割、TerminateB の
+      発火を確認: N=3: 8 回, N=4: 14 回）
+- [x] **複数の Join/Leave 同時発生のレース検証** → N=3 MaxChurn=4 まで検証済
+      （MaxChurn=2 で Merge 吸収側の proposing 未クリア / CommitActivate の
+      anyActive 未更新を発見・修正）
+- [x] **Merge の非原子化** → `KvsSectorRaft.tla` で ProposeMerge/CommitMerge に
+      分割（MaxChurn=3 でインターリーブバグ 2 件を発見・修正、TerminateA が
+      初めて発火: 20 回）
+- [x] **prepare_merge (mergeBy) の解放経路の検証** (2026-07-10) →
+      `KvsSectorMergeLock.tla`（バグ再現 → ReleaseMerge で回復 → 誤検知
+      safety の 3 phase。run 11 (A) の対策）
+- [x] **leftover セクターと tail 切り詰め activation の検証** (2026-07-10) →
+      `KvsSectorLeftover.tla`（Phase L1〜L3、EventuallyNoLeftover 含む。
+      run 13 の対策）
+- [ ] [**TODO-1: quorum 喪失の故障モードを含む拡張モデル**](#todo-1) —
+      優先度: 高。TODO-3/4 の実装 (2026-07-04) が先行しており、強制破棄の
+      誤発動時の安全性がモデル未確認の検証負債。しきい値調整の前提でもある
+- [ ] [**TODO-2: stale active レプリカの掃除とガード緩和の検証**](#todo-2) —
+      優先度: 高。TODO-1 と独立に着手可。クラス B' は run 4 / run 7 でも
+      継続観測（短時間で解消し恒久化はしていない）
+
+#### Go 実装（KVS プロトコル）
+
+- [x] [**TODO-3: セクター操作の timeout + abort**](#todo-3) (2026-07-04) —
+      proposalWaitTimeout=15s、Propose の有界化、`applyProposals` のロック外
+      Propose。モデル検証は TODO-1 待ち
+- [x] [**TODO-4: quorum 喪失セクターのローカル強制破棄**](#todo-4)
+      (2026-07-04) — leaderless 30s / pending 停滞 45s の 2 系統 +
+      CheckQuorum 有効化。モデル検証は TODO-1 待ち
+- [x] **apply ハンドラの冪等・必ず完了規約** (2026-07-04) — terminate 完了保証、
+      CommitSplit no-op 化、AllocateSector 許容、publishEntries のバッチ継続
+      （= 改善案 B の主要部。run 2 / run 3 の対策）
+- [x] **learner-first メンバーシップ** (2026-07-04) — 未同期 voter による
+      quorum 毀損の根絶（run 4 の破棄ストーム対策、run 7 で「active セクターの
+      破壊 0 件」を確認）
+- [x] **raft メンバー ID の使い捨て化** (2026-07-04) — sector tombstone +
+      停滞メンバーの reap/新 slot 再追加（run 5 の対策）
+- [x] **explicit パケットの非宛先受理ガード** (2026-07-04) — ゴーストレプリカ
+      対策（run 3 深掘りの対策）
+- [x] **snapshot 未実装時の送信要求ガード** (2026-07-04) —
+      `ErrSnapshotTemporarilyUnavailable` 変換で `need non-empty snapshot`
+      panic を根絶（run 6 の対策）
+- [x] **ManageMember の localNodeID panic ガード / sectorPrepareSplit の
+      nil ガード** (2026-07-04) — クラッシュ系の穴埋め
+- [x] **Import / CommitSplit の activation ゲート通過** (2026-07-06) —
+      split が構造的に不成立だった規約違反の解消（run 8 の対策）
+- [x] **bootstrap conf change への nodeID context 付与 + conf change 適用
+      エラー継続 + nodeID 不明 learner の promote 抑止** (2026-07-06) —
+      join レプリカの恒久乖離 → 強制破棄ストームの正帰還を解消（run 9 の対策）
+- [x] **メンバー除去の out-of-band 通知 (COMMAND_REMOVE)** (2026-07-06) —
+      除去済みメンバーの stale レプリカ残留（赤の主因）を解消（run 10 の対策）
+- [x] **mergeBy の解放経路の Go 実装** (2026-07-10) — ReleaseMerge 提案 +
+      mergeReleaseDuration ゲート（run 11 (A) の恒久停止を解消）
+- [x] **leftover 循環待ちの解消 = activation の tail 切り詰め** (2026-07-10) —
+      `activateHostingSector` の skip 1 を切り詰め activate に変更
+      （run 13 の 14 分 yellow / run 11 の同型を解消）
+- [x] **snapshot の本実装** (2026-07-12) — operator の store serialize +
+      appliedIndex 更新 + トリガ有効化（run 6 / run 7 の残課題、ログ無限成長
+      対策と表裏一体）。コード確認 2026-07-17: `consensus.go` の
+      `maybeTriggerSnapshot` / `appliedIndex` 更新、`sector.go` の
+      `ConsensusGetSnapshot` / `ConsensusApplySnapshot` として実装済み。
+      設計・churn 検証の記録とパラメータ調整の残 TODO は
+      [snapshot.md](snapshot.md)
+- [ ] [**is_stable ゲートの緩和**](#todo-is-stable)（設計 + Go） —
+      不安定時の修復凍結 = カバレッジ漸減の律速
+- [ ] [**ManageMember のヒステリシス**](#todo-hysteresis)（Go） —
+      run 4 改善候補 3
+- [ ] [**mergeSector: ターゲット離脱時の abort**](#todo-merge-abort)（Go） —
+      kvs.go の既存 TODO コメント
+- [ ] [**強制破棄・タイムアウトしきい値の実測再調整**](#todo-thresholds) —
+      2s / 15s / 30s / 45s は暫定値のまま
+- [ ] [**merge/overlap 抗争（生存 host の sector を leftover と誤認）**](#todo-merge-overlap)
+      （設計 + Go + モデル） — 2026-07-12 観測・未解決。正典は
+      [design.md](design.md)「churn 下の課題」
+- [ ] [**`Operator.SetRange` の全周セクター縮小の扱い（要検証）**](#todo-setrange)
+      （Go, operator） — 2026-07-16 発見、2026-07-17 コード確認で未修正のまま
+- [ ] [**Col.Stop() 後のセクター raft goroutine 残留**](#todo-col-stop)
+      （Go, node/simulator） — 解析ノイズ
+- [ ] [**同一 term 二重リーダー疑いの系譜特定**](#todo-dual-leader)（調査） —
+      run 6 の未特定事項
+- [ ] **アルゴリズム改善案 A / C / D / E / F / G と B の残り
+      （CommitMerge の extendTailOnly）**（Go） — 「アルゴリズム改善案」の
+      優先度サマリ参照。コード確認 2026-07-17: いずれも未実装のまま
+
+#### Go 実装（node / seed レイヤー）
+
+- [x] **リンク死活検知の短縮** (2026-07-06) — SessionTimeout 5min → 30s /
+      KeepaliveInterval 1min → 10s（run 10 後の修正 1）
+- [x] **network-zombie 対策: send 経路のロック保持解消 + watchdog 強化**
+      (2026-07-06) — run 10 後の修正 2
+- [x] **disconnect 経路の na.mtx 保持解消** (2026-07-10) — run 12 の zombie
+      連鎖の根源。残候補だった connect() 内 newNodeLink は run 15 の gdump で
+      無実を確認（重い ICE/mDNS 生成は非同期側）
+- [x] **Transferer 自己デッドロックの修正** (2026-07-11) — subRoutine の
+      mtx 保持中再送を「収集 → 解放後送信」に変更（run 16 の終端クラスタの
+      根本原因）。回帰テスト `TestRetry_noRouteErrorDoesNotDeadlock`
+- [x] **seed セッション喪失の「接続黒穴」: challenge 競合の解消** (2026-07-11) —
+      run 14 の最上位残存要因（26 体）。run 15 (6.8h) で 0 件・
+      never-active 2.7%→0.3% を確認。AssignNode リトライ等の残 TODO は
+      [spec/seed/README.md](../seed/README.md) に移管
+- [ ] [**Transferer: 送信 API の同一 goroutine 再入の構造的解消**](#todo-transferer)
+      — 見送り中（「mtx 保持中に送信しない」規約 + 回帰テストで担保）
+
+#### simulator
+
+- [x] **loop-stuck 連鎖死（sync.Pool グローバルロック convoy、
+      180 node/1 process 起因）** — run 16 でプロセス分割を実施し解消
+      （colonio プロトコルのバグではない simulator アーティファクト）
+
+### 詳細
+
+未対応項目の背景・内容・検証項目。TODO-3 / TODO-4 は実装済みだが、
+モデル検証（TODO-1）の前提資料として背景記録を残している。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加
@@ -1716,6 +1763,105 @@ Error → 自ノードへ同期配送」を忠実に模倣) が修正前コー�
   ただし現モデルはレコードを扱わないため、データ喪失の頻度・範囲の評価は
   モデルでは答えが出ない（必要ならシミュレータで測定する）。
 - **関連**: `sector.go` `Terminate` の NOTE、`consensus.go` に `Status()` 追加済み。
+
+<a id="todo-is-stable"></a>
+#### is_stable ゲートの緩和（設計 + Go 実装）
+
+- **背景**: `subRoutine` は is_stable（seed の reconcile と routing ビューの
+  一致）でないと ManageMember にも operateSectors にも到達しないため、
+  churn 中は修復を担うノードが何もできず、カバレッジ漸減の律速になっている。
+  観測の系譜: 231 ノード解析（seed の失効タイマに律速される構造）→
+  run 4 位相 1（churn 中の修復凍結）→ run 11 (B)（接続不良 node 1 つで隣接の
+  activation が skip 2 で凍結、sectorActivate の失敗も観測不能）→
+  run 14（黒穴 1 体 → 隣接 joiner が恒久 unstable → 領域全体のチェーン停止、
+  という伝播経路の確認）。
+- **対策候補**（run 11 (B) 参照）: (a) 不安定時も修復系操作
+  （Extend / Terminate frontward）だけは許可する、(b) is_stable の要件から
+  到達不能 node を除外する、(c) sectorActivate に失敗理由を返させて
+  観測可能にする。周辺 node 側の防御は
+  [spec/seed/README.md](../seed/README.md) の TODO とセットで判断する。
+
+<a id="todo-hysteresis"></a>
+#### ManageMember のヒステリシス（Go 実装）
+
+routing ビューが N tick 連続で同一の場合のみメンバー変更を発行し、
+view flap の追従で ConfChange を浪費しないようにする（run 4 改善候補 3）。
+learner-first 導入後は quorum 毀損の主因ではなくなったが、メンバー
+ConfChange の振動自体（run 3 クラス C で観測した追加 → 削除 → 追加の往復）は
+残っている。
+
+<a id="todo-merge-abort"></a>
+#### mergeSector: ターゲット離脱時の abort（Go 実装）
+
+`kvs.go` の `mergeSector` にある既存 TODO コメント。split には proposer 監視
+（`proposedSplitRoutine`）があるが、merge には対象セクター離脱時の abort
+処理がない。run 11 (A) の mergeBy 解放（merge する側の死亡）とは別の穴
+（こちらは merge されるターゲット側の離脱）。timeout + abort（TODO-3）が
+入っているため恒久ハングにはならず、優先度は低い。
+
+<a id="todo-thresholds"></a>
+#### 強制破棄・タイムアウトしきい値の実測再調整
+
+proposeTimeout=2s / proposalWaitTimeout=15s / forceTerminateDuration=30s /
+forcePendingDuration=45s / mergeReleaseDuration=30s は、`== retry proposals`
+ログの実測に基づく再調整を想定した暫定値のまま。どこまで詰められるかは
+誤発動時の安全性の境界（TODO-1 検証項目 3）に依存するため、TODO-1 が前提。
+
+<a id="todo-merge-overlap"></a>
+#### merge/overlap 抗争 — 生存 host の sector を leftover と誤認（設計 + Go + モデル）
+
+routing 視界の不一致により、隣接 host が**生きている node** の active sector を
+「host 死亡後の leftover」と誤認すると、tail 切り詰め activate → merge 吸収 →
+生存側の再 activate → 重複検知で両方 terminate（**ack 済み書き込みの破棄**）→
+再 activate → 再 merge のループに入る。2026-07-12 の api.md Stage B run で
+観測（単一 range で 46 秒間に Terminate 27 回、データプレーンの CAS 監査で
+可視化）。`KvsSectorLeftover.tla` は「host 死亡後の leftover」を前提に検証
+しており、生存 host の active sector を対象にした場合のインターリービングは
+**モデル未検証**。対策候補（merge 前の leftover host 生存確認、生存 host 側を
+優先する overlap 解消規則）を含め、正典は [design.md](design.md) の
+「churn 下の課題」。
+
+<a id="todo-setrange"></a>
+#### `Operator.SetRange` の全周セクター縮小の扱い（要検証、Go 実装）
+
+`Operator.SetRange` は先頭分岐の `s.tail.IsBetween(&s.head, &tail)` が
+head==tail（全周セクター）のとき常に真になるため、「全周 → 任意の tail」を
+縮小でなく拡張として扱う。この経路では範囲外レコードの削除・lock index /
+watch 購読の purge が走らない。単一 node の全周 hosting sector が split
+（PreCommitSplit → SetRange）で縮小するケースが該当し、移譲済み範囲の stale
+レコードが store/keys に残留 → 後の Extend で同範囲を再取得すると stale 値が
+復活する可能性がある。Watch (Stage E) のテスト作成中に発見 (2026-07-16)、
+実害は未確認。参照: [api.md](api.md)「Watch」、
+`node/internal/kvs/sector/operator/operator.go` の `SetRange`。
+
+<a id="todo-col-stop"></a>
+#### Col.Stop() 後のセクター raft goroutine 残留（Go 実装 node/simulator）
+
+停止済み node のセクター raft ループ goroutine が Col.Stop() 後も数十秒
+生き残り、force terminate ログを出し続ける（run 11 その他 / run 15 続報で
+確認）。実害はシミュレーションの解析ノイズだが、Stop で goroutine の終了を
+確認する余地がある。コード確認 2026-07-17: `KVS.Start` の subRoutine ループは
+ctx で止まるが、保持中の各 `Sector` を停止する明示的な shutdown 経路は
+見当たらない。
+
+<a id="todo-dual-leader"></a>
+#### 同一 term 二重リーダー疑いの系譜特定（調査）
+
+run 6 / run 7 で「リーダーの Next がログ範囲外に出た正確な系譜」
+（同一 term での二重リーダー疑い = 空ログ再作成による votedFor 忘却の
+残存経路の可能性）が未特定のまま。tombstone による raft メンバー ID の
+使い捨て化（run 5 対策）後に該当経路が残っているかの確認を含め、
+今後の run の観測対象。
+
+<a id="todo-transferer"></a>
+#### Transferer: 送信 API の同一 goroutine 再入の構造的解消（見送り中）
+
+「送信 API が経路なしエラーを自ノードへ同期配送し、同一 goroutine で
+Receive に再入する」構造自体は run 16 の修正後も残っており、送信 API の
+新規呼び出し箇所では「mtx 保持中に送信しない」規約を守る必要がある。
+Receive のローカル配送を goroutine に逃がす構造的解消は、順序保証への
+影響評価が必要なため見送り（規約 + 回帰テスト
+`TestRetry_noRouteErrorDoesNotDeadlock` で担保）。
 
 ## 再検証クイックリファレンス
 
