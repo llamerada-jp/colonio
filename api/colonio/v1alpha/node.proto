@@ -41,6 +41,9 @@ message PacketContent {
 
     KvsOperation         kvs_operation          = 30;
     KvsOperationResponse kvs_operation_response = 31;
+    KvsWatch             kvs_watch              = 32;
+    KvsWatchResponse     kvs_watch_response     = 33;
+    KvsWatchEvent        kvs_watch_event        = 34;
 
     ConsensusMessage           consensus_message             = 40;
     SectorManageMember         sector_manage_member          = 41;
@@ -147,6 +150,57 @@ message KvsOperationResponse {
   // monotonic clock).
   uint64 lock_generation  = 4;
   int64  lock_deadline_ms = 5;
+}
+
+// KvsWatch subscribes to (or cancels the subscription of) change
+// notifications of one key. Routed to the key's host like KvsOperation; the
+// watcher is implicitly the packet source (like the lock owner, no spoofable
+// field on the wire). The same message doubles as the keepalive: the client
+// re-sends it periodically, which renews the host-side lease AND resyncs the
+// state after missed events / a host change (spec/kvs/api.md「Watch」).
+message KvsWatch {
+  string key = 1;
+  // Client-generated id, unique per Watcher instance on the watching node;
+  // echoed on pushed events so the client can dispatch them.
+  uint64 watch_id = 2;
+  // The newest revision this watcher has already delivered (0 = none). The
+  // host omits the value from the response when the record still has exactly
+  // this revision, so keepalives do not carry large values around.
+  uint64 since_revision = 3;
+  // Cancel the subscription instead of registering/renewing it.
+  bool cancel = 4;
+}
+
+message KvsWatchResponse {
+  // Reuses the operation error classes: ERROR_PREPARING when the key's range
+  // is not served here (the client re-subscribes with backoff).
+  KvsOperationResponse.Error error = 1;
+
+  // Current state of the record at subscription time. The client synthesizes
+  // a WatchEvent from it when it differs from what it delivered last.
+  bool   exists   = 2;
+  uint64 revision = 3;
+  bool   locked   = 4;
+  // value_omitted is set (with empty value) when revision == since_revision:
+  // the watcher already has this value.
+  bool  value_omitted = 5;
+  bytes value         = 6;
+}
+
+// KvsWatchEvent is the one-way push from the key's host to a subscribed
+// watcher, emitted by the operation apply. Delivery is best-effort
+// (coalesced / at-least-once overall): a lost event is recovered by the next
+// keepalive resync.
+message KvsWatchEvent {
+  uint64 watch_id = 1;
+  string key      = 2;
+  bytes  value    = 3;
+  uint64 revision = 4;
+  bool   deleted  = 5;
+  // locked reflects the record's lease-lock state after the apply. A pure
+  // lock release/revocation is pushed with the unchanged revision so lock
+  // waiters can react immediately; value-level watchers dedupe it away.
+  bool locked = 6;
 }
 
 message ConsensusMessage {

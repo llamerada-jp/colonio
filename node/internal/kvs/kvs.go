@@ -80,7 +80,12 @@ type KVS struct {
 	// nextCommittedEnts; シミュレーション run5, 2026-07-04 で観測). Re-delivered
 	// SectorManageMember messages for these keys are rejected; the membership
 	// manager re-adds the node under a fresh sectorNo instead.
-	sectorTombstones          map[kvsTypes.SectorKey]time.Time
+	sectorTombstones map[kvsTypes.SectorKey]time.Time
+	// watchSinks dispatches pushed watch events to the local Watcher
+	// instances by their client-generated watch id (see node/kvs). Sinks are
+	// called on the network goroutine and must not block.
+	mtxWatchSinks             sync.Mutex
+	watchSinks                map[uint64]func(*kvsTypes.WatchPush)
 	mtxOperateSectors         sync.Mutex
 	proposedSplittingNodeID   *types.NodeID
 	proposedSplittingSectorID *kvsTypes.SectorID
@@ -100,6 +105,7 @@ func NewKVS(conf *Config) *KVS {
 		patchers:           conf.Patchers,
 		sectors:            make(map[kvsTypes.SectorKey]*sector.Sector),
 		sectorTombstones:   make(map[kvsTypes.SectorKey]time.Time),
+		watchSinks:         make(map[uint64]func(*kvsTypes.WatchPush)),
 	}
 
 	if conf.EnableRaftLogging {
@@ -331,6 +337,120 @@ func (k *KVS) Delete(key string, casRevision uint64, casAbsent bool, lockGenerat
 	})
 
 	return c
+}
+
+// WatchSubscribe registers (or renews — it doubles as the keepalive) a watch
+// subscription on the key's host and resolves with the record's current
+// state. Part of the node/kvs Backend surface.
+func (k *KVS) WatchSubscribe(key string, watchID uint64, sinceRevision uint64) chan *kvsTypes.WatchSubscribeResult {
+	c := make(chan *kvsTypes.WatchSubscribeResult, 1)
+	k.outbound.sendKvsWatch(&watchParam{
+		key:           key,
+		watchID:       watchID,
+		sinceRevision: sinceRevision,
+		receiver: func(res *proto.KvsWatchResponse, err error) {
+			defer close(c)
+
+			if err != nil {
+				c <- &kvsTypes.WatchSubscribeResult{Err: err}
+				return
+			}
+			if err := responseErrorToError("watch", res.Error); err != nil {
+				c <- &kvsTypes.WatchSubscribeResult{Err: err}
+				return
+			}
+			c <- &kvsTypes.WatchSubscribeResult{State: kvsTypes.WatchState{
+				Exists:       res.Exists,
+				Revision:     res.Revision,
+				Locked:       res.Locked,
+				ValueOmitted: res.ValueOmitted,
+				Value:        res.Value,
+			}}
+		},
+	})
+	return c
+}
+
+// WatchCancel drops the subscription on the key's host. Fire-and-forget: a
+// cancel that never arrives merely leaves the subscription to its lease
+// expiry. Part of the node/kvs Backend surface.
+func (k *KVS) WatchCancel(key string, watchID uint64) {
+	k.outbound.sendKvsWatch(&watchParam{
+		key:      key,
+		watchID:  watchID,
+		cancel:   true,
+		receiver: func(res *proto.KvsWatchResponse, err error) {},
+	})
+}
+
+// WatchRegisterSink installs the local dispatch target of pushed events for
+// one watch id. The sink is called on the network goroutine and must not
+// block. Part of the node/kvs Backend surface.
+func (k *KVS) WatchRegisterSink(watchID uint64, sink func(*kvsTypes.WatchPush)) {
+	k.mtxWatchSinks.Lock()
+	defer k.mtxWatchSinks.Unlock()
+	k.watchSinks[watchID] = sink
+}
+
+// WatchUnregisterSink removes the dispatch target; later pushes for the id
+// are dropped (stale subscriptions on hosts expire by lease).
+func (k *KVS) WatchUnregisterSink(watchID uint64) {
+	k.mtxWatchSinks.Lock()
+	defer k.mtxWatchSinks.Unlock()
+	delete(k.watchSinks, watchID)
+}
+
+// kvsWatch serves an inbound subscription request on the key's host, mirroring
+// the hosting-sector resolution of kvsOperate.
+func (k *KVS) kvsWatch(watch *proto.KvsWatch, srcNodeID *types.NodeID) (proto.KvsOperationResponse_Error, *kvsTypes.WatchState) {
+	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
+	if hostingSectorKey == nil {
+		return proto.KvsOperationResponse_ERROR_PREPARING, nil
+	}
+	k.mtx.RLock()
+	hostingSector := k.sectors[*hostingSectorKey]
+	k.mtx.RUnlock()
+	if hostingSector == nil {
+		return proto.KvsOperationResponse_ERROR_PREPARING, nil
+	}
+	op := hostingSector.GetOperator()
+
+	if watch.Cancel {
+		op.WatchCancel(watch.Key, srcNodeID, watch.WatchId)
+		return proto.KvsOperationResponse_ERROR_NONE, nil
+	}
+
+	state, err := op.WatchSubscribe(watch.Key, srcNodeID, watch.WatchId, watch.SinceRevision)
+	switch {
+	case err == nil:
+		return proto.KvsOperationResponse_ERROR_NONE, state
+	case errors.Is(err, kvsTypes.ErrorSectorNotReady):
+		return proto.KvsOperationResponse_ERROR_PREPARING, nil
+	default:
+		return proto.KvsOperationResponse_ERROR_UNKNOWN, nil
+	}
+}
+
+// kvsWatchEvent dispatches one pushed change notification to the local
+// Watcher registered under the event's watch id. Unknown ids are dropped:
+// the watcher is gone and its host-side subscription will expire by lease.
+func (k *KVS) kvsWatchEvent(event *proto.KvsWatchEvent) {
+	if event == nil {
+		return
+	}
+	k.mtxWatchSinks.Lock()
+	sink := k.watchSinks[event.WatchId]
+	k.mtxWatchSinks.Unlock()
+	if sink == nil {
+		return
+	}
+	sink(&kvsTypes.WatchPush{
+		Key:      event.Key,
+		Value:    event.Value,
+		Revision: event.Revision,
+		Deleted:  event.Deleted,
+		Locked:   event.Locked,
+	})
 }
 
 func (k *KVS) kvsOperate(operation *proto.KvsOperation, srcNodeID *types.NodeID) (proto.KvsOperationResponse_Error, *kvsOperateResult) {
@@ -691,17 +811,18 @@ func (k *KVS) allocateSector(
 	members map[kvsTypes.SectorNo]*types.NodeID,
 ) {
 	s := sector.NewSector(&sector.SectorConfig{
-		Logger:     k.logger,
-		RaftLogger: k.raftLogger,
-		Handler:    k,
-		Outbound:   k.consensusOutbound,
-		SectorKey:  sectorKey,
-		IsHosting:  isHosting,
-		Join:       append,
-		Members:    members,
-		Store:      k.store,
-		Patchers:   k.patchers,
-		Head:       head,
+		Logger:         k.logger,
+		RaftLogger:     k.raftLogger,
+		Handler:        k,
+		Outbound:       k.consensusOutbound,
+		SectorKey:      sectorKey,
+		IsHosting:      isHosting,
+		Join:           append,
+		Members:        members,
+		Store:          k.store,
+		Patchers:       k.patchers,
+		PushWatchEvent: k.outbound.sendKvsWatchEvent,
+		Head:           head,
 	})
 
 	k.sectors[*sectorKey] = s

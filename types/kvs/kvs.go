@@ -95,6 +95,37 @@ type SetResult struct {
 	Err      error
 }
 
+// WatchState is the record state returned by a watch subscription
+// (registration and keepalive alike): the client synthesizes a WatchEvent
+// from it when it differs from the state it delivered last.
+type WatchState struct {
+	Exists   bool
+	Revision uint64
+	// Locked reflects the record's lease-lock state. Lock waiters use it (and
+	// the lock transitions pushed as events) to wake up without polling.
+	Locked bool
+	// ValueOmitted is set when the record still has exactly the revision the
+	// subscriber reported as already delivered, so the (potentially large)
+	// value was not transferred back.
+	ValueOmitted bool
+	Value        []byte
+}
+
+type WatchSubscribeResult struct {
+	State WatchState
+	Err   error
+}
+
+// WatchPush is one change notification pushed by the key's host. Delivery is
+// best-effort: lost pushes are recovered by the periodic keepalive resync.
+type WatchPush struct {
+	Key      string
+	Value    []byte
+	Revision uint64
+	Deleted  bool
+	Locked   bool
+}
+
 type LockResult struct {
 	// Generation is the granted fencing token: guarded writes present it and
 	// the apply rejects a stale one, so a holder that lost the lease cannot

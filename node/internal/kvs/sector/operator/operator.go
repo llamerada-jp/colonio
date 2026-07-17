@@ -57,6 +57,8 @@ type Operations interface {
 	Delete(key string, cond *WriteCondition) error
 	LockAcquire(key string, owner *types.NodeID, ttl time.Duration) (*kvsTypes.LockResult, error)
 	LockRelease(key string, owner *types.NodeID, generation uint64) error
+	WatchSubscribe(key string, watcher *types.NodeID, watchID uint64, sinceRevision uint64) (*kvsTypes.WatchState, error)
+	WatchCancel(key string, watcher *types.NodeID, watchID uint64)
 }
 
 // recordMarshal serializes the KvsRecord envelope. Deterministic marshaling
@@ -115,6 +117,10 @@ type Config struct {
 	// Immutable after construction; the same map instance is shared by every
 	// operator of the node.
 	Patchers map[string]kvsTypes.Patcher
+	// PushWatchEvent sends one change notification to a subscribed watcher
+	// node (one-way, best-effort). Called outside s.mtx. Optional (nil in
+	// tests that do not exercise watches).
+	PushWatchEvent func(dst *types.NodeID, event *proto.KvsWatchEvent)
 }
 
 type Operator struct {
@@ -131,6 +137,14 @@ type Operator struct {
 	// every path that mutates record state (applies, import, replace, range
 	// shrink) and consumed by the host's expiry scan (ExpiredLockRevocations).
 	locks map[string]*lockIndexEntry
+	// watches holds the host-local watch subscriptions (key → watcher →
+	// lease deadline); see watch.go. Never replicated: replicas keep this map
+	// empty, which silences the apply-path emission there.
+	watches map[string]map[watcherKey]time.Time
+	// pendingWatchPushes collects the events of the apply in progress; the
+	// apply flushes and sends them after releasing s.mtx.
+	pendingWatchPushes []watchPush
+	pushWatchEvent     func(dst *types.NodeID, event *proto.KvsWatchEvent)
 
 	// revisionCounter is replicated state: it grows by one on every applied
 	// SET (the new value becomes the record's revision), max-merges with the
@@ -173,6 +187,8 @@ func NewOperator(config *Config) *Operator {
 		head:             *config.Head,
 		keys:             make(map[string]any),
 		locks:            make(map[string]*lockIndexEntry),
+		watches:          make(map[string]map[watcherKey]time.Time),
+		pushWatchEvent:   config.PushWatchEvent,
 		operationTimeout: 10 * time.Second,
 		waiters:          make(map[uint32]chan *applyResult),
 	}
@@ -426,6 +442,9 @@ func (s *Operator) SetRange(tail types.NodeID) error {
 	}
 
 	s.tail = &tail
+	// The moved keys were migrated, not deleted: drop their subscriptions
+	// silently and let the clients' keepalives re-subscribe with the new host.
+	s.purgeWatchesOutOfRangeLocked()
 	return nil
 }
 
@@ -434,6 +453,9 @@ func (s *Operator) ClearRange() {
 	defer s.mtx.Unlock()
 
 	s.tail = nil
+	// terminate / snapshot restore: this replica stops serving the range, so
+	// the host-local subscriptions die with it (clients re-subscribe)
+	s.watches = make(map[string]map[watcherKey]time.Time)
 }
 
 // SetSplitting fences writes into the range being handed over by a split
@@ -601,10 +623,21 @@ func (s *Operator) ApplyProposal(operation *proto.Operation) error {
 	waiter := s.waiters[operation.OperationId]
 	delete(s.waiters, operation.OperationId)
 
+	pushes := s.takeWatchPushesLocked()
+
 	s.mtx.Unlock()
 
 	if waiter != nil {
 		waiter <- result
+	}
+
+	// Watch notifications are sent after the lock is released (the Transferer
+	// contract). Only the hosting operator holds subscriptions, so replicas
+	// collect nothing here.
+	if s.pushWatchEvent != nil {
+		for _, push := range pushes {
+			s.pushWatchEvent(&push.dst, push.event)
+		}
 	}
 
 	return storeErr
@@ -635,6 +668,7 @@ func (s *Operator) applyWriteLocked(operation *proto.Operation, current *proto.K
 		s.revisionCounter = newRevision
 		s.keys[operation.Key] = struct{}{}
 		result.revision = newRevision
+		s.queueWatchEventLocked(operation.Key, operation.Value, newRevision, false, lock != nil)
 		return nil, nil
 
 	case proto.Operation_COMMAND_PATCH:
@@ -663,6 +697,7 @@ func (s *Operator) applyWriteLocked(operation *proto.Operation, current *proto.K
 		}
 		s.revisionCounter = newRevision
 		result.revision = newRevision
+		s.queueWatchEventLocked(operation.Key, patched, newRevision, false, lock != nil)
 		return nil, nil
 
 	case proto.Operation_COMMAND_DELETE:
@@ -677,6 +712,9 @@ func (s *Operator) applyWriteLocked(operation *proto.Operation, current *proto.K
 		}
 		delete(s.keys, operation.Key)
 		delete(s.locks, operation.Key)
+		// the deleted event carries the removed record's revision (idempotency
+		// marker on the watcher side); the lease dies with the record
+		s.queueWatchEventLocked(operation.Key, nil, current.Revision, true, false)
 		return nil, nil
 	}
 	return fmt.Errorf("unsupported write command: %d", operation.Command), nil
@@ -730,6 +768,9 @@ func (s *Operator) applyLockAcquireLocked(operation *proto.Operation, current *p
 		waiterErr, storeErr := grant(nil, newCounter, lock, newCounter, true)
 		if waiterErr == nil && storeErr == nil {
 			result.revision = newCounter
+			// the record set changed (an empty locked record now exists);
+			// grants and renewals on existing records are NOT emitted
+			s.queueWatchEventLocked(operation.Key, nil, newCounter, false, true)
 		}
 		return waiterErr, storeErr
 
@@ -784,6 +825,9 @@ func (s *Operator) applyLockClearLocked(operation *proto.Operation, current *pro
 		return nil, err
 	}
 	delete(s.locks, operation.Key)
+	// a cleared lease keeps the revision but wakes lock waiters watching the
+	// key; value-level watchers dedupe the unchanged revision away
+	s.queueWatchEventLocked(operation.Key, current.Value, current.Revision, false, false)
 	return nil, nil
 }
 

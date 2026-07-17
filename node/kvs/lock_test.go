@@ -92,14 +92,37 @@ func TestClientLockWaitsForHolder(t *testing.T) {
 			&kvsTypes.LockResult{Err: kvsTypes.ErrorLockHeld},
 			&kvsTypes.LockResult{Generation: 3},
 		),
+		// the holder wait watches the key; report it locked so the wait relies
+		// on the pushed release below, not on polling
+		subscribeResults: watchStates(
+			&kvsTypes.WatchState{Exists: true, Revision: 1, Locked: true},
+		),
 	}
 	client := NewClient(backend)
 
+	// push the lease release until the waiter wins the retry: the wait is
+	// event-driven (no polling interval to sleep through)
+	pushCtx, stopPush := context.WithCancel(t.Context())
+	defer stopPush()
+	go func() {
+		for {
+			backend.push(&kvsTypes.WatchPush{Key: "key", Revision: 1, Locked: false})
+			select {
+			case <-pushCtx.Done():
+				return
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+	}()
+
+	start := time.Now()
 	lock, err := client.Lock(t.Context(), "key")
 	require.NoError(t, err)
 	defer lock.stopRenewal()
 	assert.Equal(t, uint64(3), lock.Token())
 	assert.Len(t, backend.acquireCalls, 3)
+	// well under the fallback interval: the watch signal drove the retries
+	assert.Less(t, time.Since(start), lockWaitFallbackInterval)
 }
 
 func TestClientLockRetriesUnknown(t *testing.T) {

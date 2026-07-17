@@ -31,10 +31,14 @@ const DefaultLockTTL = 30 * time.Second
 // minLockTTL rejects leases too short to survive one bad renewal round trip.
 const minLockTTL = 10 * time.Second
 
-// lockHeldPollInterval paces Lock() while another owner holds the lease.
-// Lease changes are only observable by asking the host again (Watch will
-// replace this polling, spec/kvs/api.md Stage E).
-const lockHeldPollInterval = time.Second
+// lockWaitFallbackInterval is the retry pacing of Lock() while another owner
+// holds the lease WITHOUT a watch signal. The primary wake-up is the watch on
+// the lock key (the host pushes the lease release/revocation, so a takeover
+// normally starts within a round trip); this timer only covers a watcher that
+// could not be established or whose push was lost — and even then every
+// keepalive resync of a lock-free state re-signals, so the fallback fires
+// rarely.
+const lockWaitFallbackInterval = 10 * time.Second
 
 // LockOption adjusts a Client.Lock call.
 type LockOption func(*lockOptions)
@@ -102,6 +106,16 @@ func (c *Client) Lock(ctx context.Context, key string, opts ...LockOption) (*Loc
 			key, options.ttl, minLockTTL)
 	}
 
+	// The holder wait is watch-driven (spec/kvs/api.md Stage E): the watcher
+	// on the lock key signals whenever an observed state carries no lease —
+	// the host pushes the release/revocation, so a takeover attempt starts
+	// within about a round trip instead of a polling period. Started lazily on
+	// the first ErrLockHeld; if it cannot be established the fallback timer
+	// below degrades the wait to slow polling.
+	var holderWatch *Watcher
+	watchCtx, stopWatch := context.WithCancel(ctx)
+	defer stopWatch()
+
 	backoff := retryInitialBackoff
 	sawHeld := false
 	for {
@@ -125,11 +139,22 @@ func (c *Client) Lock(ctx context.Context, key string, opts ...LockOption) (*Loc
 				return nil, fmt.Errorf("kvs lock %q: %w", key, err)
 			}
 			sawHeld = true
+			if holderWatch == nil {
+				// cannot fail while watchCtx is alive; returns immediately
+				holderWatch, _ = c.Watch(watchCtx, key)
+			}
+			var lockFree <-chan struct{}
+			if holderWatch != nil {
+				lockFree = holderWatch.lockFree
+			}
 			select {
 			case <-ctx.Done():
 				return nil, fmt.Errorf("kvs lock %q: deadline expired while waiting for the holder: %w: %w",
 					key, ErrLockHeld, ctx.Err())
-			case <-time.After(lockHeldPollInterval):
+			case <-lockFree:
+				// the lease was observed free (released / revoked / record
+				// deleted): race the other waiters for it now
+			case <-time.After(lockWaitFallbackInterval):
 			}
 			backoff = retryInitialBackoff
 

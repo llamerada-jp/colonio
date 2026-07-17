@@ -51,6 +51,18 @@ type operationParam struct {
 	receiver       func(res *proto.KvsOperationResponse, err error)
 }
 
+// watchParam is a watch subscription request (registration, keepalive, or
+// cancellation) routed to the key's host.
+type watchParam struct {
+	key     string
+	watchID uint64
+	// sinceRevision is the newest revision the watcher has already delivered;
+	// the host omits the value when the record is unchanged.
+	sinceRevision uint64
+	cancel        bool
+	receiver      func(res *proto.KvsWatchResponse, err error)
+}
+
 type SectorManageMemberParam struct {
 	dstNodeID *types.NodeID
 	sectorID  kvsTypes.SectorID
@@ -71,6 +83,11 @@ type SectorSplitParam struct {
 
 type OutboundPort interface {
 	sendKvsOperation(param *operationParam)
+	sendKvsWatch(param *watchParam)
+	// sendKvsWatchEvent pushes one change notification to a subscribed
+	// watcher node. One-way and best-effort (no retry): a lost event is
+	// recovered by the watcher's keepalive resync.
+	sendKvsWatchEvent(dstNodeID *types.NodeID, event *proto.KvsWatchEvent)
 	sendSectorManageMember(param *SectorManageMemberParam)
 	sendSectorActivate(param *SectorActivateParam) chan error
 	sendSectorPrepareSplit(param *SectorSplitParam) chan error
@@ -122,6 +139,48 @@ func (o *outboundAdapter) sendKvsOperation(param *operationParam) {
 	o.transferer.Request(dst, networkTypes.PacketModeNone, content, &operationHandler{
 		receiver: param.receiver,
 	})
+}
+
+type watchHandler struct {
+	receiver func(res *proto.KvsWatchResponse, err error)
+}
+
+func (h *watchHandler) OnResponse(packet *networkTypes.Packet) {
+	h.receiver(packet.Content.GetKvsWatchResponse(), nil)
+}
+
+func (h *watchHandler) OnError(code constants.PacketErrorCode, message string) {
+	h.receiver(nil, fmt.Errorf("packet error %d: %s", code, message))
+}
+
+func (o *outboundAdapter) sendKvsWatch(param *watchParam) {
+	dst := types.NewHashedNodeID([]byte(param.key))
+
+	o.transferer.Request(dst, networkTypes.PacketModeNone,
+		&proto.PacketContent{
+			Content: &proto.PacketContent_KvsWatch{
+				KvsWatch: &proto.KvsWatch{
+					Key:           param.key,
+					WatchId:       param.watchID,
+					SinceRevision: param.sinceRevision,
+					Cancel:        param.cancel,
+				},
+			},
+		},
+		&watchHandler{receiver: param.receiver},
+	)
+}
+
+func (o *outboundAdapter) sendKvsWatchEvent(dstNodeID *types.NodeID, event *proto.KvsWatchEvent) {
+	o.transferer.RequestOneWay(
+		dstNodeID,
+		networkTypes.PacketModeExplicit|networkTypes.PacketModeNoRetry,
+		&proto.PacketContent{
+			Content: &proto.PacketContent_KvsWatchEvent{
+				KvsWatchEvent: event,
+			},
+		},
+	)
 }
 
 func (o *outboundAdapter) sendSectorManageMember(param *SectorManageMemberParam) {

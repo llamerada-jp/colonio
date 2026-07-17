@@ -215,45 +215,99 @@ colonio はアプリに埋め込むライブラリで全 node が同一バイナ
 - 楽観制御を patch 形式側の語彙(JSON Patch の `test` op 等)で行う道もあり、
   それは Patcher の実装内の話で KVS は関知しない。
 
-## Watch(将来拡張。初期実装には含めない)
+## Watch(Stage E で実装済み)
 
-メタデータ用途はいずれ変更通知が欲しくなる(lock 取得待ち、プロセス状態の
-監視)。revision が単調な今回の設計は「revision N 以降の変更を通知する」形の
-Watch をそのまま支えられるため、API 面だけ先に確保しておく。
+メタデータ用途の変更通知(lock 取得待ち、プロセス状態の監視)。
 
 ```go
 func (c *Client) Watch(ctx context.Context, key string, opts ...WatchOption) (*Watcher, error)
 
 type Watcher struct { ... }
 func (w *Watcher) Events() <-chan WatchEvent
-func (w *Watcher) Err() error // Events close 後の理由
+func (w *Watcher) Err() error // Events close 後の理由 (通常 ctx の終了理由)
 
 type WatchEvent struct {
     Key      string
     Value    []byte // Deleted のとき nil
-    Revision uint64
+    Revision uint64 // Deleted のときは消えたレコードの最終 revision (不明なら 0)
     Deleted  bool
 }
 
-func WithSinceRevision(rev uint64) WatchOption // これより後の変更から通知
+func WithSinceRevision(rev uint64) WatchOption // 現状態が rev のままなら初回イベントを抑制
 ```
 
-### 意味論(設計スケッチ)
+### 意味論(実装済み)
 
 - **per-key watch のみ**。prefix / range watch は非目標: key はリング全体に
   ハッシュ分散されるため、範囲購読は全 sector への購読になり、この
   アーキテクチャでは自然に実装できない。
 - **coalesced / at-least-once**: 全変更履歴の配送は保証しない。切断・host
-  交代を挟んだ場合は「最新状態」1 イベントに合流し得る。revision は単調で、
-  同一 revision の重複配送はあり得る(受信側は revision で冪等化)。
-- 実装スケッチ: watcher は key の host に購読を登録し、host は apply フックで
-  イベントを push する。PREPARING / host 交代 / 切断を検知したら
-  `WithSinceRevision(最終受信 revision)` で再登録し、現 revision が
-  それより大きければ現在状態を 1 イベントとして配送する(差分回復)。
-  購読は host 側で lease 的に管理し、keepalive が絶えたら破棄する。
-- **既知の限界**: tombstone を持たないため、再登録時に「レコードが不在」の
-  場合、購読断の間に Delete があったのか元々不在だったのかを区別できない。
-  不在は `Deleted` イベントとして配送する(冪等なので過剰通知は無害)。
+  交代を挟んだ場合は「最新状態」1 イベントに合流し得る。遅い consumer も
+  同様(Events チャネルが詰まったら古い未配送イベントを新しい状態で上書き)。
+  受信側の冪等化キーは (Revision, Deleted)。
+- **初回イベント = 現在状態**。レコード不在は `Deleted` イベントとして配送
+  (tombstone を持たないため「購読断の間の Delete」と「元々不在」を区別
+  できない — 過剰通知側に倒す)。`WithSinceRevision(rev)` は「現状態が
+  ちょうど rev で存在」の場合のみ初回配送を抑制する。
+- **Watch は即座に返る**(etcd 同様の非同期確立)。PREPARING・host 交代・
+  切断は内部の再購読が黙って吸収し、回復時に状態 resync が入る。エラー報告は
+  ctx 終了のみ。
+
+### 実装(2026-07-16)
+
+- **wire**: `KvsWatch`(購読=keepalive=差分回復を 1 メッセージに統合。
+  `since_revision` に「配送済み revision」を載せると host は不変時に value を
+  省略して返す。`cancel` フラグで解除)/ `KvsWatchResponse`(現在状態)/
+  `KvsWatchEvent`(watch_id 宛の one-way push、Explicit|NoRetry)。watcher の
+  同定は packet source(owner と同じく偽装可能フィールドを wire に置かない)+
+  クライアント生成の watch_id。
+- **host 側**: 購読レジストリは operator 内の **host ローカル導出状態**
+  (複製・移送・snapshot に載せない。TODO に固定した方針どおり)。購読要求は
+  key hash で host に届くので replica のレジストリは常に空 = apply フックの
+  emit が自然に host 限定になる。lease は 15s(client keepalive 5s × 3)、
+  hosting tick(3s)で失効 purge、SetRange 縮小・ClearRange(terminate /
+  snapshot restore)でも purge(移送は Delete ではないので Deleted イベントは
+  出さない)。
+- **emit 規則**: (revision, exists) が変わる apply(SET/PATCH/DELETE、不在
+  key への lock acquire によるレコード生成)と、lease の解放/失効
+  (release/revoke — revision 不変で `locked=false` を push、lock 待ちの
+  wake 用)。**grant/renewal は emit しない**(消費者がおらず、renewal は
+  locked key の全 watcher へのスパムになる)。イベントは apply の mtx 内で
+  収集し解放後に送信(Transferer 規約)。
+- **client 側**: push は前進方向のみ信頼((rev, deleted) が新しいときだけ
+  配送)、keepalive の resync 状態は authoritative(counter リセットで
+  revision が後退しても resync 側は配送する — stale 化の回復路)。
+- **lock 取得待ちの置き換え**: `Client.Lock` の holder 待ちは lock key の
+  watch の「lease が空いた」シグナル駆動(release/revoke push で約 RTT 内に
+  takeover 試行)。watch を張れない場合は 10s ポーリングに退化。host 側
+  fast-path 拒否(Stage D)はそのまま最終防壁。
+- **監査(simulator kvswatchload.go)**: 共有 key space から各 node 4 key を
+  watch。`@@ kvs watch corrupt`(value/key 不一致)、`@@ kvs watch back`
+  (revision 後退 — counter リセットと突合)、`@@ kvs watch lost`
+  (self-write 収束監査: 自分の ack 済み Set の revision 以上が 45s 以内に
+  観測されない)。分計は `@@ kvs watch: ev/del/corrupt/back,
+  probe/ok/lost/prep/unk`。
+
+  **run 検証済み (2026-07-16 run, ~30min, 激 churn: force terminate 179 回)**:
+  - 初回 run は監査側のバグで全滅: 統計ダンプの `*stats = kvsWatchStats{}` が
+    保持中の内包 mutex ごとゼロクリアし「unlock of unlocked mutex」の fatal で
+    全 node プロセスが起動 1 分後に落ちた(counters を mutex と分離して修正。
+    fatal error は recover 不能でプロセス全体を殺すことに注意)。
+  - **watch 本体は健全**: イベント配送 499k / **corrupt 0**、
+    収束監査 probe 24,315 中 **99.3% ok**。
+  - lost 36 (0.15%): **全件が force terminate ±120s**(大半 ±15s)、25/36 は
+    同 key の revision 後退と併発 = 既知の sector データ喪失クラス
+    (ack 済み書き込み破棄、design.md 許容)+ 監査自体の偽陽性
+    (counter リセット後は `revision >= probeRevision` が構造的に成立不能)。
+    watch 配送のバグ所見なし。
+  - back 658: 全て counter リセット指紋(`134 -> 4` 型、同 key の複数 watcher
+    が同時観測)。resync が回復路として機能している証跡でもある。
+  - **lock 待ちの watch 駆動化の効果を確認**: acquire unk 8.5%(前回 run の
+    1s ポーリング + fast-path)→ **0.71%**。相互排除監査は区間重複 18/3,782
+    (0.5%)で全件が再交付クラス(後側 generation 極小)、fencing 捕捉
+    (guard conf 7 / locked 17)、黙認 0。
+  - データプレーン併走分も corrupt 0 / miss 0(set 94k / cas 23k / patch 8.7k)。
+    cas ok 重複 126 件中 <10s は 2 件(~4/h、既知の merge/overlap 抗争クラス)。
 
 ## 実装タスク(interface 変更を含む見直し)
 
@@ -470,19 +524,24 @@ Stage B に依存(envelope、revision 返却、`WithRevision` の at-most-once)�
      churn バンプ(15〜18%)は本物の混雑で、既知の churn 挙動の範囲。
    - **Stage D 完了**。unk 指標のベースライン確認は次回の通常 run に相乗り。
 
-### Stage E: Watch(必要になったら)
+### Stage E: Watch — 実装済み (2026-07-16)
 
-上記スケッチの具体化。lock 取得待ちのポーリング置き換えもここで。
+上記「Watch」章の実装。lock 取得待ちのポーリング置き換えも実施
+(`lockHeldPollInterval` 1s ポーリング → watch シグナル駆動 +
+`lockWaitFallbackInterval` 10s フォールバック)。unit テストは
+operator(watch_test.go: 状態返却・emit 規則・range purge・lease 失効)と
+node/kvs(watch_test.go: 初回状態・冪等化・counter リセット回復・
+lock シグナル / lock_test.go: watch 駆動の holder 待ち)。
+**run 検証済み (2026-07-16)** — 詳細は「Watch」章の run 結果を参照。
+corrupt 0・収束 99.3%・lock acquire unk 0.71% で Stage E 完了。
 
 ## TODO
 
 - messaging 等、他モジュールのアクセサ同型化(スコープ外だが Stage A の
   ついでに形だけ決める価値あり)。
 - `KvsGetStability` の置き場所(Stage A の 3)。
-- Watch の購読管理(host 側 lease、split/merge 時の purge)の詳細設計は
-  Stage E 着手時に。sector の移送・snapshot に**購読状態は載せない**
-  (複製状態ではなく host ローカルの導出状態とし、host 交代はクライアント側
-  再登録で回復する)方針だけ先に固定しておく。
+- ~~Watch の購読管理(host 側 lease、split/merge 時の purge)の詳細設計~~
+  → Stage E で実装済み(host ローカル導出状態の方針どおり)。
 - ctx deadline なしで PREPARING が永続するケース(range の恒久欠損)の
   観測性: 内蔵リトライが握りつぶさないよう、リトライ回数・待ち時間の
   メトリクス/ログ露出を Stage A で入れる。

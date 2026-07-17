@@ -92,6 +92,16 @@ type Backend interface {
 	Delete(key string, casRevision uint64, casAbsent bool, lockGeneration uint64) chan error
 	LockAcquire(key string, ttlMS uint64) chan *kvsTypes.LockResult
 	LockRelease(key string, generation uint64) chan error
+	// WatchSubscribe registers or renews (it doubles as the keepalive) a
+	// watch subscription on the key's host and resolves with the record's
+	// current state.
+	WatchSubscribe(key string, watchID uint64, sinceRevision uint64) chan *kvsTypes.WatchSubscribeResult
+	// WatchCancel drops the subscription; fire-and-forget.
+	WatchCancel(key string, watchID uint64)
+	// WatchRegisterSink installs the dispatch target of pushed events for one
+	// watch id; the sink runs on the network goroutine and must not block.
+	WatchRegisterSink(watchID uint64, sink func(*kvsTypes.WatchPush))
+	WatchUnregisterSink(watchID uint64)
 }
 
 // Client is the public handle of the KVS module. Obtain it from Node.KVS().

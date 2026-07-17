@@ -37,6 +37,12 @@ type inboundPort interface {
 	// srcNodeID is the requesting node: the implicit lock owner (there is no
 	// spoofable owner field on the wire).
 	kvsOperate(operation *proto.KvsOperation, srcNodeID *types.NodeID) (proto.KvsOperationResponse_Error, *kvsOperateResult)
+	// srcNodeID is the watching node: the implicit subscription owner and the
+	// destination of the pushed events.
+	kvsWatch(watch *proto.KvsWatch, srcNodeID *types.NodeID) (proto.KvsOperationResponse_Error, *kvsTypes.WatchState)
+	// kvsWatchEvent dispatches a pushed change notification to the local
+	// watcher identified by the event's watch_id.
+	kvsWatchEvent(event *proto.KvsWatchEvent)
 	processConsensusMessage(key kvsTypes.SectorKey, content *proto.ConsensusMessage)
 	sectorManageMember(param *sectorManageMemberParam) error
 	sectorActivate(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID) bool
@@ -59,6 +65,8 @@ func SetupInbound(l *slog.Logger, t *transferer.Transferer, c inboundPort) {
 	}
 
 	transferer.SetRequestHandler[proto.PacketContent_KvsOperation](t, i.recvKvsOperation)
+	transferer.SetRequestHandler[proto.PacketContent_KvsWatch](t, i.recvKvsWatch)
+	transferer.SetRequestHandler[proto.PacketContent_KvsWatchEvent](t, i.recvKvsWatchEvent)
 	transferer.SetRequestHandler[proto.PacketContent_ConsensusMessage](t, i.recvConsensusMessage)
 	transferer.SetRequestHandler[proto.PacketContent_SectorManageMember](t, i.recvSectorManageMember)
 	transferer.SetRequestHandler[proto.PacketContent_SectorActivate](t, i.recvSectorActivate)
@@ -82,6 +90,32 @@ func (i *inboundAdapter) recvKvsOperation(packet *networkTypes.Packet) {
 			KvsOperationResponse: response,
 		},
 	})
+}
+
+func (i *inboundAdapter) recvKvsWatch(packet *networkTypes.Packet) {
+	content := packet.Content.GetKvsWatch()
+
+	errCode, state := i.core.kvsWatch(content, packet.SrcNodeID)
+
+	response := &proto.KvsWatchResponse{Error: errCode}
+	if state != nil {
+		response.Exists = state.Exists
+		response.Revision = state.Revision
+		response.Locked = state.Locked
+		response.ValueOmitted = state.ValueOmitted
+		response.Value = state.Value
+	}
+	i.transferer.Response(packet, &proto.PacketContent{
+		Content: &proto.PacketContent_KvsWatchResponse{
+			KvsWatchResponse: response,
+		},
+	})
+}
+
+// recvKvsWatchEvent handles the one-way event push from a key's host; there
+// is no response.
+func (i *inboundAdapter) recvKvsWatchEvent(packet *networkTypes.Packet) {
+	i.core.kvsWatchEvent(packet.Content.GetKvsWatchEvent())
 }
 
 func (i *inboundAdapter) recvConsensusMessage(packet *networkTypes.Packet) {

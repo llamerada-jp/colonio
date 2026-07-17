@@ -73,6 +73,10 @@ var _ OutboundPort = &kvsOutboundHelper{}
 
 func (o *kvsOutboundHelper) sendKvsOperation(param *operationParam) {}
 
+func (o *kvsOutboundHelper) sendKvsWatch(param *watchParam) {}
+
+func (o *kvsOutboundHelper) sendKvsWatchEvent(dstNodeID *types.NodeID, event *proto.KvsWatchEvent) {}
+
 func (o *kvsOutboundHelper) sendSectorManageMember(param *SectorManageMemberParam) {}
 
 func (o *kvsOutboundHelper) sendSectorActivate(param *SectorActivateParam) chan error {

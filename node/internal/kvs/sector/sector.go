@@ -58,12 +58,15 @@ type SectorConfig struct {
 	Outbound   consensus.OutboundPort
 	Store      kvsTypes.Store
 	// Patchers is the node-wide Patcher registry, shared by every sector.
-	Patchers  map[string]kvsTypes.Patcher
-	SectorKey *kvsTypes.SectorKey
-	IsHosting bool
-	Join      bool
-	Members   map[kvsTypes.SectorNo]*types.NodeID
-	Head      *types.NodeID
+	Patchers map[string]kvsTypes.Patcher
+	// PushWatchEvent sends one watch notification to a subscribed watcher
+	// node (one-way, best-effort); handed through to the operator.
+	PushWatchEvent func(dst *types.NodeID, event *proto.KvsWatchEvent)
+	SectorKey      *kvsTypes.SectorKey
+	IsHosting      bool
+	Join           bool
+	Members        map[kvsTypes.SectorNo]*types.NodeID
+	Head           *types.NodeID
 }
 
 type SectorInfo struct {
@@ -171,11 +174,12 @@ func NewSector(config *SectorConfig) *Sector {
 	})
 
 	sector.operator = operator.NewOperator(&operator.Config{
-		SectorKey: config.SectorKey,
-		Handler:   sector,
-		Store:     config.Store,
-		Patchers:  config.Patchers,
-		Head:      config.Head,
+		SectorKey:      config.SectorKey,
+		Handler:        sector,
+		Store:          config.Store,
+		Patchers:       config.Patchers,
+		PushWatchEvent: config.PushWatchEvent,
+		Head:           config.Head,
 	})
 
 	return sector
@@ -206,6 +210,9 @@ func (s *Sector) Start(ctx context.Context) {
 				// same derived lock index but stay quiet
 				if s.isHosting {
 					s.operator.ProposeExpiredLockRevocations()
+					// watch subscriptions live on the host only; reap the ones
+					// whose keepalives stopped
+					s.operator.PurgeExpiredWatches()
 				}
 				s.applyProposals(true)
 

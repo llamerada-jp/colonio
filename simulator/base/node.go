@@ -256,6 +256,7 @@ func (n *Node) runNode(ctx context.Context) error {
 	// COLONIO_SIM_KVS_INTERVAL_MS is set; see kvsload.go)
 	n.startKvsLoad(ctx)
 	n.startKvsLockLoad(ctx)
+	n.startKvsWatchLoad(ctx)
 
 	n.Write(func() error {
 		r := n.Record.GetRecord()

@@ -630,6 +630,7 @@ Go 実装（いずれも 2026-07-06、詳細は run 8〜10 のセクション参
 | 改善案 A / C / D / E / F / G（B の残り: CommitMerge extendTailOnly を含む） | Go 実装 | アルゴリズム改善案 |
 | 同一 term 二重リーダー疑いの系譜特定（run6 の未特定事項） | 調査 | run6 |
 | Col.Stop() 後のセクター raft goroutine 残留（解析ノイズ） | Go 実装 (node/simulator) | run 11 その他 |
+| **要検証**: `Operator.SetRange` は「全周セクター (head==tail) → 任意の tail」を縮小でなく拡張として扱う（先頭分岐の `s.tail.IsBetween(&s.head, &tail)` が head==tail のとき常に真）。この経路では範囲外レコードの削除・lock index / watch 購読の purge が走らない。単一 node の全周 hosting sector が split（PreCommitSplit → SetRange）で縮小するケースが該当し、移譲済み範囲の stale レコードが store/keys に残留 → 後の Extend で同範囲を再取得すると stale 値が復活する可能性がある。Watch (Stage E) のテスト作成中に発見 (2026-07-16)、実害は未確認 | Go 実装 (operator) | spec/kvs/api.md「Watch」 |
 
 ### 状況（2026-07-04 のシミュレーション解析より）
 

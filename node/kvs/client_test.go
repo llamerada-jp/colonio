@@ -55,6 +55,11 @@ type fakeBackend struct {
 	releaseErrors   []*error
 	acquireCalls    []lockCall
 	releaseCalls    []lockCall
+
+	subscribeResults []*kvsTypes.WatchSubscribeResult
+	subscribeCalls   []watchSubscribeCall
+	cancelCalls      []watchSubscribeCall
+	sinks            map[uint64]func(*kvsTypes.WatchPush)
 }
 
 func (f *fakeBackend) Get(key string, withoutValue bool) chan *kvsTypes.GetResult {
@@ -174,6 +179,64 @@ func (f *fakeBackend) LockRelease(key string, generation uint64) chan error {
 	c <- *entry
 	close(c)
 	return c
+}
+
+type watchSubscribeCall struct {
+	key           string
+	watchID       uint64
+	sinceRevision uint64
+}
+
+func (f *fakeBackend) WatchSubscribe(key string, watchID uint64, sinceRevision uint64) chan *kvsTypes.WatchSubscribeResult {
+	c := make(chan *kvsTypes.WatchSubscribeResult, 1)
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	f.subscribeCalls = append(f.subscribeCalls, watchSubscribeCall{key: key, watchID: watchID, sinceRevision: sinceRevision})
+	if len(f.subscribeResults) == 0 {
+		return c // hang
+	}
+	result := f.subscribeResults[0]
+	f.subscribeResults = f.subscribeResults[1:]
+	if result == nil {
+		return c // hang
+	}
+	c <- result
+	close(c)
+	return c
+}
+
+func (f *fakeBackend) WatchCancel(key string, watchID uint64) {
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	f.cancelCalls = append(f.cancelCalls, watchSubscribeCall{key: key, watchID: watchID})
+}
+
+func (f *fakeBackend) WatchRegisterSink(watchID uint64, sink func(*kvsTypes.WatchPush)) {
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	if f.sinks == nil {
+		f.sinks = make(map[uint64]func(*kvsTypes.WatchPush))
+	}
+	f.sinks[watchID] = sink
+}
+
+func (f *fakeBackend) WatchUnregisterSink(watchID uint64) {
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	delete(f.sinks, watchID)
+}
+
+// push delivers an event to every registered sink, like the network layer does.
+func (f *fakeBackend) push(p *kvsTypes.WatchPush) {
+	f.mtx.Lock()
+	sinks := make([]func(*kvsTypes.WatchPush), 0, len(f.sinks))
+	for _, sink := range f.sinks {
+		sinks = append(sinks, sink)
+	}
+	f.mtx.Unlock()
+	for _, sink := range sinks {
+		sink(p)
+	}
 }
 
 func errP(err error) *error { return &err }
