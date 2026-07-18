@@ -159,6 +159,60 @@ inactive セクターで捨てており、import 先が定義上 inactive であ
   優先する overlap 解消規則。上記 is_stable / 死活検知の課題と同じ
   「routing 視界と sector 状態の不一致」ファミリー。
 
+  **追加解析 (2026-07-17、run 2026-07-16T23:25〜55Z・30 分)**:
+  ループ 1 周をログで完全に対応付け、機構を確定した。
+
+  - **定量**: CAS 成功 23,237 件中、同一 (key, base) の重複成功 126 組
+    （全て別 client 発）。「merge done → 2 秒以内に TerminateA
+    (`Terminate hosting sector 1`)」の自壊ペアは **103 回 / merge 総数 505 /
+    関与 48 node** — 全 merge の約 2 割が直後に自セクターを破棄している。
+    長間隔（数分〜25 分）の重複は range の **revision リセット**を示す
+    （例: kvs-load-6 は 23:48:52 に rev 1042 で CAS 成功 → 抗争後の
+    23:49:45 に base=1 の CAS が 2 client で成功 = 履歴全損）。
+  - **代表インシデント** (backward 3b9365a5 vs 生存 host 3bfbed25、
+    23:49:14〜55、7 周):
+    1. 3bfbed25 は生存（load/lock 統計を出力し続ける）だが is_stable に
+       なれず routing から脱落（3b9365a5 の frontwardNextNodeID は
+       1 つ先の 3e36e065）。その hosting sector (019f6d50-…0b66/8) の
+       グループが leaderless 化（StateCandidate, term 空回り）し、
+       terminate が commit 不能な「**不死身の active sector**」S として
+       残存（host 生存版の stale active レプリカ = TODO-2 の変種）。
+    2. 3b9365a5 が S.head を blocker に clip activate（[自, S.head)）。
+    3. operateSectors: frontward=S・!frontwardNodeMatch・head >= tail →
+       **merge**。`PrepareMerge` は初回 commit の mergeBy が残るため
+       2 周目以降 **raft を経由せず即成功**（sector.go の
+       mergeBy == 自分 fast path）。migrate 後、frontward の
+       `Terminate()` は fire-and-forget（完了未確認・2 回目以降 no-op）、
+       `CommitMerge` は自グループの tail を S.tail まで拡張して「done」。
+    4. S は死んでいないため次 tick で S.head が [自, tail) 内 →
+       **TerminateA が健全な自セクターごと両殺し**（吸収済みレコード +
+       窓中の ack 済み書き込みを破棄）。S 側の terminate は commit
+       できず生き残る。
+    5. backward の sectorActivate が再 activate → 2 へ。周期 4〜7 秒。
+       S の force terminate（leaderless 30s）でループ終了。
+  - **コード上の急所 3 点**: (a) `kvs.go mergeSector` が frontward の
+    terminate 完了を確認せず CommitMerge で tail を拡張する（Extend 1/2 に
+    ある `hasActiveSectorHeadInRange` 相当のガードもこの経路にはない）、
+    (b) `sector.go PrepareMerge` の mergeBy fast path がループを毎周
+    無償で成功させる、(c) TerminateA が「commit できる側 = データ保持側」を
+    殺し「commit できない側」が生き残る非対称。
+  - **変種の整理**: 従来記載の「生存 host が再 activate して重複」変種
+    (2026-07-12) に加え、「victim の terminate が commit 不能で重複が
+    残る」変種を確定。overlap 修復は「相手グループが commit できる」ことを
+    暗黙の前提にしており、モデル化は両変種をカバーする必要がある。
+
+  **モデル検証完了 (2026-07-17〜19)**: `spec/kvs/KvsSectorFalseLeftover.tla`
+  で偽 leftover 誤認・不死身セクター (stuck)・データ喪失 (追跡アーク +
+  NoRepairLoss 不変式) をモデル化し、上記に加えて計 8 欠陥を特定
+  （孤児 terminate、同一保持者 ABA、release 後 migrate の無世代 terminate、
+  activation の背後カバー盲点、被 merge 中の吸収、stale propTail など）。
+  修正パッケージ「CommitMerge 前の victim 破棄確認 + 範囲再検証 /
+  prepare 世代付き scoped terminate / 被覆時 activation skip /
+  mergeBy 保持中の Import 拒否」で NoRepairLoss + 全 liveness の成立を
+  TLC で確認した (safety: churn 2 で 75 億状態、liveness: churn 1、
+  誤検知 release 併発 safety も成立)。**Go 実装は未着手** — 詳細と実装
+  タスクは README「merge/overlap 抗争の解析とモデル検証」と TODO を参照。
+
 ## 分岐
 
 | hosting sector<br>- active<br>- inactive | frontward sector<br>- not exist<br>- active<br>- inactive | frontward node<br>- match<br>- not match (frontward sector head < frontward node addr) | frontward sector head  | note                                   | action                     |

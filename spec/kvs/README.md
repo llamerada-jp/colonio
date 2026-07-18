@@ -59,6 +59,12 @@ spec/kvs/
   KvsSectorLeftoverSafetyMC.tla # Phase L3 (誤検知 safety) パラメータ
   KvsSectorLeftoverSafety.cfg   # Phase L3 TLC 設定 (safety のみ)
 
+  KvsSectorFalseLeftover.tla    # merge/overlap 抗争 (偽 leftover 誤認 +
+                                #   不死身セクター + データ喪失) 版
+  KvsSectorFalseLeftoverMC.tla  # 同モデルパラメータ (Phase FL1〜FL3 は定数を切替)
+  KvsSectorFalseLeftover.cfg    # 同 TLC 設定 (liveness 含む)
+  KvsSectorFalseLeftoverSafety.cfg # Phase FL1/FL3 TLC 設定 (safety のみ)
+
   README.md                # このファイル
 ```
 
@@ -192,6 +198,14 @@ java -jar tla2tools.jar -workers auto -config KvsSectorMergeLockSafety.cfg KvsSe
 java -jar tla2tools.jar -workers auto -config KvsSectorLeftover.cfg KvsSectorLeftoverMC.tla
 # Phase L3 (誤検知 safety)
 java -jar tla2tools.jar -workers auto -config KvsSectorLeftoverSafety.cfg KvsSectorLeftoverSafetyMC.tla
+
+# merge/overlap 抗争 + データ喪失版 (run 2026-07-16 対策の検証)
+# Phase FL2 liveness (デフォルト設定、churn 1)。Phase FL1 (バグ再現) は
+# KvsSectorFalseLeftoverMC.tla の MC_Fix* 4 つを FALSE にして Safety.cfg で実行。
+# safety は MC_MaxChurn = 2 で Safety.cfg を使う (liveness 込みだと状態爆発)
+java -jar tla2tools.jar -workers auto -config KvsSectorFalseLeftover.cfg KvsSectorFalseLeftoverMC.tla
+# Phase FL1 / FL3 / churn 2 safety (safety のみ)
+java -jar tla2tools.jar -workers auto -config KvsSectorFalseLeftoverSafety.cfg KvsSectorFalseLeftoverMC.tla
 ```
 
 ## パラメータ調整
@@ -1501,6 +1515,62 @@ Error → 自ノードへ同期配送」を忠実に模倣) が修正前コー�
 を守る必要がある。Receive のローカル配送を goroutine に逃がす構造的解消は
 順序保証への影響評価が必要なため見送り (規約 + 回帰テストで担保)。
 
+### merge/overlap 抗争の解析とモデル検証（run 2026-07-16 → KvsSectorFalseLeftover、2026-07-17〜19）
+
+design.md「churn 下の課題」で未解決だった merge/overlap 抗争
+（ack 済み書き込みの修復起因破棄）の対応。run 2026-07-16 (30 分・150 node)
+のログでループ 1 周を完全にコード対応付けし（詳細は design.md の
+「追加解析 2026-07-17」: 自壊ペア 103 回 / merge 総数 505 / 48 node、
+CAS 重複 126 組・revision リセット実測）、モデル反映 → 修正検証を実施した。
+
+**モデル**: `KvsSectorFalseLeftover.tla`（Leftover 版のコピー派生）。差分:
+
+- **merge の Go 忠実な非原子化**: ProposeMerge (lock) → MergeMigrate
+  (移送 + terminate 提案 = fire-and-forget) → CommitMergeExtend (tail 拡張)
+  に分割し、victim の破棄を独立アクション ApplyVictimTerminate (WF) に分離。
+- **stuck[h]**: グループの commit 不能 (quorum 喪失) を抽象化。terminate が
+  効かない「不死身の active セクター」を表現。回復は LocalDestroy
+  (checkQuorumLoss の写像、WF) のみ。TODO-1 の「commit が来ない」故障モードの
+  部分実装でもある。
+- **DropFromRView**: 生存 member の視界喪失（偽 leftover 誤認のトリガ）。
+- **データ (追跡アーク 1 本)**: holder 変数で最新 ack 済み書き込みの保持
+  セクターを追跡し、churn 起因の喪失 (LostChurn、design.md が許容) と
+  修復起因の喪失 (LostRepair = バグ) を区別。検証ターゲットは
+  **NoRepairLoss** (修復がデータを壊さない)。
+
+**TLC が特定した欠陥** (修正を外すと反例が出ることを個別に確認):
+
+| # | 欠陥 | 修正 |
+|---|------|------|
+| 1 | CommitMerge が victim の terminate 完了を確認せず tail 拡張 → 重複 → TerminateA が merger (データ保持側) を自壊。stuck 不要のレースでも発生、stuck だと無限ループ (run 実測形) | 修正 1: ConfirmVictim |
+| 2 | migrate 後の victim への書き込み窓 | 既存 `mergeFenced` が対処済み (モデルを実装に整合) |
+| 3 | merger 死亡後の孤児 terminate が後から生存セクターを破棄 | 修正 2: terminate の tenure スコープ |
+| 4 | 同一保持者の re-prepare と旧 terminate の ABA 対合 | 修正 2': prepare 世代の携行・一致検査 |
+| 5 | (誤検知) release 後の migrate が無世代 terminate を残す | 修正 2' に包含 (世代外は dead-on-arrival) |
+| 6 | activation の背後カバー盲点 → 修復不能な恒久重複 (liveness 違反) | 修正 3: NoActivateUnderCover |
+| 7 | 被 merge 中のセクターが吸収役になり、absorber の export に乗らないデータが消滅 (`mergeFenced` は Import を塞がない) | 修正 4: NoAbsorbWhileLocked |
+| 8 | prepare 時に捕獲した propTail が victim の split 後に stale 化し、生きたセクターを飲み込む | 修正 1': CommitMerge 前の範囲再検証 (Extend と同じガード) |
+
+併せて ReleaseMergeLock の enabling を Go の実トリガー（競合タイマー、
+保持者の生死を見ない）に整合させた。
+
+**検証結果** (N=4, InitialMembers={0,1,2,3}, stuck 1, drop 1, 24 workers):
+
+| Phase | 設定 | 結果 |
+|-------|------|------|
+| FL1: バグ再現 | 修正 4 種 OFF, safety | **NoRepairLoss 違反**（深さ 10、1 秒） |
+| FL2 safety | 修正 4 種 ON, churn 2 | **違反なし**（75 億状態生成 / 6.98 億 distinct / 深さ 48、2h59m） |
+| FL2 liveness | 同, churn 1 | **全 safety + 全 liveness 成立**（4.35 億状態生成 / 4,769 万 distinct / 深さ 39、2h04m） |
+| FL3: 誤検知 safety | + PermissiveRelease, churn 2 | **違反なし**（117 億状態生成 / 10.4 億 distinct / 深さ 45、4h36m）。この規模は fingerprint 衝突推定が高い点に注意（MC のコメント参照） |
+
+**Go 実装は未着手** (TODO 一覧参照)。実装対象: (1) mergeSector の
+CommitMerge 前に victim 破棄確認 + `hasActiveSectorHeadInRange` 再検証、
+失敗時 abort、(2) prepare_merge に世代カウンタを追加し、merge 用 terminate
+提案を (mergeBy, 世代) の CAS apply に変更（ReleaseMerge と同じ規約）、
+(3) `activateHostingSector` に被覆チェック（背後からカバーする active
+セクターがあれば skip）、(4) mergeBy 保持中の Import を apply 側で
+no-op ゲート（merger は abort）。
+
 ## 今後の TODO
 
 KVS 関連の TODO はこの章に一元化する。マークの読み方: `[x]` = 対応済み /
@@ -1533,7 +1603,11 @@ KVS 関連の TODO はこの章に一元化する。マークの読み方: `[x]`
       run 13 の対策）
 - [ ] [**TODO-1: quorum 喪失の故障モードを含む拡張モデル**](#todo-1) —
       優先度: 高。TODO-3/4 の実装 (2026-07-04) が先行しており、強制破棄の
-      誤発動時の安全性がモデル未確認の検証負債。しきい値調整の前提でもある
+      誤発動時の安全性がモデル未確認の検証負債。しきい値調整の前提でもある。
+      **一部進展 (2026-07-19)**: `KvsSectorFalseLeftover.tla` が
+      merge/overlap 系について stuck (commit 不能) + LocalDestroy +
+      誤検知 release を含む safety/liveness を検証済み。残りは
+      activate/split 提案の stuck と TimeoutAbort の検証
 - [ ] [**TODO-2: stale active レプリカの掃除とガード緩和の検証**](#todo-2) —
       優先度: 高。TODO-1 と独立に着手可。クラス B' は run 4 / run 7 でも
       継続観測（短時間で解消し恒久化はしていない）
@@ -1589,8 +1663,12 @@ KVS 関連の TODO はこの章に一元化する。マークの読み方: `[x]`
 - [ ] [**強制破棄・タイムアウトしきい値の実測再調整**](#todo-thresholds) —
       2s / 15s / 30s / 45s は暫定値のまま
 - [ ] [**merge/overlap 抗争（生存 host の sector を leftover と誤認）**](#todo-merge-overlap)
-      （設計 + Go + モデル） — 2026-07-12 観測・未解決。正典は
-      [design.md](design.md)「churn 下の課題」
+      （設計 + Go + モデル） — **モデル検証まで完了 (2026-07-19)**:
+      `KvsSectorFalseLeftover.tla` で 8 欠陥を特定し、修正 4 種 + 世代付き
+      terminate で NoRepairLoss + 全 liveness の成立を確認
+      （「merge/overlap 抗争の解析とモデル検証」の節参照）。
+      **残タスク = Go 実装**。経緯の正典は [design.md](design.md)
+      「churn 下の課題」
 - [ ] [**`Operator.SetRange` の全周セクター縮小の扱い（要検証）**](#todo-setrange)
       （Go, operator） — 2026-07-16 発見、2026-07-17 コード確認で未修正のまま
 - [ ] [**Col.Stop() 後のセクター raft goroutine 残留**](#todo-col-stop)
@@ -1811,15 +1889,30 @@ forcePendingDuration=45s / mergeReleaseDuration=30s は、`== retry proposals`
 #### merge/overlap 抗争 — 生存 host の sector を leftover と誤認（設計 + Go + モデル）
 
 routing 視界の不一致により、隣接 host が**生きている node** の active sector を
-「host 死亡後の leftover」と誤認すると、tail 切り詰め activate → merge 吸収 →
-生存側の再 activate → 重複検知で両方 terminate（**ack 済み書き込みの破棄**）→
-再 activate → 再 merge のループに入る。2026-07-12 の api.md Stage B run で
-観測（単一 range で 46 秒間に Terminate 27 回、データプレーンの CAS 監査で
-可視化）。`KvsSectorLeftover.tla` は「host 死亡後の leftover」を前提に検証
-しており、生存 host の active sector を対象にした場合のインターリービングは
-**モデル未検証**。対策候補（merge 前の leftover host 生存確認、生存 host 側を
-優先する overlap 解消規則）を含め、正典は [design.md](design.md) の
-「churn 下の課題」。
+「host 死亡後の leftover」と誤認すると、merge → 重複 → terminate 自壊 →
+再 activate のループに入り **ack 済み書き込みが破棄される**（2026-07-12
+Stage B run で観測、run 2026-07-16 で機構を確定 — 経緯の正典は
+[design.md](design.md) の「churn 下の課題」）。
+
+**モデル検証は完了 (2026-07-19)**: `KvsSectorFalseLeftover.tla` が 8 欠陥と
+修正パッケージ（詳細は「merge/overlap 抗争の解析とモデル検証」の節）を確定。
+**残タスクは Go 実装**:
+
+1. `mergeSector`: CommitMerge 前に victim の破棄確認 +
+   `hasActiveSectorHeadInRange` による範囲再検証、失敗時は abort
+   （tail は切り詰め位置のままなので安全）
+2. `prepare_merge` に世代カウンタを追加し、merge 用 terminate 提案を
+   (mergeBy, 世代) 一致の CAS apply に変更（ReleaseMerge と同じ決定的規約。
+   proto 変更を伴う）
+3. `activateHostingSector`: 自位置を背後からカバーする active セクターが
+   ある間は activation を skip
+4. mergeBy 保持中のセクターへの Import を apply 側で no-op ゲートし、
+   merger 側は abort（`mergeFenced` の Import への拡張）
+
+各修正はモデルの対応する Fix 定数（ConfirmVictim / ScopedTerminate /
+NoActivateUnderCover / NoAbsorbWhileLocked）と 1:1 対応。回帰テストは
+FL1 反例の系列（視界乖離 → merge → レース terminate）を Go で再現する形を
+基本とする。
 
 <a id="todo-setrange"></a>
 #### `Operator.SetRange` の全周セクター縮小の扱い（要検証、Go 実装）
