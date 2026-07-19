@@ -89,9 +89,19 @@ inactive セクターで捨てており、import 先が定義上 inactive であ
 モデルの Commit 系アクション（CommitSplit 等）は「commit されたら状態が
 遷移する」を暗黙の前提としており、この規約はその前提を実装側で保証するもの。
 
-未決事項: 誤判定時の安全性のモデル検証（README の TODO-1 検証項目 3）、
-死亡判定への routing 情報の組み合わせ、しきい値の実測に基づく調整。
-詳細は [README.md の「今後の TODO」](README.md#今後の-todo)（TODO-1〜TODO-4）を参照。
+**モデル検証完了 (2026-07-25)**: `spec/kvs/KvsSectorFail.tla` で quorum 喪失
+（stuck）+ TimeoutAbort + LocalDestroy をモデル化し、誤発動（misfire）を
+許した場合でも safety（NoOverlapCommitted/ActiveFlagConsistent/ValidRange）+
+全 liveness（EventuallyAllActive 等）が成立することを確認した（N=3/N=4、
+複数規模で検証、最大 5.9 億状態 19 時間 42 分完走）。**FixTombstone=FALSE
+（sectorID 使い捨てなしの最も緩い設定）でも成立**しており、tombstone は
+safety の必要条件ではなく多重防御の一つという結論。churn・stuck・misfire を
+同時に最大化した設定は TLC のスケール限界（32-bit int オーバーフロー、
+約 19 億 distinct で発生）で未完走のまま残る。詳細は README「TODO-1 の
+検証結果」を参照。
+
+未決事項: 死亡判定への routing 情報の組み合わせ、しきい値の実測に基づく調整。
+詳細は [README.md の「今後の TODO」](README.md#今後の-todo)（TODO-2〜TODO-4）を参照。
 
 ### churn 下のメンバーシップ管理の課題（2026-07-04 run4 で確認・未解決）
 

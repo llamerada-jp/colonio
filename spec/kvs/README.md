@@ -1639,13 +1639,11 @@ KVS 関連の TODO はこの章に一元化する。マークの読み方: `[x]`
 - [x] **leftover セクターと tail 切り詰め activation の検証** (2026-07-10) →
       `KvsSectorLeftover.tla`（Phase L1〜L3、EventuallyNoLeftover 含む。
       run 13 の対策）
-- [ ] [**TODO-1: quorum 喪失の故障モードを含む拡張モデル**](#todo-1) —
-      優先度: 高。TODO-3/4 の実装 (2026-07-04) が先行しており、強制破棄の
-      誤発動時の安全性がモデル未確認の検証負債。しきい値調整の前提でもある。
-      **一部進展 (2026-07-19)**: `KvsSectorFalseLeftover.tla` が
-      merge/overlap 系について stuck (commit 不能) + LocalDestroy +
-      誤検知 release を含む safety/liveness を検証済み。残りは
-      activate/split 提案の stuck と TimeoutAbort の検証
+- [x] [**TODO-1: quorum 喪失の故障モードを含む拡張モデル**](#todo-1) —
+      `KvsSectorFail.tla` で stuck/TimeoutAbort/LocalDestroy をモデル化し
+      検証完了 (2026-07-25)。誤発動 (misfire) を許しても safety + 全 liveness
+      が成立することを N=3/N=4 の複数規模で確認（詳細は「TODO-1 の検証結果」の
+      節）。TODO-3/4 (2026-07-04 実装) の設計判断の検証負債を解消
 - [ ] [**TODO-2: stale active レプリカの掃除とガード緩和の検証**](#todo-2) —
       優先度: 高。TODO-1 と独立に着手可。クラス B' は run 4 / run 7 でも
       継続観測（短時間で解消し恒久化はしていない）
@@ -1807,6 +1805,59 @@ KVS 関連の TODO はこの章に一元化する。マークの読み方: `[x]`
   指すエイリアシングは実装上排除済み。
 - **関連**: `kvs.go` の `splitSector` / `mergeSector` / `proposedSplitRoutine` の
   NOTE (2026-07-04)、`sector.go` の `Terminate` / `TerminateLocally` の NOTE。
+
+**検証完了 (2026-07-25)**: `spec/kvs/KvsSectorFail.tla`（`KvsSectorRaft.tla` 派生、
+~600 行）で上記 3 検証項目すべてに答えを得た。詳細は次節「TODO-1 の検証結果」。
+
+<a id="todo-1-result"></a>
+#### TODO-1 の検証結果（`KvsSectorFail.tla`、2026-07-25）
+
+**モデル**: `stuck[h]`（h のグループが commit 不能、非決定的に発生・quorum を
+精密にモデル化しない抽象）+ 回復アクション `TimeoutAbort(n)`（Go の
+proposalWaitTimeout 相当、commit が進めない場合のみ発火）+ `LocalDestroy(h)`
+（Go の checkQuorumLoss/TerminateLocally 相当、raft を経由せず破棄）。
+`FixTombstone` 定数で「破棄後の再作成に旧実体宛ての遅延 commit が紛れ込まない」
+（Go は sectorID 使い捨てで保証）の有無を切り替え可能にした。CommitMerge は
+2026-07-19 の merge/overlap 修正後の Go 実装（victim 破棄確認 + 範囲再検証）に
+追随させてある。
+
+**Phase 方式**（各 phase は前 phase の結果を踏まえて設定を変える）:
+
+| Phase | 設定 | 状態数 | 結果 |
+|-------|------|--------|------|
+| F1: 回復なし | `EnableLocalDestroy=FALSE` | 26,483 生成 / 5,260 distinct、depth 19 | **EventuallyAllActive 違反**（stuck した join が永久 inactive のまま）。TimeoutAbort だけでは不十分と確認 — kvs.go の「離脱を検知しても解消できない」NOTE の形式的対応物 |
+| F2/F3 小規模 (N=3) | 回復 2 種 ON、`FixTombstone=FALSE`（permissive）、`MaxMisfire` 0→1 | misfire0: 80,913/14,706 distinct・misfire1: 556,426/85,469 distinct | 両方とも **safety + 全 liveness 成立** |
+| N=4 全 property (churn1/stuck1/misfire1) | 全メンバー開始、permissive | 33,856,525 生成 / 4,254,181 distinct、depth 24、8分10秒 | **違反なし** |
+| N=4 全 property (churn2/stuck2/misfire1) | 同上、churn/stuck を倍増 | 5,898,269,837 生成 / 540,596,955 distinct、depth 42、19時間42分 | **違反なし** |
+| N=4 全 property (churn1/stuck1/misfire2) | churn/stuck を縮小し misfire だけ倍増 | 143,345,853 生成 / 16,612,165 distinct、depth 25、29分30秒 | **違反なし** |
+
+**検証項目への回答**:
+
+1. **回復ありで safety が保たれるか** → 保たれる。F2 以降のすべての phase で
+   `TypeOK`/`ValidRange`/`ActiveFlagConsistent` 違反は 0 件。
+2. **回復に WF を付けると EventuallyAllActive が復活するか** → 復活する。
+   F1 の違反が F2 以降で解消したことで確認済み。
+3. **`LocalDestroy` の誤発動（`MaxMisfire>=1`）を許すと safety が破れるか** →
+   **破れない**。しかも `FixTombstone=FALSE`（破棄後の再作成に旧実体宛て
+   commit が紛れ込むことを許す最も緩い設定）でも成立した。つまり Go の
+   sectorID 使い捨て（tombstone）による ABA 対策は、この抽象レベルでは
+   safety の必要条件ではなく、あくまで多重の安全網の一つという結論になった。
+
+**未検証のまま残った領域（既知のツール限界）**: N=4 churn2/stuck2/misfire2
+（churn・stuck・misfire を同時に最大化した設定）は depth 31・約19億 distinct
+まで到達したところで、電源断からの `-recover` 中に TLC 自身の内部構造の
+32-bit int オーバーフロー（`NegativeArraySizeException`、2^31 ≈ 21.5億）で
+打ち切りとなり、完走できなかった。ヒープ増量（8g→48g）では解決しない、
+TLC のこのバージョンのスケール限界。churn2/stuck2/misfire1（表内 3 行目）と
+churn1/stuck1/misfire2（表内 5 行目）はそれぞれ独立に違反なしを確認して
+いるため、misfire2 の効果自体および churn2/stuck2 の効果自体は個別に
+検証済みだが、**両者を同時に最大化した組み合わせの網羅的検証はできて
+いない**。回避策として、ring のノード ID に対する回転対称性（巡回群、
+最大 N 分の1の状態数削減）を TLC の `SYMMETRY`（`Permutations(Nodes)` は
+リングの向きを壊すため不健全 — 巡回群のみを手動列挙すれば健全）に
+指定すれば再挑戦の余地はあるが、liveness 検証との健全な組み合わせを
+別途検証する必要があり、未着手。エラーの詳細な時系列・再現手順・残置
+チェックポイントの場所は [debug.md](debug.md) に記録。
 
 <a id="todo-2"></a>
 #### TODO-2: stale active レプリカの掃除とガード緩和の検証（クラス B）
