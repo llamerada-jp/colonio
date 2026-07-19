@@ -1181,6 +1181,26 @@ func (k *KVS) activateHostingSector(hostingSector *sector.Sector, frontwardNextN
 			return k.localNodeID
 		}
 
+		// Covered-from-behind guard (TLA+ KvsSectorFalseLeftover 修正 3
+		// NoActivateUnderCover): the blocker scan below only sees sector
+		// heads inside (local, frontward). A sector whose RANGE covers the
+		// local position from behind is invisible to it, and activating under
+		// it creates an overlap that no repair path can resolve — merge is
+		// blocked by its own range guard and neither Terminate shape matches
+		// (TLC で liveness 違反として確認)。Skip until the coverer splits this
+		// range back or is cleaned up as a stale sector.
+		for _, s := range k.sectors {
+			sectorHead := s.GetHeadAddress()
+			sectorTail := s.GetTailAddress()
+			if sectorHead.Equal(k.localNodeID) || sectorTail == nil {
+				continue
+			}
+			if k.localNodeID.IsBetween(sectorHead, sectorTail) {
+				fmt.Println(time.Now(), k.localNodeID.String(), "== skip 3: covered by active sector", sectorHead.String())
+				return nil
+			}
+		}
+
 		var candidate *sector.Sector
 		frontwardNodeID := frontwardNextNodeIDs[0]
 		fmt.Println(time.Now(), k.localNodeID.String(), "== frontwardNodeID", frontwardNodeID.String())
@@ -1337,7 +1357,8 @@ func (k *KVS) splitSector(hostingSector, frontwardNextSector *sector.Sector) {
 // → proposalWaitTimeout の導入で無期限ブロックは解消 (2026-07-04)。
 func (k *KVS) mergeSector(hostingSector, frontwardNextSector *sector.Sector) {
 	fmt.Println(time.Now(), k.localNodeID.String(), "== merge: preparing merge on frontward sector, head", frontwardNextSector.GetHeadAddress().String())
-	if err := frontwardNextSector.PrepareMerge(k.localNodeID); err != nil {
+	generation, err := frontwardNextSector.PrepareMerge(k.localNodeID)
+	if err != nil {
 		fmt.Println(time.Now(), k.localNodeID.String(), "== merge: prepare failed:", err)
 		k.logger.Warn("Failed to prepare merge", "error", err)
 		return
@@ -1352,8 +1373,35 @@ func (k *KVS) mergeSector(hostingSector, frontwardNextSector *sector.Sector) {
 		return
 	}
 
+	// Destroy the victim and confirm the apply before extending the range.
+	// Extending over a still-active victim creates an overlap that the next
+	// operateSectors tick "repairs" by terminating this healthy hosting
+	// sector together with the acked writes it holds; when the victim's group
+	// cannot commit the terminate at all, that self-destruction loops every
+	// few seconds until the group is force-destroyed (run 2026-07-16 の抗争
+	// ループ: 30 分で自壊 103 回。TLA+ KvsSectorFalseLeftover 修正 1)。
+	// The terminate is scoped to the prepare tenure (handler + generation)
+	// so an abandoned merge's terminate can never destroy state written under
+	// a later tenure (同 修正 2)。On timeout the merge aborts: the hosting
+	// tail stays at its clipped position, which overlaps nothing, and the
+	// stale victim is reaped by checkQuorumLoss or absorbed by a retry.
 	fmt.Println(time.Now(), k.localNodeID.String(), "== merge: terminating frontward sector")
-	frontwardNextSector.Terminate()
+	frontwardNextSector.TerminateForMerge(k.localNodeID, generation)
+	if err := frontwardNextSector.WaitTerminated(); err != nil {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== merge: abort: frontward sector is not terminated:", err)
+		k.logger.Warn("Merge aborted: frontward sector is not terminated", "error", err)
+		return
+	}
+
+	// Re-validate the extension range: newTail was captured at prepare time,
+	// and the victim's range may have been re-carved (split) if the merge
+	// lock was falsely released in between. Extending to a stale tail would
+	// swallow a live sector (TLA+ KvsSectorFalseLeftover の stale propTail
+	// 反例。Extend 1/2 と同じガード)。
+	if k.hasActiveSectorHeadInRange(hostingSector.GetTailAddress(), newTail) {
+		fmt.Println(time.Now(), k.localNodeID.String(), "== merge: abort commit: active sector head exists in extension range")
+		return
+	}
 
 	fmt.Println(time.Now(), k.localNodeID.String(), "== merge: committing merge on hosting sector")
 	if err := hostingSector.CommitMerge(newTail); err != nil {

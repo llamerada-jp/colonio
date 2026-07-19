@@ -210,8 +210,19 @@ inactive セクターで捨てており、import 先が定義上 inactive であ
   prepare 世代付き scoped terminate / 被覆時 activation skip /
   mergeBy 保持中の Import 拒否」で NoRepairLoss + 全 liveness の成立を
   TLC で確認した (safety: churn 2 で 75 億状態、liveness: churn 1、
-  誤検知 release 併発 safety も成立)。**Go 実装は未着手** — 詳細と実装
-  タスクは README「merge/overlap 抗争の解析とモデル検証」と TODO を参照。
+  誤検知 release 併発 safety も成立)。**Go 実装も完了 (2026-07-19)**:
+  mergeSector の victim 破棄確認 (`TerminateForMerge`/`WaitTerminated`) +
+  範囲再検証、prepare 世代付き scoped terminate (proto 変更)、被覆時
+  activation skip、Import の merge fence。回帰テスト 5 本 (修正前コードで
+  失敗確認済み)。**run 17 (2026-07-19、22 分) で定量確認済み・解消と判定**:
+  自壊 ping-pong 0 (前 run 103 ペア)、CAS 重複は quorum 喪失リセットの
+  revision 再利用 1 組のみ (前 run 126 組)、新ガードは WaitTerminated abort
+  15 回・範囲再検証 abort 18 回で自己解消的に機能し、nohost は median 5s /
+  max 11s へ改善。残った revision 後退はすべて force terminate (quorum 喪失、
+  「その他の性質」で許容済みのクラス) 系で、うち leftover import 元 replica
+  の遅れによる末尾数 rev 喪失は README の TODO に切り出した — 詳細は
+  README「merge/overlap 抗争の解析とモデル検証」「run 17」と TODO の
+  同名項目を参照。
 
 ## 分岐
 
@@ -251,8 +262,9 @@ note: address は円環になっているため、実装時は between に適宜
   **注意**: この設計とモデル検証は「host 死亡後の leftover」を前提とする。
   routing 視界の不一致で**生存 host の active sector** を leftover と誤認した
   場合は merge/overlap 抗争ループに入り、ack 済み書き込みが破棄される
-  (2026-07-12 観測・未解決。「churn 下のメンバーシップ管理の課題」の
-  同名項目を参照)。
+  (2026-07-12 観測 → `KvsSectorFalseLeftover.tla` で 8 欠陥を特定し
+  修正 4 種を 2026-07-19 実装、run 17 で解消を確認。「churn 下の
+  メンバーシップ管理の課題」の同名項目を参照)。
 
 ### activate frontward sector
 

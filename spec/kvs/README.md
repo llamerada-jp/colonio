@@ -1563,13 +1563,51 @@ CAS 重複 126 組・revision リセット実測）、モデル反映 → 修正
 | FL2 liveness | 同, churn 1 | **全 safety + 全 liveness 成立**（4.35 億状態生成 / 4,769 万 distinct / 深さ 39、2h04m） |
 | FL3: 誤検知 safety | + PermissiveRelease, churn 2 | **違反なし**（117 億状態生成 / 10.4 億 distinct / 深さ 45、4h36m）。この規模は fingerprint 衝突推定が高い点に注意（MC のコメント参照） |
 
-**Go 実装は未着手** (TODO 一覧参照)。実装対象: (1) mergeSector の
-CommitMerge 前に victim 破棄確認 + `hasActiveSectorHeadInRange` 再検証、
-失敗時 abort、(2) prepare_merge に世代カウンタを追加し、merge 用 terminate
-提案を (mergeBy, 世代) の CAS apply に変更（ReleaseMerge と同じ規約）、
-(3) `activateHostingSector` に被覆チェック（背後からカバーする active
-セクターがあれば skip）、(4) mergeBy 保持中の Import を apply 側で
-no-op ゲート（merger は abort）。
+**Go 実装は同日完了 (2026-07-19)**: 4 修正をモデルの Fix 定数と 1:1 対応で
+実装（proto に Terminate の merge スコープと SectorSnapshot の
+merge_generation を追加）。回帰テスト 5 本はいずれも修正前コードで失敗する
+ことを確認済み。詳細は TODO の同名項目を参照。
+
+### run 17: merge/overlap 修正の定量確認（2026-07-19、22 分・延べ 501 node）
+
+修正 4 種を入れた初回 run。04:25:58〜04:48:13 の約 22 分、延べ 501 node
+（churn あり）、終盤時点の生存 210 node 中 208 が active sector を host
+（normal/online/stable 183）。**判定: merge/overlap 抗争は解消**。
+
+- **CAS 監査**: cas ok 15,542 件中、同一 (key, revision) の重複成功は
+  **1 組**（run 2026-07-16: 126 組）。しかもこの 1 組は下記 ep1 の
+  revision 空間再利用（リセット後に同じ番号を再通過）であり、重複 active
+  セクターによる二重 ack ではない。
+- **自壊 ping-pong は 0**（run 2026-07-16: 自壊ペア 103 回、46 秒に 27 周）。
+  同一 (node, tail) の activate は最多 4 回/22 分で正常範囲。
+- **新ガードの発火**: `WaitTerminated` abort 15 回・範囲再検証
+  「abort commit」18 回。後者は従来なら「重複 → TerminateA 自壊」に進んだ
+  事象がそのまま阻止された回数に相当する。abort はいずれも 15〜20 秒間隔の
+  再試行 1〜2 回で自己解消（同一 merger の 3 連続 abort なし）。skip 3・
+  stale tenure・import fence の発火は 0（発火機会が生じなかった）。
+- **revision 後退は 3 エピソード**（watcher の `watch back` 23 件が 3 時点に
+  集中。各エピソードはリング上で隣接するキー群 = 単一セクターに対応）:
+  - **ep1 (04:31:10)**: sector [372904af, 3bc76609) が leaderless →
+    checkQuorumLoss の force terminate → 空で再 activate。rev 約 180 →
+    1 からやり直し（キー 3 個全損）。**quorum 喪失の設計上の損失経路**
+    （design.md が許容する churn 起因喪失）であり抗争ではない。
+  - **ep2 (04:39:49) / ep3 (04:41:30)**: 末尾 1〜11 rev の小幅後退。
+    force terminate 後の復旧（leftover import）元 replica の applied 状態が
+    commit より僅かに遅れていたことによる ack 済み末尾の喪失。改善候補として
+    TODO に追加（[詳細](#todo-stale-leftover-import)）。
+- **nohost 非退行**: dump.json から 256 キー位置の active 被覆を 1 秒粒度で
+  解析（warmup 300 秒除外）。uncovered episode は 12 件、median 5s /
+  max 11s — run 15 の nohost episode（median 285s / p90 645s）から大幅改善。
+  `WaitTerminated` の 15s タイムアウトは修復律速になっていない。
+- **データプレーン健全**: corrupt 0（load・watch とも）、lock lost 0 /
+  conf 0 / unk 33 (1.3%)。負荷総量: set 64,586 / cas 15,563 / get 30,800 /
+  patch 5,921 / del 6,053。merge は preparing 397 → done 302
+  （差分は prepare 失敗 56 + abort 33 + migrate 失敗等）。
+
+合格ライン「CAS 監査 0 件・revision リセット 0 件」は字義通りには
+1 組 / 3 エピソード残ったが、全て force terminate（quorum 喪失）系に帰着し、
+修正対象だった「生存 host の leftover 誤認 → merge → 自壊ループ」の兆候は
+ゼロ。TODO の merge/overlap 項目は完了とする。
 
 ## 今後の TODO
 
@@ -1662,13 +1700,15 @@ KVS 関連の TODO はこの章に一元化する。マークの読み方: `[x]`
       kvs.go の既存 TODO コメント
 - [ ] [**強制破棄・タイムアウトしきい値の実測再調整**](#todo-thresholds) —
       2s / 15s / 30s / 45s は暫定値のまま
-- [ ] [**merge/overlap 抗争（生存 host の sector を leftover と誤認）**](#todo-merge-overlap)
-      （設計 + Go + モデル） — **モデル検証まで完了 (2026-07-19)**:
-      `KvsSectorFalseLeftover.tla` で 8 欠陥を特定し、修正 4 種 + 世代付き
-      terminate で NoRepairLoss + 全 liveness の成立を確認
-      （「merge/overlap 抗争の解析とモデル検証」の節参照）。
-      **残タスク = Go 実装**。経緯の正典は [design.md](design.md)
+- [x] [**merge/overlap 抗争（生存 host の sector を leftover と誤認）**](#todo-merge-overlap)
+      （設計 + Go + モデル） — `KvsSectorFalseLeftover.tla` で 8 欠陥を特定し
+      修正 4 種を Go 実装（2026-07-19、回帰テスト 5 本）。run 17 で定量確認
+      済み: 自壊 ping-pong 0（前 run 103 ペア）・CAS 重複は quorum 喪失系の
+      1 組のみ・nohost 大幅改善。経緯の正典は [design.md](design.md)
       「churn 下の課題」
+- [ ] [**leftover import 元 replica の遅れによる ack 済み末尾喪失**](#todo-stale-leftover-import)
+      （Go） — run 17 の ep2/ep3（末尾 1〜11 rev）。force terminate 後の
+      復旧品質の改善候補
 - [ ] [**`Operator.SetRange` の全周セクター縮小の扱い（要検証）**](#todo-setrange)
       （Go, operator） — 2026-07-16 発見、2026-07-17 コード確認で未修正のまま
 - [ ] [**Col.Stop() 後のセクター raft goroutine 残留**](#todo-col-stop)
@@ -1894,25 +1934,62 @@ routing 視界の不一致により、隣接 host が**生きている node** �
 Stage B run で観測、run 2026-07-16 で機構を確定 — 経緯の正典は
 [design.md](design.md) の「churn 下の課題」）。
 
-**モデル検証は完了 (2026-07-19)**: `KvsSectorFalseLeftover.tla` が 8 欠陥と
-修正パッケージ（詳細は「merge/overlap 抗争の解析とモデル検証」の節）を確定。
-**残タスクは Go 実装**:
+**モデル検証 + Go 実装は完了 (2026-07-19)**: `KvsSectorFalseLeftover.tla` が
+8 欠陥と修正パッケージ（詳細は「merge/overlap 抗争の解析とモデル検証」の節）
+を確定し、モデルの Fix 定数と 1:1 対応で Go 実装済み:
 
-1. `mergeSector`: CommitMerge 前に victim の破棄確認 +
-   `hasActiveSectorHeadInRange` による範囲再検証、失敗時は abort
-   （tail は切り詰め位置のままなので安全）
-2. `prepare_merge` に世代カウンタを追加し、merge 用 terminate 提案を
-   (mergeBy, 世代) 一致の CAS apply に変更（ReleaseMerge と同じ決定的規約。
-   proto 変更を伴う）
-3. `activateHostingSector`: 自位置を背後からカバーする active セクターが
-   ある間は activation を skip
-4. mergeBy 保持中のセクターへの Import を apply 側で no-op ゲートし、
-   merger 側は abort（`mergeFenced` の Import への拡張）
+1. **ConfirmVictim + 範囲再検証** (`kvs.go mergeSector`): victim へ
+   `TerminateForMerge` を提案 → `WaitTerminated` で破棄を確認 →
+   `hasActiveSectorHeadInRange` で拡張範囲を再検証してから CommitMerge。
+   どちらかが失敗すれば abort（tail は切り詰め位置のままなので安全）
+2. **世代付き scoped terminate** (`sector.go` + proto): `Terminate` proto に
+   merge_handler / merge_generation を追加。prepare_merge の apply が
+   `mergeGeneration` (複製状態、snapshot にも同梱) を bump し、merge 用
+   terminate の apply は (mergeBy, 世代) 一致の CAS。不一致は no-op で
+   pending も消化（DOA）
+3. **被覆時 activation skip** (`kvs.go activateHostingSector`): 自位置を
+   範囲に含む active セクターがある間は skip（ログ「skip 3」）
+4. **Import の merge fence** (`sector.go processImportProposal`): mergeBy
+   保持中の import は apply 側で決定的に no-op、proposer の `Import()` は
+   `importFenceRejected` を観測してエラー復帰（merger は migrate 段で abort）
 
-各修正はモデルの対応する Fix 定数（ConfirmVictim / ScopedTerminate /
-NoActivateUnderCover / NoAbsorbWhileLocked）と 1:1 対応。回帰テストは
-FL1 反例の系列（視界乖離 → merge → レース terminate）を Go で再現する形を
-基本とする。
+回帰テスト（いずれも修正前コードで失敗することを確認済み）:
+`TestKVS_mergeSector_abortsWhenVictimUnterminated`（不死身 victim への
+tail 拡張禁止 = 抗争ループの本体）/
+`TestKVS_mergeSector_abortsOnStaleTailRange`（stale propTail）/
+`TestKVS_activateHostingSector_skipsWhenCovered`（被覆盲点）/
+`TestSector_terminateForMerge_staleTenureIsNoOp`（ABA/tenure）/
+`TestSector_import_rejectedWhileMergeLockHeld`（Import fence）。
+
+**run 17 (2026-07-19) で定量確認済み・完了**: 自壊 ping-pong 0（前 run
+103 ペア）、CAS 重複は quorum 喪失リセットの revision 再利用 1 組のみ、
+新ガード（WaitTerminated abort 15 回・範囲再検証 abort 18 回）は自己解消的に
+機能し、nohost は median 5s / max 11s（run 15: median 285s）へ改善。
+残った revision 後退 3 エピソードはすべて force terminate（quorum 喪失の
+設計上の損失経路）系で、うち末尾数 rev の喪失 2 件は
+[別 TODO](#todo-stale-leftover-import) に切り出した。詳細は
+「run 17: merge/overlap 修正の定量確認」の節。
+
+<a id="todo-stale-leftover-import"></a>
+#### leftover import 元 replica の遅れによる ack 済み末尾喪失（Go 実装）
+
+run 17 の ep2 (04:39:49) / ep3 (04:41:30) で観測。セクターが quorum 喪失で
+force terminate された後、leftover import（tail 切り詰め activate に伴う
+残存 replica からのデータ回収）の import 元 replica の applied 状態が
+commit index より僅かに遅れていると、**ack 済みの末尾書き込み（実測 1〜11
+revision）が失われて revision が後退**する。watcher には `watch back` として
+観測される。
+
+quorum を成す member が全滅した場合の喪失は Raft の耐久性モデル上不可避だが、
+以下の best-effort 改善余地がある:
+
+- import 元を選ぶ際に**最も applied の進んだ生存 replica** を選択する
+  （現状の選択基準の確認から）
+- 複数の生存 replica から record ごとに最大 revision を採る merge 型回収
+
+頻度は低く（22 分 run で 2 件・数 rev）、全損（ep1 型）ではないため優先度は
+中。force terminate 系の損失経路として
+[しきい値再調整](#todo-thresholds) とも関連する。
 
 <a id="todo-setrange"></a>
 #### `Operator.SetRange` の全周セクター縮小の扱い（要検証、Go 実装）

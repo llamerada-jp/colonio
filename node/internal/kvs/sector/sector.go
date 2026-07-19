@@ -116,18 +116,32 @@ type Sector struct {
 	triggerCh          chan struct{}
 	stopCtx            context.CancelFunc
 
-	mtx                    sync.RWMutex
-	cond                   *sync.Cond
-	stopped                bool
-	tail                   *types.NodeID
-	mergeBy                *types.NodeID
+	mtx     sync.RWMutex
+	cond    *sync.Cond
+	stopped bool
+	tail    *types.NodeID
+	mergeBy *types.NodeID
+	// mergeGeneration is the prepare-merge tenure counter (replicated state):
+	// incremented every time a PrepareMerge apply takes the claim, carried in
+	// snapshots, and CASed by merge-scoped Terminates. Without it a terminate
+	// proposed for an abandoned merge could pair with a later tenure of the
+	// same handler and destroy writes accepted in between (TLA+
+	// KvsSectorFalseLeftover 修正 2 の ABA 反例).
+	mergeGeneration        uint64
 	terminated             bool
 	proposalAppendingNodes map[kvsTypes.SectorNo]*types.NodeID
 	proposalRemovingNodes  map[kvsTypes.SectorNo]struct{}
 	proposalActivating     *types.NodeID // tail
 	proposalTerminating    bool
+	// proposalTerminateScope marks the pending terminate as scoped to a
+	// prepare_merge tenure (TerminateForMerge); nil = unconditional.
+	proposalTerminateScope *terminateScope
 	proposalExtending      *types.NodeID // tail
 	proposalImporting      []*proto.Import_Record
+	// importFenceRejected records that the last import apply was rejected by
+	// the merge fence (mergeBy held), so Import() can fail instead of
+	// reporting a silently dropped import as success.
+	importFenceRejected bool
 	// proposalImportingCounter is the source sector's revision counter taken
 	// with the exported records; it travels inside the Import proposal so the
 	// apply can max-merge it deterministically on every replica.
@@ -143,6 +157,13 @@ type Sector struct {
 	// conflict outlives mergeReleaseDuration.
 	mergeConflictHolder *types.NodeID
 	mergeConflictSince  time.Time
+}
+
+// terminateScope ties a pending terminate proposal to the prepare_merge
+// tenure it belongs to (holder + generation observed at PrepareMerge).
+type terminateScope struct {
+	handler    *types.NodeID
+	generation uint64
 }
 
 func NewSector(config *SectorConfig) *Sector {
@@ -359,6 +380,31 @@ func (s *Sector) Activate(tail types.NodeID) {
 // 破棄する脱出経路を checkQuorumLoss として実装 (2026-07-04)。
 func (s *Sector) Terminate() {
 	s.mtx.Lock()
+	// An unconditional terminate supersedes a pending merge-scoped one (the
+	// scoped CAS may no-op; the overlap-repair paths must not be blocked by it).
+	if s.terminated || (s.proposalTerminating && s.proposalTerminateScope == nil) {
+		s.mtx.Unlock()
+		return
+	}
+
+	s.proposalActivating = nil
+	s.proposalTerminating = true
+	s.proposalTerminateScope = nil
+	s.mtx.Unlock()
+
+	s.triggerCh <- struct{}{}
+}
+
+// TerminateForMerge proposes a terminate scoped to a prepare_merge tenure:
+// the apply destroys the sector only while mergeBy == handler and the
+// sector's merge generation still equals the generation the caller observed
+// at PrepareMerge; otherwise the committed entry is consumed as a no-op and
+// the pending flag is cleared. This keeps an abandoned merge's terminate from
+// landing after a ReleaseMerge (or after the same handler re-prepared) and
+// destroying writes accepted in the meantime (TLA+ KvsSectorFalseLeftover
+// 修正 2、ReleaseMerge と同じ決定的 CAS 規約).
+func (s *Sector) TerminateForMerge(handler *types.NodeID, generation uint64) {
+	s.mtx.Lock()
 	if s.terminated || s.proposalTerminating {
 		s.mtx.Unlock()
 		return
@@ -366,9 +412,26 @@ func (s *Sector) Terminate() {
 
 	s.proposalActivating = nil
 	s.proposalTerminating = true
+	s.proposalTerminateScope = &terminateScope{
+		handler:    handler.Copy(),
+		generation: generation,
+	}
 	s.mtx.Unlock()
 
 	s.triggerCh <- struct{}{}
+}
+
+// WaitTerminated blocks until the sector's termination has applied locally
+// (raft terminate apply or local force-destroy), bounded by
+// proposalWaitTimeout. mergeSector uses it to confirm the victim is gone
+// before CommitMerge extends the range over it: extending over a still-active
+// victim creates an overlap that the next repair tick resolves by destroying
+// this side — the healthy, data-carrying sector (TLA+ KvsSectorFalseLeftover
+// 修正 1).
+func (s *Sector) WaitTerminated() error {
+	return s.waitProposal(func() (bool, error) {
+		return s.terminated, nil
+	})
 }
 
 func (s *Sector) Extend(newTail types.NodeID) error {
@@ -470,7 +533,9 @@ func (s *Sector) CommitSplit(newTail *types.NodeID) error {
 	return nil
 }
 
-func (s *Sector) PrepareMerge(proposedBy *types.NodeID) error {
+// PrepareMerge claims the merge lock (mergeBy) and returns the tenure
+// generation the caller must attach to the follow-up TerminateForMerge.
+func (s *Sector) PrepareMerge(proposedBy *types.NodeID) (uint64, error) {
 	s.mtx.Lock()
 	// Reject before proposing when another node's prepare_merge is already
 	// committed (TLA+ ProposeMerge の enabling `mergeLock[fs] \in {-1, n}`)。
@@ -481,7 +546,7 @@ func (s *Sector) PrepareMerge(proposedBy *types.NodeID) error {
 		holder := s.mergeBy
 		s.noteMergeConflictLocked(holder)
 		s.mtx.Unlock()
-		return fmt.Errorf("failed to prepare merge: merge is prepared by %s, not %s", holder.String(), proposedBy.String())
+		return 0, fmt.Errorf("failed to prepare merge: merge is prepared by %s, not %s", holder.String(), proposedBy.String())
 	}
 	s.proposalPrepareMerge = proposedBy
 	s.mtx.Unlock()
@@ -489,12 +554,16 @@ func (s *Sector) PrepareMerge(proposedBy *types.NodeID) error {
 	s.triggerCh <- struct{}{}
 
 	var conflictHolder *types.NodeID
+	var generation uint64
 	if err := s.waitProposal(func() (bool, error) {
 		if s.mergeBy != nil {
 			if !s.mergeBy.Equal(proposedBy) {
 				conflictHolder = s.mergeBy
 				return false, fmt.Errorf("merge is prepared by %s, not %s", s.mergeBy.String(), proposedBy.String())
 			}
+			// Capture the tenure the claim belongs to while the claim is
+			// visibly ours (runs under s.cond's lock = s.mtx read lock).
+			generation = s.mergeGeneration
 			return true, nil
 		}
 		return false, nil
@@ -509,9 +578,9 @@ func (s *Sector) PrepareMerge(proposedBy *types.NodeID) error {
 			s.noteMergeConflictLocked(conflictHolder)
 		}
 		s.mtx.Unlock()
-		return fmt.Errorf("failed to prepare merge: %w", err)
+		return 0, fmt.Errorf("failed to prepare merge: %w", err)
 	}
-	return nil
+	return generation, nil
 }
 
 func (s *Sector) Merge(from *Sector) error {
@@ -560,17 +629,26 @@ func (s *Sector) Import(records map[string][]byte, revisionCounter uint64) error
 	s.mtx.Lock()
 	s.proposalImporting = importRecords
 	s.proposalImportingCounter = revisionCounter
+	s.importFenceRejected = false
 	s.mtx.Unlock()
 
 	s.triggerCh <- struct{}{}
 
+	var rejected bool
 	if err := s.waitProposal(func() (bool, error) {
-		return s.proposalImporting == nil, nil
+		if s.proposalImporting != nil {
+			return false, nil
+		}
+		rejected = s.importFenceRejected
+		return true, nil
 	}); err != nil {
 		s.mtx.Lock()
 		s.proposalImporting = nil
 		s.mtx.Unlock()
 		return fmt.Errorf("failed to import records: %w", err)
+	}
+	if rejected {
+		return fmt.Errorf("failed to import records: sector's merge lock is held (import fence)")
 	}
 	return nil
 }
@@ -643,9 +721,14 @@ func (s *Sector) applyProposals(retry bool) {
 	case s.proposalTerminating:
 		// re-apply terminating, and skip the other proposals
 		if !s.terminated {
+			terminate := &proto.Terminate{}
+			if s.proposalTerminateScope != nil {
+				terminate.MergeHandler = s.proposalTerminateScope.handler.Proto()
+				terminate.MergeGeneration = s.proposalTerminateScope.generation
+			}
 			proposals = append(proposals, &proto.ConsensusProposal{
 				Content: &proto.ConsensusProposal_Terminate{
-					Terminate: &proto.Terminate{},
+					Terminate: terminate,
 				},
 			})
 		}
@@ -795,8 +878,8 @@ func (s *Sector) ConsensusApplyProposal(proposal *proto.ConsensusProposal) error
 		s.cond.Broadcast()
 	}()
 
-	if proposal.GetTerminate() != nil {
-		return s.processTerminateProposal()
+	if terminate := proposal.GetTerminate(); terminate != nil {
+		return s.processTerminateProposal(terminate)
 	}
 	if s.stopped || s.terminated {
 		return nil
@@ -874,7 +957,40 @@ func (s *Sector) processActivateProposal(activate *proto.Activate) error {
 	return nil
 }
 
-func (s *Sector) processTerminateProposal() error {
+func (s *Sector) processTerminateProposal(terminate *proto.Terminate) error {
+	// Merge-scoped terminate (TerminateForMerge): destroy only while the
+	// prepare_merge tenure that requested it is still current. A stale entry
+	// (the lock was released, taken over, or re-prepared since) is consumed
+	// as a no-op — deterministic on every replica because mergeBy and
+	// mergeGeneration are replicated state (TLA+ KvsSectorFalseLeftover
+	// 修正 2).
+	if terminate.MergeHandler != nil {
+		handler, err := types.NewNodeIDFromProto(terminate.MergeHandler)
+		if err != nil {
+			return fmt.Errorf("failed to parse merge handler NodeID: %w", err)
+		}
+
+		// Consume the matching local pending flag regardless of the CAS
+		// outcome below: a dead-on-arrival terminate must not be re-proposed
+		// by the retry loop forever.
+		if s.proposalTerminateScope != nil &&
+			s.proposalTerminateScope.handler.Equal(handler) &&
+			s.proposalTerminateScope.generation == terminate.MergeGeneration {
+			s.proposalTerminating = false
+			s.proposalTerminateScope = nil
+		}
+
+		if s.terminated {
+			return nil
+		}
+		if s.mergeBy == nil || !s.mergeBy.Equal(handler) ||
+			s.mergeGeneration != terminate.MergeGeneration {
+			fmt.Println(time.Now(), s.head.String(), "@@ terminate for merge skipped (stale tenure)",
+				s.sectorKey.String(), "handler", handler.String(), "generation", terminate.MergeGeneration)
+			return nil
+		}
+	}
+
 	return s.terminateLocked()
 }
 
@@ -1064,12 +1180,26 @@ func (s *Sector) processExtendProposal(extend *proto.Extend) error {
 }
 
 func (s *Sector) processImportProposal(importProposal *proto.Import) error {
+	s.proposalImporting = nil
+
+	// A sector whose merge lock (mergeBy) is claimed is about to be exported
+	// by its absorber: records imported after that export never reach the
+	// absorber and are destroyed with this sector by the scoped terminate.
+	// The client-write path is already fenced (mergeFenced) — imports must be
+	// too. Deterministic at apply time (mergeBy is replicated); the proposer's
+	// Import() observes importFenceRejected and aborts its own merge (TLA+
+	// KvsSectorFalseLeftover 修正 4 NoAbsorbWhileLocked).
+	if s.mergeBy != nil {
+		s.importFenceRejected = true
+		fmt.Println(time.Now(), s.head.String(), "@@ import rejected: merge is being prepared by",
+			s.mergeBy.String(), s.sectorKey.String())
+		return nil
+	}
+
 	records := make(map[string][]byte)
 	for _, record := range importProposal.Records {
 		records[record.Key] = record.Value
 	}
-
-	s.proposalImporting = nil
 
 	// Tolerate an already-allocated store sector (repeated import proposals):
 	// see processActivateProposal for why apply handlers must be idempotent.
@@ -1134,6 +1264,10 @@ func (s *Sector) processPrepareMergeProposal(prepareMerge *proto.PrepareMerge) e
 	// Accept the first prepare merge proposal, and reject the others.
 	if s.mergeBy == nil {
 		s.mergeBy = proposedBy
+		// New tenure: scoped terminates CAS against this generation, so a
+		// terminate left over from an earlier tenure (even by the same
+		// handler) can never destroy this one's state (修正 2 の ABA 対策).
+		s.mergeGeneration++
 		// Fence writes while the merge lock is held: this sector's range is
 		// about to be exported by the absorber, and a write applied after
 		// that export would be acknowledged but silently lost.
@@ -1236,6 +1370,7 @@ func (s *Sector) ConsensusGetSnapshot() ([]byte, error) {
 	if s.mergeBy != nil {
 		snapshot.MergeBy = s.mergeBy.Proto()
 	}
+	snapshot.MergeGeneration = s.mergeGeneration
 
 	// the "@@" marker is required by the simulator's log collection
 	fmt.Println(time.Now(), s.head.String(), "@@ snapshot export", s.sectorKey.String(),
@@ -1317,6 +1452,9 @@ func (s *Sector) ConsensusApplySnapshot(data []byte) error {
 	} else {
 		s.mergeBy = nil
 	}
+	// The tenure counter must travel with merge_by: a replica restored
+	// without it would apply scoped terminates against the wrong tenure.
+	s.mergeGeneration = snapshot.MergeGeneration
 	// keep the operator's write fence in sync with the restored merge lock
 	s.operator.SetMergeFence(s.mergeBy != nil)
 

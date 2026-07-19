@@ -106,7 +106,8 @@ func TestSector_dataplane_mergeFencedByPrepareMerge(t *testing.T) {
 	require.NoError(t, err)
 
 	// the merge lock fences writes...
-	require.NoError(t, s.PrepareMerge(holder))
+	_, errPrepare := s.PrepareMerge(holder)
+	require.NoError(t, errPrepare)
 	_, err = operator.Set("key2", []byte("value2"), nil)
 	require.ErrorIs(t, err, kvsTypes.ErrorSectorNotReady)
 

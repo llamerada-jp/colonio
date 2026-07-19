@@ -341,10 +341,21 @@ func (x *Activate) GetTail() *NodeID {
 	return nil
 }
 
+// Terminate destroys the sector on apply. When merge_handler is set, the
+// terminate is scoped to a prepare_merge tenure and the apply is a CAS: the
+// sector is terminated only while mergeBy == merge_handler and the sector's
+// merge generation == merge_generation (the tenure the requester observed at
+// PrepareMerge); otherwise the entry is consumed as a no-op. Without the
+// scope, a terminate proposed for an abandoned merge could land after a
+// ReleaseMerge (or after the same handler re-prepared) and destroy writes
+// accepted in the meantime (TLA+ KvsSectorFalseLeftover 修正 2 の ABA 反例).
+// Unset merge_handler = unconditional terminate (overlap repair paths).
 type Terminate struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	MergeHandler    *NodeID                `protobuf:"bytes,1,opt,name=merge_handler,json=mergeHandler,proto3" json:"merge_handler,omitempty"`
+	MergeGeneration uint64                 `protobuf:"varint,2,opt,name=merge_generation,json=mergeGeneration,proto3" json:"merge_generation,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Terminate) Reset() {
@@ -375,6 +386,20 @@ func (x *Terminate) ProtoReflect() protoreflect.Message {
 // Deprecated: Use Terminate.ProtoReflect.Descriptor instead.
 func (*Terminate) Descriptor() ([]byte, []int) {
 	return file_api_colonio_v1alpha_consensus_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Terminate) GetMergeHandler() *NodeID {
+	if x != nil {
+		return x.MergeHandler
+	}
+	return nil
+}
+
+func (x *Terminate) GetMergeGeneration() uint64 {
+	if x != nil {
+		return x.MergeGeneration
+	}
+	return 0
 }
 
 type Extend struct {
@@ -867,6 +892,10 @@ type SectorSnapshot struct {
 	// restored replica assigns it verbatim: the snapshot is the full state at
 	// its log index.
 	RevisionCounter uint64 `protobuf:"varint,5,opt,name=revision_counter,json=revisionCounter,proto3" json:"revision_counter,omitempty"`
+	// Prepare-merge tenure counter (replicated state): incremented every time a
+	// PrepareMerge apply takes the claim. Scoped Terminates CAS against it, so
+	// it must survive snapshot restore together with merge_by.
+	MergeGeneration uint64 `protobuf:"varint,6,opt,name=merge_generation,json=mergeGeneration,proto3" json:"merge_generation,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -932,6 +961,13 @@ func (x *SectorSnapshot) GetTerminated() bool {
 func (x *SectorSnapshot) GetRevisionCounter() uint64 {
 	if x != nil {
 		return x.RevisionCounter
+	}
+	return 0
+}
+
+func (x *SectorSnapshot) GetMergeGeneration() uint64 {
+	if x != nil {
+		return x.MergeGeneration
 	}
 	return 0
 }
@@ -1200,8 +1236,10 @@ const file_api_colonio_v1alpha_consensus_proto_rawDesc = "" +
 	" \x01(\v2!.api.colonio.v1alpha.ReleaseMergeH\x00R\freleaseMergeB\t\n" +
 	"\acontent\";\n" +
 	"\bActivate\x12/\n" +
-	"\x04tail\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x04tail\"\v\n" +
-	"\tTerminate\"9\n" +
+	"\x04tail\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x04tail\"x\n" +
+	"\tTerminate\x12@\n" +
+	"\rmerge_handler\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\fmergeHandler\x12)\n" +
+	"\x10merge_generation\x18\x02 \x01(\x04R\x0fmergeGeneration\"9\n" +
 	"\x06Extend\x12/\n" +
 	"\x04tail\x18\x01 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x04tail\"A\n" +
 	"\x0ePreCommitSplit\x12/\n" +
@@ -1230,7 +1268,7 @@ const file_api_colonio_v1alpha_consensus_proto_rawDesc = "" +
 	"generation\x18\x02 \x01(\x04R\n" +
 	"generation\x12\x1f\n" +
 	"\vdeadline_ms\x18\x03 \x01(\x03R\n" +
-	"deadlineMs\"\x82\x02\n" +
+	"deadlineMs\"\xad\x02\n" +
 	"\x0eSectorSnapshot\x12<\n" +
 	"\arecords\x18\x01 \x03(\v2\".api.colonio.v1alpha.Import.RecordR\arecords\x12/\n" +
 	"\x04tail\x18\x02 \x01(\v2\x1b.api.colonio.v1alpha.NodeIDR\x04tail\x126\n" +
@@ -1238,7 +1276,8 @@ const file_api_colonio_v1alpha_consensus_proto_rawDesc = "" +
 	"\n" +
 	"terminated\x18\x04 \x01(\bR\n" +
 	"terminated\x12)\n" +
-	"\x10revision_counter\x18\x05 \x01(\x04R\x0frevisionCounter\"\xde\x01\n" +
+	"\x10revision_counter\x18\x05 \x01(\x04R\x0frevisionCounter\x12)\n" +
+	"\x10merge_generation\x18\x06 \x01(\x04R\x0fmergeGeneration\"\xde\x01\n" +
 	"\x11ConsensusSnapshot\x12!\n" +
 	"\fsector_state\x18\x01 \x01(\fR\vsectorState\x12M\n" +
 	"\amembers\x18\x02 \x03(\v23.api.colonio.v1alpha.ConsensusSnapshot.MembersEntryR\amembers\x1aW\n" +
@@ -1315,27 +1354,28 @@ var file_api_colonio_v1alpha_consensus_proto_depIdxs = []int32{
 	15, // 8: api.colonio.v1alpha.ConsensusProposal.operation:type_name -> api.colonio.v1alpha.Operation
 	8,  // 9: api.colonio.v1alpha.ConsensusProposal.release_merge:type_name -> api.colonio.v1alpha.ReleaseMerge
 	18, // 10: api.colonio.v1alpha.Activate.tail:type_name -> api.colonio.v1alpha.NodeID
-	18, // 11: api.colonio.v1alpha.Extend.tail:type_name -> api.colonio.v1alpha.NodeID
-	18, // 12: api.colonio.v1alpha.PreCommitSplit.tail:type_name -> api.colonio.v1alpha.NodeID
-	18, // 13: api.colonio.v1alpha.CommitSplit.tail:type_name -> api.colonio.v1alpha.NodeID
-	18, // 14: api.colonio.v1alpha.PrepareMerge.handler:type_name -> api.colonio.v1alpha.NodeID
-	18, // 15: api.colonio.v1alpha.ReleaseMerge.handler:type_name -> api.colonio.v1alpha.NodeID
-	18, // 16: api.colonio.v1alpha.CommitMerge.tail:type_name -> api.colonio.v1alpha.NodeID
-	16, // 17: api.colonio.v1alpha.Import.records:type_name -> api.colonio.v1alpha.Import.Record
-	12, // 18: api.colonio.v1alpha.KvsRecord.lock:type_name -> api.colonio.v1alpha.KvsLock
-	18, // 19: api.colonio.v1alpha.KvsLock.owner:type_name -> api.colonio.v1alpha.NodeID
-	16, // 20: api.colonio.v1alpha.SectorSnapshot.records:type_name -> api.colonio.v1alpha.Import.Record
-	18, // 21: api.colonio.v1alpha.SectorSnapshot.tail:type_name -> api.colonio.v1alpha.NodeID
-	18, // 22: api.colonio.v1alpha.SectorSnapshot.merge_by:type_name -> api.colonio.v1alpha.NodeID
-	17, // 23: api.colonio.v1alpha.ConsensusSnapshot.members:type_name -> api.colonio.v1alpha.ConsensusSnapshot.MembersEntry
-	0,  // 24: api.colonio.v1alpha.Operation.command:type_name -> api.colonio.v1alpha.Operation.Command
-	18, // 25: api.colonio.v1alpha.Operation.lock_owner:type_name -> api.colonio.v1alpha.NodeID
-	18, // 26: api.colonio.v1alpha.ConsensusSnapshot.MembersEntry.value:type_name -> api.colonio.v1alpha.NodeID
-	27, // [27:27] is the sub-list for method output_type
-	27, // [27:27] is the sub-list for method input_type
-	27, // [27:27] is the sub-list for extension type_name
-	27, // [27:27] is the sub-list for extension extendee
-	0,  // [0:27] is the sub-list for field type_name
+	18, // 11: api.colonio.v1alpha.Terminate.merge_handler:type_name -> api.colonio.v1alpha.NodeID
+	18, // 12: api.colonio.v1alpha.Extend.tail:type_name -> api.colonio.v1alpha.NodeID
+	18, // 13: api.colonio.v1alpha.PreCommitSplit.tail:type_name -> api.colonio.v1alpha.NodeID
+	18, // 14: api.colonio.v1alpha.CommitSplit.tail:type_name -> api.colonio.v1alpha.NodeID
+	18, // 15: api.colonio.v1alpha.PrepareMerge.handler:type_name -> api.colonio.v1alpha.NodeID
+	18, // 16: api.colonio.v1alpha.ReleaseMerge.handler:type_name -> api.colonio.v1alpha.NodeID
+	18, // 17: api.colonio.v1alpha.CommitMerge.tail:type_name -> api.colonio.v1alpha.NodeID
+	16, // 18: api.colonio.v1alpha.Import.records:type_name -> api.colonio.v1alpha.Import.Record
+	12, // 19: api.colonio.v1alpha.KvsRecord.lock:type_name -> api.colonio.v1alpha.KvsLock
+	18, // 20: api.colonio.v1alpha.KvsLock.owner:type_name -> api.colonio.v1alpha.NodeID
+	16, // 21: api.colonio.v1alpha.SectorSnapshot.records:type_name -> api.colonio.v1alpha.Import.Record
+	18, // 22: api.colonio.v1alpha.SectorSnapshot.tail:type_name -> api.colonio.v1alpha.NodeID
+	18, // 23: api.colonio.v1alpha.SectorSnapshot.merge_by:type_name -> api.colonio.v1alpha.NodeID
+	17, // 24: api.colonio.v1alpha.ConsensusSnapshot.members:type_name -> api.colonio.v1alpha.ConsensusSnapshot.MembersEntry
+	0,  // 25: api.colonio.v1alpha.Operation.command:type_name -> api.colonio.v1alpha.Operation.Command
+	18, // 26: api.colonio.v1alpha.Operation.lock_owner:type_name -> api.colonio.v1alpha.NodeID
+	18, // 27: api.colonio.v1alpha.ConsensusSnapshot.MembersEntry.value:type_name -> api.colonio.v1alpha.NodeID
+	28, // [28:28] is the sub-list for method output_type
+	28, // [28:28] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_api_colonio_v1alpha_consensus_proto_init() }

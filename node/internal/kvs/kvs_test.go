@@ -627,3 +627,305 @@ func TestResponseErrorToError(t *testing.T) {
 	require.ErrorIs(t, responseErrorToError("set", proto.KvsOperationResponse_Error(99)),
 		kvsTypes.ErrorOperationResultUnknown)
 }
+
+// TestKVS_mergeSector_abortsWhenVictimUnterminated reproduces the merge/overlap
+// contention loop of run 2026-07-16 (TLA+ KvsSectorFalseLeftover 修正 1): the
+// merge victim is an "undead" active sector — its prepare_merge was committed
+// under a past leader, but the group can no longer commit anything, so the
+// terminate never applies. mergeSector used to extend the hosting tail over it
+// anyway ("merge: done"), creating an overlap that the next repair tick
+// resolved by destroying the healthy hosting sector together with its acked
+// writes, every few seconds until the victim's group was force-destroyed.
+// The merge must instead abort after WaitTerminated times out, leaving the
+// hosting tail at its clipped position.
+func TestKVS_mergeSector_abortsWhenVictimUnterminated(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	victimNodeID := types.NewNormalNodeID(0x6000000000000000, 0)
+	victimTailNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+
+	handler := &kvsHandlerHelper{
+		isStable:             true,
+		frontwardNextNodeIDs: []*types.NodeID{victimTailNodeID},
+	}
+
+	k := newTestKVS(t, ctx, localNodeID, handler)
+	hostingSectorKey := setupHostingSector(t, k)
+
+	k.mtx.RLock()
+	hostingSector := k.sectors[*hostingSectorKey]
+	k.mtx.RUnlock()
+	require.NotNil(t, hostingSector)
+
+	// hosting sector active, clipped at the victim's head
+	hostingSector.Activate(*victimNodeID)
+	require.Eventually(t, func() bool {
+		tail := hostingSector.GetTailAddress()
+		return tail != nil && tail.Equal(victimNodeID)
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// victim replica: its group (victim + local) cannot commit here — the
+	// victim node never runs. Activate and prepare_merge are the state a
+	// member holds after they were committed under a past leader.
+	victimSectorKey := kvsTypes.SectorKey{
+		SectorID: kvsTypes.SectorID(uuid.New()),
+		SectorNo: kvsTypes.SectorNo(2),
+	}
+	err := k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_CREATE,
+		sectorKey: victimSectorKey,
+		head:      victimNodeID,
+		members: map[kvsTypes.SectorNo]*types.NodeID{
+			kvsTypes.HostNodeSectorNo: victimNodeID,
+			kvsTypes.SectorNo(2):      localNodeID,
+		},
+	})
+	require.NoError(t, err)
+	k.mtx.RLock()
+	victimSector := k.sectors[victimSectorKey]
+	k.mtx.RUnlock()
+	require.NotNil(t, victimSector)
+	require.NoError(t, victimSector.ConsensusApplyProposal(&proto.ConsensusProposal{
+		Content: &proto.ConsensusProposal_Activate{
+			Activate: &proto.Activate{Tail: victimTailNodeID.Proto()},
+		},
+	}))
+	require.NoError(t, victimSector.ConsensusApplyProposal(&proto.ConsensusProposal{
+		Content: &proto.ConsensusProposal_PrepareMerge{
+			PrepareMerge: &proto.PrepareMerge{Handler: localNodeID.Proto()},
+		},
+	}))
+
+	// the merge must abort (WaitTerminated is bounded by proposalWaitTimeout,
+	// 15s by default — this test waits through it)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		k.mergeSector(hostingSector, victimSector)
+	}()
+	select {
+	case <-done:
+	case <-time.After(60 * time.Second):
+		t.Fatal("mergeSector did not return")
+	}
+
+	// the hosting tail must NOT extend over the undead victim
+	tail := hostingSector.GetTailAddress()
+	require.NotNil(t, tail)
+	require.True(t, tail.Equal(victimNodeID),
+		"hosting tail extended over an unterminated victim: %s", tail.String())
+	// the victim stays active (nothing could commit its terminate)
+	require.NotNil(t, victimSector.GetTailAddress())
+}
+
+// TestKVS_mergeSector_abortsOnStaleTailRange covers the stale-propTail hole
+// (TLA+ KvsSectorFalseLeftover 修正 1 の範囲再検証): the merge's newTail is
+// captured at prepare time, and by the time the victim's terminate applies the
+// range may have been re-carved — extending to the stale tail would swallow a
+// live sector. CommitMerge must be preceded by the same range guard Extend
+// uses, and abort when it fails.
+func TestKVS_mergeSector_abortsOnStaleTailRange(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	victimNodeID := types.NewNormalNodeID(0x6000000000000000, 0)
+	liveNodeID := types.NewNormalNodeID(0xa000000000000000, 0)
+	staleTailNodeID := types.NewNormalNodeID(0xc000000000000000, 0)
+
+	handler := &kvsHandlerHelper{
+		isStable:             true,
+		frontwardNextNodeIDs: []*types.NodeID{staleTailNodeID},
+	}
+
+	k := newTestKVS(t, ctx, localNodeID, handler)
+	hostingSectorKey := setupHostingSector(t, k)
+
+	k.mtx.RLock()
+	hostingSector := k.sectors[*hostingSectorKey]
+	k.mtx.RUnlock()
+	require.NotNil(t, hostingSector)
+
+	hostingSector.Activate(*victimNodeID)
+	require.Eventually(t, func() bool {
+		tail := hostingSector.GetTailAddress()
+		return tail != nil && tail.Equal(victimNodeID)
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// victim: leftover with the STALE tail [victim, staleTail)
+	victimSectorKey := kvsTypes.SectorKey{
+		SectorID: kvsTypes.SectorID(uuid.New()),
+		SectorNo: kvsTypes.SectorNo(2),
+	}
+	err := k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_CREATE,
+		sectorKey: victimSectorKey,
+		head:      victimNodeID,
+		members: map[kvsTypes.SectorNo]*types.NodeID{
+			kvsTypes.HostNodeSectorNo: victimNodeID,
+			kvsTypes.SectorNo(2):      localNodeID,
+		},
+	})
+	require.NoError(t, err)
+	k.mtx.RLock()
+	victimSector := k.sectors[victimSectorKey]
+	k.mtx.RUnlock()
+	require.NotNil(t, victimSector)
+	require.NoError(t, victimSector.ConsensusApplyProposal(&proto.ConsensusProposal{
+		Content: &proto.ConsensusProposal_Activate{
+			Activate: &proto.Activate{Tail: staleTailNodeID.Proto()},
+		},
+	}))
+	require.NoError(t, victimSector.ConsensusApplyProposal(&proto.ConsensusProposal{
+		Content: &proto.ConsensusProposal_PrepareMerge{
+			PrepareMerge: &proto.PrepareMerge{Handler: localNodeID.Proto()},
+		},
+	}))
+
+	// a LIVE active sector inside (victim, staleTail): the range the stale
+	// tail would swallow
+	liveSectorKey := kvsTypes.SectorKey{
+		SectorID: kvsTypes.SectorID(uuid.New()),
+		SectorNo: kvsTypes.SectorNo(2),
+	}
+	err = k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_CREATE,
+		sectorKey: liveSectorKey,
+		head:      liveNodeID,
+		members: map[kvsTypes.SectorNo]*types.NodeID{
+			kvsTypes.HostNodeSectorNo: liveNodeID,
+			kvsTypes.SectorNo(2):      localNodeID,
+		},
+	})
+	require.NoError(t, err)
+	k.mtx.RLock()
+	liveSector := k.sectors[liveSectorKey]
+	k.mtx.RUnlock()
+	require.NotNil(t, liveSector)
+	require.NoError(t, liveSector.ConsensusApplyProposal(&proto.ConsensusProposal{
+		Content: &proto.ConsensusProposal_Activate{
+			Activate: &proto.Activate{Tail: staleTailNodeID.Proto()},
+		},
+	}))
+
+	// the victim's group cannot commit the terminate; the force-destroy path
+	// (checkQuorumLoss) reaps it while the merge is waiting — as in the run
+	go func() {
+		time.Sleep(1 * time.Second)
+		victimSector.TerminateLocally()
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		k.mergeSector(hostingSector, victimSector)
+	}()
+	select {
+	case <-done:
+	case <-time.After(60 * time.Second):
+		t.Fatal("mergeSector did not return")
+	}
+
+	// the victim is gone, but the extension range holds a live sector: the
+	// commit must abort and the hosting tail must stay clipped
+	tail := hostingSector.GetTailAddress()
+	require.NotNil(t, tail)
+	require.True(t, tail.Equal(victimNodeID),
+		"hosting tail extended over a live sector: %s", tail.String())
+	require.NotNil(t, liveSector.GetTailAddress())
+}
+
+// TestKVS_activateHostingSector_skipsWhenCovered covers 修正 3 of TLA+
+// KvsSectorFalseLeftover (NoActivateUnderCover): the activation blocker scan
+// only sees sector heads inside (local, frontward), so a sector whose RANGE
+// covers the local position from behind is invisible to it. Activating under
+// it creates an overlap that no repair path can resolve (merge is blocked by
+// its own range guard and neither Terminate shape matches — TLC の liveness
+// 違反として確認). The activation must be skipped until the coverer splits the
+// range back or is cleaned up.
+func TestKVS_activateHostingSector_skipsWhenCovered(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// ring order: coverer < local < frontward
+	covererNodeID := types.NewNormalNodeID(0x1000000000000000, 0)
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	frontwardNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+
+	handler := &kvsHandlerHelper{
+		isStable:             true,
+		backwardNextNodeIDs:  []*types.NodeID{covererNodeID},
+		frontwardNextNodeIDs: []*types.NodeID{frontwardNodeID},
+	}
+
+	k := newTestKVS(t, ctx, localNodeID, handler)
+	hostingSectorKey := setupHostingSector(t, k)
+
+	k.mtx.RLock()
+	hostingSector := k.sectors[*hostingSectorKey]
+	k.mtx.RUnlock()
+	require.NotNil(t, hostingSector)
+
+	// an ACTIVE sector [coverer, frontward) covering the local position
+	covererSectorKey := kvsTypes.SectorKey{
+		SectorID: kvsTypes.SectorID(uuid.New()),
+		SectorNo: kvsTypes.SectorNo(2),
+	}
+	err := k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_CREATE,
+		sectorKey: covererSectorKey,
+		head:      covererNodeID,
+		members: map[kvsTypes.SectorNo]*types.NodeID{
+			kvsTypes.HostNodeSectorNo: covererNodeID,
+			kvsTypes.SectorNo(2):      localNodeID,
+		},
+	})
+	require.NoError(t, err)
+	k.mtx.RLock()
+	covererSector := k.sectors[covererSectorKey]
+	k.mtx.RUnlock()
+	require.NotNil(t, covererSector)
+	require.NoError(t, covererSector.ConsensusApplyProposal(&proto.ConsensusProposal{
+		Content: &proto.ConsensusProposal_Activate{
+			Activate: &proto.Activate{Tail: frontwardNodeID.Proto()},
+		},
+	}))
+
+	// an inactive candidate replica at the frontward position, so that the
+	// pre-fix code takes the "activate with tail = frontward" path (without
+	// it the activation is skipped for the unrelated "skip 2" reason and the
+	// regression would be invisible)
+	candidateSectorKey := kvsTypes.SectorKey{
+		SectorID: kvsTypes.SectorID(uuid.New()),
+		SectorNo: kvsTypes.SectorNo(2),
+	}
+	err = k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_CREATE,
+		sectorKey: candidateSectorKey,
+		head:      frontwardNodeID,
+		members: map[kvsTypes.SectorNo]*types.NodeID{
+			kvsTypes.HostNodeSectorNo: frontwardNodeID,
+			kvsTypes.SectorNo(2):      localNodeID,
+		},
+	})
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		k.activateHostingSector(hostingSector, []*types.NodeID{frontwardNodeID}, false)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("activateHostingSector did not return")
+	}
+
+	// the activation must be skipped while the coverer's range contains the
+	// local position
+	require.Never(t, func() bool {
+		return hostingSector.GetTailAddress() != nil
+	}, 2*time.Second, 200*time.Millisecond)
+}

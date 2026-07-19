@@ -407,10 +407,11 @@ func TestSector_prepareMerge_releasedAfterHolderStalls(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// the holder commits prepare_merge, then "dies" (never finishes the merge)
-	require.NoError(t, s.PrepareMerge(deadHolderNodeID))
+	_, errPrepare := s.PrepareMerge(deadHolderNodeID)
+	require.NoError(t, errPrepare)
 
 	// another merger is rejected while the claim is fresh
-	err := s.PrepareMerge(mergerNodeID)
+	_, err := s.PrepareMerge(mergerNodeID)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "merge is prepared by")
 	// the losing attempt must not leak a pending proposal (retry spam)
@@ -419,7 +420,8 @@ func TestSector_prepareMerge_releasedAfterHolderStalls(t *testing.T) {
 	// after mergeReleaseDuration the conflict triggers ReleaseMerge and the
 	// merger's PrepareMerge goes through
 	require.Eventually(t, func() bool {
-		return s.PrepareMerge(mergerNodeID) == nil
+		_, errRetry := s.PrepareMerge(mergerNodeID)
+		return errRetry == nil
 	}, 10*time.Second, 200*time.Millisecond)
 
 	s.mtx.RLock()
@@ -459,7 +461,8 @@ func TestSector_preCommitSplit_releasedAfterHolderStalls(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// a backward node commits prepare_merge on this sector, then "dies"
-	require.NoError(t, s.PrepareMerge(deadHolderNodeID))
+	_, errPrepare := s.PrepareMerge(deadHolderNodeID)
+	require.NoError(t, errPrepare)
 
 	// the split is rejected before proposing: the tail must not shrink
 	err := s.PreCommitSplit(splitNodeID)
@@ -510,4 +513,111 @@ func TestSector_import_unblockedByForceTerminate(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return handler.terminatedCount() > 0
 	}, 5*time.Second, 100*time.Millisecond)
+}
+
+// TestSector_terminateForMerge_staleTenureIsNoOp covers the tenure (ABA) hole
+// of the merge-scoped terminate found by TLA+ KvsSectorFalseLeftover (修正 2):
+// a terminate proposed for an abandoned merge tenure must not destroy state
+// written under a later tenure of the SAME holder. The apply CASes on
+// (mergeBy, mergeGeneration); the generation moves forward on every new
+// prepare_merge claim, so the stale entry is consumed as a no-op — including
+// its local pending flag, which must not be re-proposed forever.
+func TestSector_terminateForMerge_staleTenureIsNoOp(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	rivalNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+	mergerNodeID := types.NewNormalNodeID(0xc000000000000000, 0)
+	tailNodeID := types.NewNormalNodeID(0xf000000000000000, 0)
+
+	handler := &sectorHandlerHelper{}
+	// healthy single-voter group
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	s.mergeReleaseDuration = 500 * time.Millisecond
+	s.Start(ctx)
+
+	s.Activate(*tailNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// tenure 1: the merger claims the lock, then abandons the merge
+	gen1, err := s.PrepareMerge(mergerNodeID)
+	require.NoError(t, err)
+
+	// a rival's rejected attempt starts the release observation; the stale
+	// claim is eventually released (checkMergeRelease)
+	_, err = s.PrepareMerge(rivalNodeID)
+	require.Error(t, err)
+	require.Eventually(t, func() bool {
+		s.mtx.RLock()
+		defer s.mtx.RUnlock()
+		return s.mergeBy == nil
+	}, 10*time.Second, 200*time.Millisecond)
+
+	// tenure 2 by the SAME holder — the ABA shape
+	gen2, err := s.PrepareMerge(mergerNodeID)
+	require.NoError(t, err)
+	require.NotEqual(t, gen1, gen2)
+
+	// the terminate left over from tenure 1 must be consumed as a no-op
+	s.TerminateForMerge(mergerNodeID, gen1)
+	require.Eventually(t, func() bool {
+		s.mtx.RLock()
+		defer s.mtx.RUnlock()
+		return !s.proposalTerminating
+	}, 10*time.Second, 100*time.Millisecond)
+	s.mtx.RLock()
+	terminated := s.terminated
+	s.mtx.RUnlock()
+	require.False(t, terminated)
+	require.Equal(t, 0, handler.terminatedCount())
+
+	// the current tenure's terminate destroys the sector
+	s.TerminateForMerge(mergerNodeID, gen2)
+	require.NoError(t, s.WaitTerminated())
+	require.Eventually(t, func() bool {
+		return handler.terminatedCount() == 1
+	}, 5*time.Second, 100*time.Millisecond)
+}
+
+// TestSector_import_rejectedWhileMergeLockHeld covers 修正 4 of TLA+
+// KvsSectorFalseLeftover (NoAbsorbWhileLocked): a sector whose mergeBy is
+// claimed is about to be exported by its absorber, so records imported after
+// that export would be destroyed with the sector without ever reaching the
+// absorber. The client-write path is already fenced (mergeFenced); the import
+// apply must be fenced too, and the proposer must observe the rejection as an
+// error — not as a silently dropped "success".
+func TestSector_import_rejectedWhileMergeLockHeld(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	holderNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+	tailNodeID := types.NewNormalNodeID(0xf000000000000000, 0)
+
+	handler := &sectorHandlerHelper{}
+	// healthy single-voter group
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	s.Start(ctx)
+
+	s.Activate(*tailNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+
+	_, err := s.PrepareMerge(holderNodeID)
+	require.NoError(t, err)
+
+	err = s.Import(map[string][]byte{"key-1": []byte("value-1")}, 1)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "import fence")
+	require.Equal(t, 0, handler.terminatedCount())
 }

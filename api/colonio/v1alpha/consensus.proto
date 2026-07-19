@@ -25,7 +25,18 @@ message Activate {
   colonio.v1alpha.NodeID tail = 1;
 }
 
+// Terminate destroys the sector on apply. When merge_handler is set, the
+// terminate is scoped to a prepare_merge tenure and the apply is a CAS: the
+// sector is terminated only while mergeBy == merge_handler and the sector's
+// merge generation == merge_generation (the tenure the requester observed at
+// PrepareMerge); otherwise the entry is consumed as a no-op. Without the
+// scope, a terminate proposed for an abandoned merge could land after a
+// ReleaseMerge (or after the same handler re-prepared) and destroy writes
+// accepted in the meantime (TLA+ KvsSectorFalseLeftover 修正 2 の ABA 反例).
+// Unset merge_handler = unconditional terminate (overlap repair paths).
 message Terminate {
+  colonio.v1alpha.NodeID merge_handler    = 1;
+  uint64                 merge_generation = 2;
 }
 
 message Extend {
@@ -131,6 +142,11 @@ message SectorSnapshot {
   // restored replica assigns it verbatim: the snapshot is the full state at
   // its log index.
   uint64 revision_counter = 5;
+
+  // Prepare-merge tenure counter (replicated state): incremented every time a
+  // PrepareMerge apply takes the claim. Scoped Terminates CAS against it, so
+  // it must survive snapshot restore together with merge_by.
+  uint64 merge_generation = 6;
 }
 
 // ConsensusSnapshot is the outer message stored in raftpb.Snapshot.Data. It
