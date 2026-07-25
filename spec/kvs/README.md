@@ -1704,7 +1704,9 @@ KVS 関連の TODO はこの章に一元化する。マークの読み方: `[x]`
 - [ ] [**mergeSector: ターゲット離脱時の abort**](#todo-merge-abort)（Go） —
       kvs.go の既存 TODO コメント
 - [ ] [**強制破棄・タイムアウトしきい値の実測再調整**](#todo-thresholds) —
-      2s / 15s / 30s / 45s は暫定値のまま
+      2s / 15s / 30s / 45s は暫定値のまま。run 17 ログでの実測調査
+      (2026-07-25) では明確な過大の根拠が得られず変更見送り（詳細は
+      「強制破棄・タイムアウトしきい値の実測再調整」の節）
 - [x] [**merge/overlap 抗争（生存 host の sector を leftover と誤認）**](#todo-merge-overlap)
       （設計 + Go + モデル） — `KvsSectorFalseLeftover.tla` で 8 欠陥を特定し
       修正 4 種を Go 実装（2026-07-19、回帰テスト 5 本）。run 17 で定量確認
@@ -2092,6 +2094,39 @@ proposeTimeout=2s / proposalWaitTimeout=15s / forceTerminateDuration=30s /
 forcePendingDuration=45s / mergeReleaseDuration=30s は、`== retry proposals`
 ログの実測に基づく再調整を想定した暫定値のまま。どこまで詰められるかは
 誤発動時の安全性の境界（TODO-1 検証項目 3）に依存するため、TODO-1 が前提。
+TODO-1 完了 (2026-07-25) により着手可能になった。
+
+**実測調査 (2026-07-25、run 17 ログ・22 分・簡易解析)**:
+
+| しきい値 | 現在値 | 実測（正常系） |
+|---|---|---|
+| `proposeTimeout` | 2s | raft ライブラリ内部の `Propose` 呼び出しのみを bound する、ネットワーク非依存の値。今回の調査対象外 |
+| `proposalWaitTimeout` | 15s | Activate 往復（送信→応答）: median 0.14s / p90 0.58s / p99 2.18s / max 10.78s (n=626)。Merge 全体（PrepareMerge→done）: median 1.24s / p90 4.15s / p99 9.22s / max 12.41s (n=302)。**Split 全体（送信→done）: median 2.20s / p90 7.53s / p99 14.39s / max 18.66s (n=330) — 現行値 15s に既に肉薄・超過している** |
+| `forceTerminateDuration`（leaderless） | 30s | 発火 82 件。発火時刻の中央値 30.23s・p99 38.5s |
+| `forcePendingDuration` | 45s | 発火 1 件、45.37s |
+| `mergeReleaseDuration` | 30s | 発火 1 件、30.75s |
+
+**結論: 変更を見送った**。理由は 2 点:
+
+1. `forceTerminateDuration`/`forcePendingDuration`/`mergeReleaseDuration` は
+   「経過時間 >= しきい値」を周期チェックする設計のため、発火時刻は
+   **定義上ほぼ必ずしきい値ちょうど**になる（チェック間隔分のオーバー
+   シュートのみ）。このログからは「もっと短くしても安全に切れたはず」
+   という余裕は読み取れない。過大かどうかを判断するには、force-terminate
+   直前に本当は回復しかけていた（リーダー選出が進行中だった等）ケースを
+   個別に追う必要があり、単純な集計では判断できなかった。
+2. `proposalWaitTimeout` は唯一「正常系の所要時間」を直接測れたが、
+   **Split の集計が既に現行値 15s に迫っており（max 18.66s）、
+   むしろこれ以上詰めると正常系の Split を巻き込みかねない**という、
+   逆方向の示唆が得られた。
+
+simulator は突発的な遅延スパイク（インターネット特有の変動）を再現
+できないため、この 1 run のデータだけを根拠にしきい値を下げるのは
+リスクに見合わないと判断した。今後着手する場合は、複数 run にまたがる
+分布の確認、および force-terminate 直前に回復しかけていたケースの
+個別追跡が前提になる。TODO-1 で「誤発動しても safety は壊れない」ことは
+確認済みなので、変更自体のリスクは性能面（余計な churn）に限定される
+という前提は変わらない。
 
 <a id="todo-merge-overlap"></a>
 #### merge/overlap 抗争 — 生存 host の sector を leftover と誤認（設計 + Go + モデル）
