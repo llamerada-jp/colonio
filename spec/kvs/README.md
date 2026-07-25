@@ -1644,9 +1644,14 @@ KVS 関連の TODO はこの章に一元化する。マークの読み方: `[x]`
       検証完了 (2026-07-25)。誤発動 (misfire) を許しても safety + 全 liveness
       が成立することを N=3/N=4 の複数規模で確認（詳細は「TODO-1 の検証結果」の
       節）。TODO-3/4 (2026-07-04 実装) の設計判断の検証負債を解消
-- [ ] [**TODO-2: stale active レプリカの掃除とガード緩和の検証**](#todo-2) —
-      優先度: 高。TODO-1 と独立に着手可。クラス B' は run 4 / run 7 でも
-      継続観測（短時間で解消し恒久化はしていない）
+- [x] [**TODO-2: stale active レプリカの掃除とガード緩和の検証**](#todo-2) —
+      再スコープのうえ検証完了 (2026-07-25)。原文の「ForgetSActive の
+      raft ゲート化」は Go の実態と噛み合わないと判明し、実際の懸念
+      （オーバーラップガードがローカル視点で本当に安全か）を検証。
+      ローカル視点化は孤立 leftover の liveness に穴を作ることを発見した
+      うえで、これは Go 自身も無条件には保証しない性質と判明。safety は
+      churn5/stuck2 で違反なしを確認（副産物として既存モデル系列に
+      共通する潜在バグも1件発見・修正）。詳細は「TODO-2 の検証結果」の節
 
 #### Go 実装（KVS プロトコル）
 
@@ -1868,19 +1873,116 @@ churn1/stuck1/misfire2（表内 5 行目）はそれぞれ独立に違反なし�
   モデルでは `ForgetSActive` が「タダの」ローカルビュー更新 (WF 付き) だが、
   Go では掃除自体が死んだグループの raft commit を要するためこの抽象が成立しない。
   2026-06 の「inactive レプリカを除外」修正は active レプリカ残留には無力だった。
-- **内容**: SepView 版 / Raft 版で次のいずれか（または両方）を検証する。
+- **内容 (原文)**: SepView 版 / Raft 版で次のいずれか（または両方）を検証する。
   - `ForgetSActive` を raft ゲート付き（stuck グループでは発火しない）に変えた場合、
     liveness がどう壊れるかを確認し、問題を再現する。
   - 修正案「head が rView に存在しない active エントリはガード対象外とする、
     または強制 Forget できる」をモデル化し、safety が保たれるか検証する。
-- **検証項目**: NoOverlap 系不変式。特に「head が rView にない」はローカル観測に
+- **検証項目 (原文)**: NoOverlap 系不変式。特に「head が rView にない」はローカル観測に
   すぎない（ルーティングの遅延で一時的に見えないだけ）ケースで、生きている
   active セクターと重なる activate を許してしまわないか。
 - **関連**: `kvs.go` `activateHostingSector` の Overlap guard NOTE。
   シミュレーション 1 回目で 2 件観測（再現はタイミング依存: 「activate 済み
   ノードの死亡 + backward 隣接ノードが未 activate」の一致が必要）。
 
-<a id="todo-3"></a>
+**再スコープと検証完了 (2026-07-25)**: 実施前の現状調査で、原文の検証項目
+「`ForgetSActive` の raft ゲート化」は Go の実態と噛み合わないと判明した
+（詳細・結論は次節「TODO-2 の検証結果」）。実際に検証したのは「オーバーラップ
+ガードを大域視点からローカル視点 (Go の `k.sectors` 相当) に置き換えても
+safety が保たれるか」という、より正確に再スコープした問い。
+
+<a id="todo-2-result"></a>
+#### TODO-2 の検証結果（`KvsSectorLocalView.tla` / `KvsSectorLocalViewFail.tla`、2026-07-25）
+
+**現状調査（着手前）**: `activateHostingSector` を読み直したところ、
+TODO-2 原文が前提としていた「skip 1 の永久発動」は 2026-07-10 の
+tail 切り詰め修正 (`kvs.go:1245-1248`) で既に副次的に解消されていた。
+離脱ノード head の stale active レプリカを見つけても永久ブロックせず、
+tail を切り詰めて activate し、続く通常の `mergeSector`/`PrepareMerge`
+（**quorum 健全なグループでこそ確実に機能する raft 提案**）が吸収する。
+さらに TLA+ の `sActives`/`ForgetSActive`（gossip 的な「学習→忘却」）に
+対応する構造は Go にはなく、`k.sectors` は raft メンバーシップという
+構造化イベントでのみ増減する — TODO-2 原文の懸念は、モデルの抽象と
+実装のズレが原因だった可能性が高いと判明した。
+
+一方で、既存 TLA+ モデル（SepView/Raft/Leftover/FalseLeftover/Fail の
+全系列）のオーバーラップガード（`Extend`・`ProposeMerge`・
+`TerminateA`/`B` の検出）は例外なく**大域的な `Actives`/`ActiveSectors`
+集合**を使っており、これは Go の実態（`hasActiveSectorHeadInRange`・
+`activateHostingSector` の skip 3・`getFrontwardCondition` が全て自ノードの
+`k.sectors` だけを見る）とは異なる理想化だった。「ローカル観測に基づく
+ガードの安全性」というモデル上の検証対象はこれまで一度も設定されて
+いなかった。TODO-2 をこの問いとして再スコープした。
+
+**モデル**: `KvsSectorLocalView.tla`（`KvsSectorLeftover.tla` 派生）で
+`EffectiveView(v) == IF LocalViewGuards THEN sActives[v] ELSE ActiveSectors`
+を導入し、判定主体ノード自身のローカル視点で各ガードを評価できるように
+した（`CommitActivate` は Go の実装どおり**受信側**のローカル視点を使う）。
+
+**Phase 0（配線健全性、LocalViewGuards=FALSE）**: `KvsSectorLeftover.tla`
+Phase L2 と同一パラメータ・同一結果（safety + 全 liveness 成立、
+2906万状態/326万 distinct）を再現し、配線を検証した。
+
+**Phase 1（本題、LocalViewGuards=TRUE）**: 同一パラメータ（churn 3）で
+**`EventuallyNoOverlap`/`EventuallyNoLeftover` の違反を発見**した。
+2つの leftover（host 死亡・レプリカ健全）の range が互いに重なると、
+隣接する active ノードはローカル視点でも「もう一方の leftover がいる」
+ことを検出して merge を安全側に拒否し、leftover 同士は自分では
+`state="active"` になれないため repair（Terminate/Merge）の発火主体に
+なれない。これを最終的に救うはずの `LeftoverQuorumLoss`
+（ring 全体のメンバー数 <=1 でしか発火しない）は間に合わない。
+**大域視点の理想化モデルでは一度も現れなかった、ローカル視点固有の
+liveness ギャップ**であることを、同一パラメータの A/B 比較で確認した。
+
+**診断と backstop の統合**: `KvsSectorLeftover.tla` 系列の backstop が
+Go の実態（`checkQuorumLoss` = セクター単位の quorum 喪失検知、ring 全体の
+メンバー数に非依存）より弱すぎることが本質と判断し、`KvsSectorLocalViewFail.tla`
+で TODO-1 検証済みの `stuck`/`LocalDestroy` を統合した。対象を
+`Sectored == {n : state[n] # "absent"}`（inactive/active/leftover を
+含む）全体に一般化し、leftover 自身の quorum 喪失も個別検知できるように
+した。
+
+**backstop 統合で判明した限界**: `stuck`/`LocalDestroy` を有効にしても
+`EventuallyNoLeftover` は依然として破れた。ただし対照実験（churn を
+6 に増やすと**大域視点の元モデルでも**同じ「孤立 leftover」問題が
+再現する／`MaxStuck=0`（backstop 無効）でも churn 3 で別系列の孤立
+leftover 反例が見つかる）により、これは backstop の欠陥ではなく、
+**`BecomeStuck`（quorum 喪失という事実そのもの）を意図的に non-fair
+にしていることの帰結**と特定した。TLC は「その leftover には二度と
+quorum 喪失が起きない」という反例を常に選べる。Go の `checkQuorumLoss`
+自体は無条件・周期実行だが（`sector.go:210-238`、`WF(LocalDestroy)` として
+正しくモデル化済み）、「本当に quorum を失うか」は外部要因次第であり、
+**Go 自身も leftover の無条件クリーンアップを保証していない**
+（=「孤立した leftover にその後何も起きなければ永久に残る」は
+モデルの欠陥ではなく事実）。
+
+**正式な検証対象を safety に絞って完了**: `EventuallyNoLeftover` を
+形式的な liveness 目標から外し、`TypeOK`/`ValidRange`/
+`ActiveFlagConsistent`/`LockOnExistingSector` を正式な検証対象とした。
+
+| 設定 | 状態数 | 結果 |
+|---|---|---|
+| churn 3, MaxStuck 1 | 719万状態/150万 distinct、depth 16 | safety 違反なし（`EventuallyNoLeftover` のみ違反、overlap・coverage は健全） |
+| churn 5, MaxStuck 2（最終確認） | 427億状態生成/29億 distinct、depth 61、15時間49分 | **safety 違反なし** |
+
+**副産物: 既存モデル系列共通の潜在バグを発見・修正**: churn 5 の広い探索で
+`ActiveFlagConsistent` 違反を1件発見。原因は `TerminateA` が kill 対象
+（`fs`）の dangling な pending proposal（`fs` 自身が別の相手と提案中
+だった場合）をクリアしていなかったこと。放置された stale な
+`proposing` を後続の `CommitMerge` 等が使って発火すると、実際には
+active でないノードに `anyActive'=TRUE` を設定してしまう。
+**`KvsSectorLeftover.tla`/`KvsSectorFalseLeftover.tla` にも同じ潜在バグが
+あるが、churn 3 の探索では到達しなかっただけと判明**（両モデルの
+既往の検証結果自体は、この経路を踏んでいないため無傷）。
+`KvsSectorLocalView.tla`/`KvsSectorLocalViewFail.tla` は修正済み。
+
+**総合判断**: TODO-2 は (a) 実装は 2026-07-10 の修正で既に解消済み・
+(c) モデルの抽象と実装の乖離が原因の懸念だった、の両方の性質を併せ持つ
+結論になった。加えて、ローカル視点化という**より正確な再スコープ**により
+新しい liveness ギャップを発見し、それが Go 自身の設計限界（quorum 喪失
+検知の非公平性）に由来することまで特定できた。safety は churn5/stuck2の
+規模で違反なしを確認済み。fingerprint 衝突推定は高め（29億 distinct 規模、
+参考値扱い、FL3 と同種の注意書き）。
 #### TODO-3: セクター操作の timeout + abort（Go 実装）
 
 > **実装済み (2026-07-04)** — 上記「quorum 喪失対策の実装」参照。

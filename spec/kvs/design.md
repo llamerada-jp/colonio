@@ -101,7 +101,26 @@ safety の必要条件ではなく多重防御の一つという結論。churn�
 検証結果」を参照。
 
 未決事項: 死亡判定への routing 情報の組み合わせ、しきい値の実測に基づく調整。
-詳細は [README.md の「今後の TODO」](README.md#今後の-todo)（TODO-2〜TODO-4）を参照。
+詳細は [README.md の「今後の TODO」](README.md#今後の-todo)（TODO-3〜TODO-4）を参照。
+
+**TODO-2 (stale active レプリカの掃除とガード緩和) もモデル検証完了
+(2026-07-25)**: 原文が前提としていた「skip 1 の永久発動」は 2026-07-10 の
+tail 切り詰め修正で既に解消済みと判明し、「オーバーラップガードを大域視点
+からローカル視点 (Go の `k.sectors` 相当) に置き換えても safety が保たれるか」
+として再スコープした。`KvsSectorLocalView.tla`/`KvsSectorLocalViewFail.tla`
+で検証したところ、ローカル視点化は孤立した leftover（host 死亡・レプリカ
+健全）同士の重なりを解消できない liveness ギャップを新たに発見した
+（大域視点の理想化モデルでは現れなかった）。TODO-1 の `stuck`/`LocalDestroy`
+を統合しても解消しないが、これは backstop の欠陥ではなく `BecomeStuck`
+（quorum 喪失という事実そのもの）を意図的に non-fair にしていることの
+帰結であり、Go の `checkQuorumLoss` 自体も leftover の無条件クリーンアップ
+までは保証しないと確認した（孤立した leftover にその後何も起きなければ
+永久に残るのは事実であり、モデルの欠陥ではない）。正式な検証対象を safety
+に絞り、churn5/stuck2 (427億状態、15時間49分) で違反なしを確認。副産物として
+`TerminateA` の潜在バグ（kill 対象の dangling proposing 未クリア）も
+発見・修正した（`KvsSectorLeftover.tla`/`KvsSectorFalseLeftover.tla` にも
+同じ潜在バグがあるが、churn 3 の検証では到達しておらず既往の結果は無傷）。
+詳細は README「TODO-2 の検証結果」を参照。
 
 ### churn 下のメンバーシップ管理の課題（2026-07-04 run4 で確認・未解決）
 
