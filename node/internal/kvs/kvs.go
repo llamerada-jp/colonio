@@ -761,40 +761,52 @@ func (k *KVS) activateHostingSector(hostingSector *sector.Sector, frontwardNextN
 		}
 	}
 
-	// local node is stable and other nodes are not exist
-	if len(frontwardNextNodeIDs) == 0 {
+	// Decide the tail under RLock, then activate after releasing it.
+	// Activate/markSectorUpdated must not run while k.mtx is held.
+	tail := func() *types.NodeID {
 		k.mtx.RLock()
 		defer k.mtx.RUnlock()
-		if len(k.sectors) != 0 {
-			k.logger.Warn("No frontward node but sectors exist")
-			return
-		}
-		hostingSector.Activate(*k.localNodeID)
-		return
-	}
 
-	var candidate *sector.Sector
-	frontwardNodeID := frontwardNextNodeIDs[0]
-	for sectorKey, sector := range k.sectors {
-		sectorHead := sector.GetHeadAddress()
-		if sectorHead.Equal(k.localNodeID) {
-			continue
+		// local node is stable and other nodes are not exist
+		if len(frontwardNextNodeIDs) == 0 {
+			for sectorKey := range k.sectors {
+				if sectorKey != hostingSector.GetKey() {
+					k.logger.Warn("No frontward node but other sectors exist")
+					return nil
+				}
+			}
+			return k.localNodeID
 		}
-		if sectorHead.Equal(frontwardNodeID) {
-			if candidate == nil || sectorKey.SectorNo > candidate.GetKey().SectorNo {
-				candidate = sector
+
+		var candidate *sector.Sector
+		frontwardNodeID := frontwardNextNodeIDs[0]
+		for sectorKey, sector := range k.sectors {
+			sectorHead := sector.GetHeadAddress()
+			if sectorHead.Equal(k.localNodeID) {
+				continue
+			}
+			if sectorHead.Equal(frontwardNodeID) {
+				if candidate == nil || sectorKey.SectorNo > candidate.GetKey().SectorNo {
+					candidate = sector
+				}
+			}
+
+			// Overlap guard: only ACTIVE sectors block activation, since inactive
+			// replicas of departed nodes can linger in k.sectors indefinitely.
+			if sectorHead.IsBetween(k.localNodeID, frontwardNodeID) && sector.GetTailAddress() != nil {
+				return nil
 			}
 		}
-
-		if sectorHead.IsBetween(k.localNodeID, frontwardNodeID) {
-			return
+		if candidate == nil {
+			return nil
 		}
-	}
-	if candidate == nil {
+		return candidate.GetHeadAddress()
+	}()
+	if tail == nil {
 		return
 	}
 
-	hostingSector.Activate(*candidate.GetHeadAddress())
+	hostingSector.Activate(*tail)
 }
 
 func (k *KVS) activateFrontwardSector(frontwardNextSector *sector.Sector) {
