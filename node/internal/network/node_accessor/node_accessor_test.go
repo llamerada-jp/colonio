@@ -714,3 +714,97 @@ func TestNodeAccessorConnectLinks(t *testing.T) {
 		}()
 	}
 }
+
+// blockingWebRTCLink is a stub whose disconnect() blocks until release is
+// closed, mimicking pion's PeerConnection.Close() hanging while the peer's
+// association is dying.
+type blockingWebRTCLink struct {
+	release          chan struct{}
+	disconnectCalled chan struct{}
+}
+
+var _ webRTCLink = &blockingWebRTCLink{}
+
+func (l *blockingWebRTCLink) isActive() bool                { return true }
+func (l *blockingWebRTCLink) isOnline() bool                { return true }
+func (l *blockingWebRTCLink) getLabel() string              { return "blocking" }
+func (l *blockingWebRTCLink) getLocalSDP() (string, error)  { return "sdp", nil }
+func (l *blockingWebRTCLink) setRemoteSDP(sdp string) error { return nil }
+func (l *blockingWebRTCLink) updateICE(ice string) error    { return nil }
+func (l *blockingWebRTCLink) send(data []byte) error        { return nil }
+
+func (l *blockingWebRTCLink) disconnect() error {
+	select {
+	case l.disconnectCalled <- struct{}{}:
+	default:
+	}
+	<-l.release
+	return nil
+}
+
+// TestNodeAccessor_disconnectDoesNotBlockMutex covers the "network zombie"
+// hole found in シミュレーション run 11/12 (2026-07-09/10): the link teardown
+// used to run link.disconnect() — which descends into pion's
+// PeerConnection.Close() and can hang on a dying association — while
+// nodeLinkChangeState held na.mtx. Every send/receive/IsOnline then froze,
+// and the hang was contagious: the neighbor disconnecting a zombie's link
+// became the next zombie (run 12 で 10 ノードがリング上を連鎖). The teardown
+// must not run under na.mtx: while disconnect() is still blocked, the mutex
+// must stay acquirable and the link must already be unregistered.
+func TestNodeAccessor_disconnectDoesNotBlockMutex(t *testing.T) {
+	origFactory := defaultWebRTCLinkFactory
+	release := make(chan struct{})
+	disconnectCalled := make(chan struct{}, 8)
+	defaultWebRTCLinkFactory = func(config *webRTCLinkConfig, eventHandler *webRTCLinkEventHandler) (webRTCLink, error) {
+		return &blockingWebRTCLink{release: release, disconnectCalled: disconnectCalled}, nil
+	}
+	defer func() {
+		defaultWebRTCLinkFactory = origFactory
+		close(release) // unblock leaked teardown goroutines
+	}()
+
+	na, err := NewNodeAccessor(&Config{
+		Logger:         testUtil.Logger(t),
+		Handler:        &nodeAccessorHandlerHelper{},
+		NodeLinkConfig: nlConfig,
+	})
+	require.NoError(t, err)
+	na.nodeLinkConfig.ctx = t.Context()
+
+	// register a connected link built on the blocking stub
+	link, err := newNodeLink(na.nodeLinkConfig, na, true)
+	require.NoError(t, err)
+	peerNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+	na.mtx.Lock()
+	na.nodeID2link[*peerNodeID] = link
+	na.link2nodeID[link] = peerNodeID
+	na.mtx.Unlock()
+
+	// the link dies: this used to hold na.mtx across the hanging disconnect
+	na.nodeLinkChangeState(link, nodeLinkStateDisabled)
+
+	select {
+	case <-disconnectCalled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("link.disconnect() was not called")
+	}
+
+	// na.mtx must stay acquirable while disconnect() is still blocked
+	acquired := make(chan struct{})
+	go func() {
+		na.mtx.Lock()
+		defer na.mtx.Unlock()
+		close(acquired)
+	}()
+	select {
+	case <-acquired:
+	case <-time.After(3 * time.Second):
+		t.Fatal("na.mtx frozen while link disconnect is blocked (network zombie)")
+	}
+
+	// and the dead link must already be unregistered
+	na.mtx.RLock()
+	_, registered := na.nodeID2link[*peerNodeID]
+	na.mtx.RUnlock()
+	require.False(t, registered)
+}

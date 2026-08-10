@@ -76,7 +76,13 @@ func NewSeed(optionSetters ...optionSetter) *Seed {
 	options := &options{
 		logger:         slog.Default(),
 		normalLifespan: 30 * time.Minute,
-		shortLifespan:  10 * time.Second,
+		// shortLifespan must be comfortably longer than the client's keepalive
+		// re-subscribe latency: after a keepalive challenge shrinks the lifespan
+		// to shortLifespan, the lifespan is restored only when the client's next
+		// Keepalive call arrives, and losing this race evicts a healthy node with
+		// no recovery path on the client (シミュレーション run 14, 2026-07-10:
+		// 「接続黒穴」。spec/seed/README.md の TODO を参照).
+		shortLifespan: 30 * time.Second,
 	}
 
 	for _, setter := range optionSetters {

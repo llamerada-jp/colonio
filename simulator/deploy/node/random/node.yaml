@@ -37,6 +37,27 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
+        # Uncomment to stress the KVS raft snapshot path (spec/kvs/snapshot.md
+        # Stage 5): low thresholds make the management churn alone trigger
+        # snapshot/compaction/InstallSnapshot frequently. Observe via the
+        # "@@ snapshot export/apply/compact" log lines.
+        # - name: COLONIO_KVS_SNAP_COUNT
+        #   value: "20"
+        # - name: COLONIO_KVS_SNAP_CATCHUP
+        #   value: "10"
+        # Uncomment to generate KVS write load (spec/kvs/dataplane.md, snapshot
+        # Stage 6): each node runs one Set/Get/Delete per interval against a
+        # shared key space, so overwrites dominate the raft logs and the
+        # snapshot must bound the memory. Watch the per-process "== kvs mem"
+        # lines and per-node "@@ kvs load" / "@@ kvs verify" lines. Keep the
+        # default SNAP_COUNT (1000) here — the point is to verify the
+        # production thresholds under a realistic write rate.
+        - name: COLONIO_SIM_KVS_INTERVAL_MS
+          value: "1000"
+        # - name: COLONIO_SIM_KVS_KEYS
+        #   value: "256"
+        # - name: COLONIO_SIM_KVS_VALUE_SIZE
+        #   value: "4096"
         ports:
         - containerPort: 8443
           name: https

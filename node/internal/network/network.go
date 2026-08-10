@@ -17,10 +17,12 @@ package network
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
+	service "github.com/llamerada-jp/colonio/api/colonio/v1alpha/v1alphaconnect"
 	"github.com/llamerada-jp/colonio/node/internal/constants"
 	"github.com/llamerada-jp/colonio/node/internal/geometry"
 	"github.com/llamerada-jp/colonio/node/internal/network/node_accessor"
@@ -141,8 +143,12 @@ func (n *Network) IsOnline() bool {
 	return n.seedAccessor.IsAlone() || n.nodeAccessor.IsOnline()
 }
 
-func (n *Network) GetStability() (bool, []*types.NodeID) {
+func (n *Network) GetStability() (bool, []*types.NodeID, []*types.NodeID) {
 	return n.routing.GetStability()
+}
+
+func (n *Network) GetSeedClient() service.SeedServiceClient {
+	return n.seedAccessor.GetClient()
 }
 
 func (n *Network) GetTransferer() *transferer.Transferer {
@@ -213,8 +219,7 @@ func (n *Network) TransfererRelayPacket(dstNodeID *types.NodeID, packet *network
 		return
 	}
 
-	err := n.nodeAccessor.RelayPacket(dstNodeID, packet)
-	if err != nil {
+	if err := n.nodeAccessor.RelayPacket(dstNodeID, packet); err != nil {
 		n.logger.Debug("failed to relay packet", slog.String("error", err.Error()))
 	}
 }
@@ -250,6 +255,21 @@ func (n *Network) classifyPacket(packet *networkTypes.Packet) {
 			return
 		}
 	} else if nextNodeID.Equal(&types.NodeLocal) || nextNodeID.Equal(n.localNodeID) {
+		// An explicit packet must be received only by its exact destination.
+		// The routing table can transiently resolve to the local node for a
+		// foreign destination; accepting such a packet makes this node act on
+		// messages meant for another node.
+		// (シミュレーション run3, 2026-07-04: 死亡ノード宛の SectorManageMember や
+		// raft メッセージを別ノードが受理し、同じ raft メンバー ID を複数の物理
+		// ノードが名乗る「ゴーストレプリカ」が生成されるのを dump.json で観測)
+		if (packet.Mode&networkTypes.PacketModeExplicit) != 0 &&
+			!packet.DstNodeID.Equal(&types.NodeLocal) &&
+			!packet.DstNodeID.Equal(n.localNodeID) {
+			// fmt with "==" so the simulator's log collection keeps this line
+			fmt.Println(time.Now(), n.localNodeID.String(),
+				"== drop explicit packet to", packet.DstNodeID.String())
+			return
+		}
 		n.transferer.Receive(packet)
 		return
 

@@ -1,0 +1,250 @@
+/*
+ * Copyright 2017- Yuji Ito <llamerada.jp@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package sector
+
+import (
+	"testing"
+	"time"
+
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/node/internal/kvs/sector/operator"
+	"github.com/llamerada-jp/colonio/types"
+	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
+	"github.com/stretchr/testify/require"
+	proto3 "google.golang.org/protobuf/proto"
+)
+
+// TestSector_dataplane_endToEnd drives the full write path through a real
+// single-member raft group: Operations.Set proposes the operation, the
+// consensus loop commits and applies it, and only then the call returns.
+// Reads are served from the locally applied store (read-your-writes).
+func TestSector_dataplane_endToEnd(t *testing.T) {
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+
+	store := newRecordStoreHelper()
+	s := newSnapshotTestSector(t, localNodeID, &sectorHandlerHelper{}, store)
+	s.Start(t.Context())
+	defer s.Stop()
+
+	// before activation every operation is rejected as retryable
+	operator := s.GetOperator()
+	_, err := operator.Set("key1", []byte("value1"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorSectorNotReady)
+
+	// activate with tail == head: the sector covers the whole ring
+	s.Activate(*localNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// write → committed through raft → applied → acknowledged
+	revision1, err := operator.Set("key1", []byte("value1"), nil)
+	require.NoError(t, err)
+	require.NotZero(t, revision1)
+
+	// read-your-writes on the host, revision included
+	value, revision, err := operator.Get("key1")
+	require.NoError(t, err)
+	require.Equal(t, []byte("value1"), value)
+	require.Equal(t, revision1, revision)
+
+	// the applied write reached the shared store (as the record envelope), so
+	// it is part of what splits/merges/snapshots export
+	stored, err := store.Get(&s.sectorKey, "key1")
+	require.NoError(t, err)
+	record := &proto.KvsRecord{}
+	require.NoError(t, proto3.Unmarshal(stored, record))
+	require.Equal(t, []byte("value1"), record.Value)
+	require.Equal(t, revision1, record.Revision)
+
+	// overwrite and delete complete the lifecycle; revisions grow
+	revision2, err := operator.Set("key1", []byte("value2"), nil)
+	require.NoError(t, err)
+	require.Greater(t, revision2, revision1)
+	value, _, err = operator.Get("key1")
+	require.NoError(t, err)
+	require.Equal(t, []byte("value2"), value)
+
+	require.NoError(t, operator.Delete("key1", nil))
+	_, _, err = operator.Get("key1")
+	require.ErrorIs(t, err, kvsTypes.ErrorStoreKeyNotFound)
+	require.ErrorIs(t, operator.Delete("key1", nil), kvsTypes.ErrorStoreKeyNotFound)
+}
+
+// TestSector_dataplane_mergeFencedByPrepareMerge: once a prepare_merge is
+// committed (merge lock held), writes are rejected as retryable until the
+// lock is released — a write applied while the absorber exports the records
+// would be acknowledged but lost.
+func TestSector_dataplane_mergeFencedByPrepareMerge(t *testing.T) {
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	holder := types.NewNormalNodeID(0xc000000000000000, 0)
+
+	s := newSnapshotTestSector(t, localNodeID, &sectorHandlerHelper{}, newRecordStoreHelper())
+	s.Start(t.Context())
+	defer s.Stop()
+
+	s.Activate(*localNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+
+	operator := s.GetOperator()
+	_, err := operator.Set("key1", []byte("value1"), nil)
+	require.NoError(t, err)
+
+	// the merge lock fences writes...
+	_, errPrepare := s.PrepareMerge(holder)
+	require.NoError(t, errPrepare)
+	_, err = operator.Set("key2", []byte("value2"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorSectorNotReady)
+
+	// ...but reads stay available
+	value, _, err := operator.Get("key1")
+	require.NoError(t, err)
+	require.Equal(t, []byte("value1"), value)
+
+	// releasing the lock reopens writes (the release is proposed internally
+	// by checkMergeRelease after mergeReleaseDuration; apply it directly here
+	// instead of waiting 30s)
+	require.NoError(t, s.ConsensusApplyProposal(&proto.ConsensusProposal{
+		Content: &proto.ConsensusProposal_ReleaseMerge{
+			ReleaseMerge: &proto.ReleaseMerge{Handler: holder.Proto()},
+		},
+	}))
+	_, err = operator.Set("key2", []byte("value2"), nil)
+	require.NoError(t, err)
+}
+
+// TestSector_dataplane_snapshotIncludesOperationWrites: records written via
+// the data plane are part of the sector snapshot, and a replica restored from
+// it serves them (the snapshot path and the data plane share the same store
+// state).
+func TestSector_dataplane_snapshotIncludesOperationWrites(t *testing.T) {
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+
+	src := newSnapshotTestSector(t, localNodeID, &sectorHandlerHelper{}, newRecordStoreHelper())
+	src.Start(t.Context())
+	defer src.Stop()
+
+	src.Activate(*localNodeID)
+	require.Eventually(t, func() bool {
+		return src.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+	revision, err := src.GetOperator().Set("key1", []byte("value1"), nil)
+	require.NoError(t, err)
+
+	data, err := src.ConsensusGetSnapshot()
+	require.NoError(t, err)
+
+	dst := newSnapshotTestSector(t, localNodeID, &sectorHandlerHelper{}, newRecordStoreHelper())
+	require.NoError(t, dst.ConsensusApplySnapshot(data))
+
+	// the restored replica serves the record with its original revision, and
+	// its counter continues past it (a CAS chain survives the restore)
+	value, restoredRevision, err := dst.GetOperator().Get("key1")
+	require.NoError(t, err)
+	require.Equal(t, []byte("value1"), value)
+	require.Equal(t, revision, restoredRevision)
+}
+
+// appendPatcher is the test Patcher: append the patch document to the current
+// value (a deterministic pure function).
+type appendPatcher struct{}
+
+func (appendPatcher) Apply(current []byte, patch []byte) ([]byte, error) {
+	result := make([]byte, 0, len(current)+len(patch))
+	result = append(result, current...)
+	return append(result, patch...), nil
+}
+
+// TestSector_dataplane_patch drives a Patch through a real single-member raft
+// group: only the patch document is proposed, the apply runs the registered
+// Patcher against the locally stored record, and the acknowledgment carries
+// the new revision.
+func TestSector_dataplane_patch(t *testing.T) {
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+
+	s := newSnapshotTestSector(t, localNodeID, &sectorHandlerHelper{}, newRecordStoreHelper())
+	s.Start(t.Context())
+	defer s.Stop()
+
+	s.Activate(*localNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+
+	operator := s.GetOperator()
+	revision1, err := operator.Set("key1", []byte("base"), nil)
+	require.NoError(t, err)
+
+	revision2, err := operator.Patch("key1", "append", []byte("+patch"), nil)
+	require.NoError(t, err)
+	require.Greater(t, revision2, revision1)
+
+	value, revision, err := operator.Get("key1")
+	require.NoError(t, err)
+	require.Equal(t, []byte("base+patch"), value)
+	require.Equal(t, revision2, revision)
+
+	// an unregistered patcher is rejected before proposing
+	_, err = operator.Patch("key1", "nope", []byte("x"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorPatchFailed)
+
+	// patching an absent record is a miss, not a creation
+	_, err = operator.Patch("absent", "append", []byte("x"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorStoreKeyNotFound)
+}
+
+// TestSector_dataplane_lock drives the lease lock through a real
+// single-member raft group: acquire → guarded write → release, plus the
+// fencing rejections in between.
+func TestSector_dataplane_lock(t *testing.T) {
+	localNodeID := types.NewNormalNodeID(0x4000000000000000, 0)
+	owner := types.NewNormalNodeID(0x1111111111111111, 0)
+	other := types.NewNormalNodeID(0x2222222222222222, 0)
+
+	s := newSnapshotTestSector(t, localNodeID, &sectorHandlerHelper{}, newRecordStoreHelper())
+	s.Start(t.Context())
+	defer s.Stop()
+
+	s.Activate(*localNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+
+	op := s.GetOperator()
+	_, err := op.Set("key1", []byte("base"), nil)
+	require.NoError(t, err)
+
+	grant, err := op.LockAcquire("key1", owner, 30*time.Second)
+	require.NoError(t, err)
+	require.NotZero(t, grant.Generation)
+
+	// the lease is committed state: unguarded writes and foreign acquires
+	// are rejected, the guarded write lands
+	_, err = op.Set("key1", []byte("plain"), nil)
+	require.ErrorIs(t, err, kvsTypes.ErrorLockHeld)
+	_, err = op.LockAcquire("key1", other, 30*time.Second)
+	require.ErrorIs(t, err, kvsTypes.ErrorLockHeld)
+	_, err = op.Set("key1", []byte("guarded"), &operator.WriteCondition{
+		LockOwner: owner, LockGeneration: grant.Generation,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, op.LockRelease("key1", owner, grant.Generation))
+	_, err = op.Set("key1", []byte("unlocked"), nil)
+	require.NoError(t, err)
+}

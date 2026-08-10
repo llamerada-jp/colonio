@@ -356,3 +356,87 @@ func TestTimeout(t *testing.T) {
 	// request record is removed after timeout
 	assert.Len(t, transferer.requestRecord, 0)
 }
+
+// A retried request whose destination has become unroutable must not deadlock
+// the transferer: Network.classifyPacket handles "no next step" by calling
+// Error → Response synchronously, and the error packet is addressed to the
+// local node, so it comes back into Receive on the same goroutine that called
+// TransfererSendPacket. If subRoutine sends the retry while holding t.mtx,
+// Receive re-acquires the same RWMutex and the node freezes permanently
+// (シミュレーション run 16, 2026-07-11: watchdog kill 5 件の根本原因).
+func TestRetry_noRouteErrorDoesNotDeadlock(t *testing.T) {
+	mtx := sync.Mutex{}
+	sendCount := 0
+	gotError := make(chan constants.PacketErrorCode, 1)
+	localNodeID := types.NewRandomNodeID()
+	dstNodeID := types.NewRandomNodeID()
+
+	var transferer *Transferer
+	transferer = NewTransferer(&Config{
+		Logger: testUtil.Logger(t),
+		Handler: &transfererHandlerHelper{
+			sendPacket: func(p *networkTypes.Packet) {
+				mtx.Lock()
+				sendCount++
+				first := sendCount == 1
+				mtx.Unlock()
+
+				// The first send is routed but the packet is lost, so the
+				// request stays in requestRecord and subRoutine retries it.
+				if first {
+					return
+				}
+
+				// Deliver the error response like classifyPacket does for a
+				// packet addressed to the local node.
+				if p.Mode&networkTypes.PacketModeResponse != 0 {
+					transferer.Receive(p)
+					return
+				}
+
+				// The retry finds no next step.
+				transferer.Error(p, constants.PacketErrorCodeNoOneReceive, "no one receive the packet")
+			},
+			relayPacket: func(nid *types.NodeID, p *networkTypes.Packet) {
+				assert.Fail(t, "unexpected call")
+			},
+		},
+		retryCountMax: 3,
+		retryInterval: 100 * time.Millisecond,
+	})
+	transferer.Start(t.Context(), localNodeID)
+	defer transferer.Stop()
+
+	transferer.Request(dstNodeID, networkTypes.PacketModeNone,
+		&proto.PacketContent{Content: &proto.PacketContent_SpreadKnock{}},
+		&responseHandlerHelper{
+			onResponse: func(p *networkTypes.Packet) {
+				assert.Fail(t, "unexpected call")
+			},
+			onError: func(code constants.PacketErrorCode, message string) {
+				select {
+				case gotError <- code:
+				default:
+				}
+			},
+		})
+
+	select {
+	case code := <-gotError:
+		assert.Equal(t, constants.PacketErrorCodeNoOneReceive, code)
+	case <-time.After(10 * time.Second):
+		assert.Fail(t, "transferer deadlocked: retry was sent while holding t.mtx")
+	}
+
+	// t.mtx must be released; a lock-taking method must return.
+	released := make(chan struct{})
+	go func() {
+		transferer.Cancel(&networkTypes.Packet{ID: 12345})
+		close(released)
+	}()
+	select {
+	case <-released:
+	case <-time.After(3 * time.Second):
+		assert.Fail(t, "t.mtx is still held after the retry cycle")
+	}
+}

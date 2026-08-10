@@ -1,0 +1,212 @@
+syntax = "proto3";
+
+package api.colonio.v1alpha;
+
+import "api/colonio/v1alpha/core.proto";
+
+option go_package = "github.com/llamerada-jp/colonio/api/colonio/v1alpha";
+
+message ConsensusProposal {
+  oneof content {
+    Activate       activate         = 1;
+    Terminate      terminate        = 2;
+    Extend         extend           = 3;
+    PreCommitSplit pre_commit_split = 4;
+    CommitSplit    commit_split     = 5;
+    PrepareMerge   prepare_merge    = 6;
+    CommitMerge    commit_merge     = 7;
+    Import         import           = 8;
+    Operation      operation        = 9;
+    ReleaseMerge   release_merge    = 10;
+  }
+}
+
+message Activate {
+  colonio.v1alpha.NodeID tail = 1;
+}
+
+// Terminate destroys the sector on apply. When merge_handler is set, the
+// terminate is scoped to a prepare_merge tenure and the apply is a CAS: the
+// sector is terminated only while mergeBy == merge_handler and the sector's
+// merge generation == merge_generation (the tenure the requester observed at
+// PrepareMerge); otherwise the entry is consumed as a no-op. Without the
+// scope, a terminate proposed for an abandoned merge could land after a
+// ReleaseMerge (or after the same handler re-prepared) and destroy writes
+// accepted in the meantime (TLA+ KvsSectorFalseLeftover 修正 2 の ABA 反例).
+// Unset merge_handler = unconditional terminate (overlap repair paths).
+message Terminate {
+  colonio.v1alpha.NodeID merge_handler    = 1;
+  uint64                 merge_generation = 2;
+}
+
+message Extend {
+  colonio.v1alpha.NodeID tail = 1;
+}
+
+message PreCommitSplit {
+  colonio.v1alpha.NodeID tail = 1;
+}
+
+message CommitSplit {
+  colonio.v1alpha.NodeID tail = 1;
+}
+
+message PrepareMerge {
+  colonio.v1alpha.NodeID handler = 1;
+}
+
+// ReleaseMerge releases a stale prepare_merge claim. The apply is a CAS:
+// mergeBy is cleared only when it still equals `handler`, so a release that
+// races with a newer PrepareMerge never clears the newer claim.
+message ReleaseMerge {
+  colonio.v1alpha.NodeID handler = 1;
+}
+
+message CommitMerge {
+  colonio.v1alpha.NodeID tail = 1;
+}
+
+message Import {
+  message Record {
+    string key   = 1;
+    bytes  value = 2;
+  }
+  repeated Record records = 1;
+
+  // Source sector's revision counter at export time. The apply max-merges it
+  // into the importing sector's counter so that a record's next revision is
+  // always greater than any revision it carried in — per-key monotonicity
+  // survives split/merge migration and delete/re-create (spec/kvs/lock.md
+  // 「revision counter」).
+  uint64 revision_counter = 2;
+}
+
+// KvsRecord is the envelope stored as the record value in the sector store:
+// the user value plus the replicated per-record metadata. It rides opaquely
+// through Import / snapshot / migration, so the metadata cannot be forgotten
+// on any state-transfer path. Serialized with deterministic marshaling —
+// the bytes are part of the replicated state.
+message KvsRecord {
+  bytes  value    = 1;
+  // Assigned from the sector's revision counter on every Set; never reused
+  // within a sector lineage (the counter only grows and max-merges on
+  // import). 0 is never assigned: it is the CAS sentinel for "absent".
+  uint64 revision = 2;
+  // Lease lock; unset means unlocked (spec/kvs/lock.md).
+  KvsLock lock = 3;
+}
+
+// KvsLock is the per-record lease lock, replicated as part of the record
+// envelope. Expiry is never evaluated inside the apply (replicas must not
+// read clocks): the hosting operator observes deadline_ms on its own clock
+// and proposes COMMAND_LOCK_REVOKE, whose apply is a CAS on
+// (owner, generation) — the same pattern as ReleaseMerge.
+message KvsLock {
+  // The node holding the lock (implicitly the requesting node: the host
+  // takes it from the packet source, so there is no spoofable field).
+  colonio.v1alpha.NodeID owner = 1;
+  // Fencing token, assigned from the sector's revision counter on acquire
+  // and kept across renewals. Guarded writes must present it; a holder that
+  // lost the lock cannot corrupt the record even if it never noticed.
+  uint64 generation = 2;
+  // Lease deadline (unix milliseconds), computed by the hosting operator at
+  // propose time — a committed value, identical on every replica.
+  int64 deadline_ms = 3;
+}
+
+// SectorSnapshot is the sector-layer state machine snapshot: the replicated
+// state after applying all log entries up to the snapshot index. Local intent
+// fields (proposal*, splittingAddress, timers) are deliberately excluded —
+// each replica rebuilds those from its own role. It is produced by
+// Handler.ConsensusGetSnapshot and consumed by Handler.ConsensusApplySnapshot;
+// the consensus layer treats it as opaque bytes (see ConsensusSnapshot).
+message SectorSnapshot {
+  // All KV records of the sector. A not-yet-activated sector may hold
+  // records (split imports into the inactive frontward sector before
+  // CommitSplit activates it), so records must not be tied to tail.
+  repeated Import.Record records = 1;
+
+  // Activation + range state; unset means not activated. Ignored when
+  // terminated is true (terminate clears the operator range but keeps
+  // Sector.tail, so tail carries no meaning after termination).
+  colonio.v1alpha.NodeID tail = 2;
+
+  // Current prepare_merge holder (merge lock); unset means unlocked. Must be
+  // included: a replica restored without it would diverge from the group's
+  // merge-lock state (KvsSectorMergeLock safety).
+  colonio.v1alpha.NodeID merge_by = 3;
+
+  bool terminated = 4;
+
+  // Revision counter (replicated state, see Import.revision_counter). A
+  // restored replica assigns it verbatim: the snapshot is the full state at
+  // its log index.
+  uint64 revision_counter = 5;
+
+  // Prepare-merge tenure counter (replicated state): incremented every time a
+  // PrepareMerge apply takes the claim. Scoped Terminates CAS against it, so
+  // it must survive snapshot restore together with merge_by.
+  uint64 merge_generation = 6;
+}
+
+// ConsensusSnapshot is the outer message stored in raftpb.Snapshot.Data. It
+// wraps the sector-layer payload with the consensus-layer member table:
+// sectorNo→nodeID routing is built only by conf-change replay, which a
+// snapshot-joining member cannot perform once the log is compacted, and
+// raft's ConfState carries raft IDs only.
+message ConsensusSnapshot {
+  // Serialized SectorSnapshot, passed through to the handler unparsed.
+  bytes sector_state = 1;
+
+  // sectorNo → nodeID member table for raft message routing.
+  map<uint64, colonio.v1alpha.NodeID> members = 2;
+}
+
+message Operation {
+  enum Command {
+    // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+    COMMAND_GET    = 0;
+    COMMAND_SET    = 1;
+    COMMAND_PATCH  = 2;
+    COMMAND_DELETE = 3;
+    // Lease lock operations (spec/kvs/lock.md). ACQUIRE by the current
+    // holder renews the deadline keeping the generation (idempotent for
+    // unknown-outcome retries); RELEASE/REVOKE apply as a CAS on
+    // (owner, generation).
+    COMMAND_LOCK_ACQUIRE = 4;
+    COMMAND_LOCK_RELEASE = 5;
+    COMMAND_LOCK_REVOKE  = 6;
+  }
+
+  Command command      = 1;
+  uint32  operation_id = 2;
+  string  key          = 3;
+  bytes   value        = 4;
+
+  // CAS condition, checked deterministically at apply time against the
+  // record's replicated revision. cas_revision != 0: apply only when the
+  // record exists with exactly this revision. cas_absent: apply only when the
+  // record does not exist. Both unset = unconditional. A failed check is a
+  // waiter-level conflict, not an apply failure.
+  uint64 cas_revision = 5;
+  bool   cas_absent   = 6;
+
+  // COMMAND_PATCH: name of the node-registered Patcher that applies the
+  // patch document (carried in `value`) to the record. The patcher runs
+  // inside the apply on every replica, so it must be registered identically
+  // cluster-wide and be a deterministic pure function (spec/kvs/api.md
+  // 「Patch」). A missing patcher or a rejected patch is a waiter-level
+  // failure, not an apply failure.
+  string patcher = 7;
+
+  // Lease lock fields (spec/kvs/lock.md).
+  // LOCK_*: lock_owner is the requester (ACQUIRE) or the expected holder
+  // (RELEASE/REVOKE); lock_generation is the expected generation for the
+  // RELEASE/REVOKE CAS; lock_deadline_ms is the new deadline of an ACQUIRE,
+  // computed by the host at propose time.
+  // SET/PATCH/DELETE: lock_owner + lock_generation form the guarded-write
+  // token, verified against the record's lock at apply time.
+  colonio.v1alpha.NodeID lock_owner       = 8;
+  uint64                 lock_generation  = 9;
+  int64                  lock_deadline_ms = 10;
+}

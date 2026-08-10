@@ -401,14 +401,23 @@ func (na *NodeAccessor) assignedNodeID(nodeID *types.NodeID) bool {
 	return false
 }
 
+// disconnectLink unregisters the link and tears down its WebRTC session.
+// Set lock when the caller does not hold na.mtx.
+//
+// The teardown runs on its own goroutine, never under na.mtx: pion's
+// PeerConnection.Close() has been observed to hang while the peer's
+// association is dying, and holding na.mtx across it freezes send, receive
+// and IsOnline — the "network zombie". Worse, the hang is contagious: the
+// neighbor of a zombie freezes inside Close() while disconnecting the dying
+// link and becomes the next zombie (シミュレーション run 12, 2026-07-10:
+// 10 ノードがリング上を後方へ 2〜6 分間隔で連鎖)。The link is unregistered
+// from the maps synchronously, so no new packets are routed to it;
+// link.disconnect() stops the keepalive/buffer tickers and cancels the link
+// routine before the potentially-blocking Close(), so only the leaked
+// goroutine may linger.
 func (na *NodeAccessor) disconnectLink(link *nodeLink, lock bool) {
-	if err := link.disconnect(); err != nil {
-		na.logger.Error("failed to disconnect link", slog.String("error", err.Error()))
-	}
-
 	if lock {
 		na.mtx.Lock()
-		defer na.mtx.Unlock()
 	}
 
 	if nodeID := na.link2nodeID[link]; nodeID != nil {
@@ -421,6 +430,16 @@ func (na *NodeAccessor) disconnectLink(link *nodeLink, lock bool) {
 		delete(na.offerID2state, offerID)
 		delete(na.link2offerID, link)
 	}
+
+	if lock {
+		na.mtx.Unlock()
+	}
+
+	go func() {
+		if err := link.disconnect(); err != nil {
+			na.logger.Error("failed to disconnect link", slog.String("error", err.Error()))
+		}
+	}()
 }
 
 func (na *NodeAccessor) houseKeeping() error {
@@ -450,30 +469,52 @@ func (na *NodeAccessor) IsOnline() bool {
 	return false
 }
 
+// RelayPacket sends the packet on the link(s) toward dstNodeID.
+//
+// na.mtx must not be held across the link send: the send path descends into
+// the WebRTC stack and has been observed to stall while a link is dying.
+// A reader stuck there plus one pending writer (nodeLinkChangeState /
+// houseKeeping) blocks every subsequent na.mtx acquisition — send, receive
+// and IsOnline — turning the node into a "network zombie" whose link
+// keepalives keep flowing while nothing above the link layer works
+// (シミュレーション 2026-07-06: 12 ノードがこの状態になり、undercount 赤と
+// is_stable 凍結の残存原因になった). Collect the target links under the
+// lock, release it, then send; a link disconnected in between fails the
+// send gracefully.
 func (na *NodeAccessor) RelayPacket(dstNodeID *types.NodeID, packet *networkTypes.Packet) error {
 	if !na.IsOnline() {
 		return errors.New("node accessor should be online before relaying packet")
 	}
 
-	na.mtx.RLock()
-	defer na.mtx.RUnlock()
-
 	if dstNodeID.Equal(&types.NodeNeighborhoods) {
 		if (packet.Mode & networkTypes.PacketModeOneWay) == networkTypes.PacketModeNone {
 			return errors.New("packet mode should be one way when multicast")
 		}
+		type target struct {
+			nodeID types.NodeID
+			link   *nodeLink
+		}
+		na.mtx.RLock()
+		targets := make([]target, 0, len(na.nodeID2link))
 		for nodeID, link := range na.nodeID2link {
-			copy := *packet
-			copy.DstNodeID = &nodeID
 			if link.getLinkState() == nodeLinkStateOnline {
-				if err := link.sendPacket(&copy); err != nil {
-					return errors.New("failed to send packet")
-				}
+				targets = append(targets, target{nodeID: nodeID, link: link})
+			}
+		}
+		na.mtx.RUnlock()
+
+		for _, t := range targets {
+			copy := *packet
+			copy.DstNodeID = &t.nodeID
+			if err := t.link.sendPacket(&copy); err != nil {
+				return errors.New("failed to send packet")
 			}
 		}
 
 	} else {
+		na.mtx.RLock()
 		link, ok := na.nodeID2link[*dstNodeID]
+		na.mtx.RUnlock()
 		if !ok || link.getLinkState() != nodeLinkStateOnline {
 			return errors.New("link is not online")
 		}

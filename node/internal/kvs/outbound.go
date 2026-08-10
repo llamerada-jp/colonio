@@ -1,0 +1,276 @@
+/*
+ * Copyright 2017- Yuji Ito <llamerada.jp@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package kvs
+
+import (
+	"fmt"
+
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/node/internal/constants"
+	"github.com/llamerada-jp/colonio/node/internal/network/transferer"
+	"github.com/llamerada-jp/colonio/types"
+	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
+	networkTypes "github.com/llamerada-jp/colonio/types/network"
+)
+
+var (
+	ErrSectorActivateFailed = fmt.Errorf("failed to activate sector")
+)
+
+type operationParam struct {
+	command proto.KvsOperation_Command
+	key     string
+	value   []byte
+	// CAS condition (see consensus.proto Operation): casRevision != 0 or
+	// casAbsent makes the write conditional.
+	casRevision uint64
+	casAbsent   bool
+	// patcher names the node-registered Patcher for COMMAND_PATCH (value
+	// carries the patch document).
+	patcher string
+	// withoutValue makes COMMAND_GET respond with the revision only.
+	withoutValue bool
+	// lockTTLMS is the requested lease duration of COMMAND_LOCK_ACQUIRE.
+	lockTTLMS uint64
+	// lockGeneration is the expected generation of COMMAND_LOCK_RELEASE, or
+	// the guarded-write token of SET/PATCH/DELETE (owner = packet source).
+	lockGeneration uint64
+	receiver       func(res *proto.KvsOperationResponse, err error)
+}
+
+// watchParam is a watch subscription request (registration, keepalive, or
+// cancellation) routed to the key's host.
+type watchParam struct {
+	key     string
+	watchID uint64
+	// sinceRevision is the newest revision the watcher has already delivered;
+	// the host omits the value when the record is unchanged.
+	sinceRevision uint64
+	cancel        bool
+	receiver      func(res *proto.KvsWatchResponse, err error)
+}
+
+type SectorManageMemberParam struct {
+	dstNodeID *types.NodeID
+	sectorID  kvsTypes.SectorID
+	sectorNo  kvsTypes.SectorNo
+	command   proto.SectorManageMember_Command
+	members   map[kvsTypes.SectorNo]*types.NodeID
+}
+
+type SectorActivateParam struct {
+	dstNodeID *types.NodeID
+	sectorID  kvsTypes.SectorID
+}
+
+type SectorSplitParam struct {
+	dstNodeID *types.NodeID
+	sectorID  kvsTypes.SectorID
+}
+
+type OutboundPort interface {
+	sendKvsOperation(param *operationParam)
+	sendKvsWatch(param *watchParam)
+	// sendKvsWatchEvent pushes one change notification to a subscribed
+	// watcher node. One-way and best-effort (no retry): a lost event is
+	// recovered by the watcher's keepalive resync.
+	sendKvsWatchEvent(dstNodeID *types.NodeID, event *proto.KvsWatchEvent)
+	sendSectorManageMember(param *SectorManageMemberParam)
+	sendSectorActivate(param *SectorActivateParam) chan error
+	sendSectorPrepareSplit(param *SectorSplitParam) chan error
+}
+
+type outboundAdapter struct {
+	transferer *transferer.Transferer
+}
+
+var _ OutboundPort = &outboundAdapter{}
+
+func NewOutbound(transferer *transferer.Transferer) OutboundPort {
+	return &outboundAdapter{
+		transferer: transferer,
+	}
+}
+
+type operationHandler struct {
+	receiver func(res *proto.KvsOperationResponse, err error)
+}
+
+func (h *operationHandler) OnResponse(packet *networkTypes.Packet) {
+	h.receiver(packet.Content.GetKvsOperationResponse(), nil)
+}
+
+func (h *operationHandler) OnError(code constants.PacketErrorCode, message string) {
+	h.receiver(nil, fmt.Errorf("packet error %d: %s", code, message))
+}
+
+func (o *outboundAdapter) sendKvsOperation(param *operationParam) {
+	dst := types.NewHashedNodeID([]byte(param.key))
+
+	content := &proto.PacketContent{
+		Content: &proto.PacketContent_KvsOperation{
+			KvsOperation: &proto.KvsOperation{
+				Command:        param.command,
+				Key:            param.key,
+				Value:          param.value,
+				CasRevision:    param.casRevision,
+				CasAbsent:      param.casAbsent,
+				Patcher:        param.patcher,
+				WithoutValue:   param.withoutValue,
+				LockTtlMs:      param.lockTTLMS,
+				LockGeneration: param.lockGeneration,
+			},
+		},
+	}
+
+	o.transferer.Request(dst, networkTypes.PacketModeNone, content, &operationHandler{
+		receiver: param.receiver,
+	})
+}
+
+type watchHandler struct {
+	receiver func(res *proto.KvsWatchResponse, err error)
+}
+
+func (h *watchHandler) OnResponse(packet *networkTypes.Packet) {
+	h.receiver(packet.Content.GetKvsWatchResponse(), nil)
+}
+
+func (h *watchHandler) OnError(code constants.PacketErrorCode, message string) {
+	h.receiver(nil, fmt.Errorf("packet error %d: %s", code, message))
+}
+
+func (o *outboundAdapter) sendKvsWatch(param *watchParam) {
+	dst := types.NewHashedNodeID([]byte(param.key))
+
+	o.transferer.Request(dst, networkTypes.PacketModeNone,
+		&proto.PacketContent{
+			Content: &proto.PacketContent_KvsWatch{
+				KvsWatch: &proto.KvsWatch{
+					Key:           param.key,
+					WatchId:       param.watchID,
+					SinceRevision: param.sinceRevision,
+					Cancel:        param.cancel,
+				},
+			},
+		},
+		&watchHandler{receiver: param.receiver},
+	)
+}
+
+func (o *outboundAdapter) sendKvsWatchEvent(dstNodeID *types.NodeID, event *proto.KvsWatchEvent) {
+	o.transferer.RequestOneWay(
+		dstNodeID,
+		networkTypes.PacketModeExplicit|networkTypes.PacketModeNoRetry,
+		&proto.PacketContent{
+			Content: &proto.PacketContent_KvsWatchEvent{
+				KvsWatchEvent: event,
+			},
+		},
+	)
+}
+
+func (o *outboundAdapter) sendSectorManageMember(param *SectorManageMemberParam) {
+	members := make(map[uint64]*proto.NodeID)
+	for no, nid := range param.members {
+		members[uint64(no)] = nid.Proto()
+	}
+
+	o.transferer.RequestOneWay(
+		param.dstNodeID,
+		networkTypes.PacketModeExplicit|networkTypes.PacketModeNoRetry,
+		&proto.PacketContent{
+			Content: &proto.PacketContent_SectorManageMember{
+				SectorManageMember: &proto.SectorManageMember{
+					SectorId: kvsTypes.MustMarshalSectorID(param.sectorID),
+					SectorNo: uint64(param.sectorNo),
+					Command:  param.command,
+					Members:  members,
+				},
+			},
+		},
+	)
+}
+
+type sectorActivateHandler struct {
+	c chan error
+}
+
+func (h *sectorActivateHandler) OnResponse(packet *networkTypes.Packet) {
+	success := packet.Content.GetSectorActivateResponse().GetSuccess()
+	if success {
+		h.c <- nil
+	} else {
+		h.c <- ErrSectorActivateFailed
+	}
+}
+
+func (h *sectorActivateHandler) OnError(code constants.PacketErrorCode, message string) {
+	h.c <- fmt.Errorf("failed to activate sector: packet error %d: %s", code, message)
+}
+
+func (o *outboundAdapter) sendSectorActivate(param *SectorActivateParam) chan error {
+	c := make(chan error, 1)
+	o.transferer.Request(param.dstNodeID, networkTypes.PacketModeExplicit,
+		&proto.PacketContent{
+			Content: &proto.PacketContent_SectorActivate{
+				SectorActivate: &proto.SectorActivate{
+					SectorId: kvsTypes.MustMarshalSectorID(param.sectorID),
+				},
+			},
+		},
+		&sectorActivateHandler{
+			c: c,
+		},
+	)
+
+	return c
+}
+
+type sectorSplitHandler struct {
+	c chan error
+}
+
+func (h *sectorSplitHandler) OnResponse(packet *networkTypes.Packet) {
+	success := packet.Content.GetSectorPrepareSplitResponse().GetSuccess()
+	if success {
+		h.c <- nil
+	} else {
+		h.c <- fmt.Errorf("failed to split sector: response indicates failure")
+	}
+}
+
+func (h *sectorSplitHandler) OnError(code constants.PacketErrorCode, message string) {
+	h.c <- fmt.Errorf("failed to split sector: packet error %d: %s", code, message)
+}
+
+func (o *outboundAdapter) sendSectorPrepareSplit(param *SectorSplitParam) chan error {
+	c := make(chan error, 1)
+	o.transferer.Request(param.dstNodeID, networkTypes.PacketModeExplicit,
+		&proto.PacketContent{
+			Content: &proto.PacketContent_SectorPrepareSplit{
+				SectorPrepareSplit: &proto.SectorPrepareSplit{
+					SectorId: kvsTypes.MustMarshalSectorID(param.sectorID),
+				},
+			},
+		},
+		&sectorSplitHandler{
+			c: c,
+		},
+	)
+
+	return c
+}

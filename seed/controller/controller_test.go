@@ -22,10 +22,12 @@ import (
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
+	"github.com/llamerada-jp/colonio/seed/gateway"
 	"github.com/llamerada-jp/colonio/seed/misc"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/test/util/helper"
 	"github.com/llamerada-jp/colonio/types"
+	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -677,6 +679,86 @@ func TestController_SendSignal(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 6, callCount)
+}
+
+type dummyGWHandler struct {
+}
+
+func (h *dummyGWHandler) HandleSignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error {
+	return nil
+}
+
+func (h *dummyGWHandler) HandleKeepaliveRequest(ctx context.Context, nodeID *types.NodeID) error {
+	return nil
+}
+
+func (h *dummyGWHandler) HandleUnassignNode(ctx context.Context, nodeID *types.NodeID) error {
+	return nil
+}
+
+func TestController_ResolveKvsActivation(t *testing.T) {
+	ctx := misc.NewLoggerContext(t.Context(), nil)
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+
+	gw := gateway.NewSimpleGateway(
+		testUtil.Logger(t),
+		&dummyGWHandler{},
+		func(exists map[types.NodeID]any) (*types.NodeID, error) {
+			return nodeIDs[len(exists)], nil
+		},
+	)
+	c := NewController(&Options{
+		Logger:  testUtil.Logger(t),
+		Gateway: gw,
+	})
+
+	// create 3 nodes
+	for i := 0; i < len(nodeIDs); i++ {
+		_, _, err := c.AssignNode(ctx)
+		require.NoError(t, err)
+	}
+
+	// The first node becomes a candidate.
+	entireState, err := c.ResolveKvsActivation(ctx, nodeIDs[0], false)
+	require.NoError(t, err)
+	assert.Equal(t, kvsTypes.EntireStateInactive, entireState)
+
+	// Next node tries to become a candidate but fails because the first node is already a candidate.
+	entireState, err = c.ResolveKvsActivation(ctx, nodeIDs[1], false)
+	require.NoError(t, err)
+	assert.Equal(t, kvsTypes.EntireStateUnknown, entireState)
+
+	// The first node becomes offline.
+	err = c.UnassignNode(ctx, nodeIDs[0])
+	require.NoError(t, err)
+
+	// The second node becomes a candidate.
+	entireState, err = c.ResolveKvsActivation(ctx, nodeIDs[1], false)
+	require.NoError(t, err)
+	assert.Equal(t, kvsTypes.EntireStateInactive, entireState)
+
+	// The third node tries to become a candidate but fails because the second node is already a candidate.
+	entireState, err = c.ResolveKvsActivation(ctx, nodeIDs[2], false)
+	require.NoError(t, err)
+	assert.Equal(t, kvsTypes.EntireStateUnknown, entireState)
+
+	// The second node becomes active.
+	entireState, err = c.ResolveKvsActivation(ctx, nodeIDs[1], true)
+	require.NoError(t, err)
+	assert.Equal(t, kvsTypes.EntireStateActive, entireState)
+
+	// The third node knows that the entire KVS is already active.
+	entireState, err = c.ResolveKvsActivation(ctx, nodeIDs[2], false)
+	require.NoError(t, err)
+	assert.Equal(t, kvsTypes.EntireStateActive, entireState)
+	// When the active node (node 1) goes offline, the candidate should be cleared.
+	err = c.UnassignNode(ctx, nodeIDs[1])
+	require.NoError(t, err)
+
+	// The third node should now be able to become a new candidate since the previous candidate was cleared.
+	entireState, err = c.ResolveKvsActivation(ctx, nodeIDs[2], false)
+	require.NoError(t, err)
+	assert.Equal(t, kvsTypes.EntireStateInactive, entireState)
 }
 
 func TestController_cleanup(t *testing.T) {
