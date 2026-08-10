@@ -168,7 +168,8 @@ func (n *Consensus) Stop() {
 	n.raftNode.Stop()
 }
 
-// Status returns the current raft status for debugging.
+// Status returns the current raft status. The sector also uses it to detect
+// a group that has stayed leaderless too long.
 func (n *Consensus) Status() raft.Status {
 	return n.raftNode.Status()
 }

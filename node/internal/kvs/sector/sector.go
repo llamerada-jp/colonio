@@ -81,8 +81,13 @@ type Sector struct {
 	// (Extend/Import/PreCommitSplit/CommitSplit/PrepareMerge/CommitMerge) so a
 	// quorum-lost group cannot block the caller (and mtxOperateSectors) forever.
 	proposalWaitTimeout time.Duration
-	triggerCh           chan struct{}
-	stopCtx             context.CancelFunc
+	// forceTerminateDuration is how long the raft group may stay leaderless
+	// before the local replica is destroyed without going through raft.
+	forceTerminateDuration time.Duration
+	// leaderlessSince is touched only by the Start loop goroutine.
+	leaderlessSince time.Time
+	triggerCh       chan struct{}
+	stopCtx         context.CancelFunc
 
 	mtx                        sync.RWMutex
 	cond                       *sync.Cond
@@ -111,6 +116,7 @@ func NewSector(config *SectorConfig) *Sector {
 		head:                   *config.Head,
 		proposalRetryDuration:  3 * time.Second,
 		proposalWaitTimeout:    15 * time.Second,
+		forceTerminateDuration: 30 * time.Second,
 		triggerCh:              make(chan struct{}, 1),
 		proposalAppendingNodes: make(map[kvsTypes.SectorNo]*types.NodeID),
 		proposalRemovingNodes:  make(map[kvsTypes.SectorNo]struct{}),
@@ -140,19 +146,23 @@ func NewSector(config *SectorConfig) *Sector {
 func (s *Sector) Start(ctx context.Context) {
 	s.consensus.Start(ctx)
 
+	// Derive from the node context so the loop (and quorum-loss detection)
+	// stops on node shutdown as well, not only via Stop().
+	loopCtx, cancel := context.WithCancel(ctx)
+	s.stopCtx = cancel
+
 	go func() {
-		ctx, cancel := context.WithCancel(context.Background())
-		s.stopCtx = cancel
 		defer cancel()
 		timer := time.NewTimer(s.proposalRetryDuration)
 		defer timer.Stop()
 
 		for {
 			select {
-			case <-ctx.Done():
+			case <-loopCtx.Done():
 				return
 
 			case <-timer.C:
+				s.checkQuorumLoss()
 				s.applyProposals()
 
 			case <-s.triggerCh:
@@ -684,6 +694,12 @@ func (s *Sector) processActivateProposal(activate *proto.Activate) error {
 }
 
 func (s *Sector) processTerminateProposal() error {
+	return s.terminateLocked()
+}
+
+// terminateLocked releases the sector resources and notifies the handler.
+// Call with s.mtx write-locked; the caller broadcasts s.cond after unlocking.
+func (s *Sector) terminateLocked() error {
 	s.operator.ClearRange()
 	if err := s.store.ReleaseSector(&s.sectorKey); err != nil {
 		return err
@@ -695,6 +711,47 @@ func (s *Sector) processTerminateProposal() error {
 
 	go s.handler.SectorTerminated(&s.sectorKey)
 	return nil
+}
+
+// checkQuorumLoss destroys the local replica without raft when the group has
+// been leaderless for forceTerminateDuration. A group that lost its quorum
+// can never commit anything — including Terminate — so this is the only
+// escape path; without it a stale replica blocks the activation chain
+// forever. If the group is actually alive (e.g. the local node is only
+// partitioned), destroying the replica is equivalent to this member leaving,
+// and the resulting overlap is repaired by the existing Terminate/Merge paths.
+// Runs on the Start loop goroutine only (leaderlessSince is not locked).
+func (s *Sector) checkQuorumLoss() {
+	s.mtx.RLock()
+	inactive := s.stopped || s.terminated
+	s.mtx.RUnlock()
+	if inactive {
+		return
+	}
+
+	if s.consensus.Status().Lead != raft.None {
+		s.leaderlessSince = time.Time{}
+		return
+	}
+	if s.leaderlessSince.IsZero() {
+		s.leaderlessSince = time.Now()
+		return
+	}
+	if time.Since(s.leaderlessSince) < s.forceTerminateDuration {
+		return
+	}
+
+	s.mtx.Lock()
+	var err error
+	if !s.stopped && !s.terminated {
+		err = s.terminateLocked()
+	}
+	s.mtx.Unlock()
+	s.cond.Broadcast()
+
+	if err != nil {
+		s.handler.SectorError(&s.sectorKey, fmt.Errorf("failed to force-terminate sector: %w", err))
+	}
 }
 
 func (s *Sector) processExtendProposal(extend *proto.Extend) error {
