@@ -417,111 +417,123 @@ func (s *Sector) Import(records map[string][]byte) {
 	}
 }
 
+// applyProposals proposes the pending proposals to the raft group. The
+// proposals are collected under s.mtx and proposed after releasing it:
+// consensus.Propose blocks (bounded by its propose timeout) while the group
+// has no leader, and holding s.mtx here would stall every other sector
+// operation for that period.
 func (s *Sector) applyProposals() {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
+	proposals := []*proto.ConsensusProposal{}
 
-	// re-apply terminating
-	if s.proposalTerminating {
+	s.mtx.RLock()
+
+	switch {
+	case s.proposalTerminating:
+		// re-apply terminating, and skip the other proposals
 		if !s.terminated {
-			s.consensus.Propose(&proto.ConsensusProposal{
+			proposals = append(proposals, &proto.ConsensusProposal{
 				Content: &proto.ConsensusProposal_Terminate{
 					Terminate: &proto.Terminate{},
 				},
 			})
 		}
-		return
-	}
 
-	if s.terminated {
-		return
-	}
+	case s.terminated:
+		// nothing to apply
 
-	// Apply appending nodes.
-	for sectorNo, nodeID := range s.proposalAppendingNodes {
-		s.consensus.AppendNode(sectorNo, nodeID)
-	}
+	default:
+		// Apply appending nodes (AppendNode/RemoveNode are already asynchronous).
+		for sectorNo, nodeID := range s.proposalAppendingNodes {
+			s.consensus.AppendNode(sectorNo, nodeID)
+		}
 
-	// Apply removing nodes.
-	for sectorNo := range s.proposalRemovingNodes {
-		s.consensus.RemoveNode(sectorNo)
-	}
+		// Apply removing nodes.
+		for sectorNo := range s.proposalRemovingNodes {
+			s.consensus.RemoveNode(sectorNo)
+		}
 
-	// Apply activating.
-	if s.proposalActivating != nil {
-		s.consensus.Propose(&proto.ConsensusProposal{
-			Content: &proto.ConsensusProposal_Activate{
-				Activate: &proto.Activate{
-					Tail: s.proposalActivating.Proto(),
+		// Apply activating.
+		if s.proposalActivating != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_Activate{
+					Activate: &proto.Activate{
+						Tail: s.proposalActivating.Proto(),
+					},
 				},
-			},
-		})
+			})
+		}
+
+		// Apply extending
+		if s.proposalExtending != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_Extend{
+					Extend: &proto.Extend{
+						Tail: s.proposalExtending.Proto(),
+					},
+				},
+			})
+		}
+
+		// Apply importing
+		if s.proposalImporting != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_Import{
+					Import: &proto.Import{
+						Records: s.proposalImporting,
+					},
+				},
+			})
+		}
+
+		// Apply pre-commit splitting.
+		if s.proposalPreCommitSplitting != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_PreCommitSplit{
+					PreCommitSplit: &proto.PreCommitSplit{
+						Tail: s.proposalPreCommitSplitting.Proto(),
+					},
+				},
+			})
+		}
+
+		// Apply committing split.
+		if s.proposalCommittingSplit != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_CommitSplit{
+					CommitSplit: &proto.CommitSplit{
+						Tail: s.proposalCommittingSplit.Proto(),
+					},
+				},
+			})
+		}
+
+		// Apply prepare merge.
+		if s.proposalPrepareMerge != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_PrepareMerge{
+					PrepareMerge: &proto.PrepareMerge{
+						Handler: s.proposalPrepareMerge.Proto(),
+					},
+				},
+			})
+		}
+
+		// Apply committing merge.
+		if s.proposalCommittingMerge != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_CommitMerge{
+					CommitMerge: &proto.CommitMerge{
+						Tail: s.proposalCommittingMerge.Proto(),
+					},
+				},
+			})
+		}
 	}
 
-	// Apply extending
-	if s.proposalExtending != nil {
-		s.consensus.Propose(&proto.ConsensusProposal{
-			Content: &proto.ConsensusProposal_Extend{
-				Extend: &proto.Extend{
-					Tail: s.proposalExtending.Proto(),
-				},
-			},
-		})
-	}
+	s.mtx.RUnlock()
 
-	// Apply importing
-	if s.proposalImporting != nil {
-		s.consensus.Propose(&proto.ConsensusProposal{
-			Content: &proto.ConsensusProposal_Import{
-				Import: &proto.Import{
-					Records: s.proposalImporting,
-				},
-			},
-		})
-	}
-
-	// Apply pre-commit splitting.
-	if s.proposalPreCommitSplitting != nil {
-		s.consensus.Propose(&proto.ConsensusProposal{
-			Content: &proto.ConsensusProposal_PreCommitSplit{
-				PreCommitSplit: &proto.PreCommitSplit{
-					Tail: s.proposalPreCommitSplitting.Proto(),
-				},
-			},
-		})
-	}
-
-	// Apply committing split.
-	if s.proposalCommittingSplit != nil {
-		s.consensus.Propose(&proto.ConsensusProposal{
-			Content: &proto.ConsensusProposal_CommitSplit{
-				CommitSplit: &proto.CommitSplit{
-					Tail: s.proposalCommittingSplit.Proto(),
-				},
-			},
-		})
-	}
-
-	// Apply prepare merge.
-	if s.proposalPrepareMerge != nil {
-		s.consensus.Propose(&proto.ConsensusProposal{
-			Content: &proto.ConsensusProposal_PrepareMerge{
-				PrepareMerge: &proto.PrepareMerge{
-					Handler: s.proposalPrepareMerge.Proto(),
-				},
-			},
-		})
-	}
-
-	// Apply committing merge.
-	if s.proposalCommittingMerge != nil {
-		s.consensus.Propose(&proto.ConsensusProposal{
-			Content: &proto.ConsensusProposal_CommitMerge{
-				CommitMerge: &proto.CommitMerge{
-					Tail: s.proposalCommittingMerge.Proto(),
-				},
-			},
-		})
+	for _, proposal := range proposals {
+		s.consensus.Propose(proposal)
 	}
 }
 
