@@ -400,7 +400,9 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 			if k.hasActiveSectorHeadInRange(hostingSectorTail, frontwardNextSector.GetHeadAddress()) {
 				return
 			}
-			hostingSector.Extend(*frontwardNextSector.GetHeadAddress())
+			if err := hostingSector.Extend(*frontwardNextSector.GetHeadAddress()); err != nil {
+				k.logger.Warn("Failed to extend sector", "error", err)
+			}
 		}
 		return
 	}
@@ -436,7 +438,9 @@ func (k *KVS) operateSectors(hostingSector *sector.Sector, nextNodeIDs []*types.
 		if k.hasActiveSectorHeadInRange(hostingSectorTail, frontwardNextSector.GetHeadAddress()) {
 			return
 		}
-		hostingSector.Extend(*frontwardNextSector.GetHeadAddress())
+		if err := hostingSector.Extend(*frontwardNextSector.GetHeadAddress()); err != nil {
+			k.logger.Warn("Failed to extend sector", "error", err)
+		}
 	}
 }
 

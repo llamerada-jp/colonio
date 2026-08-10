@@ -17,6 +17,7 @@ package sector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -29,6 +30,17 @@ import (
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	"go.etcd.io/raft/v3"
 )
+
+// ErrProposalTimeout is returned by blocking sector operations when the raft
+// group did not commit the proposal within proposalWaitTimeout. It usually
+// means the group has lost its quorum.
+var ErrProposalTimeout = errors.New("proposal was not committed within timeout")
+
+// ErrSectorStopped is returned by blocking sector operations when the sector
+// was stopped or force-terminated before the proposal was committed, so the
+// caller can abort the ongoing multi-sector operation instead of treating the
+// proposal as applied.
+var ErrSectorStopped = errors.New("sector was stopped before the proposal was committed")
 
 type SectorHandler interface {
 	SectorError(sectorKey *kvsTypes.SectorKey, err error)
@@ -65,8 +77,12 @@ type Sector struct {
 	head      types.NodeID
 
 	proposalRetryDuration time.Duration
-	triggerCh             chan struct{}
-	stopCtx               context.CancelFunc
+	// proposalWaitTimeout bounds the cond.Wait of blocking operations
+	// (Extend/Import/PreCommitSplit/CommitSplit/PrepareMerge/CommitMerge) so a
+	// quorum-lost group cannot block the caller (and mtxOperateSectors) forever.
+	proposalWaitTimeout time.Duration
+	triggerCh           chan struct{}
+	stopCtx             context.CancelFunc
 
 	mtx                        sync.RWMutex
 	cond                       *sync.Cond
@@ -94,6 +110,7 @@ func NewSector(config *SectorConfig) *Sector {
 		isHosting:              config.IsHosting,
 		head:                   *config.Head,
 		proposalRetryDuration:  3 * time.Second,
+		proposalWaitTimeout:    15 * time.Second,
 		triggerCh:              make(chan struct{}, 1),
 		proposalAppendingNodes: make(map[kvsTypes.SectorNo]*types.NodeID),
 		proposalRemovingNodes:  make(map[kvsTypes.SectorNo]struct{}),
@@ -206,6 +223,36 @@ func (s *Sector) RemoveNode(sectorNo kvsTypes.SectorNo) {
 	s.triggerCh <- struct{}{}
 }
 
+// waitProposal blocks until check reports done or the sector stops. check runs
+// with s.mtx read-locked. It returns ErrProposalTimeout after proposalWaitTimeout;
+// the caller must clear its pending proposal so applyProposals stops re-proposing it.
+func (s *Sector) waitProposal(check func() (done bool, err error)) error {
+	deadline := time.Now().Add(s.proposalWaitTimeout)
+	// Broadcast has no effect on waiters that have not called Wait yet, but such
+	// a waiter re-checks the deadline before the next Wait, so no wakeup is lost.
+	wake := time.AfterFunc(s.proposalWaitTimeout, func() { s.cond.Broadcast() })
+	defer wake.Stop()
+
+	s.cond.L.Lock()
+	defer s.cond.L.Unlock()
+	for {
+		done, err := check()
+		if err != nil {
+			return err
+		}
+		if done {
+			return nil
+		}
+		if s.stopped {
+			return ErrSectorStopped
+		}
+		if !time.Now().Before(deadline) {
+			return ErrProposalTimeout
+		}
+		s.cond.Wait()
+	}
+}
+
 func (s *Sector) HasManagementProposal() bool {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
@@ -251,7 +298,7 @@ func (s *Sector) Terminate() {
 	s.triggerCh <- struct{}{}
 }
 
-func (s *Sector) Extend(newTail types.NodeID) {
+func (s *Sector) Extend(newTail types.NodeID) error {
 	if !s.isHosting {
 		panic("only host sector can be extended")
 	}
@@ -260,21 +307,22 @@ func (s *Sector) Extend(newTail types.NodeID) {
 
 	if newTail.IsBetween(&s.head, s.tail) {
 		s.mtx.Unlock()
-		return
+		return nil
 	}
 	s.proposalExtending = &newTail
 	s.mtx.Unlock()
 
 	s.triggerCh <- struct{}{}
 
-	s.cond.L.Lock()
-	defer s.cond.L.Unlock()
-	for {
-		if s.proposalExtending == nil || s.stopped {
-			break
-		}
-		s.cond.Wait()
+	if err := s.waitProposal(func() (bool, error) {
+		return s.proposalExtending == nil, nil
+	}); err != nil {
+		s.mtx.Lock()
+		s.proposalExtending = nil
+		s.mtx.Unlock()
+		return fmt.Errorf("failed to extend sector: %w", err)
 	}
+	return nil
 }
 
 func (s *Sector) Migrate(to *Sector) error {
@@ -286,8 +334,7 @@ func (s *Sector) Migrate(to *Sector) error {
 		return fmt.Errorf("failed to export records: %w", err)
 	}
 
-	to.Import(records)
-	return nil
+	return to.Import(records)
 }
 
 func (s *Sector) PreCommitSplit(frontwardNodeID *types.NodeID) error {
@@ -301,16 +348,18 @@ func (s *Sector) PreCommitSplit(frontwardNodeID *types.NodeID) error {
 
 	s.triggerCh <- struct{}{}
 
-	s.cond.L.Lock()
-	defer s.cond.L.Unlock()
-	for {
+	if err := s.waitProposal(func() (bool, error) {
 		if s.mergeBy != nil {
-			return fmt.Errorf("cannot pre-commit split while merge is being prepared by %s", s.mergeBy.String())
+			return false, fmt.Errorf("cannot pre-commit split while merge is being prepared by %s", s.mergeBy.String())
 		}
-		if s.proposalPreCommitSplitting == nil || s.stopped {
-			break
+		return s.proposalPreCommitSplitting == nil, nil
+	}); err != nil {
+		if errors.Is(err, ErrProposalTimeout) || errors.Is(err, ErrSectorStopped) {
+			s.mtx.Lock()
+			s.proposalPreCommitSplitting = nil
+			s.mtx.Unlock()
 		}
-		s.cond.Wait()
+		return fmt.Errorf("failed to pre-commit split: %w", err)
 	}
 	return nil
 }
@@ -322,13 +371,13 @@ func (s *Sector) CommitSplit(newTail *types.NodeID) error {
 
 	s.triggerCh <- struct{}{}
 
-	s.cond.L.Lock()
-	defer s.cond.L.Unlock()
-	for {
-		if s.proposalCommittingSplit == nil || s.stopped {
-			break
-		}
-		s.cond.Wait()
+	if err := s.waitProposal(func() (bool, error) {
+		return s.proposalCommittingSplit == nil, nil
+	}); err != nil {
+		s.mtx.Lock()
+		s.proposalCommittingSplit = nil
+		s.mtx.Unlock()
+		return fmt.Errorf("failed to commit split: %w", err)
 	}
 	return nil
 }
@@ -340,19 +389,21 @@ func (s *Sector) PrepareMerge(proposedBy *types.NodeID) error {
 
 	s.triggerCh <- struct{}{}
 
-	s.cond.L.Lock()
-	defer s.cond.L.Unlock()
-	for {
+	if err := s.waitProposal(func() (bool, error) {
 		if s.mergeBy != nil {
 			if !s.mergeBy.Equal(proposedBy) {
-				return fmt.Errorf("merge is prepared by %s, not %s", s.mergeBy.String(), proposedBy.String())
+				return false, fmt.Errorf("merge is prepared by %s, not %s", s.mergeBy.String(), proposedBy.String())
 			}
-			break
+			return true, nil
 		}
-		if s.stopped {
-			break
+		return false, nil
+	}); err != nil {
+		if errors.Is(err, ErrProposalTimeout) || errors.Is(err, ErrSectorStopped) {
+			s.mtx.Lock()
+			s.proposalPrepareMerge = nil
+			s.mtx.Unlock()
 		}
-		s.cond.Wait()
+		return fmt.Errorf("failed to prepare merge: %w", err)
 	}
 	return nil
 }
@@ -363,8 +414,7 @@ func (s *Sector) Merge(from *Sector) error {
 		return fmt.Errorf("failed to export records: %w", err)
 	}
 
-	s.Import(records)
-	return nil
+	return s.Import(records)
 }
 
 func (s *Sector) CommitMerge(newTail *types.NodeID) error {
@@ -381,18 +431,18 @@ func (s *Sector) CommitMerge(newTail *types.NodeID) error {
 
 	s.triggerCh <- struct{}{}
 
-	s.cond.L.Lock()
-	defer s.cond.L.Unlock()
-	for {
-		if s.proposalCommittingMerge == nil || s.stopped {
-			break
-		}
-		s.cond.Wait()
+	if err := s.waitProposal(func() (bool, error) {
+		return s.proposalCommittingMerge == nil, nil
+	}); err != nil {
+		s.mtx.Lock()
+		s.proposalCommittingMerge = nil
+		s.mtx.Unlock()
+		return fmt.Errorf("failed to commit merge: %w", err)
 	}
 	return nil
 }
 
-func (s *Sector) Import(records map[string][]byte) {
+func (s *Sector) Import(records map[string][]byte) error {
 	importRecords := make([]*proto.Import_Record, 0, len(records))
 	for key, value := range records {
 		importRecords = append(importRecords, &proto.Import_Record{
@@ -407,14 +457,15 @@ func (s *Sector) Import(records map[string][]byte) {
 
 	s.triggerCh <- struct{}{}
 
-	s.cond.L.Lock()
-	defer s.cond.L.Unlock()
-	for {
-		if s.proposalImporting == nil || s.stopped {
-			break
-		}
-		s.cond.Wait()
+	if err := s.waitProposal(func() (bool, error) {
+		return s.proposalImporting == nil, nil
+	}); err != nil {
+		s.mtx.Lock()
+		s.proposalImporting = nil
+		s.mtx.Unlock()
+		return fmt.Errorf("failed to import records: %w", err)
 	}
+	return nil
 }
 
 // applyProposals proposes the pending proposals to the raft group. The
