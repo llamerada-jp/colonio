@@ -490,9 +490,8 @@ func (k *KVS) getFrontwardCondition(frontwardNextNodeID *types.NodeID) (*sector.
 
 // hasActiveSectorHeadInRange checks whether any active sector's head exists in the range (from, to) on the ring.
 // This guard prevents Extend from creating an overlap with an already-active sector when the local
-// sector-store view (k.sectors) is stale relative to routing. Without this, TerminateB would
-// eventually resolve the overlap, but this proactive check avoids the transient inconsistency.
-// (Derived from TLA+ KvsSectorSepView: Extend precondition \A other \in Actives : ~IsBetween(other, n, newTail))
+// sector-store view (k.sectors) is stale relative to routing. Without this check, operateSectors would
+// still notice the overlap later and terminate both sectors, but this check avoids that overlap in the first place.
 func (k *KVS) hasActiveSectorHeadInRange(from, to *types.NodeID) bool {
 	k.mtx.RLock()
 	defer k.mtx.RUnlock()
@@ -795,8 +794,9 @@ func (k *KVS) activateHostingSector(hostingSector *sector.Sector, frontwardNextN
 				}
 			}
 
-			// Overlap guard: only ACTIVE sectors block activation, since inactive
-			// replicas of departed nodes can linger in k.sectors indefinitely.
+			// Overlap guard: only ACTIVE sectors count here. Inactive replicas of
+			// departed nodes can stay in k.sectors for a while, and counting them
+			// too would block activation forever, since nothing else clears them.
 			if sectorHead.IsBetween(k.localNodeID, frontwardNodeID) && sector.GetTailAddress() != nil {
 				return nil
 			}
@@ -882,6 +882,7 @@ func (k *KVS) mergeSector(hostingSector, frontwardNextSector *sector.Sector) {
 
 	if err := hostingSector.CommitMerge(newTail); err != nil {
 		k.logger.Warn("Failed to commit merge", "error", err)
+		return
 	}
 }
 
