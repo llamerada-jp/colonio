@@ -47,4 +47,8 @@ type Gateway interface {
 	SubscribeSignal(ctx context.Context, nodeID *types.NodeID) error
 	UnsubscribeSignal(ctx context.Context, nodeID *types.NodeID) error
 	PublishSignal(ctx context.Context, signal *proto.Signal, relayToNext bool) error
+	SetKvsSectorState(ctx context.Context, nodeID *types.NodeID, active bool) error
+	ExistsKvsActiveNode(ctx context.Context) (bool, error)
+	SetKvsFirstActiveCandidate(ctx context.Context, nodeID *types.NodeID) error
+	UnsetKvsFirstActiveCandidate(ctx context.Context) error
 }

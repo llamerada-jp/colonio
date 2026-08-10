@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"time"
 
+	service "github.com/llamerada-jp/colonio/api/colonio/v1alpha/v1alphaconnect"
 	"github.com/llamerada-jp/colonio/node/internal/constants"
 	"github.com/llamerada-jp/colonio/node/internal/geometry"
 	"github.com/llamerada-jp/colonio/node/internal/network/node_accessor"
@@ -141,8 +142,12 @@ func (n *Network) IsOnline() bool {
 	return n.seedAccessor.IsAlone() || n.nodeAccessor.IsOnline()
 }
 
-func (n *Network) GetStability() (bool, []*types.NodeID) {
+func (n *Network) GetStability() (bool, []*types.NodeID, []*types.NodeID) {
 	return n.routing.GetStability()
+}
+
+func (n *Network) GetSeedClient() service.SeedServiceClient {
+	return n.seedAccessor.GetClient()
 }
 
 func (n *Network) GetTransferer() *transferer.Transferer {
@@ -213,8 +218,7 @@ func (n *Network) TransfererRelayPacket(dstNodeID *types.NodeID, packet *network
 		return
 	}
 
-	err := n.nodeAccessor.RelayPacket(dstNodeID, packet)
-	if err != nil {
+	if err := n.nodeAccessor.RelayPacket(dstNodeID, packet); err != nil {
 		n.logger.Debug("failed to relay packet", slog.String("error", err.Error()))
 	}
 }
