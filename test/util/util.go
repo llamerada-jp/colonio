@@ -77,6 +77,27 @@ func UniqueNodeIDsWithRange(min, max *types.NodeID, count int) []*types.NodeID {
 	return nodeIDs
 }
 
+// UniqueNodeIDsInRingOrder returns count unique NodeIDs ordered so that
+// consecutive IDs (with the last wrapping back to the first) increase around
+// the ring. The starting point is randomized, so the sequence sometimes
+// crosses the ring's zero boundary between two of the returned IDs.
+func UniqueNodeIDsInRingOrder(count int) []*types.NodeID {
+	nodeIDs := UniqueNodeIDs(count)
+	slices.SortFunc(nodeIDs, func(a, b *types.NodeID) int {
+		return a.Compare(b)
+	})
+
+	rotate := 0
+	if count > 1 {
+		rotate = rand.IntN(count)
+	}
+
+	rotated := make([]*types.NodeID, count)
+	copy(rotated, nodeIDs[rotate:])
+	copy(rotated[count-rotate:], nodeIDs[:rotate])
+	return rotated
+}
+
 func UniqueSectorIDs(count int) []kvsTypes.SectorID {
 	uuids := make([]kvsTypes.SectorID, count)
 	exists := make(map[kvsTypes.SectorID]struct{})
