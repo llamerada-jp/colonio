@@ -810,13 +810,25 @@ func (k *KVS) activateHostingSector(hostingSector *sector.Sector, frontwardNextN
 }
 
 func (k *KVS) activateFrontwardSector(frontwardNextSector *sector.Sector) {
+	sectorID := frontwardNextSector.GetKey().SectorID
+	dstNodeID := *frontwardNextSector.GetHeadAddress()
+
 	cErr := k.outbound.sendSectorActivate(&SectorActivateParam{
-		dstNodeID: frontwardNextSector.GetHeadAddress(),
-		sectorID:  frontwardNextSector.GetKey().SectorID,
+		dstNodeID: &dstNodeID,
+		sectorID:  sectorID,
 	})
-	if err := <-cErr; err != nil {
-		k.logger.Warn("Failed to activate frontward sector", "error", err)
-	}
+
+	// Fire-and-forget:
+	//   - Sets no local proposal state, so operateSectors can retry every
+	//     subRoutine tick without waiting for this round trip.
+	//   - Retries and concurrent inbound requests are safe: Sector.Activate()
+	//     (s.mtx-guarded) lets only the first one propose.
+	go func() {
+		err := <-cErr
+		if err != nil {
+			k.logger.Warn("Failed to activate frontward sector", "dstNodeID", dstNodeID.String(), "sectorID", sectorID.String(), "error", err)
+		}
+	}()
 }
 
 func (k *KVS) splitSector(hostingSector, frontwardNextSector *sector.Sector) {
