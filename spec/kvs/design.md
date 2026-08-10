@@ -32,6 +32,28 @@
 - sector のアドレスは基本的に被らないが、何らかの理由で被る可能性もある。被った場合のデータは信用できないため、被った sector は両方 terminate してデータを破棄する
 - sector を構成する node が同時に過半数 offline になる可能性もあるため、データが失われる可能性はある
 
+### quorum 喪失時の脱出経路（2026-07-04 設計判断・実装済み）
+
+シミュレーション（100 ノード・ランダム停止）で、**quorum を失った raft グループは
+terminate を含む一切の提案を commit できず、sector が誰にも破棄できない状態に陥る**
+ことを確認した。この状態は activation チェーンを恒久停止させるため、raft を
+経由しない以下の脱出経路を導入した。
+
+- **ローカル強制破棄**: raft グループのリーダー不在が一定時間
+  (forceTerminateDuration=30s) 続いた場合、各レプリカは raft を経由せず
+  ローカルに sector を破棄する。破棄後は通常の create/append により
+  新しい raft 構成が再作成される。誤判定（実際には生きているグループの破棄）は
+  メンバー離脱と等価であり、生じうる sector 重複は既存の terminate/merge の
+  修復経路で解消される。データは失われうるが、上記「その他の性質」で許容済み。
+- **timeout / abort**: split/merge 実行中の import 等、raft 適用を待つ
+  ブロッキング操作は proposalWaitTimeout=15s でエラー復帰し、呼び出し元が
+  abort（frontward sector の terminate）する。terminate も commit できない
+  場合は上記の強制破棄が後始末する。
+
+未決事項: 誤判定時の安全性のモデル検証（README の TODO-1 検証項目 3）、
+死亡判定への routing 情報の組み合わせ、しきい値の実測に基づく調整。
+詳細は [README.md の「今後の TODO」](README.md#今後の-todo)（TODO-1〜TODO-4）を参照。
+
 ## 分岐
 
 | hosting sector<br>- active<br>- inactive | frontward sector<br>- not exist<br>- active<br>- inactive | frontward node<br>- match<br>- not match (frontward sector head < frontward node addr) | frontward sector head  | note                                   | action                     |
