@@ -22,8 +22,20 @@ import (
 var (
 	ErrorStoreInvalidNodeKey = fmt.Errorf("invalid node key")
 	ErrorStoreKeyNotFound    = fmt.Errorf("key not found")
+	// ErrorStoreSectorExists is returned (wrapped) by Store.AllocateSector
+	// when the sector is already allocated.
+	ErrorStoreSectorExists = fmt.Errorf("sector already exists")
+	// ErrorStoreSectorNotFound is returned (wrapped) by Store.ReleaseSector
+	// when the sector is not allocated.
+	ErrorStoreSectorNotFound = fmt.Errorf("sector not found")
 )
 
+// Store is the backend that holds the records of each sector.
+//
+// The sector logic calls AllocateSector for a sector that may already be
+// allocated, and ReleaseSector for one that may never have been allocated.
+// Implementations must report these cases with ErrorStoreSectorExists and
+// ErrorStoreSectorNotFound so they can be told apart from real failures.
 type Store interface {
 	AllocateSector(sectorKey *SectorKey) error
 	ReleaseSector(sectorKey *SectorKey) error
