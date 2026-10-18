@@ -26,6 +26,7 @@ import (
 	"github.com/llamerada-jp/colonio/seed/gateway"
 	"github.com/llamerada-jp/colonio/seed/misc"
 	"github.com/llamerada-jp/colonio/types"
+	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 )
 
 type Options struct {
@@ -43,6 +44,7 @@ type Controller interface {
 	ReconcileNextNodes(ctx context.Context, nodeID *types.NodeID, nextNodeIDs, disconnectedIDs []*types.NodeID) (bool, error)
 	SendSignal(ctx context.Context, nodeID *types.NodeID, signal *proto.Signal) error
 	PollSignal(ctx context.Context, nodeID *types.NodeID, send func(*proto.Signal) error) error
+	ResolveKvsActivation(ctx context.Context, nodeID *types.NodeID, active bool) (kvsTypes.EntireState, error)
 }
 
 type ControllerImpl struct {
@@ -350,6 +352,31 @@ func (c *ControllerImpl) PollSignal(ctx context.Context, nodeID *types.NodeID, s
 			}
 		}
 	}
+}
+
+func (c *ControllerImpl) ResolveKvsActivation(ctx context.Context, nodeID *types.NodeID, active bool) (kvsTypes.EntireState, error) {
+	if active {
+		_ = c.gateway.UnsetKvsFirstActiveCandidate(ctx)
+	}
+
+	if err := c.gateway.SetKvsSectorState(ctx, nodeID, active); err != nil {
+		return kvsTypes.EntireStateUnknown, fmt.Errorf("failed to set KVS state: %w", err)
+	}
+
+	active, err := c.gateway.ExistsKvsActiveNode(ctx)
+	if err != nil {
+		return kvsTypes.EntireStateUnknown, fmt.Errorf("failed to check if KVS active node exists: %w", err)
+	}
+	if active {
+		return kvsTypes.EntireStateActive, nil
+	}
+
+	err = c.gateway.SetKvsFirstActiveCandidate(ctx, nodeID)
+	if err != nil {
+		return kvsTypes.EntireStateUnknown, nil
+	}
+
+	return kvsTypes.EntireStateInactive, nil
 }
 
 func (c *ControllerImpl) cleanup(ctx context.Context) error {

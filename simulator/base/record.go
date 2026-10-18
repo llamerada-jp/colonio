@@ -21,17 +21,25 @@ const (
 	StateStop   = "stop"
 )
 
+type SectorInfo struct {
+	SectorID string `json:"sector_id"`
+	SectorNo uint64 `json:"sector_no"`
+	Head     string `json:"head"`
+	Tail     string `json:"tail,omitempty"`
+}
+
 type Record struct {
-	State             string
-	IsOnline          bool
-	IsStable          bool
-	ConnectedNodeIDs  []string
-	RequiredNodeIDs1D []string
-	RequiredNodeIDs2D []string
+	State             string       `json:"state"`
+	IsOnline          bool         `json:"is_online"`
+	IsStable          bool         `json:"is_stable"`
+	ConnectedNodeIDs  []string     `json:"connected_node_ids"`
+	RequiredNodeIDs1D []string     `json:"required_node_ids_1d"`
+	RequiredNodeIDs2D []string     `json:"required_node_ids_2d"`
+	SectorInfos       []SectorInfo `json:"sector_infos"`
 	// message post time (uuid string : RFC3339Nano string)
-	Post map[string]string
+	Post map[string]string `json:"post"`
 	// message receive time (uuid string : RFC3339Nano string)
-	Receive map[string]string
+	Receive map[string]string `json:"receive"`
 }
 
 type RecordInterface interface {
