@@ -192,3 +192,52 @@ func TestConsensus_joinCatchesUpWithDeadMember(t *testing.T) {
 		return cluster.appliedCount(no4) >= 1
 	}, 15*time.Second, 100*time.Millisecond)
 }
+
+// TestConsensus_checkQuorum_leaderStepsDown covers CheckQuorum: a leader that
+// loses contact with the quorum must step down, so the sector can see the
+// group as leaderless. It checks the leader itself, since a follower would
+// observe no leader anyway once the heartbeats stop.
+func TestConsensus_checkQuorum_leaderStepsDown(t *testing.T) {
+	cluster := newJoinTestCluster(t)
+
+	no1 := kvsTypes.SectorNo(1)
+	no2 := kvsTypes.SectorNo(2)
+
+	ids := testUtil.UniqueNodeIDs(2)
+	cluster.nodeIDs[no1] = ids[0]
+	cluster.nodeIDs[no2] = ids[1]
+
+	members := map[kvsTypes.SectorNo]*types.NodeID{
+		no1: cluster.nodeIDs[no1],
+		no2: cluster.nodeIDs[no2],
+	}
+	consensuses := map[kvsTypes.SectorNo]*Consensus{
+		no1: cluster.startConsensus(no1, false, members),
+		no2: cluster.startConsensus(no2, false, members),
+	}
+
+	var leaderNo, followerNo kvsTypes.SectorNo
+	require.Eventually(t, func() bool {
+		for no, c := range consensuses {
+			if c.Status().RaftState == raft.StateLeader {
+				leaderNo = no
+				return true
+			}
+		}
+		return false
+	}, 10*time.Second, 100*time.Millisecond)
+	followerNo = no1
+	if leaderNo == no1 {
+		followerNo = no2
+	}
+
+	cluster.mtx.Lock()
+	cluster.dead[followerNo] = true
+	cluster.mtx.Unlock()
+
+	leader := consensuses[leaderNo]
+	require.Eventually(t, func() bool {
+		status := leader.Status()
+		return status.RaftState != raft.StateLeader && status.Lead == raft.None
+	}, 10*time.Second, 100*time.Millisecond)
+}
