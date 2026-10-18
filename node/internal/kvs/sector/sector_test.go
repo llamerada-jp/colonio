@@ -266,6 +266,28 @@ func TestSector_checkQuorumLoss_leaderWithoutQuorum(t *testing.T) {
 	}, 15*time.Second, 100*time.Millisecond)
 }
 
+// TestSector_checkQuorumLoss_pendingWithoutProgress covers the backstop: a
+// proposal that stays pending without any commit progress destroys the
+// replica even when the leaderless check is effectively disabled.
+func TestSector_checkQuorumLoss_pendingWithoutProgress(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	handler := &sectorHandlerHelper{}
+	s := startLeaderWithoutQuorum(t, ctx, handler, func(s *Sector) {
+		s.forceTerminateDuration = time.Hour
+		s.forcePendingDuration = 3 * time.Second
+	})
+
+	// enters the leader's log but can never commit
+	s.Activate(*testUtil.UniqueNodeIDs(1)[0])
+
+	require.Eventually(t, func() bool {
+		return handler.terminatedCount() > 0
+	}, 15*time.Second, 100*time.Millisecond)
+	require.Nil(t, s.GetTailAddress())
+}
+
 // TestSector_import_blockedOnQuorumLoss covers waitProposal: a blocking
 // operation such as Import must not wait forever when its raft group cannot
 // commit the proposal. It gives up with ErrProposalTimeout once
