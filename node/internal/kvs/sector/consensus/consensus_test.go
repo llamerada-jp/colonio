@@ -16,6 +16,8 @@
 package consensus
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"log/slog"
@@ -30,6 +32,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3"
+	"go.etcd.io/raft/v3/raftpb"
+	proto3 "google.golang.org/protobuf/proto"
 )
 
 type consensusHandlerHelper struct {
@@ -486,4 +490,37 @@ func TestConsensus_preVote(t *testing.T) {
 	status := c.Status()
 	require.Equal(t, term, status.Term)
 	require.Equal(t, uint64(raft.None), status.Lead)
+}
+
+// TestConsensus_publishEntries_continuesAfterApplyError covers publishEntries:
+// a committed proposal that fails to apply must not keep the rest of the batch
+// from being applied.
+func TestConsensus_publishEntries_continuesAfterApplyError(t *testing.T) {
+	c := newIsolatedConsensus(t, 1)
+
+	applied := []string{}
+	c.handler.(*consensusHandlerHelper).consensusApplyProposalF = func(proposal *proto.ConsensusProposal) error {
+		tail := proposal.GetActivate().GetTail().GetId0()
+		applied = append(applied, fmt.Sprint(tail))
+		if tail == 1 {
+			return errors.New("apply failed")
+		}
+		return nil
+	}
+
+	entries := []raftpb.Entry{}
+	for _, id0 := range []uint64{1, 2} {
+		data, err := proto3.Marshal(&proto.ConsensusProposal{
+			Content: &proto.ConsensusProposal_Activate{
+				Activate: &proto.Activate{
+					Tail: types.NewNormalNodeID(id0, 0).Proto(),
+				},
+			},
+		})
+		require.NoError(t, err)
+		entries = append(entries, raftpb.Entry{Type: raftpb.EntryNormal, Data: data})
+	}
+
+	require.NoError(t, c.publishEntries(entries))
+	require.Equal(t, []string{"1", "2"}, applied)
 }

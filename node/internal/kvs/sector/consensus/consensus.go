@@ -376,8 +376,11 @@ func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
 	}
 
 	for _, proposal := range proposals {
+		// These entries are already committed, and Advance() runs after this
+		// anyway, so returning here would skip the rest of the batch for good
+		// and leave this member diverged from the group.
 		if err := n.handler.ConsensusApplyProposal(proposal); err != nil {
-			return err
+			n.logger.Error("Failed to apply committed proposal", "sectorKey", n.sectorKey.String(), "error", err)
 		}
 	}
 
