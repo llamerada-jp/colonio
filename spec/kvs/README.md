@@ -581,9 +581,10 @@ TODO-3 / TODO-4 の Go 実装は 2026-07-04 に先行実装した（下記
 再調整を想定した暫定値。回帰テスト:
 `node/internal/kvs/sector/sector_test.go` の
 `TestSector_checkQuorumLoss` /
-`TestSector_checkQuorumLoss_leaderWithoutQuorum` /
 `TestSector_checkQuorumLoss_pendingWithoutProgress` /
-`TestSector_import_blockedOnQuorumLoss`。
+`TestSector_import_blockedOnQuorumLoss`、
+`node/internal/kvs/sector/consensus/consensus_join_test.go` の
+`TestConsensus_checkQuorum_leaderStepsDown`。
 
 #### シミュレーション再実行での発見（2026-07-04, simulator/node.log 2 回）
 
@@ -594,7 +595,7 @@ TODO-3 / TODO-4 の Go 実装は 2026-07-04 に先行実装した（下記
 `CheckQuorum` なしでは quorum を失ったリーダーも降格せず、`Status().Lead ≠ 0`
 のままになる）が原因と推定し、`CheckQuorum: true` と pending バックストップを
 追加した（この検出ギャップ自体は単体テスト
-`TestSector_checkQuorumLoss_leaderWithoutQuorum` で実在を実証済み。対処は妥当として維持）。
+`TestConsensus_checkQuorum_leaderStepsDown` で実在を実証済み。対処は妥当として維持）。
 
 **run 2（CheckQuorum + バックストップ入り）**: 同型の停滞が残存
 （`proposedSplitRoutine: proposer left, terminate hosting sector` を最長 138 秒
@@ -769,10 +770,8 @@ secondNeighborhoods から明示的に除外しており、`neighborhoodInfos`�
 
 改善候補（優先順）:
 
-1. **learner-first メンバーシップ**（設計変更・中）: 新メンバーを
-   `ConfChangeAddLearnerNode` で追加し、同期完了後に voter へ昇格する。
-   未同期 voter による quorum 毀損を構造的に防ぐ。etcd raft がネイティブに
-   対応しており、位相 2 対策の本命。
+1. ~~learner-first メンバーシップ~~ → **実装済み (2026-07-04)**。下記
+   「learner-first メンバーシップの実装」参照。
 2. **is_stable ゲートの緩和 / seed 律速の解消**（設計判断・中〜大): 不安定時も
    修復系操作（Extend / Terminate frontward）だけは許可する、あるいは
    is_stable の判定自体を安定化する。位相 1 対策。
@@ -785,6 +784,41 @@ secondNeighborhoods から明示的に除外しており、`neighborhoodInfos`�
    `TestManager_ManageMember_panicsOnLocalNodeID`。
 5. しきい値調整は対症療法にしかならない（destroy を遅らせても quorum 喪失自体は
    解消しない）。
+
+#### learner-first メンバーシップの実装（2026-07-04, consensus.go）
+
+- **追加は learner から**: `consensus.AppendNode` は `ConfChangeAddLearnerNode` を
+  提案する。learner は quorum に入らないため、**未同期/死亡ノードの append が
+  グループの commit 能力を毀損しない**（run4 の破棄ストームの根本対策）。
+- **昇格はリーダーが自動判定**: `maybePromoteLearners`（1 秒周期）が、リーダー上で
+  `Progress[id].Match >= Commit` に達した learner を `ConfChangeAddNode` で
+  voter へ昇格する。死亡/停滞 learner は昇格されないまま残り、routing から
+  消えた時点で通常の RemoveNode 経路で除去される。
+- **冪等性ガード**: `AppendNode` は confState を確認し、既に learner/voter の
+  id には何も提案しない。リトライループが 3 秒ごとに再呼び出しする前提のため、
+  **voter に learner-add を再提案すると降格してしまう**ことへの防御でもある。
+- **hostingManager への通知は昇格時のみ**: `ConsensusAppendNode` は voter 昇格の
+  apply で発火する（learner 追加では発火しない）。メンバー状態機械にとって
+  「メンバーになった」= quorum に参加した、で意味が揃う。learner の間は
+  `proposalAppendingNodes` が pending のまま残るため、**強制破棄のバックストップ
+  からは ConfChange 系 pending を除外**した（健全なグループが learner の
+  追随待ちで破棄されないように）。
+- **スコープ**: append 経路のみ。グループ新規作成時の初期メンバーは従来どおり
+  voter で bootstrap する（`StartNode` の peers）。初期メンバーに死者が混ざる
+  「stillborn グループ」は従来どおり 30 秒の leaderless 破棄で掃除される。
+- 昇格の提案は `proposeTimeout` で待ちを打ち切る（昇格が apply されるまで
+  次の確認で再提案されるため）。
+- 回帰テスト: `TestConsensus_appendNode_deadLearnerKeepsQuorum`（dead append
+  でも commit 継続 = learner-first なしでは失敗する）/
+  `TestConsensus_appendNode_liveLearnerPromoted`（追随後に昇格し通知が届く）/
+  `TestConsensus_checkQuorum_leaderStepsDown`（leader-without-quorum の降格。
+  リーダー側で降格を確認する）/
+  `TestSector_appendDeadNode_keepsQuorum`（sector 層での同性質）。旧
+  `TestSector_checkQuorumLoss_leaderWithoutQuorum` は「dead append で quorum が
+  壊れる」前提自体が learner-first で成立しなくなったため consensus 層の
+  `TestConsensus_checkQuorum_leaderStepsDown` に置き換え、
+  `TestSector_checkQuorumLoss_pendingWithoutProgress` はリーダーが選出されない
+  グループで commit 停滞の判定を確認する形に変えた。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加
