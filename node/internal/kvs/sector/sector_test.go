@@ -352,21 +352,24 @@ func TestSector_processCommitSplitProposal_alreadyActivated(t *testing.T) {
 	require.True(t, s.tail.Equal(tailNodeID))
 }
 
-// startLeaderWithoutQuorum starts a sector whose local node becomes the raft
-// leader, then adds a member that never runs. The conf change still commits
-// with the single-voter quorum, after which the group needs both votes and
-// can never commit again. configure runs before Start.
-func startLeaderWithoutQuorum(t *testing.T, ctx context.Context, handler *sectorHandlerHelper, configure func(s *Sector)) *Sector {
-	t.Helper()
+// TestSector_appendDeadNode_keepsQuorum covers appending a member that never
+// runs. It joins as a learner, so the single-voter group keeps its quorum and
+// keeps committing, and the sector is not destroyed although the append stays
+// pending.
+func TestSector_appendDeadNode_keepsQuorum(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	nodeIDs := testUtil.UniqueNodeIDs(2)
 	localNodeID, deadNodeID := nodeIDs[0], nodeIDs[1]
 
+	handler := &sectorHandlerHelper{}
 	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
 		kvsTypes.HostNodeSectorNo: localNodeID,
 	})
 	s.proposalRetryDuration = 200 * time.Millisecond
-	configure(s)
+	s.forceTerminateDuration = 2 * time.Second
+	s.forcePendingDuration = 3 * time.Second
 	s.Start(ctx)
 
 	require.Eventually(t, func() bool {
@@ -375,33 +378,17 @@ func startLeaderWithoutQuorum(t *testing.T, ctx context.Context, handler *sector
 
 	s.AppendNode(kvsTypes.SectorNo(2), deadNodeID)
 	require.Eventually(t, func() bool {
-		s.mtx.RLock()
-		defer s.mtx.RUnlock()
-		return len(s.proposalAppendingNodes) == 0
+		return len(s.consensus.Status().Config.Learners) == 1
 	}, 10*time.Second, 100*time.Millisecond)
+
+	s.Activate(*deadNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+
+	time.Sleep(4 * time.Second)
 	require.Equal(t, 0, handler.terminatedCount())
-
-	return s
-}
-
-// TestSector_checkQuorumLoss_leaderWithoutQuorum covers a leader whose
-// followers all died. With CheckQuorum the leader steps down, so
-// checkQuorumLoss sees the group as leaderless and destroys the replica.
-func TestSector_checkQuorumLoss_leaderWithoutQuorum(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	handler := &sectorHandlerHelper{}
-	s := startLeaderWithoutQuorum(t, ctx, handler, func(s *Sector) {
-		s.forceTerminateDuration = 3 * time.Second
-	})
-
-	require.Eventually(t, func() bool {
-		return s.consensus.Status().Lead == 0
-	}, 10*time.Second, 100*time.Millisecond)
-	require.Eventually(t, func() bool {
-		return handler.terminatedCount() > 0
-	}, 15*time.Second, 100*time.Millisecond)
+	require.Len(t, s.consensus.Status().Config.Voters[0], 1)
 }
 
 // TestSector_checkQuorumLoss_pendingWithoutProgress covers the backstop: a
@@ -411,14 +398,21 @@ func TestSector_checkQuorumLoss_pendingWithoutProgress(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	handler := &sectorHandlerHelper{}
-	s := startLeaderWithoutQuorum(t, ctx, handler, func(s *Sector) {
-		s.forceTerminateDuration = time.Hour
-		s.forcePendingDuration = 3 * time.Second
-	})
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID, deadNodeID := nodeIDs[0], nodeIDs[1]
 
-	// enters the leader's log but can never commit
-	s.Activate(*testUtil.UniqueNodeIDs(1)[0])
+	handler := &sectorHandlerHelper{}
+	// the other voter never runs, so nothing can be committed
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+		kvsTypes.SectorNo(2):      deadNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	s.forceTerminateDuration = time.Hour
+	s.forcePendingDuration = 3 * time.Second
+	s.Start(ctx)
+
+	s.Activate(*deadNodeID)
 
 	require.Eventually(t, func() bool {
 		return handler.terminatedCount() > 0

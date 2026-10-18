@@ -42,6 +42,9 @@ type joinTestCluster struct {
 	dead        map[kvsTypes.SectorNo]bool
 	applied     map[kvsTypes.SectorNo][]*proto.ConsensusProposal
 	snapshots   map[kvsTypes.SectorNo]int
+	// appended[X][Y] counts how many times member X was notified that
+	// member Y became a voter.
+	appended map[kvsTypes.SectorNo]map[kvsTypes.SectorNo]int
 }
 
 func newJoinTestCluster(t *testing.T) *joinTestCluster {
@@ -53,6 +56,7 @@ func newJoinTestCluster(t *testing.T) *joinTestCluster {
 		dead:        map[kvsTypes.SectorNo]bool{},
 		applied:     map[kvsTypes.SectorNo][]*proto.ConsensusProposal{},
 		snapshots:   map[kvsTypes.SectorNo]int{},
+		appended:    map[kvsTypes.SectorNo]map[kvsTypes.SectorNo]int{},
 	}
 }
 
@@ -65,7 +69,14 @@ func (c *joinTestCluster) startConsensus(sectorNo kvsTypes.SectorNo, join bool, 
 		consensusErrorF: func(err error) {
 			// proposals may time out while the quorum is degraded; ignore
 		},
-		consensusAppendNodeF: func(sn kvsTypes.SectorNo, nodeID *types.NodeID) {},
+		consensusAppendNodeF: func(sn kvsTypes.SectorNo, nodeID *types.NodeID) {
+			c.mtx.Lock()
+			defer c.mtx.Unlock()
+			if c.appended[sectorNo] == nil {
+				c.appended[sectorNo] = map[kvsTypes.SectorNo]int{}
+			}
+			c.appended[sectorNo][sn]++
+		},
 		consensusRemoveNodeF: func(sn kvsTypes.SectorNo) {},
 		consensusApplyProposalF: func(proposal *proto.ConsensusProposal) error {
 			c.mtx.Lock()
@@ -125,6 +136,12 @@ func (c *joinTestCluster) appliedCount(sectorNo kvsTypes.SectorNo) int {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	return len(c.applied[sectorNo])
+}
+
+func (c *joinTestCluster) appendedCount(observer, member kvsTypes.SectorNo) int {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	return c.appended[observer][member]
 }
 
 func activateProposal(nodeID *types.NodeID) *proto.ConsensusProposal {
@@ -240,4 +257,80 @@ func TestConsensus_checkQuorum_leaderStepsDown(t *testing.T) {
 		status := leader.Status()
 		return status.RaftState != raft.StateLeader && status.Lead == raft.None
 	}, 10*time.Second, 100*time.Millisecond)
+}
+
+// TestConsensus_appendNode_deadLearnerKeepsQuorum covers appending a member
+// that never runs: it is added as a learner, so the single voter keeps the
+// quorum and keeps committing, and the learner is never promoted.
+func TestConsensus_appendNode_deadLearnerKeepsQuorum(t *testing.T) {
+	cluster := newJoinTestCluster(t)
+
+	no1 := kvsTypes.SectorNo(1)
+	no2 := kvsTypes.SectorNo(2)
+
+	ids := testUtil.UniqueNodeIDs(2)
+	cluster.nodeIDs[no1] = ids[0]
+	cluster.nodeIDs[no2] = ids[1]
+	cluster.dead[no2] = true
+
+	c1 := cluster.startConsensus(no1, false, map[kvsTypes.SectorNo]*types.NodeID{
+		no1: cluster.nodeIDs[no1],
+	})
+	require.Eventually(t, func() bool {
+		return c1.Status().Lead != 0
+	}, 10*time.Second, 100*time.Millisecond)
+
+	c1.AppendNode(no2, cluster.nodeIDs[no2])
+	require.Eventually(t, func() bool {
+		return len(c1.Status().Config.Learners) == 1
+	}, 10*time.Second, 100*time.Millisecond)
+
+	c1.Propose(activateProposal(cluster.nodeIDs[no1]))
+	require.Eventually(t, func() bool {
+		return cluster.appliedCount(no1) >= 1
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// a few promotion checks must pass without promoting it
+	time.Sleep(2 * time.Second)
+	require.Equal(t, 0, cluster.appendedCount(no1, no2))
+	require.Len(t, c1.Status().Config.Voters[0], 1)
+}
+
+// TestConsensus_appendNode_liveLearnerPromoted covers appending a member that
+// runs: it catches up as a learner, then the leader promotes it to a voter,
+// and the handler is notified of the append only then.
+func TestConsensus_appendNode_liveLearnerPromoted(t *testing.T) {
+	cluster := newJoinTestCluster(t)
+
+	no1 := kvsTypes.SectorNo(1)
+	no2 := kvsTypes.SectorNo(2)
+
+	ids := testUtil.UniqueNodeIDs(2)
+	cluster.nodeIDs[no1] = ids[0]
+	cluster.nodeIDs[no2] = ids[1]
+
+	c1 := cluster.startConsensus(no1, false, map[kvsTypes.SectorNo]*types.NodeID{
+		no1: cluster.nodeIDs[no1],
+	})
+	require.Eventually(t, func() bool {
+		return c1.Status().Lead != 0
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// history the new member has to catch up with
+	c1.Propose(activateProposal(cluster.nodeIDs[no1]))
+	require.Eventually(t, func() bool {
+		return cluster.appliedCount(no1) >= 1
+	}, 10*time.Second, 100*time.Millisecond)
+
+	c1.AppendNode(no2, cluster.nodeIDs[no2])
+	cluster.startConsensus(no2, true, map[kvsTypes.SectorNo]*types.NodeID{
+		no1: cluster.nodeIDs[no1],
+		no2: cluster.nodeIDs[no2],
+	})
+
+	require.Eventually(t, func() bool {
+		return cluster.appendedCount(no1, no2) >= 1 && cluster.appliedCount(no2) >= 1
+	}, 15*time.Second, 100*time.Millisecond)
+	require.Len(t, c1.Status().Config.Voters[0], 2)
+	require.Empty(t, c1.Status().Config.Learners)
 }
