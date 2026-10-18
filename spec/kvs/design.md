@@ -55,6 +55,12 @@ terminate を含む一切の提案を commit できず、sector が誰にも破�
   abort（frontward sector の terminate）する。terminate も commit できない
   場合は上記の強制破棄が後始末する。
 
+また、**raft メンバー ID（sectorNo）は使い捨て**とする。ローカル破棄や remove
+適用で消えたレプリカを同じ {sectorID, sectorNo} で再作成すると、グループが記憶する
+その ID の複製進捗・投票と矛盾し raft が破綻する（実例: 空ログ再作成による
+etcd raft 内部 panic。README「run 5」参照）。再作成は必ず新しい sectorNo で行い、
+旧キーは tombstone で再作成を拒否する。
+
 また、raft 適用（apply）ハンドラは**冪等かつ必ず完了する**ことを規約とする。
 apply が失敗して提案の完了フラグを立てられないと、「commit は成功するが状態が
 進まない」再提案ループになり、健全なグループが quorum 喪失と同一の症状を示す
