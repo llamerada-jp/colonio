@@ -104,10 +104,12 @@ func (h *sectorHandlerHelper) terminatedCount() int {
 }
 
 // storeHelper follows SimpleStore for sector allocation: allocating twice
-// and releasing a sector that was never allocated are errors.
+// and releasing a sector that was never allocated are errors. It also keeps
+// the values written with Set.
 type storeHelper struct {
 	mtx       sync.Mutex
 	allocated map[kvsTypes.SectorKey]struct{}
+	values    map[string][]byte
 }
 
 var _ kvsTypes.Store = &storeHelper{}
@@ -138,7 +140,24 @@ func (s *storeHelper) ReleaseSector(sectorKey *kvsTypes.SectorKey) error {
 func (s *storeHelper) Get(sectorKey *kvsTypes.SectorKey, key string) ([]byte, error) {
 	return nil, kvsTypes.ErrorStoreKeyNotFound
 }
-func (s *storeHelper) Set(sectorKey *kvsTypes.SectorKey, key string, value []byte) error { return nil }
+func (s *storeHelper) Set(sectorKey *kvsTypes.SectorKey, key string, value []byte) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	if _, exists := s.allocated[*sectorKey]; !exists {
+		return kvsTypes.ErrorStoreSectorNotFound
+	}
+	if s.values == nil {
+		s.values = make(map[string][]byte)
+	}
+	s.values[key] = value
+	return nil
+}
+
+func (s *storeHelper) value(key string) []byte {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	return s.values[key]
+}
 func (s *storeHelper) Patch(sectorKey *kvsTypes.SectorKey, key string, value []byte) error {
 	return nil
 }
@@ -276,6 +295,37 @@ func TestSector_terminate_inactiveSector(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return handler.terminatedCount() > 0
 	}, 10*time.Second, 100*time.Millisecond)
+	require.Empty(t, handler.reportedErrors())
+}
+
+// TestSector_import_activeSector covers Import into an active sector, which
+// is how a merge moves records into the hosting sector. The store sector is
+// already allocated by the activate, and the import used to fail to apply on
+// that, dropping the records while Import still reported success.
+func TestSector_import_activeSector(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID, tailNodeID := nodeIDs[0], nodeIDs[1]
+	handler := &sectorHandlerHelper{}
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	s.Start(ctx)
+
+	require.Eventually(t, func() bool {
+		return s.consensus.Status().Lead != 0
+	}, 10*time.Second, 100*time.Millisecond)
+
+	s.Activate(*tailNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+
+	require.NoError(t, s.Import(map[string][]byte{"key": []byte("value")}))
+	require.Equal(t, []byte("value"), s.store.(*storeHelper).value("key"))
 	require.Empty(t, handler.reportedErrors())
 }
 
