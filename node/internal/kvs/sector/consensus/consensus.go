@@ -91,10 +91,14 @@ func NewConsensus(config *Config) *Consensus {
 	}
 
 	raftConfig := &raft.Config{
-		Logger:                    config.RaftLogger,
-		ID:                        uint64(config.SectorKey.SectorNo),
-		ElectionTick:              10,
-		HeartbeatTick:             1,
+		Logger:        config.RaftLogger,
+		ID:            uint64(config.SectorKey.SectorNo),
+		ElectionTick:  10,
+		HeartbeatTick: 1,
+		// Without CheckQuorum, a leader whose followers all died stays leader
+		// forever, so the sector never sees the group as leaderless. With it,
+		// such a leader steps down after an election timeout.
+		CheckQuorum:               true,
 		Storage:                   n.raftStorage,
 		MaxSizePerMsg:             1024 * 1024,
 		MaxInflightMsgs:           256,
