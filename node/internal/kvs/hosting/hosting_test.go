@@ -25,6 +25,58 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type sectorHandlerHelper struct{}
+
+var _ SectorHandler = &sectorHandlerHelper{}
+
+func (h *sectorHandlerHelper) HostingAllocateSector(sectorKey *kvsTypes.SectorKey, head *types.NodeID, isHosting bool, join bool, members map[kvsTypes.SectorNo]*types.NodeID) {
+}
+
+func (h *sectorHandlerHelper) HostingApplyAppendNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {
+}
+
+func (h *sectorHandlerHelper) HostingApplyRemoveNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo) {
+}
+
+type outboundHelper struct{}
+
+var _ OutboundPort = &outboundHelper{}
+
+func (o *outboundHelper) sendSectorManageMember(param *SectorManageMemberParam) {}
+
+// TestManager_ManageMember_panicsOnLocalNodeID covers the guard against the
+// local node in nextNodeIDs, both before and after the hosting sector exists.
+func TestManager_ManageMember_panicsOnLocalNodeID(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID, otherNodeID := nodeIDs[0], nodeIDs[1]
+
+	newManager := func() *Manager {
+		m := NewManager(&Config{
+			Logger:   testUtil.Logger(t),
+			Outbound: &outboundHelper{},
+		})
+		m.Start(&sectorHandlerHelper{}, localNodeID)
+		return m
+	}
+
+	t.Run("before the hosting sector exists", func(t *testing.T) {
+		m := newManager()
+		require.PanicsWithValue(t, "localNodeID found in nextNodeIDs", func() {
+			m.ManageMember([]*types.NodeID{otherNodeID, localNodeID})
+		})
+	})
+
+	t.Run("after the hosting sector exists", func(t *testing.T) {
+		m := newManager()
+		m.ManageMember([]*types.NodeID{otherNodeID})
+		require.NotNil(t, m.GetHostingSectorKey())
+
+		require.PanicsWithValue(t, "localNodeID found in nextNodeIDs", func() {
+			m.ManageMember([]*types.NodeID{otherNodeID, localNodeID})
+		})
+	})
+}
+
 func TestManager_getNodesToBeChanged(t *testing.T) {
 	nodeIDs := testUtil.UniqueNodeIDs(5)
 

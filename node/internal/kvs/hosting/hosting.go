@@ -104,6 +104,15 @@ func (m *Manager) GetHostingSectorKey() *kvsTypes.SectorKey {
 // ManageMember adjusts the Raft membership of the hosting sector to match nextNodeIDs.
 // Returns true when all members are in a stable (Normal) state.
 func (m *Manager) ManageMember(nextNodeIDs []*types.NodeID) bool {
+	// Routing never lists the local node as its own neighbor, so this would be
+	// a logic error. Check the input here: getNodesToBeChanged would silently
+	// ignore the local node, since it is already a member (the host slot).
+	for _, nodeID := range nextNodeIDs {
+		if nodeID.Equal(m.localNodeID) {
+			panic("localNodeID found in nextNodeIDs")
+		}
+	}
+
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	if m.hostingSectorKey == nil {
@@ -225,9 +234,6 @@ func (m *Manager) initHostSector(nextNodeIDs []*types.NodeID) {
 		State:  MemberStateCreating,
 	}
 	for _, nodeID := range nextNodeIDs {
-		if nodeID.Equal(m.localNodeID) {
-			panic("localNodeID found in nextNodeIDs")
-		}
 		m.lastSectorNo++
 		members[m.lastSectorNo] = nodeID
 		m.memberStates[m.lastSectorNo] = &MemberStateEntry{
