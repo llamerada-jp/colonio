@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	"github.com/llamerada-jp/colonio/node/internal/kvs/sector/consensus"
 	"github.com/llamerada-jp/colonio/node/internal/network/transferer"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
@@ -327,6 +328,28 @@ func TestSector_import_activeSector(t *testing.T) {
 	require.NoError(t, s.Import(map[string][]byte{"key": []byte("value")}))
 	require.Equal(t, []byte("value"), s.store.(*storeHelper).value("key"))
 	require.Empty(t, handler.reportedErrors())
+}
+
+// TestSector_processCommitSplitProposal_alreadyActivated covers a CommitSplit
+// applied to a sector that is already active: it must be a no-op that clears
+// the pending proposal, so the retry loop stops proposing it.
+func TestSector_processCommitSplitProposal_alreadyActivated(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+	localNodeID, tailNodeID, splitTailNodeID := nodeIDs[0], nodeIDs[1], nodeIDs[2]
+	s := newTestSector(t, t.Context(), localNodeID, &sectorHandlerHelper{}, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	defer s.consensus.Stop()
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	s.tail = tailNodeID
+	s.proposalCommittingSplit = splitTailNodeID
+
+	err := s.processCommitSplitProposal(&proto.CommitSplit{Tail: splitTailNodeID.Proto()})
+	require.NoError(t, err)
+	require.Nil(t, s.proposalCommittingSplit)
+	require.True(t, s.tail.Equal(tailNodeID))
 }
 
 // startLeaderWithoutQuorum starts a sector whose local node becomes the raft
