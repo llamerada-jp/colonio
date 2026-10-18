@@ -62,12 +62,18 @@ type KVS struct {
 	observation        observation.Caller
 	store              kvsTypes.Store
 	localNodeID        *types.NodeID
-	// mtx protects sectors, sectorUpdated.
+	// mtx protects sectors, sectorTombstones, sectorUpdated.
 	// Lock order: hosting.Manager's lock may be held when acquiring k.mtx
 	// (Manager calls back into KVS), so never call into hostingManager
 	// while holding k.mtx.
-	mtx                       sync.RWMutex
-	sectors                   map[kvsTypes.SectorKey]*sector.Sector
+	mtx     sync.RWMutex
+	sectors map[kvsTypes.SectorKey]*sector.Sector
+	// sectorTombstones records the keys of the local replicas that were
+	// terminated or removed. A raft member must never restart with an empty
+	// log under the same ID: the group still remembers its progress and
+	// votes, and etcd raft panics on the mismatch. The keys are kept so that
+	// a setting message delivered again cannot re-create such a replica.
+	sectorTombstones          map[kvsTypes.SectorKey]time.Time
 	mtxOperateSectors         sync.Mutex
 	proposedSplittingNodeID   *types.NodeID
 	proposedSplittingSectorID *kvsTypes.SectorID
@@ -85,6 +91,7 @@ func NewKVS(conf *Config) *KVS {
 		observation:        conf.Observation,
 		store:              conf.Store,
 		sectors:            make(map[kvsTypes.SectorKey]*sector.Sector),
+		sectorTombstones:   make(map[kvsTypes.SectorKey]time.Time),
 	}
 
 	if conf.EnableRaftLogging {
@@ -546,6 +553,13 @@ func (k *KVS) sectorManageMember(param *sectorManageMemberParam) error {
 
 	switch param.command {
 	case proto.SectorManageMember_COMMAND_CREATE, proto.SectorManageMember_COMMAND_APPEND:
+		// The setting message is sent again every second until the member is
+		// set up, so it often arrives after this replica was terminated. The
+		// hosting manager adds the node again under a new sectorNo once the
+		// member times out.
+		if _, ok := k.sectorTombstones[param.sectorKey]; ok {
+			return fmt.Errorf("sector key is tombstoned: %s", param.sectorKey.String())
+		}
 		if _, ok := k.sectors[param.sectorKey]; !ok {
 			append := true
 			if param.command == proto.SectorManageMember_COMMAND_CREATE {
@@ -688,6 +702,10 @@ func (k *KVS) SectorRemoveNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.
 		SectorID: sectorKey.SectorID,
 		SectorNo: sectorNo,
 	}
+	// The group has removed this member ID, so it must never be created on
+	// this node, even if this node never held it.
+	k.addSectorTombstoneLocked(targetKey)
+
 	sector, ok := k.sectors[targetKey]
 	if !ok {
 		return
@@ -704,6 +722,8 @@ func (k *KVS) SectorTerminated(sectorKey *kvsTypes.SectorKey) {
 	k.mtx.Lock()
 	defer k.mtx.Unlock()
 
+	k.addSectorTombstoneLocked(*sectorKey)
+
 	sector, ok := k.sectors[*sectorKey]
 	if !ok {
 		return
@@ -711,6 +731,22 @@ func (k *KVS) SectorTerminated(sectorKey *kvsTypes.SectorKey) {
 
 	go sector.Stop()
 	delete(k.sectors, *sectorKey)
+}
+
+// addSectorTombstoneLocked records the sector key so that it is never created
+// again, and drops old records to bound the map. A record is only needed while
+// a setting message for the key can still arrive. Call with k.mtx
+// write-locked.
+func (k *KVS) addSectorTombstoneLocked(sectorKey kvsTypes.SectorKey) {
+	const tombstoneRetention = 30 * time.Minute
+
+	now := time.Now()
+	for key, at := range k.sectorTombstones {
+		if now.Sub(at) > tombstoneRetention {
+			delete(k.sectorTombstones, key)
+		}
+	}
+	k.sectorTombstones[sectorKey] = now
 }
 
 // HostingAllocateSector implements hosting.SectorHandler.

@@ -256,6 +256,68 @@ func TestKVS_sectorActivate(t *testing.T) {
 	}
 }
 
+// TestKVS_sectorManageMember_rejectsTombstonedKey covers a setting message
+// that arrives again after the local replica was terminated: it must not
+// re-create the replica under the same key, since a raft member must never
+// restart with an empty log under the same ID. The same node under a new
+// sectorNo is accepted.
+func TestKVS_sectorManageMember_rejectsTombstonedKey(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID, headNodeID := nodeIDs[0], nodeIDs[1]
+	k := newTestKVS(t, ctx, localNodeID, &kvsHandlerHelper{isStable: true})
+
+	sectorKey := kvsTypes.SectorKey{
+		SectorID: kvsTypes.SectorID(uuid.New()),
+		SectorNo: kvsTypes.SectorNo(2),
+	}
+	manageMember := func(key kvsTypes.SectorKey) error {
+		return k.sectorManageMember(&sectorManageMemberParam{
+			command:   proto.SectorManageMember_COMMAND_APPEND,
+			sectorKey: key,
+			head:      headNodeID,
+			members: map[kvsTypes.SectorNo]*types.NodeID{
+				kvsTypes.HostNodeSectorNo: headNodeID,
+				key.SectorNo:              localNodeID,
+			},
+		})
+	}
+	hasSector := func(key kvsTypes.SectorKey) bool {
+		k.mtx.RLock()
+		defer k.mtx.RUnlock()
+		_, ok := k.sectors[key]
+		return ok
+	}
+
+	require.NoError(t, manageMember(sectorKey))
+	require.True(t, hasSector(sectorKey))
+
+	k.SectorTerminated(&sectorKey)
+	require.False(t, hasSector(sectorKey))
+
+	require.Error(t, manageMember(sectorKey))
+	require.False(t, hasSector(sectorKey))
+
+	freshKey := kvsTypes.SectorKey{
+		SectorID: sectorKey.SectorID,
+		SectorNo: kvsTypes.SectorNo(3),
+	}
+	require.NoError(t, manageMember(freshKey))
+	require.True(t, hasSector(freshKey))
+
+	// a member ID the group has removed is never created, even if this node
+	// did not hold it
+	removedKey := kvsTypes.SectorKey{
+		SectorID: sectorKey.SectorID,
+		SectorNo: kvsTypes.SectorNo(4),
+	}
+	k.SectorRemoveNode(&freshKey, removedKey.SectorNo)
+	require.Error(t, manageMember(removedKey))
+	require.False(t, hasSector(removedKey))
+}
+
 // TestKVS_activateHostingSector_singleNode is a regression test: a lone node
 // could never activate its own sector because the emptiness check counted the
 // hosting sector itself.
