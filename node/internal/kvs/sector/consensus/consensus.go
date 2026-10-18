@@ -108,7 +108,10 @@ func NewConsensus(config *Config) *Consensus {
 		// Without CheckQuorum, a leader whose followers all died stays leader
 		// forever, so the sector never sees the group as leaderless. With it,
 		// such a leader steps down after an election timeout.
-		CheckQuorum:               true,
+		CheckQuorum: true,
+		// Without PreVote, a member cut off from the quorum keeps raising its
+		// term by campaigning, and disrupts the leader when it reconnects.
+		PreVote:                   true,
 		Storage:                   n.raftStorage,
 		MaxSizePerMsg:             1024 * 1024,
 		MaxInflightMsgs:           256,
