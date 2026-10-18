@@ -55,6 +55,12 @@ terminate を含む一切の提案を commit できず、sector が誰にも破�
   abort（frontward sector の terminate）する。terminate も commit できない
   場合は上記の強制破棄が後始末する。
 
+また、raft 適用（apply）ハンドラは**冪等かつ必ず完了する**ことを規約とする。
+apply が失敗して提案の完了フラグを立てられないと、「commit は成功するが状態が
+進まない」再提案ループになり、健全なグループが quorum 喪失と同一の症状を示す
+（実例: inactive セクターへの terminate が store 未割り当てを理由に失敗し続けた。
+README「シミュレーション再実行での発見」参照）。
+
 未決事項: 誤判定時の安全性のモデル検証（README の TODO-1 検証項目 3）、
 死亡判定への routing 情報の組み合わせ、しきい値の実測に基づく調整。
 詳細は [README.md の「今後の TODO」](README.md#今後の-todo)（TODO-1〜TODO-4）を参照。
