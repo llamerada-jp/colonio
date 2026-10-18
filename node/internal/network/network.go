@@ -254,6 +254,19 @@ func (n *Network) classifyPacket(packet *networkTypes.Packet) {
 			return
 		}
 	} else if nextNodeID.Equal(&types.NodeLocal) || nextNodeID.Equal(n.localNodeID) {
+		// An explicit packet must only be received by its exact destination,
+		// or this node would act on messages meant for another node. Routing
+		// should never resolve such a packet here, so this is only a guard.
+		// It drops the packet without an error response: the route may only be
+		// missing for a moment, and a "no one receive" error would make the
+		// sender give up instead of retrying.
+		if (packet.Mode&networkTypes.PacketModeExplicit) != 0 &&
+			!packet.DstNodeID.Equal(&types.NodeLocal) &&
+			!packet.DstNodeID.Equal(n.localNodeID) {
+			n.logger.Warn("drop an explicit packet for another node",
+				slog.String("dstNodeID", packet.DstNodeID.String()))
+			return
+		}
 		n.transferer.Receive(packet)
 		return
 
