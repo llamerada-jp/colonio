@@ -697,9 +697,7 @@ func (s *Sector) processActivateProposal(activate *proto.Activate) error {
 	}
 	s.tail = tail
 
-	if err := s.store.AllocateSector(&s.sectorKey); err != nil {
-		return fmt.Errorf("failed to allocate sector: %w", err)
-	}
+	s.allocateStoreSectorLocked()
 	if err := s.operator.SetRange(*tail); err != nil {
 		return fmt.Errorf("failed to set range for activate: %w", err)
 	}
@@ -710,6 +708,18 @@ func (s *Sector) processActivateProposal(activate *proto.Activate) error {
 func (s *Sector) processTerminateProposal() error {
 	s.terminateLocked()
 	return nil
+}
+
+// allocateStoreSectorLocked allocates the store sector if it is not allocated
+// yet. Both activate and import allocate it, and an import can be applied to
+// an already active sector (merge) or more than once (retry), so an existing
+// sector is the normal case. Apply must not fail on it: a failed apply would
+// also skip the rest of the committed entries in the batch. Other store errors
+// are reported without failing the apply. Call with s.mtx write-locked.
+func (s *Sector) allocateStoreSectorLocked() {
+	if err := s.store.AllocateSector(&s.sectorKey); err != nil && !errors.Is(err, kvsTypes.ErrorStoreSectorExists) {
+		go s.handler.SectorError(&s.sectorKey, fmt.Errorf("failed to allocate store sector: %w", err))
+	}
 }
 
 // terminateLocked releases the sector resources and notifies the handler.
@@ -824,9 +834,7 @@ func (s *Sector) processImportProposal(importProposal *proto.Import) error {
 
 	s.proposalImporting = nil
 
-	if err := s.store.AllocateSector(&s.sectorKey); err != nil {
-		return fmt.Errorf("failed to allocate sector: %w", err)
-	}
+	s.allocateStoreSectorLocked()
 	if err := s.operator.ImportRecords(records); err != nil {
 		return fmt.Errorf("failed to import records: %w", err)
 	}
