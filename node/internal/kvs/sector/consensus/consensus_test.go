@@ -402,39 +402,46 @@ func TestConsensus(t *testing.T) {
 	})
 }
 
+// newIsolatedConsensus builds a consensus whose local member is sector no 1.
+// The other memberCount-1 members never run: messages to them are dropped.
+func newIsolatedConsensus(t *testing.T, memberCount int) *Consensus {
+	t.Helper()
+
+	nodeIDs := testUtil.UniqueNodeIDs(memberCount)
+	members := map[kvsTypes.SectorNo]*types.NodeID{}
+	for i, nodeID := range nodeIDs {
+		members[kvsTypes.SectorNo(i+1)] = nodeID
+	}
+
+	return NewConsensus(&Config{
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		RaftLogger: &raft.DefaultLogger{Logger: log.New(io.Discard, "", 0)},
+		Handler: &consensusHandlerHelper{
+			t:                       t,
+			consensusErrorF:         func(err error) {},
+			consensusAppendNodeF:    func(sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {},
+			consensusRemoveNodeF:    func(sectorNo kvsTypes.SectorNo) {},
+			consensusApplyProposalF: func(proposal *proto.ConsensusProposal) error { return nil },
+		},
+		Outbound: &consensusOutboundHelper{
+			t:                     t,
+			sendConsensusMessageF: func(dstNodeID *types.NodeID, message *proto.ConsensusMessage) {},
+		},
+		SectorKey: &kvsTypes.SectorKey{
+			SectorID: testUtil.UniqueSectorIDs(1)[0],
+			SectorNo: kvsTypes.SectorNo(1),
+		},
+		Members: members,
+	})
+}
+
 // TestConsensus_stop covers Stop: it must make the event loop started by
 // Start return even while the node context is still alive, so a stopped
 // sector does not leave a ticking goroutine behind. It must also return
 // without blocking when called before Start.
 func TestConsensus_stop(t *testing.T) {
-	newSingleVoter := func() *Consensus {
-		sectorNo := kvsTypes.SectorNo(1)
-		return NewConsensus(&Config{
-			Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-			RaftLogger: &raft.DefaultLogger{Logger: log.New(io.Discard, "", 0)},
-			Handler: &consensusHandlerHelper{
-				t:                       t,
-				consensusErrorF:         func(err error) {},
-				consensusAppendNodeF:    func(sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {},
-				consensusRemoveNodeF:    func(sectorNo kvsTypes.SectorNo) {},
-				consensusApplyProposalF: func(proposal *proto.ConsensusProposal) error { return nil },
-			},
-			Outbound: &consensusOutboundHelper{
-				t:                     t,
-				sendConsensusMessageF: func(dstNodeID *types.NodeID, message *proto.ConsensusMessage) {},
-			},
-			SectorKey: &kvsTypes.SectorKey{
-				SectorID: testUtil.UniqueSectorIDs(1)[0],
-				SectorNo: sectorNo,
-			},
-			Members: map[kvsTypes.SectorNo]*types.NodeID{
-				sectorNo: testUtil.UniqueNodeIDs(1)[0],
-			},
-		})
-	}
-
 	t.Run("event loop returns after Stop", func(t *testing.T) {
-		c := newSingleVoter()
+		c := newIsolatedConsensus(t, 1)
 		c.Start(t.Context())
 		require.Eventually(t, func() bool {
 			return c.Status().Lead != 0
@@ -449,7 +456,7 @@ func TestConsensus_stop(t *testing.T) {
 	})
 
 	t.Run("Stop before Start does not block", func(t *testing.T) {
-		c := newSingleVoter()
+		c := newIsolatedConsensus(t, 1)
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
@@ -461,4 +468,22 @@ func TestConsensus_stop(t *testing.T) {
 			t.Fatal("Stop blocked")
 		}
 	})
+}
+
+// TestConsensus_preVote covers PreVote: a member that cannot reach the quorum
+// must not raise its term while it keeps campaigning, so it does not disrupt
+// the leader once it reconnects. It still reports no leader, which the
+// sector's quorum-loss detection relies on.
+func TestConsensus_preVote(t *testing.T) {
+	c := newIsolatedConsensus(t, 3)
+	c.Start(t.Context())
+	defer c.Stop()
+
+	term := c.Status().Term
+	// several election timeouts (1-2s each)
+	time.Sleep(5 * time.Second)
+
+	status := c.Status()
+	require.Equal(t, term, status.Term)
+	require.Equal(t, uint64(raft.None), status.Lead)
 }
