@@ -124,6 +124,7 @@ func TestSimpleStore_NewCluster(t *testing.T) {
 			err := s.AllocateSector(tt.sectorKey)
 			if len(tt.wantErr) > 0 {
 				assert.ErrorContains(t, err, tt.wantErr)
+				assert.ErrorIs(t, err, kvsTypes.ErrorStoreSectorExists)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -210,6 +211,7 @@ func TestSimpleStore_DeleteCluster(t *testing.T) {
 			err := s.ReleaseSector(tt.sectorKey)
 			if len(tt.wantErr) > 0 {
 				assert.ErrorContains(t, err, tt.wantErr)
+				assert.ErrorIs(t, err, kvsTypes.ErrorStoreSectorNotFound)
 			} else {
 				assert.NoError(t, err)
 			}

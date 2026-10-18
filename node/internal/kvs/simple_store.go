@@ -35,7 +35,7 @@ func NewSimpleStore() *SimpleStore {
 
 func (s *SimpleStore) AllocateSector(sectorKey *kvsTypes.SectorKey) error {
 	if _, exists := s.stores[*sectorKey]; exists {
-		return fmt.Errorf("node already exists: %s", sectorKey.SectorID.String())
+		return fmt.Errorf("%w: node already exists: %s", kvsTypes.ErrorStoreSectorExists, sectorKey.SectorID.String())
 	}
 	s.stores[*sectorKey] = make(map[string][]byte)
 	return nil
@@ -43,7 +43,7 @@ func (s *SimpleStore) AllocateSector(sectorKey *kvsTypes.SectorKey) error {
 
 func (s *SimpleStore) ReleaseSector(sectorKey *kvsTypes.SectorKey) error {
 	if _, exists := s.stores[*sectorKey]; !exists {
-		return fmt.Errorf("node does not exist: %s", sectorKey.SectorID.String())
+		return fmt.Errorf("%w: node does not exist: %s", kvsTypes.ErrorStoreSectorNotFound, sectorKey.SectorID.String())
 	}
 	delete(s.stores, *sectorKey)
 	return nil
