@@ -17,6 +17,7 @@ package hosting
 
 import (
 	"testing"
+	"time"
 
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/types"
@@ -75,6 +76,84 @@ func TestManager_ManageMember_panicsOnLocalNodeID(t *testing.T) {
 			m.ManageMember([]*types.NodeID{otherNodeID, localNodeID})
 		})
 	})
+}
+
+// TestManager_ManageMember_reapsStaleMember covers a member that never
+// finishes its setup: after memberSetupTimeout it is marked Removing, and the
+// node is added again under a new sectorNo.
+func TestManager_ManageMember_reapsStaleMember(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID, memberNodeID := nodeIDs[0], nodeIDs[1]
+
+	m := NewManager(&Config{
+		Logger:   testUtil.Logger(t),
+		Outbound: &outboundHelper{},
+	})
+	m.memberSetupTimeout = 50 * time.Millisecond
+	m.Start(&sectorHandlerHelper{}, localNodeID)
+
+	sectorNosOf := func(nodeID *types.NodeID) map[kvsTypes.SectorNo]MemberState {
+		m.mtx.RLock()
+		defer m.mtx.RUnlock()
+		sectorNos := map[kvsTypes.SectorNo]MemberState{}
+		for sectorNo, entry := range m.memberStates {
+			if entry.NodeID.Equal(nodeID) {
+				sectorNos[sectorNo] = entry.State
+			}
+		}
+		return sectorNos
+	}
+
+	m.ManageMember([]*types.NodeID{memberNodeID})
+	before := sectorNosOf(memberNodeID)
+	require.Len(t, before, 1)
+	var oldSectorNo kvsTypes.SectorNo
+	for sectorNo, state := range before {
+		oldSectorNo = sectorNo
+		require.Equal(t, MemberStateCreating, state)
+	}
+
+	// before the timeout nothing changes
+	m.ManageMember([]*types.NodeID{memberNodeID})
+	require.Equal(t, before, sectorNosOf(memberNodeID))
+
+	time.Sleep(100 * time.Millisecond)
+	m.ManageMember([]*types.NodeID{memberNodeID})
+
+	after := sectorNosOf(memberNodeID)
+	require.Len(t, after, 2)
+	require.Equal(t, MemberStateRemoving, after[oldSectorNo])
+	for sectorNo, state := range after {
+		if sectorNo != oldSectorNo {
+			require.Greater(t, sectorNo, oldSectorNo)
+			require.Equal(t, MemberStateAppending, state)
+		}
+	}
+}
+
+// TestManager_ManageMember_keepsNormalMember covers a member that finished its
+// setup: it must not be reaped however long it has been a member.
+func TestManager_ManageMember_keepsNormalMember(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID, memberNodeID := nodeIDs[0], nodeIDs[1]
+
+	m := NewManager(&Config{
+		Logger:   testUtil.Logger(t),
+		Outbound: &outboundHelper{},
+	})
+	m.memberSetupTimeout = 50 * time.Millisecond
+	m.Start(&sectorHandlerHelper{}, localNodeID)
+
+	m.ManageMember([]*types.NodeID{memberNodeID})
+	sectorKey := m.GetHostingSectorKey()
+	require.NotNil(t, sectorKey)
+	m.OnSectorAppendNode(sectorKey, kvsTypes.HostNodeSectorNo, localNodeID)
+	m.OnSectorAppendNode(sectorKey, kvsTypes.SectorNo(2), memberNodeID)
+	m.sectorManageMemberResponse(memberNodeID, sectorKey.SectorID, kvsTypes.SectorNo(2))
+
+	time.Sleep(100 * time.Millisecond)
+	require.True(t, m.ManageMember([]*types.NodeID{memberNodeID}))
+	require.Len(t, m.memberStates, 2)
 }
 
 func TestManager_getNodesToBeChanged(t *testing.T) {

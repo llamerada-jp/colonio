@@ -18,6 +18,7 @@ package hosting
 import (
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
@@ -39,6 +40,21 @@ const (
 type MemberStateEntry struct {
 	NodeID *types.NodeID
 	State  MemberState
+	// Since is when the entry entered State.
+	Since time.Time
+}
+
+func newMemberStateEntry(nodeID *types.NodeID, state MemberState) *MemberStateEntry {
+	return &MemberStateEntry{
+		NodeID: nodeID,
+		State:  state,
+		Since:  time.Now(),
+	}
+}
+
+func (e *MemberStateEntry) setState(state MemberState) {
+	e.State = state
+	e.Since = time.Now()
 }
 
 // SectorHandler is implemented by KVS to perform sector operations on behalf of the Manager.
@@ -73,6 +89,13 @@ type Manager struct {
 	handler     SectorHandler
 	outbound    OutboundPort
 	localNodeID *types.NodeID
+	// memberSetupTimeout bounds how long a member may stay in a setup state.
+	// A member that cannot finish its setup, such as a learner that never
+	// catches up or a node that rejects the setting message because it has
+	// already terminated that replica, is removed. If the node is still a
+	// neighbor, it is added again under a new sectorNo: a raft member must
+	// never restart with an empty log under the same ID.
+	memberSetupTimeout time.Duration
 
 	mtx              sync.RWMutex // protects: hostingSectorKey, lastSectorNo, memberStates
 	hostingSectorKey *kvsTypes.SectorKey
@@ -82,9 +105,10 @@ type Manager struct {
 
 func NewManager(conf *Config) *Manager {
 	return &Manager{
-		logger:       conf.Logger,
-		outbound:     conf.Outbound,
-		memberStates: make(map[kvsTypes.SectorNo]*MemberStateEntry),
+		logger:             conf.Logger,
+		outbound:           conf.Outbound,
+		memberSetupTimeout: 30 * time.Second,
+		memberStates:       make(map[kvsTypes.SectorNo]*MemberStateEntry),
 	}
 }
 
@@ -119,16 +143,15 @@ func (m *Manager) ManageMember(nextNodeIDs []*types.NodeID) bool {
 		m.initHostSector(nextNodeIDs)
 	}
 
+	m.reapStaleMembers()
+
 	toAppend, toRemove := m.getNodesToBeChanged(nextNodeIDs)
 	for _, nodeID := range toAppend {
 		m.lastSectorNo++
-		m.memberStates[m.lastSectorNo] = &MemberStateEntry{
-			NodeID: nodeID,
-			State:  MemberStateAppending,
-		}
+		m.memberStates[m.lastSectorNo] = newMemberStateEntry(nodeID, MemberStateAppending)
 	}
 	for sec := range toRemove {
-		m.memberStates[sec].State = MemberStateRemoving
+		m.memberStates[sec].setState(MemberStateRemoving)
 	}
 
 	m.applyMemberSectors()
@@ -142,6 +165,29 @@ func (m *Manager) ManageMember(nextNodeIDs []*types.NodeID) bool {
 	return true
 }
 
+// reapStaleMembers marks the members that have stayed in a setup state for
+// memberSetupTimeout as Removing, which removes them from the raft group. If
+// such a node is still a neighbor, getNodesToBeChanged adds it again under a
+// new sectorNo. Call with m.mtx locked.
+func (m *Manager) reapStaleMembers() {
+	for sectorNo, entry := range m.memberStates {
+		if sectorNo == kvsTypes.HostNodeSectorNo ||
+			entry.State == MemberStateNormal || entry.State == MemberStateRemoving {
+			continue
+		}
+		if entry.Since.IsZero() {
+			entry.Since = time.Now()
+			continue
+		}
+		if time.Since(entry.Since) < m.memberSetupTimeout {
+			continue
+		}
+		m.logger.Info("Remove a member that could not finish its setup",
+			"sectorNo", sectorNo, "nodeID", entry.NodeID.String(), "state", entry.State)
+		entry.setState(MemberStateRemoving)
+	}
+}
+
 // sectorManageMemberResponse handles a response from a remote node confirming sector membership configuration.
 func (m *Manager) sectorManageMemberResponse(srcNodeID *types.NodeID, sectorID kvsTypes.SectorID, sectorNo kvsTypes.SectorNo) {
 	m.mtx.Lock()
@@ -153,9 +199,9 @@ func (m *Manager) sectorManageMemberResponse(srcNodeID *types.NodeID, sectorID k
 	if entry, ok := m.memberStates[sectorNo]; ok && entry.NodeID.Equal(srcNodeID) {
 		switch entry.State {
 		case MemberStateCreating, MemberStateAppending:
-			entry.State = MemberStateConfiguredNode
+			entry.setState(MemberStateConfiguredNode)
 		case MemberStateConfiguredConsensus:
-			entry.State = MemberStateNormal
+			entry.setState(MemberStateNormal)
 		case MemberStateNormal, MemberStateConfiguredNode:
 			// do nothing
 		default:
@@ -175,16 +221,13 @@ func (m *Manager) OnSectorAppendNode(sectorKey *kvsTypes.SectorKey, sectorNo kvs
 	member, ok := m.memberStates[sectorNo]
 	if !ok {
 		m.logger.Warn("Unknown sectorNo for appending", "sectorNo", sectorNo, "nodeID", nodeID)
-		m.memberStates[sectorNo] = &MemberStateEntry{
-			NodeID: nodeID,
-			State:  MemberStateRemoving,
-		}
+		m.memberStates[sectorNo] = newMemberStateEntry(nodeID, MemberStateRemoving)
 		return
 	}
 
 	if sectorNo == kvsTypes.HostNodeSectorNo {
 		if member.State == MemberStateCreating {
-			member.State = MemberStateNormal
+			member.setState(MemberStateNormal)
 		} else {
 			m.logger.Warn("Unexpected state for host node", "sectorNo", sectorNo, "state", member.State, "nodeID", nodeID)
 		}
@@ -193,9 +236,9 @@ func (m *Manager) OnSectorAppendNode(sectorKey *kvsTypes.SectorKey, sectorNo kvs
 
 	switch member.State {
 	case MemberStateCreating, MemberStateAppending:
-		member.State = MemberStateConfiguredConsensus
+		member.setState(MemberStateConfiguredConsensus)
 	case MemberStateConfiguredNode:
-		member.State = MemberStateNormal
+		member.setState(MemberStateNormal)
 	default:
 		m.logger.Warn("Unexpected state for appending node", "sectorNo", sectorNo, "state", member.State, "nodeID", nodeID)
 	}
@@ -229,17 +272,11 @@ func (m *Manager) initHostSector(nextNodeIDs []*types.NodeID) {
 	m.lastSectorNo = kvsTypes.HostNodeSectorNo
 	members := make(map[kvsTypes.SectorNo]*types.NodeID)
 	members[kvsTypes.HostNodeSectorNo] = m.localNodeID
-	m.memberStates[kvsTypes.HostNodeSectorNo] = &MemberStateEntry{
-		NodeID: m.localNodeID,
-		State:  MemberStateCreating,
-	}
+	m.memberStates[kvsTypes.HostNodeSectorNo] = newMemberStateEntry(m.localNodeID, MemberStateCreating)
 	for _, nodeID := range nextNodeIDs {
 		m.lastSectorNo++
 		members[m.lastSectorNo] = nodeID
-		m.memberStates[m.lastSectorNo] = &MemberStateEntry{
-			NodeID: nodeID,
-			State:  MemberStateCreating,
-		}
+		m.memberStates[m.lastSectorNo] = newMemberStateEntry(nodeID, MemberStateCreating)
 	}
 
 	sectorKey := &kvsTypes.SectorKey{
