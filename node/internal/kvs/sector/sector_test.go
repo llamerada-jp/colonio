@@ -68,11 +68,22 @@ func (h *transfererHandlerHelper) TransfererRelayPacket(nid *types.NodeID, p *ne
 type sectorHandlerHelper struct {
 	mtx        sync.Mutex
 	terminated []kvsTypes.SectorKey
+	errors     []error
 }
 
 var _ SectorHandler = &sectorHandlerHelper{}
 
-func (h *sectorHandlerHelper) SectorError(sectorKey *kvsTypes.SectorKey, err error) {}
+func (h *sectorHandlerHelper) SectorError(sectorKey *kvsTypes.SectorKey, err error) {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+	h.errors = append(h.errors, err)
+}
+
+func (h *sectorHandlerHelper) reportedErrors() []error {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+	return append([]error(nil), h.errors...)
+}
 
 func (h *sectorHandlerHelper) SectorAppendNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {
 }
@@ -92,12 +103,38 @@ func (h *sectorHandlerHelper) terminatedCount() int {
 	return len(h.terminated)
 }
 
-type storeHelper struct{}
+// storeHelper follows SimpleStore for sector allocation: allocating twice
+// and releasing a sector that was never allocated are errors.
+type storeHelper struct {
+	mtx       sync.Mutex
+	allocated map[kvsTypes.SectorKey]struct{}
+}
 
 var _ kvsTypes.Store = &storeHelper{}
 
-func (s *storeHelper) AllocateSector(sectorKey *kvsTypes.SectorKey) error { return nil }
-func (s *storeHelper) ReleaseSector(sectorKey *kvsTypes.SectorKey) error  { return nil }
+func (s *storeHelper) AllocateSector(sectorKey *kvsTypes.SectorKey) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	if s.allocated == nil {
+		s.allocated = make(map[kvsTypes.SectorKey]struct{})
+	}
+	if _, exists := s.allocated[*sectorKey]; exists {
+		return kvsTypes.ErrorStoreSectorExists
+	}
+	s.allocated[*sectorKey] = struct{}{}
+	return nil
+}
+
+func (s *storeHelper) ReleaseSector(sectorKey *kvsTypes.SectorKey) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	if _, exists := s.allocated[*sectorKey]; !exists {
+		return kvsTypes.ErrorStoreSectorNotFound
+	}
+	delete(s.allocated, *sectorKey)
+	return nil
+}
+
 func (s *storeHelper) Get(sectorKey *kvsTypes.SectorKey, key string) ([]byte, error) {
 	return nil, kvsTypes.ErrorStoreKeyNotFound
 }
@@ -212,6 +249,34 @@ func TestSector_checkQuorumLoss(t *testing.T) {
 			require.Nil(t, s.GetTailAddress()) // untouched, still inactive
 		})
 	}
+}
+
+// TestSector_terminate_inactiveSector covers Terminate on an inactive sector
+// of a healthy group. Such a sector was never allocated in the store, so
+// ReleaseSector fails; the apply must still complete instead of leaving the
+// Terminate to be re-proposed forever.
+func TestSector_terminate_inactiveSector(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := testUtil.UniqueNodeIDs(1)[0]
+	handler := &sectorHandlerHelper{}
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	s.Start(ctx)
+
+	require.Eventually(t, func() bool {
+		return s.consensus.Status().Lead != 0
+	}, 10*time.Second, 100*time.Millisecond)
+
+	s.Terminate()
+
+	require.Eventually(t, func() bool {
+		return handler.terminatedCount() > 0
+	}, 10*time.Second, 100*time.Millisecond)
+	require.Empty(t, handler.reportedErrors())
 }
 
 // startLeaderWithoutQuorum starts a sector whose local node becomes the raft

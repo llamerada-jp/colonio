@@ -708,15 +708,23 @@ func (s *Sector) processActivateProposal(activate *proto.Activate) error {
 }
 
 func (s *Sector) processTerminateProposal() error {
-	return s.terminateLocked()
+	s.terminateLocked()
+	return nil
 }
 
 // terminateLocked releases the sector resources and notifies the handler.
 // Call with s.mtx write-locked; the caller broadcasts s.cond after unlocking.
-func (s *Sector) terminateLocked() error {
+//
+// It always completes. If it stopped before setting terminated, the pending
+// Terminate would be proposed, committed and fail to apply on every retry
+// tick forever: a healthy group would look like a quorum-lost one, and since
+// the commit index keeps advancing, checkQuorumLoss would not catch it.
+func (s *Sector) terminateLocked() {
 	s.operator.ClearRange()
-	if err := s.store.ReleaseSector(&s.sectorKey); err != nil {
-		return err
+	// An inactive sector was never allocated in the store (allocation happens
+	// on activate/import), so a missing sector is the normal case there.
+	if err := s.store.ReleaseSector(&s.sectorKey); err != nil && !errors.Is(err, kvsTypes.ErrorStoreSectorNotFound) {
+		go s.handler.SectorError(&s.sectorKey, fmt.Errorf("failed to release store sector: %w", err))
 	}
 
 	s.proposalActivating = nil
@@ -724,7 +732,6 @@ func (s *Sector) terminateLocked() error {
 	s.stopped = true
 
 	go s.handler.SectorTerminated(&s.sectorKey)
-	return nil
 }
 
 // checkQuorumLoss destroys the local replica without raft when the group can
@@ -777,16 +784,11 @@ func (s *Sector) checkQuorumLoss() {
 	}
 
 	s.mtx.Lock()
-	var err error
 	if !s.stopped && !s.terminated {
-		err = s.terminateLocked()
+		s.terminateLocked()
 	}
 	s.mtx.Unlock()
 	s.cond.Broadcast()
-
-	if err != nil {
-		s.handler.SectorError(&s.sectorKey, fmt.Errorf("failed to force-terminate sector: %w", err))
-	}
 }
 
 func (s *Sector) processExtendProposal(extend *proto.Extend) error {
