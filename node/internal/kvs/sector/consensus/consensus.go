@@ -20,6 +20,7 @@ import (
 	"errors"
 	"log/slog"
 	"maps"
+	"sync"
 	"time"
 
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
@@ -74,6 +75,12 @@ type Consensus struct {
 	appliedIndex  uint64
 
 	members map[kvsTypes.SectorNo]*types.NodeID
+
+	// stopCh ends the event loop started by Start; loopDone is closed when it
+	// has returned.
+	stopCh   chan struct{}
+	stopOnce sync.Once
+	loopDone chan struct{}
 }
 
 func NewConsensus(config *Config) *Consensus {
@@ -88,6 +95,9 @@ func NewConsensus(config *Config) *Consensus {
 		snapCount:               1000,
 
 		members: maps.Clone(config.Members),
+
+		stopCh:   make(chan struct{}),
+		loopDone: make(chan struct{}),
 	}
 
 	raftConfig := &raft.Config{
@@ -124,6 +134,7 @@ func (n *Consensus) Start(ctx context.Context) {
 	n.ctx = ctx
 
 	go func() {
+		defer close(n.loopDone)
 		ticker := time.NewTicker(raftTickDuration)
 		defer ticker.Stop()
 
@@ -131,6 +142,9 @@ func (n *Consensus) Start(ctx context.Context) {
 			select {
 			case <-n.ctx.Done():
 				n.raftNode.Stop()
+				return
+
+			case <-n.stopCh:
 				return
 
 			case <-ticker.C:
@@ -168,7 +182,10 @@ func (n *Consensus) Start(ctx context.Context) {
 	}()
 }
 
+// Stop stops the raft node and makes the event loop started by Start return.
+// It does not wait for the event loop, so it is safe to call before Start.
 func (n *Consensus) Stop() {
+	n.stopOnce.Do(func() { close(n.stopCh) })
 	n.raftNode.Stop()
 }
 

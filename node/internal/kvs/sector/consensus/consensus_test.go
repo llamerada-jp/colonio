@@ -16,6 +16,9 @@
 package consensus
 
 import (
+	"io"
+	"log"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -26,6 +29,7 @@ import (
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/raft/v3"
 )
 
 type consensusHandlerHelper struct {
@@ -394,6 +398,67 @@ func TestConsensus(t *testing.T) {
 				assert.Equal(t, receivedProposals[1][j].String(), rpStr, "all nodes should receive same proposals")
 				assert.Contains(t, proposalStrings, rpStr, "received proposal should be in sent proposals")
 			}
+		}
+	})
+}
+
+// TestConsensus_stop covers Stop: it must make the event loop started by
+// Start return even while the node context is still alive, so a stopped
+// sector does not leave a ticking goroutine behind. It must also return
+// without blocking when called before Start.
+func TestConsensus_stop(t *testing.T) {
+	newSingleVoter := func() *Consensus {
+		sectorNo := kvsTypes.SectorNo(1)
+		return NewConsensus(&Config{
+			Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+			RaftLogger: &raft.DefaultLogger{Logger: log.New(io.Discard, "", 0)},
+			Handler: &consensusHandlerHelper{
+				t:                       t,
+				consensusErrorF:         func(err error) {},
+				consensusAppendNodeF:    func(sectorNo kvsTypes.SectorNo, nodeID *types.NodeID) {},
+				consensusRemoveNodeF:    func(sectorNo kvsTypes.SectorNo) {},
+				consensusApplyProposalF: func(proposal *proto.ConsensusProposal) error { return nil },
+			},
+			Outbound: &consensusOutboundHelper{
+				t:                     t,
+				sendConsensusMessageF: func(dstNodeID *types.NodeID, message *proto.ConsensusMessage) {},
+			},
+			SectorKey: &kvsTypes.SectorKey{
+				SectorID: testUtil.UniqueSectorIDs(1)[0],
+				SectorNo: sectorNo,
+			},
+			Members: map[kvsTypes.SectorNo]*types.NodeID{
+				sectorNo: testUtil.UniqueNodeIDs(1)[0],
+			},
+		})
+	}
+
+	t.Run("event loop returns after Stop", func(t *testing.T) {
+		c := newSingleVoter()
+		c.Start(t.Context())
+		require.Eventually(t, func() bool {
+			return c.Status().Lead != 0
+		}, 10*time.Second, 100*time.Millisecond)
+
+		c.Stop()
+		select {
+		case <-c.loopDone:
+		case <-time.After(3 * time.Second):
+			t.Fatal("event loop is still running after Stop")
+		}
+	})
+
+	t.Run("Stop before Start does not block", func(t *testing.T) {
+		c := newSingleVoter()
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			c.Stop()
+		}()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Fatal("Stop blocked")
 		}
 	})
 }
