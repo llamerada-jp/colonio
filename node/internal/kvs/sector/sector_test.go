@@ -214,6 +214,58 @@ func TestSector_checkQuorumLoss(t *testing.T) {
 	}
 }
 
+// startLeaderWithoutQuorum starts a sector whose local node becomes the raft
+// leader, then adds a member that never runs. The conf change still commits
+// with the single-voter quorum, after which the group needs both votes and
+// can never commit again. configure runs before Start.
+func startLeaderWithoutQuorum(t *testing.T, ctx context.Context, handler *sectorHandlerHelper, configure func(s *Sector)) *Sector {
+	t.Helper()
+
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID, deadNodeID := nodeIDs[0], nodeIDs[1]
+
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	configure(s)
+	s.Start(ctx)
+
+	require.Eventually(t, func() bool {
+		return s.consensus.Status().Lead != 0
+	}, 10*time.Second, 100*time.Millisecond)
+
+	s.AppendNode(kvsTypes.SectorNo(2), deadNodeID)
+	require.Eventually(t, func() bool {
+		s.mtx.RLock()
+		defer s.mtx.RUnlock()
+		return len(s.proposalAppendingNodes) == 0
+	}, 10*time.Second, 100*time.Millisecond)
+	require.Equal(t, 0, handler.terminatedCount())
+
+	return s
+}
+
+// TestSector_checkQuorumLoss_leaderWithoutQuorum covers a leader whose
+// followers all died. With CheckQuorum the leader steps down, so
+// checkQuorumLoss sees the group as leaderless and destroys the replica.
+func TestSector_checkQuorumLoss_leaderWithoutQuorum(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	handler := &sectorHandlerHelper{}
+	s := startLeaderWithoutQuorum(t, ctx, handler, func(s *Sector) {
+		s.forceTerminateDuration = 3 * time.Second
+	})
+
+	require.Eventually(t, func() bool {
+		return s.consensus.Status().Lead == 0
+	}, 10*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool {
+		return handler.terminatedCount() > 0
+	}, 15*time.Second, 100*time.Millisecond)
+}
+
 // TestSector_import_blockedOnQuorumLoss covers waitProposal: a blocking
 // operation such as Import must not wait forever when its raft group cannot
 // commit the proposal. It gives up with ErrProposalTimeout once
