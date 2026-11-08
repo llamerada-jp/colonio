@@ -241,12 +241,15 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 			ICEServers: config.ICEServers,
 
 			// SessionTimeout is used to determine the timeout of the WebRTC session between nodes.
-			SessionTimeout: 5 * time.Minute,
+			// It bounds how long a dead peer stays in the routing view, so it is on the same
+			// timescale as the KVS repair timers (30s): while a dead peer stays in the view, it
+			// keeps being appended as a raft member and keeps the nodes around it unstable.
+			SessionTimeout: 30 * time.Second,
 
 			// KeepaliveInterval is the interval to send a ping packet to tell living the node for each nodes.
 			// Keepalive packet is be tried to send  when no packet with content has been sent.
-			// The value should be less than `sessionTimeout`.
-			KeepaliveInterval: 1 * time.Minute,
+			// The value should be less than `sessionTimeout`; 10s tolerates two lost keepalives.
+			KeepaliveInterval: 10 * time.Second,
 
 			// BufferInterval is maximum interval for buffering packets between nodes.
 			// If packets exceeding WebRTCPacketBaseBytes are stored in the buffer even if it is less than interval,
