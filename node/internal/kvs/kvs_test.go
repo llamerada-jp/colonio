@@ -313,6 +313,21 @@ func TestKVS_sectorManageMember_rejectsTombstonedKey(t *testing.T) {
 	require.False(t, hasSector(removedKey))
 }
 
+// TestKVS_sectorPrepareSplit_noHostingSector covers a prepare-split request
+// that arrives while this node has no hosting sector, as between a termination
+// of the hosting sector and its re-creation: it must be rejected.
+func TestKVS_sectorPrepareSplit_noHostingSector(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID, srcNodeID := nodeIDs[0], nodeIDs[1]
+	k := newTestKVS(t, ctx, localNodeID, &kvsHandlerHelper{isStable: true})
+
+	require.Nil(t, k.hostingManager.GetHostingSectorKey())
+	require.False(t, k.sectorPrepareSplit(srcNodeID, kvsTypes.SectorID(uuid.New())))
+}
+
 // TestKVS_activateHostingSector_singleNode covers a lone node: it activates its
 // own sector over the whole ring, although its hosting sector is in k.sectors.
 func TestKVS_activateHostingSector_singleNode(t *testing.T) {

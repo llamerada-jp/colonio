@@ -617,8 +617,11 @@ func (k *KVS) sectorPrepareSplit(srcNodeID *types.NodeID, sectorID kvsTypes.Sect
 		return true
 	}
 
+	// The hosting sector key is nil between a termination of the hosting
+	// sector and its re-creation by ManageMember.
+	hostingSectorKey := k.hostingManager.GetHostingSectorKey()
 	if k.proposedSplittingNodeID != nil ||
-		k.hostingManager.GetHostingSectorKey().SectorID != sectorID {
+		hostingSectorKey == nil || hostingSectorKey.SectorID != sectorID {
 		return false
 	}
 
