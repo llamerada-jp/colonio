@@ -576,6 +576,9 @@ kvs ブランチへの移植時に追加したもの（kvs-ai にはない）:
       （head の replica だけ結果が変わり、replica 間で tail がずれるのを防ぐ）
 - [x] **COMMAND_REMOVE の送り元の確認**（sector の head 以外からの除去通知は
       拒否する。ローカルの hosting sector の保護も兼ねる）
+- [x] **SectorPrepareSplit の送り元の確認**（直近の backward ノード以外からの
+      split 提案は拒否する。誤った提案者を受け付けると本物の split を阻み、
+      その提案者が隣接一覧から外れた時点で hosting sector を Terminate していた）
 
 ### 未完了（2026-07-04 時点の一覧）
 
