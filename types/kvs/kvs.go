@@ -36,6 +36,9 @@ var (
 // allocated, and ReleaseSector for one that may never have been allocated.
 // Implementations must report these cases with ErrorStoreSectorExists and
 // ErrorStoreSectorNotFound so they can be told apart from real failures.
+//
+// Each sector calls the store from its own goroutine, so implementations must
+// be safe for concurrent use.
 type Store interface {
 	AllocateSector(sectorKey *SectorKey) error
 	ReleaseSector(sectorKey *SectorKey) error

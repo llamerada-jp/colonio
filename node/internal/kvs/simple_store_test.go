@@ -16,6 +16,8 @@
 package kvs
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 
 	testUtil "github.com/llamerada-jp/colonio/test/util"
@@ -583,4 +585,50 @@ func TestSimpleStore_Delete(t *testing.T) {
 			assert.Equal(t, tt.expect, s.stores)
 		})
 	}
+}
+
+// Each sector runs its own raft goroutine, so the store is called concurrently
+// both for different sectors and for the same sector.
+func TestSimpleStore_concurrentAccess(t *testing.T) {
+	const sectors = 8
+	const keys = 50
+	sectorIDs := testUtil.UniqueSectorIDs(sectors)
+	shared := &kvsTypes.SectorKey{SectorID: sectorIDs[0], SectorNo: 1}
+
+	s := NewSimpleStore()
+	assert.NoError(t, s.AllocateSector(shared))
+
+	var wg sync.WaitGroup
+	for i := 1; i < sectors; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sectorKey := &kvsTypes.SectorKey{SectorID: sectorIDs[i], SectorNo: 1}
+			for j := 0; j < keys; j++ {
+				assert.NoError(t, s.AllocateSector(sectorKey))
+				assert.NoError(t, s.Set(sectorKey, "key", []byte("value")))
+				_, err := s.Get(sectorKey, "key")
+				assert.NoError(t, err)
+				assert.NoError(t, s.Delete(sectorKey, "key"))
+				assert.NoError(t, s.ReleaseSector(sectorKey))
+			}
+		}()
+	}
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < keys; j++ {
+				key := fmt.Sprintf("key-%d-%d", i, j)
+				assert.NoError(t, s.Set(shared, key, []byte("value")))
+				_, err := s.Get(shared, key)
+				assert.NoError(t, err)
+				assert.NoError(t, s.Delete(shared, key))
+			}
+		}()
+	}
+	wg.Wait()
+
+	assert.Len(t, s.stores, 1)
+	assert.Empty(t, s.stores[*shared])
 }
