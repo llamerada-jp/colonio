@@ -573,3 +573,33 @@ func TestConsensus_bootstrapPeersInOrder(t *testing.T) {
 		require.Equal(t, nodeID.String(), string(cc.Context))
 	}
 }
+
+// TestConsensus_publishEntries_continuesAfterConfChangeError covers a committed
+// conf change that cannot be applied here, such as an AddNode for a node ID
+// this member does not know: the rest of the batch must still be applied.
+func TestConsensus_publishEntries_continuesAfterConfChangeError(t *testing.T) {
+	c := newIsolatedConsensus(t, 1)
+	defer c.Stop()
+
+	applied := 0
+	c.handler.(*consensusHandlerHelper).consensusApplyProposalF = func(proposal *proto.ConsensusProposal) error {
+		applied++
+		return nil
+	}
+
+	unknown := raftpb.ConfChange{Type: raftpb.ConfChangeAddNode, NodeID: 7}
+	ccData, err := unknown.Marshal()
+	require.NoError(t, err)
+	proposalData, err := proto3.Marshal(&proto.ConsensusProposal{
+		Content: &proto.ConsensusProposal_Activate{
+			Activate: &proto.Activate{Tail: types.NewNormalNodeID(1, 0).Proto()},
+		},
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, c.publishEntries([]raftpb.Entry{
+		{Type: raftpb.EntryConfChange, Data: ccData},
+		{Type: raftpb.EntryNormal, Data: proposalData},
+	}))
+	require.Equal(t, 1, applied)
+}

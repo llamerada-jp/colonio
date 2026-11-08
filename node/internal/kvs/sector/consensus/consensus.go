@@ -420,8 +420,11 @@ func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
 			n.confState = *n.raftNode.ApplyConfChange(cc)
 			n.mtx.Unlock()
 
+			// Do not return on an error: raft has already applied the change,
+			// so returning would only skip the rest of the batch. An error here
+			// only leaves this member unable to send messages to that node.
 			if err := n.applyConfChangeSingle(cc.Type, cc.NodeID, cc.Context); err != nil {
-				return err
+				n.logger.Error("Failed to apply committed conf change", "sectorKey", n.sectorKey.String(), "error", err)
 			}
 
 		case raftpb.EntryConfChangeV2:
@@ -435,8 +438,9 @@ func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
 
 			for _, change := range cc2.Changes {
 				// TODO: Context is used for both AddNode and RemoveNode, but it is only needed for AddNode. We should separate the context for AddNode and RemoveNode in ConfChangeV2.
+				// Do not return on an error; see the EntryConfChange case.
 				if err := n.applyConfChangeSingle(change.Type, change.NodeID, cc2.Context); err != nil {
-					return err
+					n.logger.Error("Failed to apply committed conf change", "sectorKey", n.sectorKey.String(), "error", err)
 				}
 			}
 		}
