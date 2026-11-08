@@ -384,6 +384,30 @@ func TestSector_import_commitSplit_onInactiveSector(t *testing.T) {
 	require.Empty(t, handler.reportedErrors())
 }
 
+// TestSector_processCommitSplitProposal_activatePending covers a CommitSplit
+// applied while this replica has its own Activate pending. The pending flag
+// is local to this replica, so the apply must not depend on it: CommitSplit
+// sets the tail as on every other replica, and the later Activate is ignored.
+func TestSector_processCommitSplitProposal_activatePending(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+	localNodeID, activateTailNodeID, splitTailNodeID := nodeIDs[0], nodeIDs[1], nodeIDs[2]
+	s := newTestSector(t, t.Context(), localNodeID, &sectorHandlerHelper{}, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	defer s.consensus.Stop()
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	s.proposalActivating = activateTailNodeID
+
+	require.NoError(t, s.processCommitSplitProposal(&proto.CommitSplit{Tail: splitTailNodeID.Proto()}))
+	require.True(t, s.tail.Equal(splitTailNodeID))
+
+	require.NoError(t, s.processActivateProposal(&proto.Activate{Tail: activateTailNodeID.Proto()}))
+	require.True(t, s.tail.Equal(splitTailNodeID))
+	require.Nil(t, s.proposalActivating)
+}
+
 // TestSector_appendDeadNode_keepsQuorum covers appending a member that never
 // runs. It joins as a learner, so the single-voter group keeps its quorum and
 // keeps committing, and the sector is not destroyed although the append stays

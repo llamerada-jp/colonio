@@ -868,7 +868,7 @@ func (s *Sector) processCommitSplitProposal(commitSplit *proto.CommitSplit) erro
 
 	// Already activated, e.g. by a duplicated entry: do nothing, but clear
 	// the pending proposal so that the retry loop stops proposing it.
-	if s.tail != nil || s.proposalActivating != nil {
+	if s.tail != nil {
 		s.proposalCommittingSplit = nil
 		return nil
 	}
