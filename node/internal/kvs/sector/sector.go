@@ -367,6 +367,13 @@ func (s *Sector) PreCommitSplit(frontwardNodeID *types.NodeID) error {
 	}
 
 	s.mtx.Lock()
+	// Check the claim before proposing: the caller aborts the split on an
+	// error, so the tail must not shrink after it.
+	if s.mergeBy != nil {
+		holder := s.mergeBy
+		s.mtx.Unlock()
+		return fmt.Errorf("failed to pre-commit split: merge is being prepared by %s", holder.String())
+	}
 	s.proposalPreCommitSplitting = frontwardNodeID
 	s.mtx.Unlock()
 
@@ -378,11 +385,9 @@ func (s *Sector) PreCommitSplit(frontwardNodeID *types.NodeID) error {
 		}
 		return s.proposalPreCommitSplitting == nil, nil
 	}); err != nil {
-		if errors.Is(err, ErrProposalTimeout) || errors.Is(err, ErrSectorStopped) {
-			s.mtx.Lock()
-			s.proposalPreCommitSplitting = nil
-			s.mtx.Unlock()
-		}
+		s.mtx.Lock()
+		s.proposalPreCommitSplitting = nil
+		s.mtx.Unlock()
 		return fmt.Errorf("failed to pre-commit split: %w", err)
 	}
 	return nil
@@ -408,6 +413,11 @@ func (s *Sector) CommitSplit(newTail *types.NodeID) error {
 
 func (s *Sector) PrepareMerge(proposedBy *types.NodeID) error {
 	s.mtx.Lock()
+	if s.mergeBy != nil && !s.mergeBy.Equal(proposedBy) {
+		holder := s.mergeBy
+		s.mtx.Unlock()
+		return fmt.Errorf("failed to prepare merge: merge is prepared by %s, not %s", holder.String(), proposedBy.String())
+	}
 	s.proposalPrepareMerge = proposedBy
 	s.mtx.Unlock()
 
@@ -422,11 +432,9 @@ func (s *Sector) PrepareMerge(proposedBy *types.NodeID) error {
 		}
 		return false, nil
 	}); err != nil {
-		if errors.Is(err, ErrProposalTimeout) || errors.Is(err, ErrSectorStopped) {
-			s.mtx.Lock()
-			s.proposalPrepareMerge = nil
-			s.mtx.Unlock()
-		}
+		s.mtx.Lock()
+		s.proposalPrepareMerge = nil
+		s.mtx.Unlock()
 		return fmt.Errorf("failed to prepare merge: %w", err)
 	}
 	return nil

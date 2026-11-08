@@ -542,3 +542,44 @@ func TestSector_import_blockedOnQuorumLoss(t *testing.T) {
 		})
 	}
 }
+
+// TestSector_mergeConflict_rejectedBeforeProposing covers PrepareMerge and
+// PreCommitSplit on a sector whose prepare_merge is held by another node. Both
+// must fail without proposing anything: a leftover pending proposal would be
+// re-proposed on every retry, and a PreCommitSplit committed after the caller
+// gave up would shrink the tail of a split that is being aborted.
+func TestSector_mergeConflict_rejectedBeforeProposing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	nodeIDs := testUtil.UniqueNodeIDs(4)
+	localNodeID, holderNodeID, otherNodeID, tailNodeID := nodeIDs[0], nodeIDs[1], nodeIDs[2], nodeIDs[3]
+
+	handler := &sectorHandlerHelper{}
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	s.Start(ctx)
+
+	s.Activate(*tailNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+	require.NoError(t, s.PrepareMerge(holderNodeID))
+
+	err := s.PrepareMerge(otherNodeID)
+	require.ErrorContains(t, err, "merge is prepared by")
+	require.False(t, s.HasManagementProposal())
+
+	err = s.PreCommitSplit(otherNodeID)
+	require.ErrorContains(t, err, "merge is being prepared by")
+	require.False(t, s.HasManagementProposal())
+	require.Never(t, func() bool {
+		return !s.GetTailAddress().Equal(tailNodeID)
+	}, time.Second, 100*time.Millisecond)
+
+	// the holder itself can prepare the merge again
+	require.NoError(t, s.PrepareMerge(holderNodeID))
+	require.Equal(t, 0, handler.terminatedCount())
+}
