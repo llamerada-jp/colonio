@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/types"
@@ -221,6 +222,48 @@ func TestManager_ManageMember_createCarriesInitialMembers(t *testing.T) {
 		kvsTypes.SectorNo(2):      initialNodeID,
 		kvsTypes.SectorNo(3):      appendedNodeID,
 	}, appendParam.Members)
+}
+
+// TestManager_OnSectorRemoveNode_notifiesRemovedMember covers the removal of a
+// member from the hosting sector: the removed node is told directly, since it
+// no longer receives anything from the group. A removal in another sector is
+// not the host's to notify.
+func TestManager_OnSectorRemoveNode_notifiesRemovedMember(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID, memberNodeID := nodeIDs[0], nodeIDs[1]
+
+	outbound := &outboundHelper{}
+	m := NewManager(&Config{
+		Logger:   testUtil.Logger(t),
+		Outbound: outbound,
+	})
+	m.Start(&sectorHandlerHelper{}, localNodeID)
+
+	m.ManageMember([]*types.NodeID{memberNodeID})
+	hostingSectorKey := m.GetHostingSectorKey()
+	require.NotNil(t, hostingSectorKey)
+	memberSectorNo := kvsTypes.SectorNo(2)
+
+	otherKey := &kvsTypes.SectorKey{
+		SectorID: kvsTypes.SectorID(uuid.New()),
+		SectorNo: kvsTypes.HostNodeSectorNo,
+	}
+	m.OnSectorRemoveNode(otherKey, memberSectorNo)
+
+	m.OnSectorRemoveNode(hostingSectorKey, memberSectorNo)
+	m.mtx.RLock()
+	require.NotContains(t, m.memberStates, memberSectorNo)
+	m.mtx.RUnlock()
+
+	require.Eventually(t, func() bool {
+		return len(outbound.sent(memberNodeID, proto.SectorManageMember_COMMAND_REMOVE)) == 1
+	}, time.Second, 10*time.Millisecond)
+	param := outbound.sent(memberNodeID, proto.SectorManageMember_COMMAND_REMOVE)[0]
+	require.Equal(t, hostingSectorKey.SectorID, param.SectorID)
+	require.Equal(t, memberSectorNo, param.SectorNo)
+
+	time.Sleep(100 * time.Millisecond)
+	require.Len(t, outbound.sent(memberNodeID, proto.SectorManageMember_COMMAND_REMOVE), 1)
 }
 
 func TestManager_getNodesToBeChanged(t *testing.T) {

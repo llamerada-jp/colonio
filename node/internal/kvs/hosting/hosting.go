@@ -255,9 +255,23 @@ func (m *Manager) OnSectorAppendNode(sectorKey *kvsTypes.SectorKey, sectorNo kvs
 func (m *Manager) OnSectorRemoveNode(sectorKey *kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	if m.hostingSectorKey != nil && *sectorKey == *m.hostingSectorKey {
-		delete(m.memberStates, sectorNo)
+	if m.hostingSectorKey == nil || *sectorKey != *m.hostingSectorKey {
+		return
 	}
+
+	// A removed member no longer receives anything from the group, so tell
+	// it directly. If the notification is lost, the member is destroyed by
+	// its own quorum-loss detection instead.
+	if entry, ok := m.memberStates[sectorNo]; ok && !entry.NodeID.Equal(m.localNodeID) {
+		go m.outbound.sendSectorManageMember(&SectorManageMemberParam{
+			DstNodeID: entry.NodeID,
+			SectorID:  m.hostingSectorKey.SectorID,
+			SectorNo:  sectorNo,
+			Command:   proto.SectorManageMember_COMMAND_REMOVE,
+		})
+	}
+
+	delete(m.memberStates, sectorNo)
 }
 
 func (m *Manager) OnSectorTerminated(sectorKey *kvsTypes.SectorKey) {
