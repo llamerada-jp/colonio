@@ -123,6 +123,10 @@ message SectorManageMember {
     // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
     COMMAND_CREATE = 0;
     COMMAND_APPEND = 1;
+    // Tells a node that its member {sector_id, sector_no} was removed from the
+    // raft group. A removed member no longer receives anything from the group,
+    // so it cannot learn its removal otherwise. members is unused.
+    COMMAND_REMOVE = 2;
   }
 
   bytes               sector_id = 1;
