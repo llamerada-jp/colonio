@@ -89,6 +89,12 @@ type Sector struct {
 	// through raft. It is a backstop for a group that cannot commit even
 	// though it still reports a leader.
 	forcePendingDuration time.Duration
+	// mergeReleaseDuration is how long local PrepareMerge/PreCommitSplit calls
+	// may keep being rejected by the same prepare_merge holder before this
+	// replica proposes ReleaseMerge. Nothing else clears the claim, so a holder
+	// that stops before CommitMerge would block merges and splits of this
+	// sector forever. A healthy merge finishes long before this.
+	mergeReleaseDuration time.Duration
 	// leaderlessSince, pendingSince and pendingCommitIndex are touched only by
 	// the Start loop goroutine.
 	leaderlessSince    time.Time
@@ -113,6 +119,11 @@ type Sector struct {
 	proposalCommittingSplit    *types.NodeID // tail
 	proposalPrepareMerge       *types.NodeID // proposed by
 	proposalCommittingMerge    *types.NodeID // tail
+	proposalReleaseMerge       *types.NodeID // holder of the claim to release
+	// mergeConflictHolder and mergeConflictSince record since when local calls
+	// have been rejected by the claim of mergeConflictHolder.
+	mergeConflictHolder *types.NodeID
+	mergeConflictSince  time.Time
 }
 
 func NewSector(config *SectorConfig) *Sector {
@@ -126,6 +137,7 @@ func NewSector(config *SectorConfig) *Sector {
 		proposalWaitTimeout:    15 * time.Second,
 		forceTerminateDuration: 30 * time.Second,
 		forcePendingDuration:   45 * time.Second,
+		mergeReleaseDuration:   30 * time.Second,
 		triggerCh:              make(chan struct{}, 1),
 		proposalAppendingNodes: make(map[kvsTypes.SectorNo]*types.NodeID),
 		proposalRemovingNodes:  make(map[kvsTypes.SectorNo]struct{}),
@@ -172,6 +184,7 @@ func (s *Sector) Start(ctx context.Context) {
 
 			case <-timer.C:
 				s.checkQuorumLoss()
+				s.checkMergeRelease()
 				s.applyProposals()
 
 			case <-s.triggerCh:
@@ -287,7 +300,8 @@ func (s *Sector) hasManagementProposalLocked() bool {
 		s.proposalPreCommitSplitting != nil ||
 		s.proposalCommittingSplit != nil ||
 		s.proposalPrepareMerge != nil ||
-		s.proposalCommittingMerge != nil
+		s.proposalCommittingMerge != nil ||
+		s.proposalReleaseMerge != nil
 }
 
 func (s *Sector) Activate(tail types.NodeID) {
@@ -371,6 +385,7 @@ func (s *Sector) PreCommitSplit(frontwardNodeID *types.NodeID) error {
 	// error, so the tail must not shrink after it.
 	if s.mergeBy != nil {
 		holder := s.mergeBy
+		s.noteMergeConflictLocked(holder)
 		s.mtx.Unlock()
 		return fmt.Errorf("failed to pre-commit split: merge is being prepared by %s", holder.String())
 	}
@@ -379,14 +394,19 @@ func (s *Sector) PreCommitSplit(frontwardNodeID *types.NodeID) error {
 
 	s.triggerCh <- struct{}{}
 
+	var conflictHolder *types.NodeID
 	if err := s.waitProposal(func() (bool, error) {
 		if s.mergeBy != nil {
+			conflictHolder = s.mergeBy
 			return false, fmt.Errorf("cannot pre-commit split while merge is being prepared by %s", s.mergeBy.String())
 		}
 		return s.proposalPreCommitSplitting == nil, nil
 	}); err != nil {
 		s.mtx.Lock()
 		s.proposalPreCommitSplitting = nil
+		if conflictHolder != nil {
+			s.noteMergeConflictLocked(conflictHolder)
+		}
 		s.mtx.Unlock()
 		return fmt.Errorf("failed to pre-commit split: %w", err)
 	}
@@ -415,6 +435,7 @@ func (s *Sector) PrepareMerge(proposedBy *types.NodeID) error {
 	s.mtx.Lock()
 	if s.mergeBy != nil && !s.mergeBy.Equal(proposedBy) {
 		holder := s.mergeBy
+		s.noteMergeConflictLocked(holder)
 		s.mtx.Unlock()
 		return fmt.Errorf("failed to prepare merge: merge is prepared by %s, not %s", holder.String(), proposedBy.String())
 	}
@@ -423,9 +444,11 @@ func (s *Sector) PrepareMerge(proposedBy *types.NodeID) error {
 
 	s.triggerCh <- struct{}{}
 
+	var conflictHolder *types.NodeID
 	if err := s.waitProposal(func() (bool, error) {
 		if s.mergeBy != nil {
 			if !s.mergeBy.Equal(proposedBy) {
+				conflictHolder = s.mergeBy
 				return false, fmt.Errorf("merge is prepared by %s, not %s", s.mergeBy.String(), proposedBy.String())
 			}
 			return true, nil
@@ -434,6 +457,9 @@ func (s *Sector) PrepareMerge(proposedBy *types.NodeID) error {
 	}); err != nil {
 		s.mtx.Lock()
 		s.proposalPrepareMerge = nil
+		if conflictHolder != nil {
+			s.noteMergeConflictLocked(conflictHolder)
+		}
 		s.mtx.Unlock()
 		return fmt.Errorf("failed to prepare merge: %w", err)
 	}
@@ -611,6 +637,17 @@ func (s *Sector) applyProposals() {
 				},
 			})
 		}
+
+		// Apply releasing merge.
+		if s.proposalReleaseMerge != nil {
+			proposals = append(proposals, &proto.ConsensusProposal{
+				Content: &proto.ConsensusProposal_ReleaseMerge{
+					ReleaseMerge: &proto.ReleaseMerge{
+						Handler: s.proposalReleaseMerge.Proto(),
+					},
+				},
+			})
+		}
 	}
 
 	s.mtx.RUnlock()
@@ -671,6 +708,11 @@ func (s *Sector) ConsensusApplyProposal(proposal *proto.ConsensusProposal) error
 	}
 	if commitSplit := proposal.GetCommitSplit(); commitSplit != nil {
 		return s.processCommitSplitProposal(commitSplit)
+	}
+	// ReleaseMerge only clears a claim, so it is safe whether or not the sector
+	// is active, and it must clear the pending proposal in either case.
+	if releaseMerge := proposal.GetReleaseMerge(); releaseMerge != nil {
+		return s.processReleaseMergeProposal(releaseMerge)
 	}
 	if s.tail == nil { // Not activated yet.
 		return nil
@@ -806,6 +848,40 @@ func (s *Sector) checkQuorumLoss() {
 	s.TerminateLocally()
 }
 
+// noteMergeConflictLocked records that a local call was rejected by the
+// prepare_merge claim of holder. The observation restarts when the holder
+// changes. s.mtx must be held for writing.
+func (s *Sector) noteMergeConflictLocked(holder *types.NodeID) {
+	if s.mergeConflictHolder != nil && s.mergeConflictHolder.Equal(holder) {
+		return
+	}
+	s.mergeConflictHolder = holder.Copy()
+	s.mergeConflictSince = time.Now()
+}
+
+// checkMergeRelease proposes ReleaseMerge once local calls have been rejected
+// by the same prepare_merge holder for mergeReleaseDuration. Releasing the
+// claim of a holder that is still merging only loses the mutual exclusion of
+// merges; an overlap that results is repaired by terminating the sectors.
+func (s *Sector) checkMergeRelease() {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if s.stopped || s.terminated || s.mergeConflictHolder == nil {
+		return
+	}
+	if s.mergeBy == nil || !s.mergeBy.Equal(s.mergeConflictHolder) {
+		s.mergeConflictHolder = nil
+		return
+	}
+	if time.Since(s.mergeConflictSince) < s.mergeReleaseDuration {
+		return
+	}
+	if s.proposalReleaseMerge == nil {
+		s.proposalReleaseMerge = s.mergeConflictHolder.Copy()
+	}
+}
+
 // TerminateLocally destroys the local replica without going through raft. It
 // is for a replica that can no longer receive anything from its group: one
 // whose group lost its quorum, or one that was removed from its group. It
@@ -909,6 +985,25 @@ func (s *Sector) processPrepareMergeProposal(prepareMerge *proto.PrepareMerge) e
 	// Accept the first prepare merge proposal, and reject the others.
 	if s.mergeBy == nil {
 		s.mergeBy = proposedBy
+	}
+
+	return nil
+}
+
+func (s *Sector) processReleaseMergeProposal(releaseMerge *proto.ReleaseMerge) error {
+	holder, err := types.NewNodeIDFromProto(releaseMerge.Handler)
+	if err != nil {
+		return fmt.Errorf("failed to parse holder NodeID: %w", err)
+	}
+
+	s.proposalReleaseMerge = nil
+	// Clear the claim only if it is still held by holder, so that a newer
+	// claim committed in the meantime is kept.
+	if s.mergeBy != nil && s.mergeBy.Equal(holder) {
+		s.mergeBy = nil
+	}
+	if s.mergeConflictHolder != nil && s.mergeConflictHolder.Equal(holder) {
+		s.mergeConflictHolder = nil
 	}
 
 	return nil

@@ -583,3 +583,98 @@ func TestSector_mergeConflict_rejectedBeforeProposing(t *testing.T) {
 	require.NoError(t, s.PrepareMerge(holderNodeID))
 	require.Equal(t, 0, handler.terminatedCount())
 }
+
+// TestSector_prepareMerge_releasedAfterHolderStalls covers a prepare_merge
+// claim whose holder never finishes the merge. Once another node's PrepareMerge
+// has been rejected by the same holder for mergeReleaseDuration, the claim is
+// released and the other node's PrepareMerge succeeds.
+func TestSector_prepareMerge_releasedAfterHolderStalls(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	nodeIDs := testUtil.UniqueNodeIDs(4)
+	localNodeID, holderNodeID, mergerNodeID, tailNodeID := nodeIDs[0], nodeIDs[1], nodeIDs[2], nodeIDs[3]
+
+	handler := &sectorHandlerHelper{}
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	s.mergeReleaseDuration = 500 * time.Millisecond
+	s.Start(ctx)
+
+	s.Activate(*tailNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+	require.NoError(t, s.PrepareMerge(holderNodeID))
+
+	require.ErrorContains(t, s.PrepareMerge(mergerNodeID), "merge is prepared by")
+
+	require.Eventually(t, func() bool {
+		return s.PrepareMerge(mergerNodeID) == nil
+	}, 10*time.Second, 200*time.Millisecond)
+
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	require.True(t, s.mergeBy.Equal(mergerNodeID))
+	require.Nil(t, s.proposalReleaseMerge)
+	require.Equal(t, 0, handler.terminatedCount())
+}
+
+// TestSector_preCommitSplit_releasedAfterHolderStalls covers the same stale
+// claim blocking a split of the hosting sector. The split proceeds once the
+// claim is released.
+func TestSector_preCommitSplit_releasedAfterHolderStalls(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	nodeIDs := testUtil.UniqueNodeIDs(4)
+	localNodeID, holderNodeID, splitNodeID, tailNodeID := nodeIDs[0], nodeIDs[1], nodeIDs[2], nodeIDs[3]
+
+	handler := &sectorHandlerHelper{}
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	s.mergeReleaseDuration = 500 * time.Millisecond
+	s.Start(ctx)
+
+	s.Activate(*tailNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+	require.NoError(t, s.PrepareMerge(holderNodeID))
+
+	require.ErrorContains(t, s.PreCommitSplit(splitNodeID), "merge is being prepared by")
+
+	require.Eventually(t, func() bool {
+		return s.PreCommitSplit(splitNodeID) == nil
+	}, 10*time.Second, 200*time.Millisecond)
+	require.True(t, s.GetTailAddress().Equal(splitNodeID))
+	require.Equal(t, 0, handler.terminatedCount())
+}
+
+// TestSector_processReleaseMergeProposal covers the apply of ReleaseMerge. It
+// clears the claim only while the claim is held by the given node, so a
+// release that races with a newer claim keeps the newer one.
+func TestSector_processReleaseMergeProposal(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+	localNodeID, oldHolderNodeID, newHolderNodeID := nodeIDs[0], nodeIDs[1], nodeIDs[2]
+	s := newTestSector(t, t.Context(), localNodeID, &sectorHandlerHelper{}, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	defer s.consensus.Stop()
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	s.mergeBy = newHolderNodeID
+	s.proposalReleaseMerge = oldHolderNodeID
+	require.NoError(t, s.processReleaseMergeProposal(&proto.ReleaseMerge{Handler: oldHolderNodeID.Proto()}))
+	require.True(t, s.mergeBy.Equal(newHolderNodeID))
+	require.Nil(t, s.proposalReleaseMerge)
+
+	require.NoError(t, s.processReleaseMergeProposal(&proto.ReleaseMerge{Handler: newHolderNodeID.Proto()}))
+	require.Nil(t, s.mergeBy)
+}
