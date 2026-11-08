@@ -352,6 +352,38 @@ func TestSector_processCommitSplitProposal_alreadyActivated(t *testing.T) {
 	require.True(t, s.tail.Equal(tailNodeID))
 }
 
+// TestSector_import_commitSplit_onInactiveSector covers the frontward side of
+// a split: the frontward sector is inactive while the split imports records
+// into it, and CommitSplit then activates it. Both must be applied although
+// the sector is not active yet.
+func TestSector_import_commitSplit_onInactiveSector(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID, tailNodeID := nodeIDs[0], nodeIDs[1]
+
+	handler := &sectorHandlerHelper{}
+	s := newTestSector(t, ctx, localNodeID, handler, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	})
+	s.proposalRetryDuration = 200 * time.Millisecond
+	s.Start(ctx)
+
+	require.Eventually(t, func() bool {
+		return s.consensus.Status().Lead != 0
+	}, 10*time.Second, 100*time.Millisecond)
+
+	require.NoError(t, s.Import(map[string][]byte{"key": []byte("value")}))
+	require.Equal(t, []byte("value"), s.store.(*storeHelper).value("key"))
+	require.Nil(t, s.GetTailAddress())
+
+	require.NoError(t, s.CommitSplit(tailNodeID))
+	require.True(t, s.GetTailAddress().Equal(tailNodeID))
+	require.Equal(t, 0, handler.terminatedCount())
+	require.Empty(t, handler.reportedErrors())
+}
+
 // TestSector_appendDeadNode_keepsQuorum covers appending a member that never
 // runs. It joins as a learner, so the single-voter group keeps its quorum and
 // keeps committing, and the sector is not destroyed although the append stays

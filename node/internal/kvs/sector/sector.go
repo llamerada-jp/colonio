@@ -656,6 +656,14 @@ func (s *Sector) ConsensusApplyProposal(proposal *proto.ConsensusProposal) error
 	if activate := proposal.GetActivate(); activate != nil {
 		return s.processActivateProposal(activate)
 	}
+	// A split imports records into the frontward sector and then activates it
+	// with CommitSplit, so both apply to a sector that is not active yet.
+	if importProposal := proposal.GetImport(); importProposal != nil {
+		return s.processImportProposal(importProposal)
+	}
+	if commitSplit := proposal.GetCommitSplit(); commitSplit != nil {
+		return s.processCommitSplitProposal(commitSplit)
+	}
 	if s.tail == nil { // Not activated yet.
 		return nil
 	}
@@ -663,14 +671,8 @@ func (s *Sector) ConsensusApplyProposal(proposal *proto.ConsensusProposal) error
 	if extend := proposal.GetExtend(); extend != nil {
 		return s.processExtendProposal(extend)
 
-	} else if importProposal := proposal.GetImport(); importProposal != nil {
-		return s.processImportProposal(importProposal)
-
 	} else if preCommitSplit := proposal.GetPreCommitSplit(); preCommitSplit != nil {
 		return s.processPreCommitSplitProposal(preCommitSplit)
-
-	} else if commitSplit := proposal.GetCommitSplit(); commitSplit != nil {
-		return s.processCommitSplitProposal(commitSplit)
 
 	} else if prepareMerge := proposal.GetPrepareMerge(); prepareMerge != nil {
 		return s.processPrepareMergeProposal(prepareMerge)
