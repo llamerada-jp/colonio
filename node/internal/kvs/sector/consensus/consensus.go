@@ -304,6 +304,11 @@ func (n *Consensus) maybePromoteLearners() {
 		if !ok || status.Commit == 0 || pr.Match < status.Commit {
 			continue
 		}
+		// Every AddNode must carry the node ID: a member that replays the
+		// log later may not know it.
+		if _, ok := contexts[id]; !ok {
+			continue
+		}
 
 		// This is proposed again on the next check until the promotion is
 		// applied, so the wait is bounded like Propose.
