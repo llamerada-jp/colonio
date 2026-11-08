@@ -389,3 +389,66 @@ func TestConsensus_snapshotUnavailable(t *testing.T) {
 	require.Equal(t, 0, cluster.appliedCount(no2))
 	require.Len(t, c1.Status().Config.Learners, 1)
 }
+
+// TestConsensus_joinResolvesRemovedBootstrapMember covers a member that joins
+// after an initial member was removed. It replays the log from the head,
+// including the bootstrap entry of the removed member, which is not in its
+// member table. It must still catch up and be promoted.
+func TestConsensus_joinResolvesRemovedBootstrapMember(t *testing.T) {
+	cluster := newJoinTestCluster(t)
+
+	no1 := kvsTypes.SectorNo(1)
+	no2 := kvsTypes.SectorNo(2)
+	no3 := kvsTypes.SectorNo(3) // initial member, dead and removed
+	no4 := kvsTypes.SectorNo(4) // joins after the removal
+
+	ids := testUtil.UniqueNodeIDs(4)
+	cluster.nodeIDs[no1] = ids[0]
+	cluster.nodeIDs[no2] = ids[1]
+	cluster.nodeIDs[no3] = ids[2]
+	cluster.nodeIDs[no4] = ids[3]
+	cluster.dead[no3] = true
+
+	initialMembers := map[kvsTypes.SectorNo]*types.NodeID{
+		no1: cluster.nodeIDs[no1],
+		no2: cluster.nodeIDs[no2],
+		no3: cluster.nodeIDs[no3],
+	}
+	consensuses := map[kvsTypes.SectorNo]*Consensus{
+		no1: cluster.startConsensus(no1, false, initialMembers),
+		no2: cluster.startConsensus(no2, false, initialMembers),
+	}
+
+	var leader *Consensus
+	require.Eventually(t, func() bool {
+		for _, c := range consensuses {
+			if c.Status().RaftState == raft.StateLeader {
+				leader = c
+				return true
+			}
+		}
+		return false
+	}, 10*time.Second, 100*time.Millisecond)
+
+	leader.RemoveNode(no3)
+	require.Eventually(t, func() bool {
+		return len(leader.Status().Config.Voters[0]) == 2
+	}, 10*time.Second, 100*time.Millisecond)
+
+	leader.Propose(activateProposal(cluster.nodeIDs[no1]))
+	require.Eventually(t, func() bool {
+		return cluster.appliedCount(no1) >= 1
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// the joiner gets the current members, without no3
+	leader.AppendNode(no4, cluster.nodeIDs[no4])
+	cluster.startConsensus(no4, true, map[kvsTypes.SectorNo]*types.NodeID{
+		no1: cluster.nodeIDs[no1],
+		no2: cluster.nodeIDs[no2],
+		no4: cluster.nodeIDs[no4],
+	})
+
+	require.Eventually(t, func() bool {
+		return cluster.appliedCount(no4) >= 1 && cluster.appendedCount(no1, no4) >= 1
+	}, 15*time.Second, 100*time.Millisecond)
+}

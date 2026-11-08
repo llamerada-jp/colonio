@@ -546,7 +546,8 @@ func TestSnapshotGuardStorage(t *testing.T) {
 // TestConsensus_bootstrapPeersInOrder covers the bootstrap entries: every
 // initial member writes one conf change per peer at the head of its log, so
 // the peers must be in the same order on every member, or the same index
-// holds a different entry on each of them.
+// holds a different entry on each of them. Each entry carries the node ID of
+// its peer.
 func TestConsensus_bootstrapPeersInOrder(t *testing.T) {
 	const memberCount = 8
 	c := newIsolatedConsensus(t, memberCount)
@@ -566,5 +567,9 @@ func TestConsensus_bootstrapPeersInOrder(t *testing.T) {
 		var cc raftpb.ConfChange
 		require.NoError(t, cc.Unmarshal(entry.Data))
 		require.Equal(t, uint64(i+1), cc.NodeID)
+		c.mtx.RLock()
+		nodeID := c.members[kvsTypes.SectorNo(cc.NodeID)]
+		c.mtx.RUnlock()
+		require.Equal(t, nodeID.String(), string(cc.Context))
 	}
 }
