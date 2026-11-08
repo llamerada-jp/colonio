@@ -16,9 +16,11 @@
 package hosting
 
 import (
+	"sync"
 	"testing"
 	"time"
 
+	proto "github.com/llamerada-jp/colonio/api/colonio/v1alpha"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/types"
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
@@ -39,11 +41,31 @@ func (h *sectorHandlerHelper) HostingApplyAppendNode(sectorKey kvsTypes.SectorKe
 func (h *sectorHandlerHelper) HostingApplyRemoveNode(sectorKey kvsTypes.SectorKey, sectorNo kvsTypes.SectorNo) {
 }
 
-type outboundHelper struct{}
+type outboundHelper struct {
+	mtx    sync.Mutex
+	params []*SectorManageMemberParam
+}
 
 var _ OutboundPort = &outboundHelper{}
 
-func (o *outboundHelper) sendSectorManageMember(param *SectorManageMemberParam) {}
+func (o *outboundHelper) sendSectorManageMember(param *SectorManageMemberParam) {
+	o.mtx.Lock()
+	defer o.mtx.Unlock()
+	o.params = append(o.params, param)
+}
+
+// sent returns the setting messages sent to nodeID with command.
+func (o *outboundHelper) sent(nodeID *types.NodeID, command proto.SectorManageMember_Command) []*SectorManageMemberParam {
+	o.mtx.Lock()
+	defer o.mtx.Unlock()
+	params := []*SectorManageMemberParam{}
+	for _, param := range o.params {
+		if param.DstNodeID.Equal(nodeID) && param.Command == command {
+			params = append(params, param)
+		}
+	}
+	return params
+}
 
 // TestManager_ManageMember_panicsOnLocalNodeID covers the guard against the
 // local node in nextNodeIDs, both before and after the hosting sector exists.
@@ -154,6 +176,51 @@ func TestManager_ManageMember_keepsNormalMember(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	require.True(t, m.ManageMember([]*types.NodeID{memberNodeID}))
 	require.Len(t, m.memberStates, 2)
+}
+
+// TestManager_ManageMember_createCarriesInitialMembers covers the member table
+// in CREATE. A node that receives CREATE bootstraps its raft node with that
+// table, and raft requires every initial member to bootstrap with the same
+// configuration. CREATE is sent again until the member answers, so it must
+// keep carrying the initial members even after another member is appended;
+// otherwise a member whose first CREATE was lost bootstraps with a different
+// configuration and silently diverges from the group.
+func TestManager_ManageMember_createCarriesInitialMembers(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+	localNodeID, initialNodeID, appendedNodeID := nodeIDs[0], nodeIDs[1], nodeIDs[2]
+
+	outbound := &outboundHelper{}
+	m := NewManager(&Config{
+		Logger:   testUtil.Logger(t),
+		Outbound: outbound,
+	})
+	m.Start(&sectorHandlerHelper{}, localNodeID)
+
+	m.ManageMember([]*types.NodeID{initialNodeID})
+	// the initial member has not answered yet when another node is appended
+	m.ManageMember([]*types.NodeID{initialNodeID, appendedNodeID})
+
+	initialMembers := map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+		kvsTypes.SectorNo(2):      initialNodeID,
+	}
+	require.Eventually(t, func() bool {
+		return len(outbound.sent(initialNodeID, proto.SectorManageMember_COMMAND_CREATE)) == 2
+	}, time.Second, 10*time.Millisecond)
+	for _, param := range outbound.sent(initialNodeID, proto.SectorManageMember_COMMAND_CREATE) {
+		require.Equal(t, initialMembers, param.Members)
+	}
+
+	// APPEND carries the current members, including the appended one
+	require.Eventually(t, func() bool {
+		return len(outbound.sent(appendedNodeID, proto.SectorManageMember_COMMAND_APPEND)) == 1
+	}, time.Second, 10*time.Millisecond)
+	appendParam := outbound.sent(appendedNodeID, proto.SectorManageMember_COMMAND_APPEND)[0]
+	require.Equal(t, map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+		kvsTypes.SectorNo(2):      initialNodeID,
+		kvsTypes.SectorNo(3):      appendedNodeID,
+	}, appendParam.Members)
 }
 
 func TestManager_getNodesToBeChanged(t *testing.T) {

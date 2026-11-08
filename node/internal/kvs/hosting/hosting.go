@@ -17,6 +17,7 @@ package hosting
 
 import (
 	"log/slog"
+	"maps"
 	"sync"
 	"time"
 
@@ -97,10 +98,16 @@ type Manager struct {
 	// never restart with an empty log under the same ID.
 	memberSetupTimeout time.Duration
 
-	mtx              sync.RWMutex // protects: hostingSectorKey, lastSectorNo, memberStates
+	mtx              sync.RWMutex // protects: hostingSectorKey, lastSectorNo, memberStates, initialMembers
 	hostingSectorKey *kvsTypes.SectorKey
 	lastSectorNo     kvsTypes.SectorNo
 	memberStates     map[kvsTypes.SectorNo]*MemberStateEntry
+	// initialMembers are the members the hosting sector was created with. A
+	// node bootstraps its raft node with the member table it receives in
+	// CREATE, and raft requires every initial member to bootstrap with the
+	// same configuration, so CREATE always carries this table, never the
+	// current one.
+	initialMembers map[kvsTypes.SectorNo]*types.NodeID
 }
 
 func NewManager(conf *Config) *Manager {
@@ -260,6 +267,7 @@ func (m *Manager) OnSectorTerminated(sectorKey *kvsTypes.SectorKey) {
 		m.hostingSectorKey = nil
 		m.lastSectorNo = 0
 		m.memberStates = make(map[kvsTypes.SectorNo]*MemberStateEntry)
+		m.initialMembers = nil
 	}
 }
 
@@ -284,6 +292,7 @@ func (m *Manager) initHostSector(nextNodeIDs []*types.NodeID) {
 		SectorNo: kvsTypes.HostNodeSectorNo,
 	}
 	m.hostingSectorKey = sectorKey
+	m.initialMembers = maps.Clone(members)
 	m.handler.HostingAllocateSector(sectorKey, m.localNodeID, true, false, members)
 }
 
@@ -341,17 +350,18 @@ func (m *Manager) sendSettingMessage() {
 			continue
 
 		case MemberStateCreating, MemberStateAppending, MemberStateConfiguredConsensus:
-			members := make(map[kvsTypes.SectorNo]*types.NodeID)
-			members[kvsTypes.HostNodeSectorNo] = m.localNodeID
-			for sn, ms := range m.memberStates {
-				members[sn] = ms.NodeID
-			}
-
 			var command proto.SectorManageMember_Command
+			var members map[kvsTypes.SectorNo]*types.NodeID
 			if ms.State == MemberStateCreating {
 				command = proto.SectorManageMember_COMMAND_CREATE
+				members = maps.Clone(m.initialMembers)
 			} else { // MemberStateAppending or MemberStateConfiguredConsensus
 				command = proto.SectorManageMember_COMMAND_APPEND
+				members = make(map[kvsTypes.SectorNo]*types.NodeID)
+				members[kvsTypes.HostNodeSectorNo] = m.localNodeID
+				for sn, ms := range m.memberStates {
+					members[sn] = ms.NodeID
+				}
 			}
 
 			go m.outbound.sendSectorManageMember(&SectorManageMemberParam{
