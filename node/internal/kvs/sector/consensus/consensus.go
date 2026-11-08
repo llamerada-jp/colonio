@@ -149,8 +149,11 @@ func NewConsensus(config *Config) *Consensus {
 	}
 
 	if !config.Join {
+		// StartNode writes one conf change per peer at the head of the log.
+		// Sort the peers so that every initial member writes the same entries
+		// in the same order.
 		peers := []raft.Peer{}
-		for sectorNo := range config.Members {
+		for _, sectorNo := range slices.Sorted(maps.Keys(config.Members)) {
 			peers = append(peers, raft.Peer{
 				ID: uint64(sectorNo),
 			})

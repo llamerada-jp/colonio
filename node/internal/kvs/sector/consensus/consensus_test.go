@@ -21,6 +21,7 @@ import (
 	"io"
 	"log"
 	"log/slog"
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -540,4 +541,30 @@ func TestSnapshotGuardStorage(t *testing.T) {
 	snapshot, err := s.Snapshot()
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), snapshot.Metadata.Index)
+}
+
+// TestConsensus_bootstrapPeersInOrder covers the bootstrap entries: every
+// initial member writes one conf change per peer at the head of its log, so
+// the peers must be in the same order on every member, or the same index
+// holds a different entry on each of them.
+func TestConsensus_bootstrapPeersInOrder(t *testing.T) {
+	const memberCount = 8
+	c := newIsolatedConsensus(t, memberCount)
+	c.Start(t.Context())
+	defer c.Stop()
+
+	require.Eventually(t, func() bool {
+		lastIndex, err := c.raftStorage.LastIndex()
+		require.NoError(t, err)
+		return lastIndex >= memberCount
+	}, 10*time.Second, 100*time.Millisecond)
+
+	entries, err := c.raftStorage.Entries(1, memberCount+1, math.MaxUint64)
+	require.NoError(t, err)
+	for i, entry := range entries {
+		require.Equal(t, raftpb.EntryConfChange, entry.Type)
+		var cc raftpb.ConfChange
+		require.NoError(t, cc.Unmarshal(entry.Data))
+		require.Equal(t, uint64(i+1), cc.NodeID)
+	}
 }
