@@ -318,10 +318,8 @@ MC_MaxChurn       == 1
   不一致レプリカを Terminate」がどちらも毎秒空振りし続けるケースを観測。
 - 2026-06 に修正した「重なりガードが inactive レプリカも対象」問題（前節の表参照）は、
   active なレプリカが残留するケース（クラス B）では不十分だったことが判明。
-- 観測の詳細は `node/internal/kvs/kvs.go` / `node/internal/kvs/sector/sector.go` の
-  NOTE コメント (2026-07-04 付) に記録。`sector.go` の `applyProposals` に
-  リトライ時の Raft ステータス出力（`## retry proposals ... state/lead/term`）を
-  追加済みで、次回実行でリーダー不在を直接確認できる。
+- 観測の詳細はシミュレーション用のデバッグ出力（リトライ時の Raft ステータス
+  state/lead/term など）で確認した。デバッグ出力は kvs ブランチには含めていない。
 
 ## アルゴリズム改善案（Go 実装側）
 
@@ -1089,8 +1087,7 @@ run 終盤（min6: 破棄 353 回）は kill の累積により inactive レプ�
 - **内容**: 以下の設計判断と実装。
   1. **死亡判定の基準**: リーダー不在 (`raft.Status().Lead == 0`) の継続時間か、
      メンバーの routing 上の消失か、その組み合わせか。
-     `sector.go` の `## retry proposals` ログ（Raft ステータス付き）で実測してから
-     閾値を決める。
+     シミュレーションでリトライ時の Raft ステータスを実測してから閾値を決める。
   2. **誤判定時の安全性**: ネットワーク的に見えないだけで生きている quorum が
      存在するケースで破棄しても safety が保たれるか → TODO-1 の検証項目 3 で確認。
   3. **破棄後の再作成経路**: 破棄された hosting sector が hostingManager の
