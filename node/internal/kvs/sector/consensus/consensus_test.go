@@ -524,3 +524,20 @@ func TestConsensus_publishEntries_continuesAfterApplyError(t *testing.T) {
 	require.NoError(t, c.publishEntries(entries))
 	require.Equal(t, []string{"1", "2"}, applied)
 }
+
+// TestSnapshotGuardStorage covers the wrapper itself: an empty snapshot becomes
+// ErrSnapshotTemporarilyUnavailable, and a real one passes through.
+func TestSnapshotGuardStorage(t *testing.T) {
+	ms := raft.NewMemoryStorage()
+	s := &snapshotGuardStorage{ms}
+
+	_, err := s.Snapshot()
+	require.ErrorIs(t, err, raft.ErrSnapshotTemporarilyUnavailable)
+
+	require.NoError(t, ms.Append([]raftpb.Entry{{Index: 1, Term: 1}}))
+	_, err = ms.CreateSnapshot(1, &raftpb.ConfState{Voters: []uint64{1}}, []byte("data"))
+	require.NoError(t, err)
+	snapshot, err := s.Snapshot()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), snapshot.Metadata.Index)
+}

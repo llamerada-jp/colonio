@@ -62,6 +62,29 @@ type Config struct {
 	Members    map[kvsTypes.SectorNo]*types.NodeID
 }
 
+// snapshotGuardStorage keeps raft from panicking when a leader has to send a
+// snapshot it does not have. Snapshots are not created yet, but raft falls
+// back to sending one whenever a follower needs entries that are not in the
+// leader's log, and panics on an empty snapshot. Returning
+// ErrSnapshotTemporarilyUnavailable, the error the raft Storage interface
+// defines for this case, makes raft skip the send instead. The follower then
+// stays behind until the membership manager removes it and adds the node
+// again under a new sectorNo.
+type snapshotGuardStorage struct {
+	*raft.MemoryStorage
+}
+
+func (s *snapshotGuardStorage) Snapshot() (raftpb.Snapshot, error) {
+	snapshot, err := s.MemoryStorage.Snapshot()
+	if err != nil {
+		return snapshot, err
+	}
+	if raft.IsEmptySnap(snapshot) {
+		return raftpb.Snapshot{}, raft.ErrSnapshotTemporarilyUnavailable
+	}
+	return snapshot, nil
+}
+
 type Consensus struct {
 	logger      *slog.Logger
 	handler     Handler
@@ -119,7 +142,7 @@ func NewConsensus(config *Config) *Consensus {
 		// Without PreVote, a member cut off from the quorum keeps raising its
 		// term by campaigning, and disrupts the leader when it reconnects.
 		PreVote:                   true,
-		Storage:                   n.raftStorage,
+		Storage:                   &snapshotGuardStorage{n.raftStorage},
 		MaxSizePerMsg:             1024 * 1024,
 		MaxInflightMsgs:           256,
 		MaxUncommittedEntriesSize: 1 << 30,
