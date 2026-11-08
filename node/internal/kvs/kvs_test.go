@@ -423,6 +423,88 @@ func TestKVS_sectorPrepareSplit_noHostingSector(t *testing.T) {
 	require.False(t, k.sectorPrepareSplit(srcNodeID, kvsTypes.SectorID(uuid.New())))
 }
 
+// TestKVS_sectorPrepareSplit_onlyFromNearestBackward covers who may propose a
+// split of the hosting sector: only the nearest backward node, whose hosting
+// sector covers this node. A proposal from any other node is rejected and
+// leaves no proposal recorded.
+func TestKVS_sectorPrepareSplit_onlyFromNearestBackward(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// ring order: far backward < near backward < local < frontward
+	ringNodeIDs := testUtil.UniqueNodeIDsInRingOrder(4)
+	farNodeID, nearNodeID, localNodeID, frontwardNodeID :=
+		ringNodeIDs[0], ringNodeIDs[1], ringNodeIDs[2], ringNodeIDs[3]
+
+	k := newTestKVS(t, ctx, localNodeID, &kvsHandlerHelper{
+		isStable:             true,
+		backwardNextNodeIDs:  []*types.NodeID{farNodeID, nearNodeID},
+		frontwardNextNodeIDs: []*types.NodeID{frontwardNodeID},
+	})
+	hostingSectorKey := setupHostingSector(t, k)
+
+	for _, srcNodeID := range []*types.NodeID{farNodeID, frontwardNodeID} {
+		require.False(t, k.sectorPrepareSplit(srcNodeID, hostingSectorKey.SectorID))
+		require.Nil(t, k.proposedSplittingNodeID)
+	}
+
+	require.True(t, k.sectorPrepareSplit(nearNodeID, hostingSectorKey.SectorID))
+	require.True(t, k.proposedSplittingNodeID.Equal(nearNodeID))
+}
+
+func TestNearestBackward(t *testing.T) {
+	id := func(n uint64) *types.NodeID { return types.NewNormalNodeID(n, 0) }
+
+	tests := []struct {
+		name    string
+		local   *types.NodeID
+		nodeIDs []*types.NodeID
+		expect  *types.NodeID
+	}{
+		{
+			name:    "empty",
+			local:   id(5),
+			nodeIDs: nil,
+			expect:  nil,
+		},
+		{
+			name:    "closest below",
+			local:   id(5),
+			nodeIDs: []*types.NodeID{id(2), id(4), id(3)},
+			expect:  id(4),
+		},
+		{
+			name:    "wraps around zero",
+			local:   id(1),
+			nodeIDs: []*types.NodeID{id(8), id(9), id(7)},
+			expect:  id(9),
+		},
+		{
+			name:    "below is closer than wrapped",
+			local:   id(3),
+			nodeIDs: []*types.NodeID{id(9), id(2)},
+			expect:  id(2),
+		},
+		{
+			name:    "local itself is ignored",
+			local:   id(5),
+			nodeIDs: []*types.NodeID{id(5), id(3)},
+			expect:  id(3),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := nearestBackward(tt.local, tt.nodeIDs)
+			if tt.expect == nil {
+				require.Nil(t, got)
+				return
+			}
+			require.True(t, tt.expect.Equal(got), "got %v", got)
+		})
+	}
+}
+
 // TestKVS_activateHostingSector_singleNode covers a lone node: it activates its
 // own sector over the whole ring, although its hosting sector is in k.sectors.
 func TestKVS_activateHostingSector_singleNode(t *testing.T) {

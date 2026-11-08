@@ -640,6 +640,15 @@ func (k *KVS) sectorPrepareSplit(srcNodeID *types.NodeID, sectorID kvsTypes.Sect
 		return false
 	}
 
+	// Only the nearest backward node, whose hosting sector covers this node,
+	// splits it. Accepting another node would block the real split, and
+	// proposedSplitRoutine terminates the hosting sector once the proposer is
+	// not a neighbor. A rejected split is proposed again later.
+	_, backwardNextNodeIDs, _ := k.handler.KvsGetStability()
+	if nearest := nearestBackward(k.localNodeID, backwardNextNodeIDs); nearest == nil || !nearest.Equal(srcNodeID) {
+		return false
+	}
+
 	k.proposedSplittingNodeID = srcNodeID
 	k.proposedSplittingSectorID = &sectorID
 
@@ -648,6 +657,21 @@ func (k *KVS) sectorPrepareSplit(srcNodeID *types.NodeID, sectorID kvsTypes.Sect
 
 // proposedSplitRoutine is called periodically to check whether the proposed splitting can be finished or not.
 // it returns true if the proposed splitting is finished or there is no proposed splitting, otherwise false.
+// nearestBackward returns the node in nodeIDs that is the closest to localNodeID
+// going backward on the ring, or nil if nodeIDs is empty.
+func nearestBackward(localNodeID *types.NodeID, nodeIDs []*types.NodeID) *types.NodeID {
+	var nearest *types.NodeID
+	for _, nodeID := range nodeIDs {
+		if nodeID.Equal(localNodeID) {
+			continue
+		}
+		if nearest == nil || !nearest.IsBetween(nodeID, localNodeID) {
+			nearest = nodeID
+		}
+	}
+	return nearest
+}
+
 func (k *KVS) proposedSplitRoutine(hostingSector *sector.Sector, nextNodeIDs []*types.NodeID) bool {
 	if k.proposedSplittingNodeID == nil {
 		return true
