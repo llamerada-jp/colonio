@@ -17,6 +17,7 @@ message ConsensusProposal {
     CommitMerge    commit_merge     = 7;
     Import         import           = 8;
     Operation      operation        = 9;
+    ReleaseMerge   release_merge    = 10;
   }
 }
 
@@ -40,6 +41,12 @@ message CommitSplit {
 }
 
 message PrepareMerge {
+  colonio.v1alpha.NodeID handler = 1;
+}
+
+// ReleaseMerge clears the prepare_merge claim of `handler`. It is applied only
+// while the claim is still held by `handler`, so it never clears a newer claim.
+message ReleaseMerge {
   colonio.v1alpha.NodeID handler = 1;
 }
 
