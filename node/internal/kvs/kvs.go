@@ -568,6 +568,21 @@ func (k *KVS) sectorManageMember(param *sectorManageMemberParam) error {
 			k.allocateSector(&param.sectorKey, param.head, false, append, param.members)
 		}
 
+	case proto.SectorManageMember_COMMAND_REMOVE:
+		// Only the head of a sector removes its members. This also rejects a
+		// removal of the local hosting sector, whose head is this node.
+		sector, ok := k.sectors[param.sectorKey]
+		if ok && !sector.GetHeadAddress().Equal(param.head) {
+			return fmt.Errorf("reject a removal not from the head of the sector: %s", param.sectorKey.String())
+		}
+		// The group has removed this member ID, so it must never be created
+		// on this node, even if this node does not hold it.
+		k.addSectorTombstoneLocked(param.sectorKey)
+		if ok {
+			// TerminateLocally calls back into KVS, which takes k.mtx.
+			go sector.TerminateLocally()
+		}
+
 	default:
 		return fmt.Errorf("unknown SectorManageMember command: %d", param.command)
 	}

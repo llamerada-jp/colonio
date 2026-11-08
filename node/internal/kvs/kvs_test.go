@@ -313,6 +313,101 @@ func TestKVS_sectorManageMember_rejectsTombstonedKey(t *testing.T) {
 	require.False(t, hasSector(removedKey))
 }
 
+// TestKVS_sectorManageMember_remove covers a removal notification from the
+// head of a sector: the local replica is destroyed and its key tombstoned, so
+// that a setting message delivered again cannot re-create it. A removal for a
+// key this node does not hold only leaves a tombstone.
+func TestKVS_sectorManageMember_remove(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID, headNodeID := nodeIDs[0], nodeIDs[1]
+	k := newTestKVS(t, ctx, localNodeID, &kvsHandlerHelper{isStable: true})
+
+	manageMember := func(command proto.SectorManageMember_Command, key kvsTypes.SectorKey) error {
+		return k.sectorManageMember(&sectorManageMemberParam{
+			command:   command,
+			sectorKey: key,
+			head:      headNodeID,
+			members: map[kvsTypes.SectorNo]*types.NodeID{
+				kvsTypes.HostNodeSectorNo: headNodeID,
+				key.SectorNo:              localNodeID,
+			},
+		})
+	}
+	hasSector := func(key kvsTypes.SectorKey) bool {
+		k.mtx.RLock()
+		defer k.mtx.RUnlock()
+		_, ok := k.sectors[key]
+		return ok
+	}
+
+	sectorKey := kvsTypes.SectorKey{
+		SectorID: kvsTypes.SectorID(uuid.New()),
+		SectorNo: kvsTypes.SectorNo(2),
+	}
+	require.NoError(t, manageMember(proto.SectorManageMember_COMMAND_APPEND, sectorKey))
+	require.True(t, hasSector(sectorKey))
+
+	require.NoError(t, manageMember(proto.SectorManageMember_COMMAND_REMOVE, sectorKey))
+	require.Eventually(t, func() bool {
+		return !hasSector(sectorKey)
+	}, 5*time.Second, 50*time.Millisecond)
+	require.Error(t, manageMember(proto.SectorManageMember_COMMAND_APPEND, sectorKey))
+
+	unknownKey := kvsTypes.SectorKey{
+		SectorID: sectorKey.SectorID,
+		SectorNo: kvsTypes.SectorNo(3),
+	}
+	require.NoError(t, manageMember(proto.SectorManageMember_COMMAND_REMOVE, unknownKey))
+	require.Error(t, manageMember(proto.SectorManageMember_COMMAND_APPEND, unknownKey))
+	require.False(t, hasSector(unknownKey))
+}
+
+// TestKVS_sectorManageMember_removeRejectsNonHead covers removal notifications
+// that do not come from the head of the sector, including one for the local
+// hosting sector, whose head is this node: they must not destroy the replica.
+func TestKVS_sectorManageMember_removeRejectsNonHead(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+	localNodeID, headNodeID, otherNodeID := nodeIDs[0], nodeIDs[1], nodeIDs[2]
+	k := newTestKVS(t, ctx, localNodeID, &kvsHandlerHelper{isStable: true})
+	hostingSectorKey := setupHostingSector(t, k)
+
+	sectorKey := kvsTypes.SectorKey{
+		SectorID: kvsTypes.SectorID(uuid.New()),
+		SectorNo: kvsTypes.SectorNo(2),
+	}
+	require.NoError(t, k.sectorManageMember(&sectorManageMemberParam{
+		command:   proto.SectorManageMember_COMMAND_APPEND,
+		sectorKey: sectorKey,
+		head:      headNodeID,
+		members: map[kvsTypes.SectorNo]*types.NodeID{
+			kvsTypes.HostNodeSectorNo: headNodeID,
+			kvsTypes.SectorNo(2):      localNodeID,
+		},
+	}))
+
+	for _, key := range []kvsTypes.SectorKey{*hostingSectorKey, sectorKey} {
+		require.Error(t, k.sectorManageMember(&sectorManageMemberParam{
+			command:   proto.SectorManageMember_COMMAND_REMOVE,
+			sectorKey: key,
+			head:      otherNodeID,
+		}))
+	}
+
+	time.Sleep(200 * time.Millisecond)
+	k.mtx.RLock()
+	defer k.mtx.RUnlock()
+	for _, key := range []kvsTypes.SectorKey{*hostingSectorKey, sectorKey} {
+		require.Contains(t, k.sectors, key)
+		require.NotContains(t, k.sectorTombstones, key)
+	}
+}
+
 // TestKVS_sectorPrepareSplit_noHostingSector covers a prepare-split request
 // that arrives while this node has no hosting sector, as between a termination
 // of the hosting sector and its re-creation: it must be rejected.

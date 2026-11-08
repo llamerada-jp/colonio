@@ -121,6 +121,11 @@ func (i *inboundAdapter) recvSectorManageMember(packet *networkTypes.Packet) {
 		return
 	}
 
+	// The host does not wait for a response to a removal.
+	if command == proto.SectorManageMember_COMMAND_REMOVE {
+		return
+	}
+
 	// send response when the node is created or appended
 	i.transferer.RequestOneWay(
 		packet.SrcNodeID,

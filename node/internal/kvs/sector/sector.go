@@ -795,6 +795,14 @@ func (s *Sector) checkQuorumLoss() {
 		return
 	}
 
+	s.TerminateLocally()
+}
+
+// TerminateLocally destroys the local replica without going through raft. It
+// is for a replica that can no longer receive anything from its group: one
+// whose group lost its quorum, or one that was removed from its group. It
+// does nothing on a replica that is already stopped.
+func (s *Sector) TerminateLocally() {
 	s.mtx.Lock()
 	if !s.stopped && !s.terminated {
 		s.terminateLocked()
