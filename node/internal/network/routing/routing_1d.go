@@ -98,14 +98,13 @@ func (r *routing1D) subRoutine() {
 	}
 }
 
-func (r *routing1D) getStability() (bool, []*types.NodeID) {
+func (r *routing1D) getStability() (bool, []*types.NodeID, []*types.NodeID) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	nextNodeIDs := slices.Clone(r.backwardNextNodeIDs)
-	slices.Reverse(nextNodeIDs)
-	nextNodeIDs = append(nextNodeIDs, r.frontwardNextNodeIDs...)
-	return r.nextNodeMatched, nextNodeIDs
+	backwardNextNodeIDs := slices.Clone(r.backwardNextNodeIDs)
+	slices.Reverse(backwardNextNodeIDs)
+	return r.nextNodeMatched, backwardNextNodeIDs, slices.Clone(r.frontwardNextNodeIDs)
 }
 
 func (r *routing1D) updateNodeConnections(connections map[types.NodeID]struct{}) int {
@@ -166,14 +165,14 @@ func (r *routing1D) getNextStep(packet *networkTypes.Packet) *types.NodeID {
 		return &types.NodeLocal
 	}
 
-	if isBetween(r.config.localNodeID, r.frontwardNextNodeIDs[0], packet.DstNodeID) {
+	if packet.DstNodeID.IsBetween(r.config.localNodeID, r.frontwardNextNodeIDs[0]) {
 		if isExplicit {
 			return nil
 		}
 		return &types.NodeLocal
 	}
 
-	if isBetween(r.backwardNextNodeIDs[0], r.config.localNodeID, packet.DstNodeID) {
+	if packet.DstNodeID.IsBetween(r.backwardNextNodeIDs[0], r.config.localNodeID) {
 		if isExplicit && !r.backwardNextNodeIDs[0].Equal(packet.DstNodeID) {
 			return nil
 		}
@@ -553,18 +552,4 @@ func (r *routing1D) normalizeScore() {
 	for _, routeInfo := range r.routeInfos {
 		routeInfo.scoreBySend = int64(float64(routeInfo.scoreBySend) * rate)
 	}
-}
-
-func isBetween(a, b, target *types.NodeID) bool {
-	if a.Equal(b) {
-		panic("a and b should be different")
-	}
-
-	// a < b : a <= target && target < b
-	if a.Smaller(b) {
-		return !target.Smaller(a) && target.Smaller(b)
-	}
-
-	// a > b : a <= target || target < b
-	return !target.Smaller(a) || target.Smaller(b)
 }

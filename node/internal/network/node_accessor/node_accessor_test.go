@@ -16,6 +16,7 @@
 package node_accessor
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -712,5 +713,102 @@ func TestNodeAccessorConnectLinks(t *testing.T) {
 				assert.Contains(t, connections[i], *nodeIDs[1])
 			}
 		}()
+	}
+}
+
+// sendBlockingWebRTCLink is a webRTCLink whose send blocks until release is closed.
+type sendBlockingWebRTCLink struct {
+	release    chan struct{}
+	sendCalled chan struct{}
+}
+
+var _ webRTCLink = &sendBlockingWebRTCLink{}
+
+func (l *sendBlockingWebRTCLink) isActive() bool                { return true }
+func (l *sendBlockingWebRTCLink) isOnline() bool                { return true }
+func (l *sendBlockingWebRTCLink) getLabel() string              { return "send-blocking" }
+func (l *sendBlockingWebRTCLink) getLocalSDP() (string, error)  { return "sdp", nil }
+func (l *sendBlockingWebRTCLink) setRemoteSDP(sdp string) error { return nil }
+func (l *sendBlockingWebRTCLink) updateICE(ice string) error    { return nil }
+func (l *sendBlockingWebRTCLink) disconnect() error             { return nil }
+
+func (l *sendBlockingWebRTCLink) send(data []byte) error {
+	select {
+	case l.sendCalled <- struct{}{}:
+	default:
+	}
+	<-l.release
+	return nil
+}
+
+// A send stalled in the link layer must not keep na.mtx held, otherwise a
+// pending writer blocks every later acquisition and the node stops working.
+func TestNodeAccessor_relayPacketDoesNotHoldMutexWhileSending(t *testing.T) {
+	peerNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+	for name, dstNodeID := range map[string]*types.NodeID{
+		"unicast":   peerNodeID,
+		"multicast": &types.NodeNeighborhoods,
+	} {
+		t.Run(name, func(t *testing.T) {
+			release := make(chan struct{})
+			defer close(release)
+			sendCalled := make(chan struct{}, 1)
+
+			na, err := NewNodeAccessor(&Config{
+				Logger:         testUtil.Logger(t),
+				Handler:        &nodeAccessorHandlerHelper{},
+				NodeLinkConfig: nlConfig,
+			})
+			require.NoError(t, err)
+			// send without buffering so that RelayPacket reaches the link send directly
+			na.nodeLinkConfig.BufferInterval = 0
+			na.nodeLinkConfig.KeepaliveInterval = 0
+
+			// build the link by hand instead of replacing defaultWebRTCLinkFactory,
+			// which goroutines left by other tests may still read
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			link := &nodeLink{
+				config:  na.nodeLinkConfig,
+				ctx:     ctx,
+				cancel:  cancel,
+				handler: na,
+				state:   nodeLinkStateOnline,
+				queue:   make([]*waiting, 0),
+				webrtc:  &sendBlockingWebRTCLink{release: release, sendCalled: sendCalled},
+			}
+			na.mtx.Lock()
+			na.nodeID2link[*peerNodeID] = link
+			na.link2nodeID[link] = peerNodeID
+			na.mtx.Unlock()
+
+			go func() {
+				_ = na.RelayPacket(dstNodeID, &networkTypes.Packet{
+					DstNodeID: dstNodeID,
+					SrcNodeID: types.NewNormalNodeID(0, 0),
+					ID:        1,
+					Mode:      networkTypes.PacketModeOneWay,
+					Content:   &proto.PacketContent{},
+				})
+			}()
+
+			select {
+			case <-sendCalled:
+			case <-time.After(5 * time.Second):
+				t.Fatal("link send was not called")
+			}
+
+			acquired := make(chan struct{})
+			go func() {
+				na.mtx.Lock()
+				defer na.mtx.Unlock()
+				close(acquired)
+			}()
+			select {
+			case <-acquired:
+			case <-time.After(3 * time.Second):
+				t.Fatal("na.mtx is held while the link send is blocked")
+			}
+		})
 	}
 }

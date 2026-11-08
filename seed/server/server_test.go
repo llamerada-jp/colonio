@@ -32,18 +32,20 @@ import (
 	"github.com/llamerada-jp/colonio/seed/controller"
 	testUtil "github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/types"
+	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type controllerMock struct {
-	t                   *testing.T
-	assignNodeF         func(ctx context.Context) (*types.NodeID, bool, error)
-	unassignNodeF       func(ctx context.Context, nodeID *types.NodeID) error
-	keepaliveF          func(ctx context.Context, nodeID *types.NodeID) (bool, error)
-	reconcileNextNodesF func(ctx context.Context, nodeID *types.NodeID, nextNodeIDs, disconnectedIDs []*types.NodeID) (bool, error)
-	sendSignalF         func(ctx context.Context, nodeID *types.NodeID, signal *proto.Signal) error
-	pollSignalF         func(ctx context.Context, nodeID *types.NodeID, send func(*proto.Signal) error) error
+	t                     *testing.T
+	assignNodeF           func(ctx context.Context) (*types.NodeID, bool, error)
+	unassignNodeF         func(ctx context.Context, nodeID *types.NodeID) error
+	keepaliveF            func(ctx context.Context, nodeID *types.NodeID) (bool, error)
+	reconcileNextNodesF   func(ctx context.Context, nodeID *types.NodeID, nextNodeIDs, disconnectedIDs []*types.NodeID) (bool, error)
+	sendSignalF           func(ctx context.Context, nodeID *types.NodeID, signal *proto.Signal) error
+	pollSignalF           func(ctx context.Context, nodeID *types.NodeID, send func(*proto.Signal) error) error
+	resolveKvsActivationF func(ctx context.Context, nodeID *types.NodeID, active bool) (kvsTypes.EntireState, error)
 }
 
 var _ controller.Controller = &controllerMock{}
@@ -82,6 +84,12 @@ func (c *controllerMock) PollSignal(ctx context.Context, nodeID *types.NodeID, s
 	c.t.Helper()
 	require.NotNil(c.t, c.pollSignalF, "PollSignalF must not be nil")
 	return c.pollSignalF(ctx, nodeID, send)
+}
+
+func (c *controllerMock) ResolveKvsActivation(ctx context.Context, nodeID *types.NodeID, active bool) (kvsTypes.EntireState, error) {
+	c.t.Helper()
+	require.NotNil(c.t, c.resolveKvsActivationF, "ResolveKvsActivationF must not be nil")
+	return c.resolveKvsActivationF(ctx, nodeID, active)
 }
 
 func runTestServer(t *testing.T, controller *controllerMock) uint16 {
@@ -379,4 +387,65 @@ func TestServer_PollSignal(t *testing.T) {
 	assert.Equal(t, nodeIDs[2].Proto(), signals[1].DstNodeId)
 	assert.Equal(t, nodeIDs[1].Proto(), signals[1].SrcNodeId)
 	assert.Equal(t, uint32(2), signals[1].GetIce().OfferId)
+}
+
+func TestServer_ResolveKvsActivation(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(1)
+	called := false
+	port := runTestServer(t, &controllerMock{
+		t: t,
+		assignNodeF: func(ctx context.Context) (*types.NodeID, bool, error) {
+			return nodeIDs[0], true, nil
+		},
+		resolveKvsActivationF: func(ctx context.Context, nodeID *types.NodeID, active bool) (kvsTypes.EntireState, error) {
+			called = true
+			assert.Equal(t, nodeID, nodeIDs[0])
+			assert.True(t, active)
+			return kvsTypes.EntireStateActive, nil
+		},
+	})
+	client := createTestClient(t, port)
+
+	// ResolveKvsActivation without assigning first should return an error
+	_, err := client.ResolveKvsActivation(t.Context(), &connect.Request[proto.ResolveKvsActivationRequest]{
+		Msg: &proto.ResolveKvsActivationRequest{
+			SectorState: proto.ResolveKvsActivationRequest_SECTOR_STATE_ACTIVE,
+		},
+	})
+	ce := &connect.Error{}
+	assert.ErrorAs(t, err, &ce)
+	assert.ErrorContains(t, err, "reqID")
+
+	// Assign a node and then ResolveKvsActivation
+	_, err = client.AssignNode(t.Context(), &connect.Request[proto.AssignNodeRequest]{
+		Msg: &proto.AssignNodeRequest{},
+	})
+	require.NoError(t, err)
+
+	// Invalid enum values should be rejected before controller call.
+	for _, sectorState := range []proto.ResolveKvsActivationRequest_SectorState{
+		proto.ResolveKvsActivationRequest_SECTOR_STATE_UNSPECIFIED,
+		proto.ResolveKvsActivationRequest_SectorState(99),
+	} {
+		called = false
+		_, err = client.ResolveKvsActivation(t.Context(), &connect.Request[proto.ResolveKvsActivationRequest]{
+			Msg: &proto.ResolveKvsActivationRequest{
+				SectorState: sectorState,
+			},
+		})
+		require.Error(t, err)
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, connect.CodeInvalidArgument, ce.Code())
+		assert.False(t, called)
+	}
+
+	_, err = client.ResolveKvsActivation(t.Context(), &connect.Request[proto.ResolveKvsActivationRequest]{
+		Msg: &proto.ResolveKvsActivationRequest{
+			SectorState: proto.ResolveKvsActivationRequest_SECTOR_STATE_ACTIVE,
+		},
+	})
+	require.NoError(t, err)
+	assert.True(t, called)
+
+	assert.True(t, called)
 }

@@ -24,7 +24,6 @@ import (
 	"os"
 	"os/signal"
 	"sync"
-	"syscall"
 
 	"github.com/llamerada-jp/colonio/simulator/circle"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
@@ -63,8 +62,8 @@ var nodeCmd = &cobra.Command{
 			Level: slog.LevelDebug,
 		}))
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
 
 		var rawWriter datastore.RawWriter
 		switch nodeConfig.writer {
@@ -91,13 +90,6 @@ var nodeCmd = &cobra.Command{
 		mtx := &sync.Mutex{}
 		var globalErr error
 
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
-		go func() {
-			<-sig
-			cancel()
-		}()
-
 		logger.Info("start node",
 			slog.String("seedURL", nodeConfig.seedURL),
 			slog.String("story", nodeConfig.story),
@@ -116,7 +108,7 @@ var nodeCmd = &cobra.Command{
 					logAttr = append(logAttr, slog.String("id", nodeConfig.loggerID))
 				}
 				if err := run(ctx, logger.With(logAttr...), writer); err != nil {
-					cancel()
+					stop()
 					slog.Error("error on node", slog.String("error", err.Error()))
 
 					mtx.Lock()

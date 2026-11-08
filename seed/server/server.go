@@ -282,3 +282,37 @@ func (c *Server) PollSignal(ctx context.Context, _ *connect.Request[proto.PollSi
 
 	return nil
 }
+
+func (c *Server) ResolveKvsActivation(ctx context.Context, request *connect.Request[proto.ResolveKvsActivationRequest]) (*connect.Response[proto.ResolveKvsActivationResponse], error) {
+	logger := misc.NewLogger(ctx, c.logger)
+	session := ctx.Value(ContextKeySession).(*session)
+
+	nodeID := session.getNodeID()
+	if nodeID == nil {
+		logger.Warn("session error (node id is not found)")
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
+	}
+
+	var active bool
+	switch request.Msg.GetSectorState() {
+	case proto.ResolveKvsActivationRequest_SECTOR_STATE_ACTIVE:
+		active = true
+	case proto.ResolveKvsActivationRequest_SECTOR_STATE_INACTIVE:
+		active = false
+	default:
+		logger.Warn("invalid KVS state", slog.Int("sector state", int(request.Msg.GetSectorState())))
+		return nil, connect.NewError(connect.CodeInvalidArgument, misc.ErrorByContext(ctx))
+	}
+
+	entireState, err := c.controller.ResolveKvsActivation(ctx, nodeID, active)
+	if err != nil {
+		logger.Warn("failed to set KVS state", slog.String("error", err.Error()))
+		return nil, connect.NewError(connect.CodeInternal, misc.ErrorByContext(ctx))
+	}
+
+	return &connect.Response[proto.ResolveKvsActivationResponse]{
+		Msg: &proto.ResolveKvsActivationResponse{
+			EntireState: proto.ResolveKvsActivationResponse_EntireState(entireState),
+		},
+	}, nil
+}

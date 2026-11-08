@@ -29,6 +29,7 @@ import (
 	"github.com/llamerada-jp/colonio/simulator/utils"
 	"github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/types"
+	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	networkTypes "github.com/llamerada-jp/colonio/types/network"
 )
 
@@ -143,6 +144,20 @@ func (n *Node) renewColonio() error {
 				n.mtx.Lock()
 				defer n.mtx.Unlock()
 				r.ConnectedNodeIDs = convertMapToSlice(nodeIDs)
+			},
+			OnChangeKvsSectors: func(s map[kvsTypes.SectorKey]*observation.SectorInfo) {
+				n.mtx.Lock()
+				defer n.mtx.Unlock()
+				sectorInfos := make([]SectorInfo, 0, len(s))
+				for sectorKey, info := range s {
+					sectorInfos = append(sectorInfos, SectorInfo{
+						SectorID: sectorKey.SectorID.String(),
+						SectorNo: uint64(sectorKey.SectorNo),
+						Head:     info.Head,
+						Tail:     info.Tail,
+					})
+				}
+				r.SectorInfos = sectorInfos
 			},
 			OnUpdateRequiredNodeIDs1D: func(nodeIDs map[string]struct{}) {
 				n.mtx.Lock()

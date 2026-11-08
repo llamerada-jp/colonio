@@ -118,6 +118,18 @@ func (suite *E2eSuite) TestE2E() {
 
 	suite.T().Log("getting a not existed value")
 
+	// TODO(kvs): Re-enable this block after KVS behavior/API stabilizes.
+	// This scenario should validate NewNode -> Start -> KVS path end-to-end,
+	// including propagation across nodes.
+	//
+	// Minimum checks when restoring:
+	// 1) KvsSet on one node and KvsGet on another node.
+	// 2) Overwrite behavior (allowed/prohibited) according to current spec.
+	// 3) Local data consistency assumptions, if local-data API remains supported.
+	//
+	// Keep this as a single restoration point so regressions in KVS wiring
+	// are detected by e2e once the implementation phase is complete.
+
 	/*
 		_, err := suite.node1.KvsGet("key1")
 		if suite.Error(err) {
@@ -170,6 +182,9 @@ func (suite *E2eSuite) TestE2E() {
 		//*/
 }
 
+// TODO(kvs): Restore with care if callback + KVS operations become supported.
+// This test was disabled due to deadlock risk in callback context.
+// Re-enable only after concurrency behavior and callback contract are clarified.
 /*
 func (suite *E2eSuite) TestGetSetInCB() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)

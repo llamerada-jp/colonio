@@ -24,12 +24,17 @@ import (
 	"time"
 
 	"github.com/llamerada-jp/colonio/node/internal/geometry"
+	"github.com/llamerada-jp/colonio/node/internal/kvs"
+	"github.com/llamerada-jp/colonio/node/internal/kvs/activation"
+	"github.com/llamerada-jp/colonio/node/internal/kvs/hosting"
+	"github.com/llamerada-jp/colonio/node/internal/kvs/sector/consensus"
 	"github.com/llamerada-jp/colonio/node/internal/messaging"
 	"github.com/llamerada-jp/colonio/node/internal/network"
 	"github.com/llamerada-jp/colonio/node/internal/network/node_accessor"
 	"github.com/llamerada-jp/colonio/node/internal/spread"
 	"github.com/llamerada-jp/colonio/node/observation"
 	"github.com/llamerada-jp/colonio/types"
+	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	networkTypes "github.com/llamerada-jp/colonio/types/network"
 )
 
@@ -57,6 +62,11 @@ type Node interface {
 	IsStable() bool
 	GetLocalNodeID() string
 	UpdateLocalPosition(x, y float64) error
+	// kvs
+	KvsGet(key string) chan *kvsTypes.GetResult
+	KvsSet(key string, value []byte) chan error
+	KvsPatch(key string, value []byte) chan error
+	KvsDelete(key string) chan error
 	// messaging
 	MessagingPost(dst, name string, val []byte, setters ...MessagingOptionSetter) ([]byte, error)
 	MessagingSetHandler(name string, handler func(*MessagingRequest, MessagingResponseWriter))
@@ -69,6 +79,7 @@ type Node interface {
 
 type Config struct {
 	Logger             *slog.Logger
+	EnableRaftLogging  bool
 	ObservationHandler *observation.Handler
 	HttpClient         *http.Client
 	SeedURL            string
@@ -78,6 +89,9 @@ type Config struct {
 	// PacketHopLimit is the maximum number of hops that a packet can be relayed.
 	// If you set 0, the default value of 64 will be set.
 	PacketHopLimit uint
+
+	// KvsStore is an actual data store for KVS.
+	KvsStore kvsTypes.Store
 
 	// CacheLifetime is the lifetime of the cache. The spread algorithm is
 	// so simple that the same packet may be received multiple times;
@@ -96,6 +110,12 @@ type ConfigSetter func(*Config)
 func WithLogger(logger *slog.Logger) ConfigSetter {
 	return func(c *Config) {
 		c.Logger = logger
+	}
+}
+
+func WithRaftLogging() ConfigSetter {
+	return func(c *Config) {
+		c.EnableRaftLogging = true
 	}
 }
 
@@ -134,6 +154,12 @@ func WithPlaneGeometry(xMin, xMax, yMin, yMax float64) ConfigSetter {
 	}
 }
 
+func WithKvsStore(store kvsTypes.Store) ConfigSetter {
+	return func(c *Config) {
+		c.KvsStore = store
+	}
+}
+
 // Sphere is a configuration for the sphere geometry.
 // If this configuration is set, the 2D position based network will be setup as a sphere space.
 func WithSphereGeometry(radius float64) ConfigSetter {
@@ -148,6 +174,7 @@ type colonioImpl struct {
 	cancel      context.CancelFunc
 	localNodeID *types.NodeID
 	network     *network.Network
+	kvs         *kvs.KVS
 	messaging   *messaging.Messaging
 	spread      *spread.Spread
 }
@@ -188,15 +215,25 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 		}
 	}
 
+	if config.KvsStore == nil {
+		config.KvsStore = kvs.NewSimpleStore()
+	}
+
 	impl := &colonioImpl{
 		logger: config.Logger,
+	}
+
+	// This workaround allows `if observation != nil` checks in observation handlers.
+	var observation observation.Caller
+	if config.ObservationHandler != nil {
+		observation = config.ObservationHandler
 	}
 
 	// create network module
 	net, err := network.NewNetwork(&network.Config{
 		Logger:           config.Logger,
 		Handler:          impl,
-		Observation:      config.ObservationHandler,
+		Observation:      observation,
 		CoordinateSystem: config.CoordinateSystem,
 		HttpClient:       config.HttpClient,
 		SeedURL:          config.SeedURL,
@@ -204,12 +241,15 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 			ICEServers: config.ICEServers,
 
 			// SessionTimeout is used to determine the timeout of the WebRTC session between nodes.
-			SessionTimeout: 5 * time.Minute,
+			// It bounds how long a dead peer stays in the routing view, so it is on the same
+			// timescale as the KVS repair timers (30s): while a dead peer stays in the view, it
+			// keeps being appended as a raft member and keeps the nodes around it unstable.
+			SessionTimeout: 30 * time.Second,
 
 			// KeepaliveInterval is the interval to send a ping packet to tell living the node for each nodes.
 			// Keepalive packet is be tried to send  when no packet with content has been sent.
-			// The value should be less than `sessionTimeout`.
-			KeepaliveInterval: 1 * time.Minute,
+			// The value should be less than `sessionTimeout`; 10s tolerates two lost keepalives.
+			KeepaliveInterval: 10 * time.Second,
 
 			// BufferInterval is maximum interval for buffering packets between nodes.
 			// If packets exceeding WebRTCPacketBaseBytes are stored in the buffer even if it is less than interval,
@@ -233,6 +273,30 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 		return nil, err
 	}
 	impl.network = net
+
+	activationResolver := activation.NewResolver(&activation.Config{
+		Outbound: activation.NewOutbound(net.GetSeedClient()),
+		CacheTTL: 1 * time.Minute,
+	})
+
+	hostingManager := hosting.NewManager(&hosting.Config{
+		Logger:   config.Logger,
+		Outbound: hosting.NewOutbound(net.GetTransferer()),
+	})
+	hosting.SetupInbound(impl.logger, net.GetTransferer(), hostingManager)
+
+	impl.kvs = kvs.NewKVS(&kvs.Config{
+		Logger:             config.Logger,
+		EnableRaftLogging:  config.EnableRaftLogging,
+		Handler:            impl,
+		Outbound:           kvs.NewOutbound(net.GetTransferer()),
+		ConsensusOutbound:  consensus.NewOutbound(net.GetTransferer()),
+		ActivationResolver: activationResolver,
+		HostingManager:     hostingManager,
+		Observation:        observation,
+		Store:              config.KvsStore,
+	})
+	kvs.SetupInbound(impl.logger, net.GetTransferer(), impl.kvs)
 
 	impl.messaging = messaging.NewMessaging(&messaging.Config{
 		Logger:     config.Logger,
@@ -263,6 +327,7 @@ func (c *colonioImpl) Start(ctx context.Context) error {
 		return err
 	}
 
+	c.kvs.Start(c.ctx, c.localNodeID)
 	c.spread.Start(c.ctx, c.localNodeID)
 
 	return nil
@@ -277,7 +342,7 @@ func (c *colonioImpl) IsOnline() bool {
 }
 
 func (c *colonioImpl) IsStable() bool {
-	s, _ := c.network.GetStability()
+	s, _, _ := c.network.GetStability()
 	return s
 }
 
@@ -289,6 +354,28 @@ func (c *colonioImpl) UpdateLocalPosition(x, y float64) error {
 	position := geometry.NewCoordinate(x, y)
 	c.spread.UpdateLocalPosition(position)
 	return c.network.UpdateLocalPosition(position)
+}
+
+// kvs
+
+func (c *colonioImpl) KvsGetStability() (bool, []*types.NodeID, []*types.NodeID) {
+	return c.network.GetStability()
+}
+
+func (c *colonioImpl) KvsGet(key string) chan *kvsTypes.GetResult {
+	return c.kvs.Get(key)
+}
+
+func (c *colonioImpl) KvsSet(key string, value []byte) chan error {
+	return c.kvs.Set(key, value)
+}
+
+func (c *colonioImpl) KvsPatch(key string, value []byte) chan error {
+	return c.kvs.Patch(key, value)
+}
+
+func (c *colonioImpl) KvsDelete(key string) chan error {
+	return c.kvs.Delete(key)
 }
 
 // messaging
