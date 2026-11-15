@@ -62,6 +62,37 @@ message Import {
   repeated Record records = 1;
 }
 
+// SectorSnapshot is the replicated state of a sector after applying the log up
+// to the snapshot index. State that each replica keeps for its own role, such
+// as pending proposals, is not included.
+message SectorSnapshot {
+  // All records of the sector. A sector that is not active yet can hold
+  // records: a split imports them before it activates the sector.
+  repeated Import.Record records = 1;
+
+  // The tail of the range. Unset means that the sector is not active. Ignored
+  // when terminated is true.
+  colonio.v1alpha.NodeID tail = 2;
+
+  // The holder of the prepare_merge claim. Unset means that there is no claim.
+  colonio.v1alpha.NodeID merge_by = 3;
+
+  // A replica that applies a snapshot with terminated set is terminated too.
+  // A stopped replica does not create a snapshot, so this is never set.
+  bool terminated = 4;
+}
+
+// ConsensusSnapshot is stored in the data of a raft snapshot. It wraps the
+// state of the sector with the member table of the consensus layer, because
+// the conf state of raft carries only the raft IDs of the members.
+message ConsensusSnapshot {
+  // A serialized SectorSnapshot. The consensus layer does not parse it.
+  bytes sector_state = 1;
+
+  // The node ID of each member, keyed by its sector number.
+  map<uint64, colonio.v1alpha.NodeID> members = 2;
+}
+
 message Operation {
   enum Command {
     // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
