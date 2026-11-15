@@ -48,6 +48,10 @@ type Config struct {
 	HostingManager     *hosting.Manager
 	Observation        observation.Caller
 	Store              kvsTypes.Store
+
+	// See consensus.Config.
+	SnapshotCount          uint64
+	SnapshotCatchUpEntries uint64
 }
 
 type KVS struct {
@@ -62,6 +66,10 @@ type KVS struct {
 	observation        observation.Caller
 	store              kvsTypes.Store
 	localNodeID        *types.NodeID
+
+	snapshotCount          uint64
+	snapshotCatchUpEntries uint64
+
 	// mtx protects sectors, sectorTombstones, sectorUpdated.
 	// Lock order: hosting.Manager's lock may be held when acquiring k.mtx
 	// (Manager calls back into KVS), so never call into hostingManager
@@ -90,8 +98,12 @@ func NewKVS(conf *Config) *KVS {
 		hostingManager:     conf.HostingManager,
 		observation:        conf.Observation,
 		store:              conf.Store,
-		sectors:            make(map[kvsTypes.SectorKey]*sector.Sector),
-		sectorTombstones:   make(map[kvsTypes.SectorKey]time.Time),
+
+		snapshotCount:          conf.SnapshotCount,
+		snapshotCatchUpEntries: conf.SnapshotCatchUpEntries,
+
+		sectors:          make(map[kvsTypes.SectorKey]*sector.Sector),
+		sectorTombstones: make(map[kvsTypes.SectorKey]time.Time),
 	}
 
 	if conf.EnableRaftLogging {
@@ -533,6 +545,9 @@ func (k *KVS) allocateSector(
 		Members:    members,
 		Store:      k.store,
 		Head:       head,
+
+		SnapshotCount:          k.snapshotCount,
+		SnapshotCatchUpEntries: k.snapshotCatchUpEntries,
 	})
 
 	k.sectors[*sectorKey] = s

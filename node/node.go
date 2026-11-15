@@ -93,6 +93,15 @@ type Config struct {
 	// KvsStore is an actual data store for KVS.
 	KvsStore kvsTypes.Store
 
+	// KvsSnapshotCount is the number of log entries a KVS sector applies
+	// before it takes a snapshot and drops the entries from memory.
+	// KvsSnapshotCatchUpEntries is the number of the latest entries it keeps
+	// then, so that a member slightly behind can catch up without receiving
+	// the whole snapshot. If you set 0, the default value (1000 and 100) will
+	// be set.
+	KvsSnapshotCount          uint64
+	KvsSnapshotCatchUpEntries uint64
+
 	// CacheLifetime is the lifetime of the cache. The spread algorithm is
 	// so simple that the same packet may be received multiple times;
 	// if the same packet is received within the cache lifetime, it can be suppressed
@@ -157,6 +166,15 @@ func WithPlaneGeometry(xMin, xMax, yMin, yMax float64) ConfigSetter {
 func WithKvsStore(store kvsTypes.Store) ConfigSetter {
 	return func(c *Config) {
 		c.KvsStore = store
+	}
+}
+
+// WithKvsSnapshot sets when a KVS sector takes a snapshot. See
+// Config.KvsSnapshotCount and Config.KvsSnapshotCatchUpEntries.
+func WithKvsSnapshot(count, catchUpEntries uint64) ConfigSetter {
+	return func(c *Config) {
+		c.KvsSnapshotCount = count
+		c.KvsSnapshotCatchUpEntries = catchUpEntries
 	}
 }
 
@@ -295,6 +313,9 @@ func NewNode(setters ...ConfigSetter) (Node, error) {
 		HostingManager:     hostingManager,
 		Observation:        observation,
 		Store:              config.KvsStore,
+
+		SnapshotCount:          config.KvsSnapshotCount,
+		SnapshotCatchUpEntries: config.KvsSnapshotCatchUpEntries,
 	})
 	kvs.SetupInbound(impl.logger, net.GetTransferer(), impl.kvs)
 
