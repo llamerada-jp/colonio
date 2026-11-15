@@ -371,22 +371,36 @@ func (s *Sector) Extend(newTail types.NodeID) error {
 	return nil
 }
 
+// Migrate copies the records of the range that a split hands over into the
+// sector of the frontward node. The sector rejects writes to that range from
+// here until the split ends: until this fails, or until PreCommitSplit
+// returns.
 func (s *Sector) Migrate(to *Sector) error {
 	splittingAddress := to.GetHeadAddress()
 	s.operator.SetSplitting(splittingAddress)
 
 	records, err := s.operator.ExportRecords(splittingAddress, s.GetTailAddress())
 	if err != nil {
+		s.operator.SetSplitting(nil)
 		return fmt.Errorf("failed to export records: %w", err)
 	}
 
-	return to.Import(records)
+	if err := to.Import(records); err != nil {
+		s.operator.SetSplitting(nil)
+		return err
+	}
+	return nil
 }
 
 func (s *Sector) PreCommitSplit(frontwardNodeID *types.NodeID) error {
 	if !s.isHosting {
 		panic("only host sector can be extended")
 	}
+
+	// The split ends here for this sector: either the range has shrunk, or
+	// the caller aborts the split and the range stays. Accept writes to
+	// whatever the range is from now on.
+	defer s.operator.SetSplitting(nil)
 
 	s.mtx.Lock()
 	// Check the claim before proposing: the caller aborts the split on an

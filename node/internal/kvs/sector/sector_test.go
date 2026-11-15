@@ -17,6 +17,7 @@ package sector
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync"
@@ -959,4 +960,76 @@ func TestSector_operations_rejectedWhileMergePrepared(t *testing.T) {
 		},
 	}))
 	require.NoError(t, operator.Set("key2", []byte("value2")))
+}
+
+// findKeyBetween returns a key whose hash is in [from, to).
+func findKeyBetween(t *testing.T, from, to *types.NodeID) string {
+	t.Helper()
+	for i := 0; i < 100000; i++ {
+		key := fmt.Sprintf("key-%d", i)
+		if types.NewHashedNodeID([]byte(key)).IsBetween(from, to) {
+			return key
+		}
+	}
+	require.FailNow(t, "no key found in the range")
+	return ""
+}
+
+// TestSector_split_acceptsWritesAfterward covers the end of a split. While
+// the split exports a range, the sector rejects writes to it. It must accept
+// them again when the split is over: when the split is aborted and the range
+// stays, and when the range comes back later by an extension.
+func TestSector_split_acceptsWritesAfterward(t *testing.T) {
+	tests := []struct {
+		name string
+		// split runs the split on s, toward the sector `to` of the frontward
+		// node, and brings the whole range back to s.
+		split func(t *testing.T, s, to *Sector, tail *types.NodeID)
+	}{
+		{
+			// `to` is not started, so the import into it times out.
+			name: "the migration fails",
+			split: func(t *testing.T, s, to *Sector, tail *types.NodeID) {
+				to.proposalWaitTimeout = 500 * time.Millisecond
+				require.ErrorIs(t, s.Migrate(to), ErrProposalTimeout)
+			},
+		},
+		{
+			name: "the split shrinks the range, and the range is extended back",
+			split: func(t *testing.T, s, to *Sector, tail *types.NodeID) {
+				s.operator.SetSplitting(to.GetHeadAddress())
+				require.NoError(t, s.PreCommitSplit(to.GetHeadAddress()))
+				require.NoError(t, s.Extend(*tail))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			nodeIDs := testUtil.UniqueNodeIDsInRingOrder(3)
+			localNodeID, frontwardNodeID, tail := nodeIDs[0], nodeIDs[1], nodeIDs[2]
+			movedKey := findKeyBetween(t, frontwardNodeID, tail)
+
+			s := newTestSector(t, ctx, localNodeID, &sectorHandlerHelper{}, map[kvsTypes.SectorNo]*types.NodeID{
+				kvsTypes.HostNodeSectorNo: localNodeID,
+			})
+			s.Start(ctx)
+			s.Activate(*tail)
+			require.Eventually(t, func() bool {
+				return s.GetTailAddress() != nil
+			}, 10*time.Second, 100*time.Millisecond)
+
+			to := newTestSector(t, ctx, frontwardNodeID, &sectorHandlerHelper{}, map[kvsTypes.SectorNo]*types.NodeID{
+				kvsTypes.HostNodeSectorNo: frontwardNodeID,
+			})
+
+			tt.split(t, s, to, tail)
+			require.True(t, tail.Equal(s.GetTailAddress()))
+
+			require.NoError(t, s.GetOperator().Set(movedKey, []byte("value")))
+		})
+	}
 }
