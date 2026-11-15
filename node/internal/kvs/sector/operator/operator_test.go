@@ -352,3 +352,45 @@ func TestOperator_setSplittingWaitsForPending(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, map[string][]byte{movedKey: []byte("value")}, records)
 }
+
+// TestOperator_setSplittingIgnoresLaterWrites covers the writes accepted
+// after a split started. They are out of the range that the split exports,
+// so SetSplitting must not wait for them: a sector that is written all the
+// time would otherwise hold every split for the whole timeout.
+func TestOperator_setSplittingIgnoresLaterWrites(t *testing.T) {
+	o, proposals := newPendingOperator()
+	require.NoError(t, o.SetRange(*testHead))
+	movedKey := findKey(t, testMiddle, testHead)
+	keptKey := findKey(t, testHead, testMiddle)
+
+	movedResult := make(chan error, 1)
+	go func() { movedResult <- o.Set(movedKey, []byte("value")) }()
+	movedOperation := <-proposals
+
+	returned := make(chan struct{})
+	go func() {
+		o.SetSplitting(testMiddle)
+		close(returned)
+	}()
+	require.Eventually(t, func() bool {
+		o.mtx.RLock()
+		defer o.mtx.RUnlock()
+		return o.splittingAddress != nil
+	}, 5*time.Second, time.Millisecond)
+
+	// a write accepted after the split started, and still pending
+	keptResult := make(chan error, 1)
+	go func() { keptResult <- o.Set(keptKey, []byte("value")) }()
+	keptOperation := <-proposals
+
+	require.NoError(t, o.ApplyProposal(movedOperation))
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "SetSplitting waited for a write accepted after it")
+	}
+
+	require.NoError(t, o.ApplyProposal(keptOperation))
+	require.NoError(t, <-movedResult)
+	require.NoError(t, <-keptResult)
+}

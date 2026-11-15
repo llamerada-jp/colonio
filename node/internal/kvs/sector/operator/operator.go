@@ -18,6 +18,7 @@ package operator
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -237,12 +238,17 @@ func (s *Operator) ClearRange() {
 // SetSplitting makes the sector reject writes to the range from address to
 // the tail, which a split is about to export, and waits for the writes that
 // were accepted before. A write applied after the export would be dropped
-// when the split shrinks the range, although it was acknowledged. The wait
-// ends after operationTimeout, by when every accepted write has returned.
-// A nil address stops the rejection.
+// when the split shrinks the range, although it was acknowledged. Writes
+// accepted from here on are out of that range, so it does not wait for them.
+// The wait ends after operationTimeout, by when every accepted write has
+// returned. A nil address stops the rejection.
 func (s *Operator) SetSplitting(address *types.NodeID) {
 	s.mtx.Lock()
 	s.splittingAddress = address
+	pending := make([]uint32, 0, len(s.waiters))
+	for operationID := range s.waiters {
+		pending = append(pending, operationID)
+	}
 	s.mtx.Unlock()
 
 	if address == nil {
@@ -250,14 +256,15 @@ func (s *Operator) SetSplitting(address *types.NodeID) {
 	}
 
 	deadline := time.Now().Add(s.operationTimeout)
-	for {
-		s.mtx.RLock()
-		pending := len(s.waiters)
-		s.mtx.RUnlock()
-		if pending == 0 || time.Now().After(deadline) {
-			return
-		}
+	for len(pending) != 0 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
+
+		s.mtx.RLock()
+		pending = slices.DeleteFunc(pending, func(operationID uint32) bool {
+			_, waiting := s.waiters[operationID]
+			return !waiting
+		})
+		s.mtx.RUnlock()
 	}
 }
 
