@@ -53,6 +53,12 @@ spec/kvs/
   KvsSectorMergeLockSafetyMC.tla # Phase 3 (誤検知 safety) パラメータ
   KvsSectorMergeLockSafety.cfg  # Phase 3 TLC 設定 (safety のみ)
 
+  KvsSectorLeftover.tla         # leftover セクター + tail 切り詰め activation 版
+  KvsSectorLeftoverMC.tla       # 同モデルパラメータ (Phase L1/L2 は定数を切替)
+  KvsSectorLeftover.cfg         # 同 TLC 設定 (liveness 含む)
+  KvsSectorLeftoverSafetyMC.tla # Phase L3 (誤検知 safety) パラメータ
+  KvsSectorLeftoverSafety.cfg   # Phase L3 TLC 設定 (safety のみ)
+
   README.md                # このファイル
 ```
 
@@ -73,8 +79,11 @@ spec/kvs/
 | `ProposeMerge(n)`      | `mergeSector()` の ProposeMerge (Raft 版のみ) |
 | `CommitMerge(n)`       | `mergeSector()` の CommitMerge (Raft 版のみ) |
 | `AbortProposal(n)`     | 提案対象が離脱した場合のキャンセル (Raft 版のみ) |
-| `mergeLock[fs]`        | `Sector.mergeBy` (MergeLock 版のみ) |
-| `ReleaseMergeLock(fs)` | `Sector.checkMergeRelease` → ReleaseMerge 提案 (MergeLock 版のみ) |
+| `mergeLock[fs]`        | `Sector.mergeBy` (MergeLock 版以降) |
+| `ReleaseMergeLock(fs)` | `Sector.checkMergeRelease` → ReleaseMerge 提案 (MergeLock 版以降) |
+| `state[n] = "leftover"` | host 死亡後もレプリカ群が保持する active セクター (Leftover 版のみ) |
+| `CommitActivate` の blockers / 切り詰め | `activateHostingSector` の overlap ガードと clipped tail (Leftover 版のみ) |
+| `LeftoverQuorumLoss(h)` | leftover レプリカの quorum 喪失 → `checkQuorumLoss` のローカル破棄 (Leftover 版のみ) |
 | `Join(n)`              | `hostingManager.ManageMember` がメンバー追加 |
 | `Leave(n)`             | `hostingManager.ManageMember` がメンバー削除 |
 | `RefreshRView(n)`      | routing / gossip の近傍情報伝播 |
@@ -176,6 +185,13 @@ java -jar tla2tools.jar -workers auto -config KvsSectorRaft.cfg KvsSectorRaftMC.
 java -jar tla2tools.jar -workers auto -config KvsSectorMergeLock.cfg KvsSectorMergeLockMC.tla
 # Phase 3 (誤検知 safety)
 java -jar tla2tools.jar -workers auto -config KvsSectorMergeLockSafety.cfg KvsSectorMergeLockSafetyMC.tla
+
+# leftover セクター + tail 切り詰め activation 版 (run 13 対策の検証)
+# Phase L2 (修正確認, デフォルト設定)。Phase L1 (バグ再現) は
+# KvsSectorLeftoverMC.tla の MC_ClipActivationTail を FALSE にして実行
+java -jar tla2tools.jar -workers auto -config KvsSectorLeftover.cfg KvsSectorLeftoverMC.tla
+# Phase L3 (誤検知 safety)
+java -jar tla2tools.jar -workers auto -config KvsSectorLeftoverSafety.cfg KvsSectorLeftoverSafetyMC.tla
 ```
 
 ## パラメータ調整
@@ -297,8 +313,9 @@ MC_MaxChurn       == 1
 - `s.mtx` 保持中に KVS/Manager へコールバックしない（Terminate はロック解放後に通知）
 
 回帰テスト: `node/internal/kvs/kvs_test.go` の
-`TestKVS_sectorActivate_completes` / `TestKVS_activateHostingSector_singleNode` /
-`TestKVS_sectorActivate_ignoresInactiveSectorBetween`。
+`TestKVS_sectorActivate`（テーブル形式。「completes without obstruction」/
+「ignores inactive replica between local and frontward」）/
+`TestKVS_activateHostingSector_singleNode`。
 
 ### シミュレータ解析からの追加知見（231 ノード・ランダム停止、simulator/dump.json）
 
@@ -586,6 +603,12 @@ Go 実装（いずれも 2026-07-06、詳細は run 8〜10 のセクション参
       バグ再現 (Phase 1 liveness 違反) → ReleaseMerge で回復 (Phase 2) →
       誤検知 safety (Phase 3) を検証したうえで、ReleaseMerge 提案 +
       mergeReleaseDuration ゲートを Go 実装。run 11 (A) の恒久停止を解消）
+- [x] **leftover 循環待ちの解消 = activation の tail 切り詰め**
+      （`KvsSectorLeftover.tla` で leftover をモデル化してバグ再現
+      (Phase L1: 3 liveness 違反) → ClipActivationTail で回復 (Phase L2、
+      EventuallyNoLeftover 含む) → 誤検知 release 併発 safety (Phase L3) を
+      検証したうえで、activateHostingSector の skip 1 を切り詰め activate に
+      変更。run 13 の 14 分 yellow / run 11 の同型を解消。分岐表に行を追加）
 - [x] **disconnect 経路の na.mtx 保持解消**（run 12 の zombie 連鎖の根源。
       モデルのスコープ外、回帰テストで担保）
 
@@ -609,6 +632,7 @@ kvs ブランチへの移植時に追加したもの（kvs-ai にはない）:
 | 項目 | 種別 | 参照 |
 |------|------|------|
 | ~~disconnect 経路の na.mtx 保持解消~~ → **対策済み (2026-07-10)**。残候補: connect() 内 newNodeLink の pion 初期化が na.mtx 下 | Go 実装 (node) | run 12 の対策 |
+| ~~leftover 循環待ち（inactive host + 範囲内 active leftover でチェーン恒久停止）~~ → **対策済み (2026-07-10)** | 設計 + Go + モデル | run 13 の対策 |
 | TODO-1: quorum 喪失の拡張モデル（LocalDestroy の safety 検証） | モデル | 下表 |
 | TODO-2: stale active レプリカのガード緩和検証 | モデル | 下表 |
 | snapshot の本実装（operator serialize + appliedIndex + トリガ。ログ無限成長対策と表裏一体） | Go 実装 | run6 の残課題 |
@@ -1316,6 +1340,82 @@ na.mtx を凍結させ、zombie 連鎖（run 12: 10 ノード）の根源にな�
   内の `newNodeLink` は pion の ICE agent / mDNS 初期化を含む。run 12 の
   gdump に該当スタックが見えたがブロックの確証はない。zombie が再発する
   場合はここを疑う。
+
+#### シミュレーション run 13（180 ノード・18 分・生存最長 20 分、2026-07-10）: leftover 循環待ち
+
+mergeBy 解放 (run 11 対策) と disconnect 経路修正 (run 12 対策、上記) の後の
+確認 run。**zombie は 0 件** (disconnect 修正が有効)、全体は緑 160〜177/182 で
+run 12 のような劣化ウィンドウなし。merge 競合は 1 系統のみで run 終了 24 秒前
+開始のため release ゲート (30s) 発火前に run 終了 (設計どおり)。skip 2 は
+2 件に激減。
+
+**残った未 activate (sector 019f4a85-b850, host b8901da5, 14 分 yellow)**:
+
+1. host ba82438a が 05:36:29 に churn で死亡。その active セクター
+   019f4a83-0766 [ba82438a, bc02dbb1) が **leftover** (レプリカ群は quorum
+   健全) として約 13 分残留。生存時間を 20 分に延ばしたことで leftover の
+   自然消滅 (メンバー全滅) も遅くなり顕在化しやすくなった。
+2. backward の b8901da5 (inactive) は sectorActivate を 611 回受信したが、
+   leftover が (自分, frontward) 内にあるため overlap ガード「skip 1」で
+   569 回拒否。
+3. **循環待ち**: leftover を merge で掃除できるのは隣接する active セクター
+   だけだが、その位置にいる b8901da5 は inactive で merge 経路を実行できない。
+   さらに後方の active node はより近い b8901da5 の inactive セクターしか
+   見ない。「activate は leftover が邪魔で不可、leftover の掃除は active
+   でないと不可」のデッドロック。分岐表に該当行が存在しなかった。
+   run 11 でも同型を観測 (当時は偶然の join で解消)。
+
+#### leftover 循環待ちの対策: tail 切り詰め activation（2026-07-10、モデル検証 → Go 実装）
+
+**モデル**: `KvsSectorLeftover.tla`（MergeLock 版のコピー派生）。従来モデルは
+sector = node の抽象化のため「node は死んだが sector は残る」leftover を
+表現できず、Go の skip 1 ガード自体もモデル化されていなかった。差分:
+
+- `state[n]` に `"leftover"` を追加し、**Members（routing に見えるノード）/
+  Actives（active な member = seed の EntireState の見え方）/
+  ActiveSectors（leftover を含むセクター head、overlap 判定用）を分離**。
+  leftover は rView から消えて sActives に残る = Go の「sector store には
+  見えるが routing にはいない」状態の写像。
+- `LeaveLeftover(n)`: active ノードがセクターを残して離脱（発火条件は
+  「他に member が 2 つ以上 (うち active が 1 つ以上)」= レプリカ quorum が
+  host 抜きで維持できる状況の抽象化）。leftover の自然消滅は
+  `LeftoverQuorumLoss`（member が 1 つ以下に減った場合のみ、WF 付き =
+  checkQuorumLoss の写像）だけに限定し、「quorum 健全な leftover は修復機構
+  自身が吸収しなければならない」という liveness を検証対象にした。
+- `CommitActivate` / `ActivateFirst` に Go の overlap ガード（skip 1）を
+  忠実に追加し、修正本体を `ClipActivationTail` 定数でゲート:
+  skip する代わりに **tail を範囲内最近傍の active head に切り詰めて
+  activate** する。
+
+モデル作成過程で 2 つの意味論バグを踏んで修正した点も記録しておく:
+(1) 生存 member 1 つ + leftover の組は merge の幾何条件 (`v # n`) が
+構造的に満たせない — 実機では quorum 喪失 → LocalDestroy の領域なので
+`LeftoverQuorumLoss` として明示。(2) `anyActive` が leftover を数えると
+「active member 全滅 + leftover 残存」で ActivateFirst が封じられ spurious
+violation になる — Go の seed EntireState は生きているノードの hosting
+セクター報告から作られるため leftover を含まない (`Actives` を追跡)。
+
+**検証結果**（N=4, InitialMembers={0,1,2,3}, MaxChurn=3, 24 workers）:
+
+| Phase | 設定 | 結果 |
+|-------|------|------|
+| L1: バグ再現 | ClipActivationTail=FALSE | **EventuallyAllActive / EventuallyFullCoverage / EventuallyNoLeftover 違反**（68 秒）。counterexample は「1 が active 化 → 1 が 2 を activate → LeaveLeftover で 1 が leftover 化 …」run 13 と同型の循環待ち |
+| L2: 修正確認 | ClipActivationTail=TRUE | **全 safety + 全 liveness 成立**（6 分 53 秒、2,906 万状態生成 / 326 万 distinct、深さ 30）。leftover は必ず merge で吸収される (EventuallyNoLeftover) |
+| L3: 誤検知 safety | +PermissiveRelease=TRUE (safety のみ) | **全 invariant 成立**（44 秒、3,365 万状態生成 / 368 万 distinct）。切り詰め activation と無条件 lock 解放が併発しても safety 維持 |
+
+**Go 実装**（`activateHostingSector` の tail 決定のみ、新アクションなし）:
+
+- skip 1 で nil を返す代わりに、(local, frontwardNodeID) 内の**最近傍の
+  active head を blocker として tail に採用**する。
+  [local, blocker) は重複を生まず、active になったセクターが通常の merge
+  （ReleaseMerge backstop 込み）で leftover を吸収して tail が伸びる。
+  blocker がある場合は frontward セクターの replica candidate も不要に
+  なるため、skip 2 の一部も同時に解消される。
+- 回帰テスト `TestKVS_sectorActivate` のケース「clips the tail at an active
+  replica between local and frontward」（dead host の ACTIVE レプリカを
+  ConsensusApplyProposal で再現し、activation の tail が leftover head に
+  切り詰められることを検証）。修正前コードで失敗（activation が skip され
+  続けて timeout）することを確認済み。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加
