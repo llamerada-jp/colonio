@@ -72,12 +72,15 @@ type Node struct {
 	Record   RecordInterface
 
 	seedURL string
+	options []colonioNode.ConfigSetter
 	writer  *datastore.Writer
 	handler *Handler
 	mtx     sync.Mutex
 }
 
-func NewNode(logger *slog.Logger, seedURL string, writer *datastore.Writer, handler *Handler, record RecordInterface, region *utils.Region) (*Node, error) {
+// NewNode creates a node of the simulation. options are passed to the colonio
+// node in addition to those the simulation sets.
+func NewNode(logger *slog.Logger, seedURL string, writer *datastore.Writer, handler *Handler, record RecordInterface, region *utils.Region, options ...colonioNode.ConfigSetter) (*Node, error) {
 	r := record.GetRecord()
 	r.ConnectedNodeIDs = make([]string, 0)
 	r.RequiredNodeIDs1D = make([]string, 0)
@@ -90,6 +93,7 @@ func NewNode(logger *slog.Logger, seedURL string, writer *datastore.Writer, hand
 		Position: utils.NewPosition(region),
 		Record:   record,
 		seedURL:  seedURL,
+		options:  options,
 		writer:   writer,
 		handler:  handler,
 	}
@@ -152,8 +156,7 @@ func (n *Node) Write(f func() error) {
 func (n *Node) renewColonio() error {
 	r := n.Record.GetRecord()
 
-	var err error
-	n.Col, err = colonioNode.NewNode(
+	options := []colonioNode.ConfigSetter{
 		colonioNode.WithLogger(n.Logger),
 		colonioNode.WithHttpClient(util.NewInsecureHttpClient()),
 		colonioNode.WithSeedURL(n.seedURL),
@@ -194,7 +197,11 @@ func (n *Node) renewColonio() error {
 			},
 		}),
 		colonioNode.WithSphereGeometry(6378137.0),
-	)
+	}
+	options = append(options, n.options...)
+
+	var err error
+	n.Col, err = colonioNode.NewNode(options...)
 	if err != nil {
 		return err
 	}
