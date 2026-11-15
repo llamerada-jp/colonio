@@ -76,7 +76,11 @@ func NewSeed(optionSetters ...optionSetter) *Seed {
 	options := &options{
 		logger:         slog.Default(),
 		normalLifespan: 30 * time.Minute,
-		shortLifespan:  10 * time.Second,
+		// shortLifespan must be longer than the time a node needs to call
+		// Keepalive again after a challenge, including one retry after an
+		// error: a node whose lifespan expires is unassigned and cannot
+		// recover its session.
+		shortLifespan: 30 * time.Second,
 	}
 
 	for _, setter := range optionSetters {
