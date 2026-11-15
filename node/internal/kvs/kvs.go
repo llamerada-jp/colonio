@@ -861,6 +861,9 @@ func (k *KVS) activateHostingSector(hostingSector *sector.Sector, frontwardNextN
 		}
 
 		var candidate *sector.Sector
+		// blocker is the nearest head of an active sector between the local
+		// node and the frontward node.
+		var blocker *types.NodeID
 		frontwardNodeID := frontwardNextNodeIDs[0]
 		for sectorKey, sector := range k.sectors {
 			sectorHead := sector.GetHeadAddress()
@@ -873,12 +876,21 @@ func (k *KVS) activateHostingSector(hostingSector *sector.Sector, frontwardNextN
 				}
 			}
 
-			// Overlap guard: only ACTIVE sectors count here. Inactive replicas of
-			// departed nodes can stay in k.sectors for a while, and counting them
-			// too would block activation forever, since nothing else clears them.
+			// Only ACTIVE sectors count here. Inactive replicas of departed
+			// nodes can stay in k.sectors for a while and overlap nothing.
 			if sectorHead.IsBetween(k.localNodeID, frontwardNodeID) && sector.GetTailAddress() != nil {
-				return nil
+				if blocker == nil || sectorHead.IsBetween(k.localNodeID, blocker) {
+					blocker = sectorHead
+				}
 			}
+		}
+		// An active sector in between is typically left by a stopped host and
+		// kept alive by its replica group. Only this hosting sector can merge
+		// it away, and only once active, so waiting for it to go would wait
+		// forever. Activate up to its head instead: that range overlaps no
+		// active sector known here, and the merge then extends the tail.
+		if blocker != nil {
+			return blocker
 		}
 		if candidate == nil {
 			return nil

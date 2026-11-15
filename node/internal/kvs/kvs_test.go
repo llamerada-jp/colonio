@@ -150,6 +150,8 @@ func TestKVS_sectorActivate(t *testing.T) {
 		// registerDeadReplica adds an inactive sector replica (head between
 		// local and frontward) before triggering activation.
 		registerDeadReplica bool
+		// activateDeadReplica makes that replica active.
+		activateDeadReplica bool
 	}{
 		{
 			// Both the inbound sector-activate handler and
@@ -165,6 +167,15 @@ func TestKVS_sectorActivate(t *testing.T) {
 			// ActivateFrontward guard quantifies over Actives only).
 			name:                "ignores inactive replica between local and frontward",
 			registerDeadReplica: true,
+		},
+		{
+			// The active sector of a stopped host survives while its replica
+			// group keeps quorum. Only the local hosting sector can merge it
+			// away, and only once active, so the activation must not wait
+			// for it to go: it stops at the head of that sector instead.
+			name:                "clips the tail at an active replica between local and frontward",
+			registerDeadReplica: true,
+			activateDeadReplica: true,
 		},
 	}
 
@@ -189,21 +200,38 @@ func TestKVS_sectorActivate(t *testing.T) {
 			k := newTestKVS(t, ctx, localNodeID, handler)
 			hostingSectorKey := setupHostingSector(t, k)
 
+			wantTail := frontwardNodeID
 			if tt.registerDeadReplica {
 				// inactive replica left behind by the dead node
+				deadSectorKey := kvsTypes.SectorKey{
+					SectorID: kvsTypes.SectorID(uuid.New()),
+					SectorNo: kvsTypes.SectorNo(2),
+				}
 				err := k.sectorManageMember(&sectorManageMemberParam{
-					command: proto.SectorManageMember_COMMAND_CREATE,
-					sectorKey: kvsTypes.SectorKey{
-						SectorID: kvsTypes.SectorID(uuid.New()),
-						SectorNo: kvsTypes.SectorNo(2),
-					},
-					head: deadNodeID,
+					command:   proto.SectorManageMember_COMMAND_CREATE,
+					sectorKey: deadSectorKey,
+					head:      deadNodeID,
 					members: map[kvsTypes.SectorNo]*types.NodeID{
 						kvsTypes.HostNodeSectorNo: deadNodeID,
 						kvsTypes.SectorNo(2):      localNodeID,
 					},
 				})
 				require.NoError(t, err)
+
+				if tt.activateDeadReplica {
+					// The Raft group of the replica never gets quorum here, so
+					// apply the Activate as a member would after its commit.
+					k.mtx.RLock()
+					deadSector := k.sectors[deadSectorKey]
+					k.mtx.RUnlock()
+					require.NotNil(t, deadSector)
+					require.NoError(t, deadSector.ConsensusApplyProposal(&proto.ConsensusProposal{
+						Content: &proto.ConsensusProposal_Activate{
+							Activate: &proto.Activate{Tail: frontwardNodeID.Proto()},
+						},
+					}))
+					wantTail = deadNodeID
+				}
 			}
 
 			// Register the frontward node's sector replica, which is the
@@ -237,15 +265,14 @@ func TestKVS_sectorActivate(t *testing.T) {
 			}
 
 			// The activation proposal must be committed and the hosting
-			// sector must become active with the frontward node as its
-			// tail.
+			// sector must become active with the expected tail.
 			k.mtx.RLock()
 			hostingSector := k.sectors[*hostingSectorKey]
 			k.mtx.RUnlock()
 			require.NotNil(t, hostingSector)
 			require.Eventually(t, func() bool {
 				tail := hostingSector.GetTailAddress()
-				return tail != nil && tail.Equal(frontwardNodeID)
+				return tail != nil && tail.Equal(wantTail)
 			}, 15*time.Second, 100*time.Millisecond)
 		})
 	}
