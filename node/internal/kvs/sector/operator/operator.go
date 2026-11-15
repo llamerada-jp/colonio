@@ -165,10 +165,39 @@ func (s *Operator) ImportRecords(records map[string][]byte) error {
 	return nil
 }
 
-func (s *Operator) ExportSnapshot() ([]byte, error) {
-	panic("exportSnapshot not implemented")
+// ExportAllRecords returns every record of the sector, whatever its range. A
+// sector that is not active yet has no range but can hold records.
+func (s *Operator) ExportAllRecords() (map[string][]byte, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	records := make(map[string][]byte)
+
+	for key := range s.keys {
+		value, err := s.store.Get(&s.sectorKey, key)
+		if err != nil {
+			return nil, err
+		}
+		records[key] = value
+	}
+
+	return records, nil
 }
 
-func (s *Operator) ImportSnapshot(data []byte) error {
-	panic("importSnapshot not implemented")
+// ReplaceRecords makes records the whole content of the sector. Unlike
+// ImportRecords, it forgets the keys that are not in records. The caller must
+// empty the store sector before calling this.
+func (s *Operator) ReplaceRecords(records map[string][]byte) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	s.keys = make(map[string]any)
+	for key, value := range records {
+		if err := s.store.Set(&s.sectorKey, key, value); err != nil {
+			return err
+		}
+		s.keys[key] = struct{}{}
+	}
+
+	return nil
 }

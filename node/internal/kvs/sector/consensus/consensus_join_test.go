@@ -36,6 +36,10 @@ type joinTestCluster struct {
 	t        *testing.T
 	sectorID kvsTypes.SectorID
 	nodeIDs  map[kvsTypes.SectorNo]*types.NodeID
+	// snapshotCount and snapshotCatchUpEntries are passed to the members
+	// started after they are set.
+	snapshotCount          uint64
+	snapshotCatchUpEntries uint64
 
 	mtx         sync.Mutex
 	consensuses map[kvsTypes.SectorNo]*Consensus
@@ -121,6 +125,9 @@ func (c *joinTestCluster) startConsensus(sectorNo kvsTypes.SectorNo, join bool, 
 		},
 		Join:    join,
 		Members: members,
+
+		SnapshotCount:          c.snapshotCount,
+		SnapshotCatchUpEntries: c.snapshotCatchUpEntries,
 	})
 	cons.Start(c.t.Context())
 	c.t.Cleanup(cons.Stop)
@@ -142,6 +149,12 @@ func (c *joinTestCluster) appendedCount(observer, member kvsTypes.SectorNo) int 
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	return c.appended[observer][member]
+}
+
+func (c *joinTestCluster) appliedSnapshotCount(sectorNo kvsTypes.SectorNo) int {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	return c.snapshots[sectorNo]
 }
 
 func activateProposal(nodeID *types.NodeID) *proto.ConsensusProposal {
@@ -388,6 +401,71 @@ func TestConsensus_snapshotUnavailable(t *testing.T) {
 	time.Sleep(2 * time.Second)
 	require.Equal(t, 0, cluster.appliedCount(no2))
 	require.Len(t, c1.Status().Config.Learners, 1)
+}
+
+// TestConsensus_joinCatchesUpViaSnapshot covers snapshots end to end. Once
+// enough entries are applied, the leader creates a snapshot and drops the head
+// of its log. A member that joins after that cannot replay the log from the
+// head: it must receive the snapshot, be promoted, and apply the later
+// proposals.
+func TestConsensus_joinCatchesUpViaSnapshot(t *testing.T) {
+	cluster := newJoinTestCluster(t)
+	cluster.snapshotCount = 10
+	cluster.snapshotCatchUpEntries = 5
+
+	no1 := kvsTypes.SectorNo(1)
+	no2 := kvsTypes.SectorNo(2)
+
+	ids := testUtil.UniqueNodeIDs(2)
+	cluster.nodeIDs[no1] = ids[0]
+	cluster.nodeIDs[no2] = ids[1]
+
+	c1 := cluster.startConsensus(no1, false, map[kvsTypes.SectorNo]*types.NodeID{
+		no1: cluster.nodeIDs[no1],
+	})
+	require.Eventually(t, func() bool {
+		return c1.Status().Lead != 0
+	}, 10*time.Second, 100*time.Millisecond)
+
+	for range 15 {
+		c1.Propose(activateProposal(cluster.nodeIDs[no1]))
+	}
+	require.Eventually(t, func() bool {
+		return cluster.appliedCount(no1) >= 15
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// the leader has a snapshot and no longer has the head of the log
+	require.Eventually(t, func() bool {
+		snapshot, err := c1.raftStorage.Snapshot()
+		if err != nil || raft.IsEmptySnap(snapshot) {
+			return false
+		}
+		firstIndex, err := c1.raftStorage.FirstIndex()
+		return err == nil && firstIndex > 1
+	}, 10*time.Second, 100*time.Millisecond)
+
+	c1.AppendNode(no2, cluster.nodeIDs[no2])
+	c2 := cluster.startConsensus(no2, true, map[kvsTypes.SectorNo]*types.NodeID{
+		no1: cluster.nodeIDs[no1],
+		no2: cluster.nodeIDs[no2],
+	})
+
+	require.Eventually(t, func() bool {
+		return cluster.appliedSnapshotCount(no2) >= 1 && cluster.appendedCount(no1, no2) >= 1
+	}, 15*time.Second, 100*time.Millisecond)
+
+	c2.mtx.RLock()
+	member1 := c2.members[no1]
+	member2 := c2.members[no2]
+	c2.mtx.RUnlock()
+	require.True(t, member1 != nil && member1.Equal(cluster.nodeIDs[no1]))
+	require.True(t, member2 != nil && member2.Equal(cluster.nodeIDs[no2]))
+
+	before := cluster.appliedCount(no2)
+	c1.Propose(activateProposal(cluster.nodeIDs[no2]))
+	require.Eventually(t, func() bool {
+		return cluster.appliedCount(no2) > before
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 // TestConsensus_joinResolvesRemovedBootstrapMember covers a member that joins

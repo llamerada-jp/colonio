@@ -33,6 +33,7 @@ import (
 	networkTypes "github.com/llamerada-jp/colonio/types/network"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3"
+	proto3 "google.golang.org/protobuf/proto"
 )
 
 type emptyRaftLogger struct{}
@@ -105,8 +106,8 @@ func (h *sectorHandlerHelper) terminatedCount() int {
 }
 
 // storeHelper follows SimpleStore for sector allocation: allocating twice
-// and releasing a sector that was never allocated are errors. It also keeps
-// the values written with Set.
+// and releasing a sector that was never allocated are errors. It keeps the
+// records of one sector, and releasing the sector drops them.
 type storeHelper struct {
 	mtx       sync.Mutex
 	allocated map[kvsTypes.SectorKey]struct{}
@@ -135,11 +136,18 @@ func (s *storeHelper) ReleaseSector(sectorKey *kvsTypes.SectorKey) error {
 		return kvsTypes.ErrorStoreSectorNotFound
 	}
 	delete(s.allocated, *sectorKey)
+	s.values = nil
 	return nil
 }
 
 func (s *storeHelper) Get(sectorKey *kvsTypes.SectorKey, key string) ([]byte, error) {
-	return nil, kvsTypes.ErrorStoreKeyNotFound
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	value, exists := s.values[key]
+	if !exists {
+		return nil, kvsTypes.ErrorStoreKeyNotFound
+	}
+	return value, nil
 }
 func (s *storeHelper) Set(sectorKey *kvsTypes.SectorKey, key string, value []byte) error {
 	s.mtx.Lock()
@@ -162,7 +170,12 @@ func (s *storeHelper) value(key string) []byte {
 func (s *storeHelper) Patch(sectorKey *kvsTypes.SectorKey, key string, value []byte) error {
 	return nil
 }
-func (s *storeHelper) Delete(sectorKey *kvsTypes.SectorKey, key string) error { return nil }
+func (s *storeHelper) Delete(sectorKey *kvsTypes.SectorKey, key string) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	delete(s.values, key)
+	return nil
+}
 
 // newTestSector builds a hosting sector whose raft members are the local node
 // and the given peers. Peers other than the local node never run, so a sector
@@ -677,4 +690,185 @@ func TestSector_processReleaseMergeProposal(t *testing.T) {
 
 	require.NoError(t, s.processReleaseMergeProposal(&proto.ReleaseMerge{Handler: newHolderNodeID.Proto()}))
 	require.Nil(t, s.mergeBy)
+}
+
+func importProposal(records map[string][]byte) *proto.ConsensusProposal {
+	importing := &proto.Import{}
+	for key, value := range records {
+		importing.Records = append(importing.Records, &proto.Import_Record{Key: key, Value: value})
+	}
+	return &proto.ConsensusProposal{
+		Content: &proto.ConsensusProposal_Import{Import: importing},
+	}
+}
+
+func activateProposal(tail *types.NodeID) *proto.ConsensusProposal {
+	return &proto.ConsensusProposal{
+		Content: &proto.ConsensusProposal_Activate{
+			Activate: &proto.Activate{Tail: tail.Proto()},
+		},
+	}
+}
+
+func prepareMergeProposal(handler *types.NodeID) *proto.ConsensusProposal {
+	return &proto.ConsensusProposal{
+		Content: &proto.ConsensusProposal_PrepareMerge{
+			PrepareMerge: &proto.PrepareMerge{Handler: handler.Proto()},
+		},
+	}
+}
+
+// TestSector_snapshot covers a snapshot taken on one replica and applied on
+// another. The receiver must end up with the replicated state of the source,
+// and lose what it had that the source does not: a replica that fell behind
+// may hold records that the group has deleted since. The sectors are not
+// started: the test calls the handlers as the consensus loop would.
+func TestSector_snapshot(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDsInRingOrder(4)
+	localNodeID, staleTail, tail, mergeBy := nodeIDs[0], nodeIDs[1], nodeIDs[2], nodeIDs[3]
+
+	tests := []struct {
+		name string
+		// proposals are applied to the source before the snapshot is taken.
+		proposals     []*proto.ConsensusProposal
+		expectTail    *types.NodeID
+		expectMergeBy *types.NodeID
+		expectRecords map[string][]byte
+	}{
+		{
+			name: "active sector with records and a prepare_merge claim",
+			proposals: []*proto.ConsensusProposal{
+				activateProposal(tail),
+				importProposal(map[string][]byte{"key1": []byte("value1"), "key2": []byte("value2")}),
+				prepareMergeProposal(mergeBy),
+			},
+			expectTail:    tail,
+			expectMergeBy: mergeBy,
+			expectRecords: map[string][]byte{"key1": []byte("value1"), "key2": []byte("value2")},
+		},
+		{
+			// A split imports the records before it activates the sector.
+			name: "inactive sector with records",
+			proposals: []*proto.ConsensusProposal{
+				importProposal(map[string][]byte{"key1": []byte("value1")}),
+			},
+			expectRecords: map[string][]byte{"key1": []byte("value1")},
+		},
+		{
+			name:          "inactive sector without records",
+			expectRecords: map[string][]byte{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			members := map[kvsTypes.SectorNo]*types.NodeID{
+				kvsTypes.HostNodeSectorNo: localNodeID,
+			}
+
+			src := newTestSector(t, ctx, localNodeID, &sectorHandlerHelper{}, members)
+			for _, proposal := range tt.proposals {
+				require.NoError(t, src.ConsensusApplyProposal(proposal))
+			}
+			data, err := src.ConsensusGetSnapshot()
+			require.NoError(t, err)
+
+			// the receiver has a different state and a record of its own
+			dstHandler := &sectorHandlerHelper{}
+			dst := newTestSector(t, ctx, localNodeID, dstHandler, members)
+			require.NoError(t, dst.ConsensusApplyProposal(activateProposal(staleTail)))
+			require.NoError(t, dst.ConsensusApplyProposal(importProposal(map[string][]byte{"stale": []byte("value")})))
+			require.NoError(t, dst.ConsensusApplyProposal(prepareMergeProposal(localNodeID)))
+
+			// applying the same snapshot again must not change the result
+			for range 2 {
+				require.NoError(t, dst.ConsensusApplySnapshot(data))
+
+				if tt.expectTail == nil {
+					require.Nil(t, dst.GetTailAddress())
+				} else {
+					require.True(t, tt.expectTail.Equal(dst.GetTailAddress()))
+				}
+				dst.mtx.RLock()
+				if tt.expectMergeBy == nil {
+					require.Nil(t, dst.mergeBy)
+				} else {
+					require.True(t, tt.expectMergeBy.Equal(dst.mergeBy))
+				}
+				dst.mtx.RUnlock()
+
+				records, err := dst.operator.ExportAllRecords()
+				require.NoError(t, err)
+				require.Equal(t, tt.expectRecords, records)
+				require.Nil(t, dst.store.(*storeHelper).value("stale"))
+			}
+
+			// The receiver works on from the snapshot.
+			require.NoError(t, dst.ConsensusApplyProposal(importProposal(map[string][]byte{"later": []byte("value")})))
+			require.Equal(t, []byte("value"), dst.store.(*storeHelper).value("later"))
+			require.Empty(t, dstHandler.reportedErrors())
+		})
+	}
+}
+
+// TestSector_snapshot_stoppedSector covers snapshots and stopped replicas. A
+// replica can be destroyed locally, without raft, so its state is not what
+// the group agreed on: it must not create a snapshot. A stopped replica must
+// not be revived by a snapshot either.
+func TestSector_snapshot_stoppedSector(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID, tail := nodeIDs[0], nodeIDs[1]
+	members := map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	}
+
+	live := newTestSector(t, ctx, localNodeID, &sectorHandlerHelper{}, members)
+	require.NoError(t, live.ConsensusApplyProposal(activateProposal(tail)))
+	require.NoError(t, live.ConsensusApplyProposal(importProposal(map[string][]byte{"key": []byte("value")})))
+	data, err := live.ConsensusGetSnapshot()
+	require.NoError(t, err)
+
+	t.Run("a locally destroyed replica does not create a snapshot", func(t *testing.T) {
+		s := newTestSector(t, ctx, localNodeID, &sectorHandlerHelper{}, members)
+		require.NoError(t, s.ConsensusApplyProposal(activateProposal(tail)))
+		s.TerminateLocally()
+
+		_, err := s.ConsensusGetSnapshot()
+		require.ErrorIs(t, err, consensus.ErrSnapshotUnavailable)
+	})
+
+	t.Run("a snapshot does not revive a destroyed replica", func(t *testing.T) {
+		handler := &sectorHandlerHelper{}
+		s := newTestSector(t, ctx, localNodeID, handler, members)
+		s.TerminateLocally()
+
+		require.NoError(t, s.ConsensusApplySnapshot(data))
+		s.mtx.RLock()
+		require.True(t, s.terminated)
+		require.Nil(t, s.tail)
+		s.mtx.RUnlock()
+		require.Nil(t, s.store.(*storeHelper).value("key"))
+		require.Empty(t, handler.reportedErrors())
+	})
+
+	t.Run("a snapshot of a terminated sector terminates the replica", func(t *testing.T) {
+		handler := &sectorHandlerHelper{}
+		s := newTestSector(t, ctx, localNodeID, handler, members)
+		require.NoError(t, s.ConsensusApplyProposal(activateProposal(tail)))
+
+		terminated, err := proto3.Marshal(&proto.SectorSnapshot{Terminated: true})
+		require.NoError(t, err)
+		require.NoError(t, s.ConsensusApplySnapshot(terminated))
+		s.mtx.RLock()
+		require.True(t, s.terminated)
+		s.mtx.RUnlock()
+		require.Eventually(t, func() bool {
+			return handler.terminatedCount() == 1
+		}, 5*time.Second, 10*time.Millisecond)
+	})
 }

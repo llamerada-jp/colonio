@@ -510,7 +510,7 @@ func TestConsensus_publishEntries_continuesAfterApplyError(t *testing.T) {
 	}
 
 	entries := []raftpb.Entry{}
-	for _, id0 := range []uint64{1, 2} {
+	for index, id0 := range []uint64{1, 2} {
 		data, err := proto3.Marshal(&proto.ConsensusProposal{
 			Content: &proto.ConsensusProposal_Activate{
 				Activate: &proto.Activate{
@@ -519,11 +519,165 @@ func TestConsensus_publishEntries_continuesAfterApplyError(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		entries = append(entries, raftpb.Entry{Type: raftpb.EntryNormal, Data: data})
+		entries = append(entries, raftpb.Entry{Index: uint64(index + 1), Type: raftpb.EntryNormal, Data: data})
 	}
 
 	require.NoError(t, c.publishEntries(entries))
 	require.Equal(t, []string{"1", "2"}, applied)
+}
+
+// TestConsensus_publishEntries_appliedIndex covers how publishEntries follows
+// the applied index, which is where a snapshot is taken.
+func TestConsensus_publishEntries_appliedIndex(t *testing.T) {
+	proposalEntry := func(index uint64) raftpb.Entry {
+		data, err := proto3.Marshal(&proto.ConsensusProposal{
+			Content: &proto.ConsensusProposal_Activate{
+				Activate: &proto.Activate{
+					Tail: types.NewNormalNodeID(index, 0).Proto(),
+				},
+			},
+		})
+		require.NoError(t, err)
+		return raftpb.Entry{Index: index, Type: raftpb.EntryNormal, Data: data}
+	}
+
+	tests := []struct {
+		name         string
+		appliedIndex uint64
+		entries      []raftpb.Entry
+		expectError  bool
+		// expectApplied is the id0 of the tails of the applied proposals.
+		expectApplied      []uint64
+		expectAppliedIndex uint64
+	}{
+		{
+			name:               "applies a batch that continues from the applied index",
+			appliedIndex:       2,
+			entries:            []raftpb.Entry{proposalEntry(3), proposalEntry(4)},
+			expectApplied:      []uint64{3, 4},
+			expectAppliedIndex: 4,
+		},
+		{
+			// A snapshot applied in the same batch can cover the head of the
+			// committed entries.
+			name:               "skips the entries that are already applied",
+			appliedIndex:       3,
+			entries:            []raftpb.Entry{proposalEntry(2), proposalEntry(3), proposalEntry(4)},
+			expectApplied:      []uint64{4},
+			expectAppliedIndex: 4,
+		},
+		{
+			name:               "does nothing when every entry is already applied",
+			appliedIndex:       4,
+			entries:            []raftpb.Entry{proposalEntry(3), proposalEntry(4)},
+			expectApplied:      []uint64{},
+			expectAppliedIndex: 4,
+		},
+		{
+			name:               "refuses a batch that leaves a gap",
+			appliedIndex:       2,
+			entries:            []raftpb.Entry{proposalEntry(4)},
+			expectError:        true,
+			expectApplied:      []uint64{},
+			expectAppliedIndex: 2,
+		},
+		{
+			// If the applied index stopped at a broken entry, every later
+			// batch would be refused as leaving a gap.
+			name:         "goes past an entry that cannot be unmarshalled",
+			appliedIndex: 2,
+			entries: []raftpb.Entry{
+				{Index: 3, Type: raftpb.EntryNormal, Data: []byte{0xff}},
+				proposalEntry(4),
+			},
+			expectApplied:      []uint64{4},
+			expectAppliedIndex: 4,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newIsolatedConsensus(t, 1)
+			defer c.Stop()
+			c.appliedIndex = tt.appliedIndex
+
+			applied := []uint64{}
+			c.handler.(*consensusHandlerHelper).consensusApplyProposalF = func(proposal *proto.ConsensusProposal) error {
+				applied = append(applied, proposal.GetActivate().GetTail().GetId0())
+				return nil
+			}
+
+			err := c.publishEntries(tt.entries)
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.expectApplied, applied)
+			require.Equal(t, tt.expectAppliedIndex, c.appliedIndex)
+		})
+	}
+}
+
+// TestConsensus_applySnapshot_replacesMembers covers the member table in a
+// snapshot: a member that joins by a snapshot never replays the conf changes
+// before it, so it must take the member table from the snapshot, dropping the
+// members that are not in it.
+func TestConsensus_applySnapshot_replacesMembers(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(4)
+	no1, no2, no3, no4 := kvsTypes.SectorNo(1), kvsTypes.SectorNo(2), kvsTypes.SectorNo(3), kvsTypes.SectorNo(4)
+	sectorState := []byte("sector-state")
+
+	src := newIsolatedConsensus(t, 2)
+	defer src.Stop()
+	src.members = map[kvsTypes.SectorNo]*types.NodeID{no1: nodeIDs[0], no2: nodeIDs[1], no3: nodeIDs[2]}
+	src.handler.(*consensusHandlerHelper).consensusGetSnapshotF = func() ([]byte, error) {
+		return sectorState, nil
+	}
+	data, err := src.buildSnapshotData()
+	require.NoError(t, err)
+
+	// The receiver joins the group, so its log is empty. no4 is not in the
+	// snapshot.
+	var applied []byte
+	dst := NewConsensus(&Config{
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		RaftLogger: &raft.DefaultLogger{Logger: log.New(io.Discard, "", 0)},
+		Handler: &consensusHandlerHelper{
+			t: t,
+			consensusApplySnapshotF: func(snapshot []byte) error {
+				applied = snapshot
+				return nil
+			},
+		},
+		Outbound: &consensusOutboundHelper{t: t},
+		SectorKey: &kvsTypes.SectorKey{
+			SectorID: testUtil.UniqueSectorIDs(1)[0],
+			SectorNo: no2,
+		},
+		Join:    true,
+		Members: map[kvsTypes.SectorNo]*types.NodeID{no1: nodeIDs[0], no4: nodeIDs[3]},
+	})
+	defer dst.Stop()
+
+	snapshot := raftpb.Snapshot{
+		Data: data,
+		Metadata: raftpb.SnapshotMetadata{
+			Index:     5,
+			Term:      1,
+			ConfState: raftpb.ConfState{Voters: []uint64{1, 2, 3}},
+		},
+	}
+	require.NoError(t, dst.applySnapshot(snapshot))
+
+	require.Equal(t, sectorState, applied)
+	require.Equal(t, snapshot.Metadata.ConfState, dst.confState)
+	require.Equal(t, uint64(5), dst.appliedIndex)
+	require.Equal(t, uint64(5), dst.snapshotIndex)
+	require.Len(t, dst.members, 3)
+	for i, sectorNo := range []kvsTypes.SectorNo{no1, no2, no3} {
+		require.True(t, dst.members[sectorNo].Equal(nodeIDs[i]))
+	}
 }
 
 // TestSnapshotGuardStorage covers the wrapper itself: an empty snapshot becomes
@@ -598,8 +752,8 @@ func TestConsensus_publishEntries_continuesAfterConfChangeError(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, c.publishEntries([]raftpb.Entry{
-		{Type: raftpb.EntryConfChange, Data: ccData},
-		{Type: raftpb.EntryNormal, Data: proposalData},
+		{Index: 1, Type: raftpb.EntryConfChange, Data: ccData},
+		{Index: 2, Type: raftpb.EntryNormal, Data: proposalData},
 	}))
 	require.Equal(t, 1, applied)
 }

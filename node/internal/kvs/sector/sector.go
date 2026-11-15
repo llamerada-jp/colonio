@@ -29,6 +29,7 @@ import (
 	"github.com/llamerada-jp/colonio/types"
 	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	"go.etcd.io/raft/v3"
+	proto3 "google.golang.org/protobuf/proto"
 )
 
 // ErrProposalTimeout is returned by blocking sector operations when the raft
@@ -60,6 +61,10 @@ type SectorConfig struct {
 	Join       bool
 	Members    map[kvsTypes.SectorNo]*types.NodeID
 	Head       *types.NodeID
+
+	// See consensus.Config.
+	SnapshotCount          uint64
+	SnapshotCatchUpEntries uint64
 }
 
 type SectorInfo struct {
@@ -152,6 +157,9 @@ func NewSector(config *SectorConfig) *Sector {
 		SectorKey:  config.SectorKey,
 		Join:       config.Join,
 		Members:    config.Members,
+
+		SnapshotCount:          config.SnapshotCount,
+		SnapshotCatchUpEntries: config.SnapshotCatchUpEntries,
 	})
 
 	sector.operator = operator.NewOperator(&operator.Config{
@@ -1045,12 +1053,111 @@ func (s *Sector) ConsensusRemoveNode(sectorNo kvsTypes.SectorNo) {
 	s.handler.SectorRemoveNode(&s.sectorKey, sectorNo)
 }
 
+// ConsensusGetSnapshot returns the replicated state of the sector: what
+// ConsensusApplyProposal changes. Pending proposals and other state that each
+// replica keeps for its own role are not included.
+//
+// A stopped replica does not create a snapshot. It may have been destroyed
+// locally, without raft, and a snapshot must carry replicated state only.
 func (s *Sector) ConsensusGetSnapshot() ([]byte, error) {
-	return s.operator.ExportSnapshot()
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	if s.stopped || s.terminated {
+		return nil, consensus.ErrSnapshotUnavailable
+	}
+
+	records, err := s.operator.ExportAllRecords()
+	if err != nil {
+		return nil, fmt.Errorf("failed to export records for snapshot: %w", err)
+	}
+
+	snapshot := &proto.SectorSnapshot{
+		Records: make([]*proto.Import_Record, 0, len(records)),
+	}
+	for key, value := range records {
+		snapshot.Records = append(snapshot.Records, &proto.Import_Record{
+			Key:   key,
+			Value: value,
+		})
+	}
+	if s.tail != nil {
+		snapshot.Tail = s.tail.Proto()
+	}
+	if s.mergeBy != nil {
+		snapshot.MergeBy = s.mergeBy.Proto()
+	}
+
+	return proto3.Marshal(snapshot)
 }
 
-func (s *Sector) ConsensusApplySnapshot(snapshot []byte) error {
-	return s.operator.ImportSnapshot(snapshot)
+// ConsensusApplySnapshot replaces the replicated state of the sector with the
+// snapshot. It replaces rather than merges: a replica that fell behind may
+// hold records that the group has deleted since. It does not revive a replica
+// that is stopped or terminated.
+func (s *Sector) ConsensusApplySnapshot(data []byte) error {
+	snapshot := &proto.SectorSnapshot{}
+	if err := proto3.Unmarshal(data, snapshot); err != nil {
+		return fmt.Errorf("failed to unmarshal sector snapshot: %w", err)
+	}
+	var tail, mergeBy *types.NodeID
+	if snapshot.Tail != nil {
+		var err error
+		if tail, err = types.NewNodeIDFromProto(snapshot.Tail); err != nil {
+			return fmt.Errorf("failed to parse tail NodeID in snapshot: %w", err)
+		}
+	}
+	if snapshot.MergeBy != nil {
+		var err error
+		if mergeBy, err = types.NewNodeIDFromProto(snapshot.MergeBy); err != nil {
+			return fmt.Errorf("failed to parse mergeBy NodeID in snapshot: %w", err)
+		}
+	}
+	records := make(map[string][]byte, len(snapshot.Records))
+	for _, record := range snapshot.Records {
+		records[record.Key] = record.Value
+	}
+
+	s.mtx.Lock()
+	defer func() {
+		s.mtx.Unlock()
+		s.cond.Broadcast()
+	}()
+
+	if s.stopped || s.terminated {
+		return nil
+	}
+	if snapshot.Terminated {
+		s.terminateLocked()
+		return nil
+	}
+
+	// Empty the store sector. A replica that has neither been activated nor
+	// imported anything has no store sector, and stays so if the snapshot is
+	// of such a sector.
+	if err := s.store.ReleaseSector(&s.sectorKey); err != nil && !errors.Is(err, kvsTypes.ErrorStoreSectorNotFound) {
+		go s.handler.SectorError(&s.sectorKey, fmt.Errorf("failed to release store sector: %w", err))
+	}
+	if tail != nil || len(records) != 0 {
+		s.allocateStoreSectorLocked()
+	}
+
+	// Clear the range first, so that SetRange below does not go through the
+	// records to delete those outside of a shrunk range.
+	s.tail = nil
+	s.operator.ClearRange()
+	if err := s.operator.ReplaceRecords(records); err != nil {
+		return fmt.Errorf("failed to replace records from snapshot: %w", err)
+	}
+	if tail != nil {
+		s.tail = tail
+		if err := s.operator.SetRange(*tail); err != nil {
+			return fmt.Errorf("failed to set range from snapshot: %w", err)
+		}
+	}
+	s.mergeBy = mergeBy
+
+	return nil
 }
 
 func (s *Sector) OperatorProposeOperation(operation *proto.Operation) {

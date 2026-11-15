@@ -18,6 +18,7 @@ package consensus
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"maps"
 	"slices"
@@ -41,7 +42,14 @@ const (
 	// promoteCheckTicks is how often, in raft ticks, the leader checks
 	// whether learners have caught up and can be promoted to voters.
 	promoteCheckTicks = 10
+
+	defaultSnapshotCount          = 1000
+	defaultSnapshotCatchUpEntries = 100
 )
+
+// ErrSnapshotUnavailable is returned by Handler.ConsensusGetSnapshot when the
+// handler cannot provide a snapshot now. No snapshot is taken then.
+var ErrSnapshotUnavailable = errors.New("snapshot is unavailable")
 
 type Handler interface {
 	ConsensusError(err error)
@@ -60,16 +68,22 @@ type Config struct {
 	SectorKey  *kvsTypes.SectorKey
 	Join       bool
 	Members    map[kvsTypes.SectorNo]*types.NodeID
+
+	// SnapshotCount is the number of applied entries after which a snapshot
+	// is taken and the log is compacted. SnapshotCatchUpEntries is the number
+	// of entries kept in the log at a compaction, for followers that are
+	// slightly behind. Zero means the default.
+	SnapshotCount          uint64
+	SnapshotCatchUpEntries uint64
 }
 
 // snapshotGuardStorage keeps raft from panicking when a leader has to send a
-// snapshot it does not have. Snapshots are not created yet, but raft falls
-// back to sending one whenever a follower needs entries that are not in the
-// leader's log, and panics on an empty snapshot. Returning
+// snapshot before it has created the first one. Raft falls back to sending a
+// snapshot whenever a follower needs entries that are not in the leader's
+// log, and panics on an empty snapshot. Returning
 // ErrSnapshotTemporarilyUnavailable, the error the raft Storage interface
-// defines for this case, makes raft skip the send instead. The follower then
-// stays behind until the membership manager removes it and adds the node
-// again under a new sectorNo.
+// defines for this case, makes raft skip the send instead. A snapshot that
+// exists passes through unchanged.
 type snapshotGuardStorage struct {
 	*raft.MemoryStorage
 }
@@ -121,13 +135,20 @@ func NewConsensus(config *Config) *Consensus {
 		sectorKey:   *config.SectorKey,
 		raftStorage: raft.NewMemoryStorage(),
 
-		snapshotCatchUpEntriesN: 100,
-		snapCount:               1000,
+		snapshotCatchUpEntriesN: defaultSnapshotCatchUpEntries,
+		snapCount:               defaultSnapshotCount,
 
 		members: maps.Clone(config.Members),
 
 		stopCh:   make(chan struct{}),
 		loopDone: make(chan struct{}),
+	}
+
+	if config.SnapshotCount != 0 {
+		n.snapCount = config.SnapshotCount
+	}
+	if config.SnapshotCatchUpEntries != 0 {
+		n.snapshotCatchUpEntriesN = config.SnapshotCatchUpEntries
 	}
 
 	raftConfig := &raft.Config{
@@ -153,7 +174,9 @@ func NewConsensus(config *Config) *Consensus {
 		// Sort the peers so that every initial member writes the same entries
 		// in the same order. Attach the node IDs so that a member that joins
 		// later and replays the log can resolve every initial member, even
-		// one that has since been removed and is not in its member table.
+		// one that has since been removed and is not in its member table. A
+		// member that joins after these entries were compacted gets the
+		// member table from the snapshot instead.
 		peers := []raft.Peer{}
 		for _, sectorNo := range slices.Sorted(maps.Keys(config.Members)) {
 			peers = append(peers, raft.Peer{
@@ -197,13 +220,11 @@ func (n *Consensus) Start(ctx context.Context) {
 
 			case rd := <-n.raftNode.Ready():
 				if !raft.IsEmptySnap(rd.Snapshot) {
-					n.raftStorage.ApplySnapshot(rd.Snapshot)
-					n.mtx.Lock()
-					n.confState = rd.Snapshot.Metadata.ConfState
-					n.mtx.Unlock()
-					n.snapshotIndex = rd.Snapshot.Metadata.Index
-					n.appliedIndex = rd.Snapshot.Metadata.Index
-					n.handler.ConsensusApplySnapshot(rd.Snapshot.Data)
+					// Do not return on an error: raft has already moved to the
+					// snapshot, so the loop has to go on from it.
+					if err := n.applySnapshot(rd.Snapshot); err != nil {
+						n.logger.Error("Failed to apply snapshot", "sectorKey", n.sectorKey.String(), "error", err)
+					}
 				}
 
 				if err := n.raftStorage.Append(rd.Entries); err != nil {
@@ -403,15 +424,36 @@ func (n *Consensus) sendMessages(messages []raftpb.Message) error {
 }
 
 func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	// Skip the entries that are already applied, such as those covered by a
+	// snapshot applied in the same batch. The entries must continue from the
+	// applied index: applying over a gap would skip committed entries.
+	firstIndex := entries[0].Index
+	if firstIndex > n.appliedIndex+1 {
+		return fmt.Errorf("committed entries start at %d, but the applied index is %d", firstIndex, n.appliedIndex)
+	}
+	skip := n.appliedIndex + 1 - firstIndex
+	if skip >= uint64(len(entries)) {
+		return nil
+	}
+	entries = entries[skip:]
+
 	proposals := make([]*proto.ConsensusProposal, 0)
 
 	for _, entry := range entries {
+		// Do not return on an unmarshal error below: the applied index has to
+		// reach the end of the batch, or every later batch would be refused
+		// as leaving a gap.
 		switch entry.Type {
 		case raftpb.EntryNormal:
 			if len(entry.Data) > 0 {
 				p := &proto.ConsensusProposal{}
 				if err := proto3.Unmarshal(entry.Data, p); err != nil {
-					return err
+					n.logger.Error("Failed to unmarshal committed proposal", "sectorKey", n.sectorKey.String(), "index", entry.Index, "error", err)
+					continue
 				}
 				proposals = append(proposals, p)
 			}
@@ -419,7 +461,8 @@ func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
 		case raftpb.EntryConfChange:
 			var cc raftpb.ConfChange
 			if err := cc.Unmarshal(entry.Data); err != nil {
-				return err
+				n.logger.Error("Failed to unmarshal committed conf change", "sectorKey", n.sectorKey.String(), "index", entry.Index, "error", err)
+				continue
 			}
 			n.mtx.Lock()
 			n.confState = *n.raftNode.ApplyConfChange(cc)
@@ -435,7 +478,8 @@ func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
 		case raftpb.EntryConfChangeV2:
 			var cc2 raftpb.ConfChangeV2
 			if err := cc2.Unmarshal(entry.Data); err != nil {
-				return err
+				n.logger.Error("Failed to unmarshal committed conf change", "sectorKey", n.sectorKey.String(), "index", entry.Index, "error", err)
+				continue
 			}
 			n.mtx.Lock()
 			n.confState = *n.raftNode.ApplyConfChange(cc2)
@@ -459,6 +503,10 @@ func (n *Consensus) publishEntries(entries []raftpb.Entry) error {
 			n.logger.Error("Failed to apply committed proposal", "sectorKey", n.sectorKey.String(), "error", err)
 		}
 	}
+
+	// Advance the applied index only after the whole batch: a snapshot is
+	// taken at this index, so it must not run ahead of the state of the sector.
+	n.appliedIndex = entries[len(entries)-1].Index
 
 	return nil
 }
@@ -517,13 +565,77 @@ func (n *Consensus) applyConfChangeSingle(ccType raftpb.ConfChangeType, id uint6
 	return nil
 }
 
+// applySnapshot installs a snapshot received from the leader: the raft
+// storage, the member table and the state of the sector. The member table is
+// replaced, not merged: the snapshot has the table of the group at the
+// snapshot index, and the conf changes before it are no longer replayed.
+func (n *Consensus) applySnapshot(snapshot raftpb.Snapshot) error {
+	// Raft expects the storage to hold the snapshot from here on, so apply it
+	// before anything that can fail on the content.
+	if err := n.raftStorage.ApplySnapshot(snapshot); err != nil {
+		return err
+	}
+	n.mtx.Lock()
+	n.confState = snapshot.Metadata.ConfState
+	n.mtx.Unlock()
+	n.snapshotIndex = snapshot.Metadata.Index
+	n.appliedIndex = snapshot.Metadata.Index
+
+	wrapper := &proto.ConsensusSnapshot{}
+	if err := proto3.Unmarshal(snapshot.Data, wrapper); err != nil {
+		return err
+	}
+	members := make(map[kvsTypes.SectorNo]*types.NodeID, len(wrapper.Members))
+	for id, nodeIDProto := range wrapper.Members {
+		nodeID, err := types.NewNodeIDFromProto(nodeIDProto)
+		if err != nil {
+			return err
+		}
+		members[kvsTypes.SectorNo(id)] = nodeID
+	}
+	n.mtx.Lock()
+	n.members = members
+	n.mtx.Unlock()
+
+	if err := n.handler.ConsensusApplySnapshot(wrapper.SectorState); err != nil {
+		return err
+	}
+	n.logger.Debug("Applied snapshot", "sectorKey", n.sectorKey.String(), "index", snapshot.Metadata.Index)
+
+	return nil
+}
+
+// buildSnapshotData returns the data of a raft snapshot: the state of the
+// sector from the handler, wrapped with the member table.
+func (n *Consensus) buildSnapshotData() ([]byte, error) {
+	sectorState, err := n.handler.ConsensusGetSnapshot()
+	if err != nil {
+		return nil, err
+	}
+
+	n.mtx.RLock()
+	members := make(map[uint64]*proto.NodeID, len(n.members))
+	for sectorNo, nodeID := range n.members {
+		members[uint64(sectorNo)] = nodeID.Proto()
+	}
+	n.mtx.RUnlock()
+
+	return proto3.Marshal(&proto.ConsensusSnapshot{
+		SectorState: sectorState,
+		Members:     members,
+	})
+}
+
 func (n *Consensus) maybeTriggerSnapshot() error {
 	// Trigger a snapshot if the number of applied entries exceeds the threshold
 	if n.appliedIndex-n.snapshotIndex <= n.snapCount {
 		return nil
 	}
 
-	data, err := n.handler.ConsensusGetSnapshot()
+	data, err := n.buildSnapshotData()
+	if errors.Is(err, ErrSnapshotUnavailable) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -542,6 +654,8 @@ func (n *Consensus) maybeTriggerSnapshot() error {
 			return err
 		}
 	}
+
+	n.logger.Debug("Created snapshot", "sectorKey", n.sectorKey.String(), "index", n.appliedIndex, "compactIndex", compactIndex)
 
 	n.snapshotIndex = n.appliedIndex
 	return nil
