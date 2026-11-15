@@ -812,3 +812,88 @@ func TestNodeAccessor_relayPacketDoesNotHoldMutexWhileSending(t *testing.T) {
 		})
 	}
 }
+
+// disconnectBlockingWebRTCLink blocks in disconnect until release is closed.
+type disconnectBlockingWebRTCLink struct {
+	release          chan struct{}
+	disconnectCalled chan struct{}
+}
+
+var _ webRTCLink = &disconnectBlockingWebRTCLink{}
+
+func (l *disconnectBlockingWebRTCLink) isActive() bool                { return true }
+func (l *disconnectBlockingWebRTCLink) isOnline() bool                { return true }
+func (l *disconnectBlockingWebRTCLink) getLabel() string              { return "disconnect-blocking" }
+func (l *disconnectBlockingWebRTCLink) getLocalSDP() (string, error)  { return "sdp", nil }
+func (l *disconnectBlockingWebRTCLink) setRemoteSDP(sdp string) error { return nil }
+func (l *disconnectBlockingWebRTCLink) updateICE(ice string) error    { return nil }
+func (l *disconnectBlockingWebRTCLink) send(data []byte) error        { return nil }
+
+func (l *disconnectBlockingWebRTCLink) disconnect() error {
+	select {
+	case l.disconnectCalled <- struct{}{}:
+	default:
+	}
+	<-l.release
+	return nil
+}
+
+// Closing a link can stall in the WebRTC stack while the link is dying. The
+// link must be unregistered and na.mtx must stay free while the close is
+// still blocked.
+func TestNodeAccessor_disconnectLinkDoesNotHoldMutexWhileClosing(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	disconnectCalled := make(chan struct{}, 1)
+
+	na, err := NewNodeAccessor(&Config{
+		Logger:         testUtil.Logger(t),
+		Handler:        &nodeAccessorHandlerHelper{},
+		NodeLinkConfig: nlConfig,
+	})
+	require.NoError(t, err)
+
+	// build the link by hand instead of replacing defaultWebRTCLinkFactory,
+	// which goroutines left by other tests may still read
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	link := &nodeLink{
+		config:  na.nodeLinkConfig,
+		ctx:     ctx,
+		cancel:  cancel,
+		handler: na,
+		state:   nodeLinkStateOnline,
+		queue:   make([]*waiting, 0),
+		webrtc:  &disconnectBlockingWebRTCLink{release: release, disconnectCalled: disconnectCalled},
+	}
+	peerNodeID := types.NewNormalNodeID(0x8000000000000000, 0)
+	na.mtx.Lock()
+	na.nodeID2link[*peerNodeID] = link
+	na.link2nodeID[link] = peerNodeID
+	na.mtx.Unlock()
+
+	na.nodeLinkChangeState(link, nodeLinkStateDisabled)
+
+	select {
+	case <-disconnectCalled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("link disconnect was not called")
+	}
+
+	acquired := make(chan struct{})
+	go func() {
+		na.mtx.Lock()
+		defer na.mtx.Unlock()
+		close(acquired)
+	}()
+	select {
+	case <-acquired:
+	case <-time.After(3 * time.Second):
+		t.Fatal("na.mtx is held while the link disconnect is blocked")
+	}
+
+	na.mtx.RLock()
+	defer na.mtx.RUnlock()
+	assert.NotContains(t, na.nodeID2link, *peerNodeID)
+	assert.NotContains(t, na.link2nodeID, link)
+}

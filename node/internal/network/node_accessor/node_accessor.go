@@ -401,14 +401,16 @@ func (na *NodeAccessor) assignedNodeID(nodeID *types.NodeID) bool {
 	return false
 }
 
+// disconnectLink unregisters the link and closes it. Set lock to false when
+// the caller already holds na.mtx.
+//
+// The link is closed on another goroutine, outside na.mtx: closing can stall
+// in the WebRTC stack while the link is dying, and holding na.mtx across it
+// would block every send, receive and IsOnline. The link is unregistered
+// before this returns, so later lookups no longer find it.
 func (na *NodeAccessor) disconnectLink(link *nodeLink, lock bool) {
-	if err := link.disconnect(); err != nil {
-		na.logger.Error("failed to disconnect link", slog.String("error", err.Error()))
-	}
-
 	if lock {
 		na.mtx.Lock()
-		defer na.mtx.Unlock()
 	}
 
 	if nodeID := na.link2nodeID[link]; nodeID != nil {
@@ -421,6 +423,16 @@ func (na *NodeAccessor) disconnectLink(link *nodeLink, lock bool) {
 		delete(na.offerID2state, offerID)
 		delete(na.link2offerID, link)
 	}
+
+	if lock {
+		na.mtx.Unlock()
+	}
+
+	go func() {
+		if err := link.disconnect(); err != nil {
+			na.logger.Error("failed to disconnect link", slog.String("error", err.Error()))
+		}
+	}()
 }
 
 func (na *NodeAccessor) houseKeeping() error {
