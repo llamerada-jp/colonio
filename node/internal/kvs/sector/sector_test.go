@@ -872,3 +872,91 @@ func TestSector_snapshot_stoppedSector(t *testing.T) {
 		}, 5*time.Second, 10*time.Millisecond)
 	})
 }
+
+// TestSector_operations covers the data plane through a real raft group of
+// one member: a write returns after its operation is committed and applied,
+// and what it wrote is read back, stored, and part of a snapshot.
+func TestSector_operations(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	localNodeID := testUtil.UniqueNodeIDs(1)[0]
+	members := map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	}
+	handler := &sectorHandlerHelper{}
+	s := newTestSector(t, ctx, localNodeID, handler, members)
+	s.Start(ctx)
+	operator := s.GetOperator()
+
+	require.ErrorIs(t, operator.Set("key", []byte("value1")), kvsTypes.ErrorSectorNotReady)
+
+	// the tail equal to the head: the sector covers the whole ring
+	s.Activate(*localNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+
+	require.NoError(t, operator.Set("key", []byte("value1")))
+	value, err := operator.Get("key")
+	require.NoError(t, err)
+	require.Equal(t, []byte("value1"), value)
+	require.Equal(t, []byte("value1"), s.store.(*storeHelper).value("key"))
+
+	data, err := s.ConsensusGetSnapshot()
+	require.NoError(t, err)
+	dst := newTestSector(t, ctx, localNodeID, &sectorHandlerHelper{}, members)
+	require.NoError(t, dst.ConsensusApplySnapshot(data))
+	value, err = dst.GetOperator().Get("key")
+	require.NoError(t, err)
+	require.Equal(t, []byte("value1"), value)
+
+	require.NoError(t, operator.Delete("key"))
+	_, err = operator.Get("key")
+	require.ErrorIs(t, err, kvsTypes.ErrorStoreKeyNotFound)
+	require.Nil(t, s.store.(*storeHelper).value("key"))
+	require.Empty(t, handler.reportedErrors())
+}
+
+// TestSector_operations_rejectedWhileMergePrepared covers a sector with a
+// prepare_merge claim: the node that merges it is about to export its
+// records, so it must reject writes until the claim is released. A replica
+// restored from a snapshot must do the same.
+func TestSector_operations_rejectedWhileMergePrepared(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	localNodeID, holder := nodeIDs[0], nodeIDs[1]
+	members := map[kvsTypes.SectorNo]*types.NodeID{
+		kvsTypes.HostNodeSectorNo: localNodeID,
+	}
+	s := newTestSector(t, ctx, localNodeID, &sectorHandlerHelper{}, members)
+	s.Start(ctx)
+	operator := s.GetOperator()
+
+	s.Activate(*localNodeID)
+	require.Eventually(t, func() bool {
+		return s.GetTailAddress() != nil
+	}, 10*time.Second, 100*time.Millisecond)
+	require.NoError(t, operator.Set("key1", []byte("value1")))
+
+	require.NoError(t, s.PrepareMerge(holder))
+	require.ErrorIs(t, operator.Set("key2", []byte("value2")), kvsTypes.ErrorSectorNotReady)
+	value, err := operator.Get("key1")
+	require.NoError(t, err)
+	require.Equal(t, []byte("value1"), value)
+
+	data, err := s.ConsensusGetSnapshot()
+	require.NoError(t, err)
+	restored := newTestSector(t, ctx, localNodeID, &sectorHandlerHelper{}, members)
+	require.NoError(t, restored.ConsensusApplySnapshot(data))
+	require.ErrorIs(t, restored.GetOperator().Set("key2", []byte("value2")), kvsTypes.ErrorSectorNotReady)
+
+	require.NoError(t, s.ConsensusApplyProposal(&proto.ConsensusProposal{
+		Content: &proto.ConsensusProposal_ReleaseMerge{
+			ReleaseMerge: &proto.ReleaseMerge{Handler: holder.Proto()},
+		},
+	}))
+	require.NoError(t, operator.Set("key2", []byte("value2")))
+}

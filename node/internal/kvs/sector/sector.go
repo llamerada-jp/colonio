@@ -993,6 +993,9 @@ func (s *Sector) processPrepareMergeProposal(prepareMerge *proto.PrepareMerge) e
 	// Accept the first prepare merge proposal, and reject the others.
 	if s.mergeBy == nil {
 		s.mergeBy = proposedBy
+		// The node that merges this sector is about to export its records,
+		// so stop accepting writes.
+		s.operator.SetMergeFence(true)
 	}
 
 	return nil
@@ -1009,6 +1012,7 @@ func (s *Sector) processReleaseMergeProposal(releaseMerge *proto.ReleaseMerge) e
 	// claim committed in the meantime is kept.
 	if s.mergeBy != nil && s.mergeBy.Equal(holder) {
 		s.mergeBy = nil
+		s.operator.SetMergeFence(false)
 	}
 	if s.mergeConflictHolder != nil && s.mergeConflictHolder.Equal(holder) {
 		s.mergeConflictHolder = nil
@@ -1156,6 +1160,7 @@ func (s *Sector) ConsensusApplySnapshot(data []byte) error {
 		}
 	}
 	s.mergeBy = mergeBy
+	s.operator.SetMergeFence(mergeBy != nil)
 
 	return nil
 }

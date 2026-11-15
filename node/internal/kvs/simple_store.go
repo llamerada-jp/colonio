@@ -81,8 +81,11 @@ func (s *SimpleStore) Get(sectorKey *kvsTypes.SectorKey, key string) ([]byte, er
 	return value, nil
 }
 
+// Patch returns an error: the format of a partial update is not defined yet.
+// It must not panic, since it is called when a committed operation is applied
+// on every replica.
 func (s *SimpleStore) Patch(sectorKey *kvsTypes.SectorKey, key string, value []byte) error {
-	panic("Patch not implemented in SimpleStore")
+	return fmt.Errorf("patch is not supported by SimpleStore")
 }
 
 func (s *SimpleStore) Delete(sectorKey *kvsTypes.SectorKey, key string) error {

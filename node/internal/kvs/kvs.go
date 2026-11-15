@@ -277,43 +277,34 @@ func (k *KVS) kvsOperate(command proto.KvsOperation_Command, key string, value [
 	}
 	operator := hostingSector.GetOperator()
 
+	// PREPARING tells the sender that the operation was not accepted and can
+	// be sent again. A timeout is UNKNOWN: the operation may still be applied.
+	toResponseError := func(err error) proto.KvsOperationResponse_Error {
+		switch {
+		case err == nil:
+			return proto.KvsOperationResponse_ERROR_NONE
+		case errors.Is(err, kvsTypes.ErrorStoreKeyNotFound):
+			return proto.KvsOperationResponse_ERROR_NOT_FOUND
+		case errors.Is(err, kvsTypes.ErrorSectorNotReady):
+			return proto.KvsOperationResponse_ERROR_PREPARING
+		default:
+			return proto.KvsOperationResponse_ERROR_UNKNOWN
+		}
+	}
+
 	switch command {
 	case proto.KvsOperation_COMMAND_GET:
 		data, err := operator.Get(key)
-
-		e := proto.KvsOperationResponse_ERROR_NONE
-		if err != nil {
-			if err == kvsTypes.ErrorStoreKeyNotFound {
-				e = proto.KvsOperationResponse_ERROR_NOT_FOUND
-			} else {
-				e = proto.KvsOperationResponse_ERROR_UNKNOWN
-			}
-		}
-		return e, data
+		return toResponseError(err), data
 
 	case proto.KvsOperation_COMMAND_SET:
-		err := operator.Set(key, value)
-		e := proto.KvsOperationResponse_ERROR_NONE
-		if err != nil {
-			e = proto.KvsOperationResponse_ERROR_UNKNOWN
-		}
-		return e, nil
+		return toResponseError(operator.Set(key, value)), nil
 
 	case proto.KvsOperation_COMMAND_PATCH:
-		err := operator.Patch(key, value)
-		e := proto.KvsOperationResponse_ERROR_NONE
-		if err != nil {
-			e = proto.KvsOperationResponse_ERROR_UNKNOWN
-		}
-		return e, nil
+		return toResponseError(operator.Patch(key, value)), nil
 
 	case proto.KvsOperation_COMMAND_DELETE:
-		err := operator.Delete(key)
-		e := proto.KvsOperationResponse_ERROR_NONE
-		if err != nil {
-			e = proto.KvsOperationResponse_ERROR_UNKNOWN
-		}
-		return e, nil
+		return toResponseError(operator.Delete(key)), nil
 
 	default:
 		return proto.KvsOperationResponse_ERROR_UNKNOWN, nil

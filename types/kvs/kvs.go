@@ -22,6 +22,11 @@ import (
 var (
 	ErrorStoreInvalidNodeKey = fmt.Errorf("invalid node key")
 	ErrorStoreKeyNotFound    = fmt.Errorf("key not found")
+	// ErrorSectorNotReady is returned for an operation that the sector cannot
+	// accept now: the sector is not active, the key is out of its range, or
+	// the range is being handed over by a split or a merge. The operation
+	// was not accepted, so it can be sent again.
+	ErrorSectorNotReady = fmt.Errorf("sector is not ready for the operation")
 	// ErrorStoreSectorExists is returned (wrapped) by Store.AllocateSector
 	// when the sector is already allocated.
 	ErrorStoreSectorExists = fmt.Errorf("sector already exists")
