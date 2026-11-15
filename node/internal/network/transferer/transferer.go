@@ -134,9 +134,13 @@ func (t *Transferer) Stop() {
 }
 
 func (t *Transferer) subRoutine() {
-	t.mtx.Lock()
-	defer t.mtx.Unlock()
+	// Collect the packets to retry under the mutex and send them after
+	// releasing it. Sending can come back into Receive on this goroutine:
+	// when there is no route, the error response is addressed to the local
+	// node and is delivered synchronously, and Receive takes the mutex.
+	var packets []*networkTypes.Packet
 
+	t.mtx.Lock()
 	for id, record := range t.requestRecord {
 		if time.Now().Before(record.lastSend.Add(t.retryInterval)) {
 			continue
@@ -151,19 +155,23 @@ func (t *Transferer) subRoutine() {
 
 		// retry
 		if record.mode&networkTypes.PacketModeNoRetry == 0 {
-			packet := &networkTypes.Packet{
+			packets = append(packets, &networkTypes.Packet{
 				DstNodeID: record.dstNodeID,
 				SrcNodeID: t.localNodeID,
 				ID:        id,
 				HopCount:  0,
 				Mode:      record.mode,
 				Content:   record.content,
-			}
-			t.handler.TransfererSendPacket(packet)
+			})
 		}
 
 		record.tryCount++
 		record.lastSend = time.Now()
+	}
+	t.mtx.Unlock()
+
+	for _, packet := range packets {
+		t.handler.TransfererSendPacket(packet)
 	}
 }
 
