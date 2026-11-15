@@ -352,6 +352,63 @@ func TestSeedAccessor_ReconcileNextNode(t *testing.T) {
 	assert.False(t, res)
 }
 
+// The seed shortens the lifespan of a node reported as disconnected and
+// restores it when the node subscribes to keepalive again, so a living node
+// must subscribe again before the shortened lifespan expires.
+func TestSeedAccessor_keepaliveAfterChallenge(t *testing.T) {
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+
+	mtx := sync.Mutex{}
+	subscribed := 0
+	gateway := &helper.Gateway{
+		NodeIDs: nodeIDs,
+	}
+	gateway.SubscribeKeepaliveF = func(ctx context.Context, nodeID *types.NodeID) error {
+		if nodeID.Equal(nodeIDs[1]) {
+			mtx.Lock()
+			subscribed++
+			mtx.Unlock()
+		}
+		return gateway.GetSuper().SubscribeKeepalive(ctx, nodeID)
+	}
+	shortLifespan := 2 * time.Second
+	seed := seed.NewSeed(
+		seed.WithGateway(gateway),
+		seed.WithLifespan(1*time.Minute, shortLifespan),
+	)
+	gateway.Seed = seed
+
+	server := testServer.NewHelper(seed)
+	server.Start(t.Context())
+	defer server.Stop()
+
+	accessor1 := newAccessor(server, nil, nil)
+	_, err := accessor1.Start(t.Context())
+	require.NoError(t, err)
+	accessor2 := newAccessor(server, nil, nil)
+	nodeID2, err := accessor2.Start(t.Context())
+	require.NoError(t, err)
+
+	// the challenge reaches the node only while it subscribes to keepalive
+	require.Eventually(t, func() bool {
+		mtx.Lock()
+		defer mtx.Unlock()
+		return subscribed == 1
+	}, 5*time.Second, 50*time.Millisecond)
+
+	// node 1 reports node 2 as disconnected, and the seed challenges node 2
+	_, err = accessor1.ReconcileNextNodes([]*types.NodeID{nodeID2}, []*types.NodeID{nodeID2})
+	require.NoError(t, err)
+
+	// node 2 stays assigned beyond the shortened lifespan and the cleanup interval
+	assert.Never(t, func() bool {
+		nodes, err := gateway.GetSuper().GetNodes(t.Context())
+		require.NoError(t, err)
+		_, assigned := nodes[*nodeID2]
+		return !assigned
+	}, shortLifespan*2+time.Second, 100*time.Millisecond)
+}
+
 func mod(a, b int) int {
 	return int(math.Mod(float64(a), float64(b)))
 }
