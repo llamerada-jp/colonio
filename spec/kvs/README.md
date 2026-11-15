@@ -631,12 +631,13 @@ kvs ブランチへの移植時に追加したもの（kvs-ai にはない）:
 
 | 項目 | 種別 | 参照 |
 |------|------|------|
+| **seed セッション喪失の「接続黒穴」node（run 14 の最上位残存要因: 26 体、領域単位の yellow 最長 17 分の原因）。client 側の AssignNode リトライ + challenge 競合 (ShortLifespan=10s) の解消** | Go 実装 (node/seed) | run 14 |
 | ~~disconnect 経路の na.mtx 保持解消~~ → **対策済み (2026-07-10)**。残候補: connect() 内 newNodeLink の pion 初期化が na.mtx 下 | Go 実装 (node) | run 12 の対策 |
 | ~~leftover 循環待ち（inactive host + 範囲内 active leftover でチェーン恒久停止）~~ → **対策済み (2026-07-10)** | 設計 + Go + モデル | run 13 の対策 |
 | TODO-1: quorum 喪失の拡張モデル（LocalDestroy の safety 検証） | モデル | 下表 |
 | TODO-2: stale active レプリカのガード緩和検証 | モデル | 下表 |
 | snapshot の本実装（operator serialize + appliedIndex + トリガ。ログ無限成長対策と表裏一体） | Go 実装 | run6 の残課題 |
-| is_stable ゲートの緩和（不安定時の修復凍結 = カバレッジ漸減の律速。run 11 で「接続不良 node 1 つで隣接の activation が skip 2 凍結」を確認、sectorActivate の失敗も観測不能） | 設計 + Go | run4 改善候補 2 / run7 考察 / run 11 (B) |
+| is_stable ゲートの緩和（不安定時の修復凍結 = カバレッジ漸減の律速。run 11 で「接続不良 node 1 つで隣接の activation が skip 2 凍結」を確認、sectorActivate の失敗も観測不能。run 14 で「黒穴 1 体 → 隣接 joiner が恒久 unstable → 領域全体のチェーン停止」の伝播経路であることを確認） | 設計 + Go | run4 改善候補 2 / run7 考察 / run 11 (B) / run 14 |
 | ManageMember のヒステリシス | Go 実装 | run4 改善候補 3 |
 | 改善案 A / C / D / E / F / G（B の残り: CommitMerge extendTailOnly を含む） | Go 実装 | アルゴリズム改善案 |
 | 同一 term 二重リーダー疑いの系譜特定（run6 の未特定事項） | 調査 | run6 |
@@ -1416,6 +1417,78 @@ violation になる — Go の seed EntireState は生きているノードの h
   ConsensusApplyProposal で再現し、activation の tail が leftover head に
   切り詰められることを検証）。修正前コードで失敗（activation が skip され
   続けて timeout）することを確認済み。
+
+#### シミュレーション run 14（180 ノード・114 分・生存最長 20 分、2026-07-10）: seed セッション喪失による「接続黒穴」
+
+tail 切り詰め activation 導入後の確認 run。**最終フレームは yellow 0 で、
+これまでの修正はすべて維持されている**:
+
+- 最終フレーム (11:57): alive 174、sector 178 中 **green 172 / yellow 0** /
+  red 2（churn 直後の member 補充中 3〜4/5、構造的でない）/ no-host 4
+  （新鮮な leftover、修復途中）。
+- 切り詰め activation は 221 回発火し、leftover 起因の恒久循環待ちは消滅。
+- network zombie は 0（watchdog が stuck loop を 5 回検知して即 stop、
+  連鎖なし）。stale mergeBy デッドロックも再発なし。
+
+一方で run 途中には **120 秒以上 yellow のままの episode が 169 件**
+（最長 1,005 秒）あり、**約 1,900 の node 寿命のうち 50 が一度も active に
+ならないまま死亡**（例: 6c1f1294 は寿命 20 分をフルに ready 状態で待機し、
+リング全体が inactive ではないため自分からは activate せず、毎秒見送り
+続けた）。yellow は 6x / a0x / d4x / 1c-22 などの **リング領域単位の
+クラスタ**で発生し、領域内の全 node が同時期に解消される。
+
+**根本原因: seed セッションを失った「接続黒穴」node。**
+
+1. 全 WebRTC シグナリング (offer/answer/ICE) は seed の PollSignal
+   ストリーム経由。このセッションが壊れた node は**新規リンクを一切
+   確立できなくなる**が、確立済みリンクはそのまま生きるため routing 上は
+   健在に見え、自己判定 (`nextNodeMatched`) も stable のままになり得る。
+2. dump 解析で「必須リンク未接続 + 新規接続ゼロが 240 秒以上」の node を
+   **26 体**検出。主要 yellow クラスタは全て黒穴と 1:1 対応する
+   （6x 領域 = 692dcc11、a 領域 = a092970f、d 領域 = d4f96032、
+   1c-22 領域 = 1dbdf037）。
+3. 黒穴の node.log シグネチャ: `failed to poll` / `failed to keepalive`
+   (`internal: reqID: ...`) が発生開始から**死ぬまで 10 秒間隔で継続**
+   （1dbdf037 は 19 分間）。回復例ゼロ。
+4. 周辺への波及: 黒穴の隣に join した node は必須 1D リンクが張れず
+   `is_stable=false` のまま → KVS subRoutine 全体が skip → hosting sector
+   を作れない → backward active は frontward の sector がまだ作られて
+   いないため毎秒 skip → **activation チェーンが hop 単位で堰き止められ、
+   黒穴が寿命 (最長 20 分) で死ぬまで領域全体が yellow**。
+   （例: 1cd7c7cc は寿命 950 秒間、必須リンク 1 本 (対 1dbdf037) だけが
+   張れず一度も stable にならず、hosting sector を作れなかった。）
+
+**seed 側の構造要因**（seed/controller/controller.go）:
+
+- keepalive は逆方向の long-poll: 他 node が `ReconcileNextNodes` で
+  disconnected を報告すると seed が対象 node に challenge を発行し、
+  **lifespan を ShortLifespan=10 秒に短縮**する。ところが client は
+  keepalive 応答後に **10 秒 sleep してから再購読**するため、challenge
+  後の再購読 (= lifespan 復元) は構造的に約 10 秒 + RTT 後になり、
+  eviction tick (5 秒間隔) との**際どい競合**になる。負荷や GC で
+  数百 ms 遅れると healthy な node が evict される。
+- evict 後は Keepalive / PollSignal / SubscribeSignal がすべて
+  `CodeInternal` を返し続けるが、**client (SeedAccessor) は同じ失敗を
+  10 秒おきに再試行するだけで AssignNode をやり直す経路がない** →
+  セッションは永遠に回復しない。
+- PollSignal / Keepalive の「already subscribed」ガード: 古い stream が
+  server 側で終了を検知されないまま残ると、再購読が
+  `already subscribed` で拒否され続ける（keepalive 側は
+  normalLifespan/2 = 15 分のタイマーまで解放されない）。
+
+**対策候補**（未実装、優先度順）:
+
+1. **client 側の回復**: seed RPC が連続 N 回 (または T 秒) 失敗したら
+   AssignNode からやり直す（nodeID が変わるため network 層の再起動 =
+   node 再作成が自然）。少なくとも「黒穴のまま生き続ける」ことを防ぐ。
+2. **challenge 競合の解消**: ShortLifespan を client の再購読周期より
+   十分長く (例 30 秒) するか、challenge 応答を sleep なしで即時
+   再購読させる。
+3. **already subscribed の自己修復**: 新しい購読要求が来たら古い channel
+   を閉じて置き換える（同一 node の重複購読は新しい方を正とする）。
+4. (防御) 周辺 node 側: 特定 peer への接続試行が長時間失敗し続ける場合に
+   routing の必須集合から外す、または is_stable 判定を全リンク AND から
+   緩和する — ただし 1〜3 で黒穴自体が消えれば不要の可能性が高い。
 
 <a id="todo-1"></a>
 #### TODO-1: quorum 喪失の故障モードを含む拡張モデルの追加
