@@ -401,14 +401,16 @@ func (na *NodeAccessor) assignedNodeID(nodeID *types.NodeID) bool {
 	return false
 }
 
+// disconnectLink unregisters the link and closes it. Set lock to false when
+// the caller already holds na.mtx.
+//
+// The link is closed on another goroutine, outside na.mtx: closing can stall
+// in the WebRTC stack while the link is dying, and holding na.mtx across it
+// would block every send, receive and IsOnline. The link is unregistered
+// before this returns, so later lookups no longer find it.
 func (na *NodeAccessor) disconnectLink(link *nodeLink, lock bool) {
-	if err := link.disconnect(); err != nil {
-		na.logger.Error("failed to disconnect link", slog.String("error", err.Error()))
-	}
-
 	if lock {
 		na.mtx.Lock()
-		defer na.mtx.Unlock()
 	}
 
 	if nodeID := na.link2nodeID[link]; nodeID != nil {
@@ -421,6 +423,16 @@ func (na *NodeAccessor) disconnectLink(link *nodeLink, lock bool) {
 		delete(na.offerID2state, offerID)
 		delete(na.link2offerID, link)
 	}
+
+	if lock {
+		na.mtx.Unlock()
+	}
+
+	go func() {
+		if err := link.disconnect(); err != nil {
+			na.logger.Error("failed to disconnect link", slog.String("error", err.Error()))
+		}
+	}()
 }
 
 func (na *NodeAccessor) houseKeeping() error {
@@ -455,25 +467,38 @@ func (na *NodeAccessor) RelayPacket(dstNodeID *types.NodeID, packet *networkType
 		return errors.New("node accessor should be online before relaying packet")
 	}
 
-	na.mtx.RLock()
-	defer na.mtx.RUnlock()
-
+	// Send outside na.mtx: a send can stall in the WebRTC stack while a link
+	// is dying, and a pending writer would then block every acquisition of
+	// na.mtx. A link disconnected after the lookup just fails the send.
 	if dstNodeID.Equal(&types.NodeNeighborhoods) {
 		if (packet.Mode & networkTypes.PacketModeOneWay) == networkTypes.PacketModeNone {
 			return errors.New("packet mode should be one way when multicast")
 		}
+		type target struct {
+			nodeID types.NodeID
+			link   *nodeLink
+		}
+		na.mtx.RLock()
+		targets := make([]target, 0, len(na.nodeID2link))
 		for nodeID, link := range na.nodeID2link {
-			copy := *packet
-			copy.DstNodeID = &nodeID
 			if link.getLinkState() == nodeLinkStateOnline {
-				if err := link.sendPacket(&copy); err != nil {
-					return errors.New("failed to send packet")
-				}
+				targets = append(targets, target{nodeID: nodeID, link: link})
+			}
+		}
+		na.mtx.RUnlock()
+
+		for _, t := range targets {
+			copy := *packet
+			copy.DstNodeID = &t.nodeID
+			if err := t.link.sendPacket(&copy); err != nil {
+				return errors.New("failed to send packet")
 			}
 		}
 
 	} else {
+		na.mtx.RLock()
 		link, ok := na.nodeID2link[*dstNodeID]
+		na.mtx.RUnlock()
 		if !ok || link.getLinkState() != nodeLinkStateOnline {
 			return errors.New("link is not online")
 		}

@@ -19,14 +19,15 @@ import (
 	"context"
 	"log/slog"
 
+	colonioNode "github.com/llamerada-jp/colonio/node"
 	"github.com/llamerada-jp/colonio/simulator/base"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
 	"github.com/llamerada-jp/colonio/simulator/utils"
 )
 
-func RunNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *datastore.Writer, region *utils.Region) error {
+func RunNode(ctx context.Context, logger *slog.Logger, seedURL string, writer *datastore.Writer, region *utils.Region, options ...colonioNode.ConfigSetter) error {
 	record := &base.Record{}
-	node, err := base.NewNode(logger, seedURL, writer, nil, record, region)
+	node, err := base.NewNode(logger, seedURL, writer, nil, record, region, options...)
 	if err != nil {
 		return err
 	}

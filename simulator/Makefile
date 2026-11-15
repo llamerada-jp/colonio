@@ -13,6 +13,7 @@ RENDER_DIR := render
 # command
 KUBECTL := sudo k3s kubectl
 export KUBECTL
+STERN := sudo $(shell go env GOPATH)/bin/stern --kubeconfig /etc/rancher/k3s/k3s.yaml
 SIMULATOR := work/simulator
 
 # set font
@@ -93,6 +94,11 @@ $(SIMULATOR): $(shell find ../ -type f -name '*.go')
 .PHONY: setup
 setup:
 	sudo apt install -y pkgconf ffmpeg fonts-noto libsdl2{,-image,-ttf}-dev
+	go install github.com/stern/stern@latest
+
+.PHONY: logs
+logs:
+	$(STERN) -n colonio-simulator 'seed|node'
 
 .PHONY: download
 download:

@@ -37,6 +37,13 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
+        # Uncomment to make the KVS sectors take snapshots often. With these
+        # thresholds, the proposals of the sector management alone trigger
+        # snapshots and log compactions. See spec/kvs/snapshot.md.
+        # - name: COLONIO_SIMULATOR_KVS_SNAPSHOT_COUNT
+        #   value: "20"
+        # - name: COLONIO_SIMULATOR_KVS_SNAPSHOT_CATCH_UP_ENTRIES
+        #   value: "10"
         ports:
         - containerPort: 8443
           name: https

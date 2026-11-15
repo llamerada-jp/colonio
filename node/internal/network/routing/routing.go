@@ -114,7 +114,7 @@ func (r *Routing) Start(ctx context.Context, localNodeID *types.NodeID) {
 	}()
 }
 
-func (r *Routing) GetStability() (bool, []*types.NodeID) {
+func (r *Routing) GetStability() (bool, []*types.NodeID, []*types.NodeID) {
 	return r.r1d.getStability()
 }
 

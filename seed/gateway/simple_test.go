@@ -502,3 +502,220 @@ func TestSimpleGateway_PublishSignal(t *testing.T) {
 		})
 	}
 }
+
+func TestSimpleGateway_SetKvsSectorState(t *testing.T) {
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
+
+	nodeIDs := testUtil.UniqueNodeIDs(2)
+	sg.nodes[*nodeIDs[0]] = &nodeEntry{
+		lifespan:          time.Now().Add(10 * time.Minute),
+		subscribingSignal: false,
+		waitingSignals:    make([]signalEntry, 0),
+	}
+
+	err := sg.SetKvsSectorState(t.Context(), nodeIDs[0], true)
+	require.NoError(t, err)
+	assert.True(t, sg.nodes[*nodeIDs[0]].kvsActive)
+
+	err = sg.SetKvsSectorState(t.Context(), nodeIDs[0], false)
+	require.NoError(t, err)
+	assert.False(t, sg.nodes[*nodeIDs[0]].kvsActive)
+
+	err = sg.SetKvsSectorState(t.Context(), nodeIDs[1], true)
+	require.Error(t, err)
+}
+
+func TestSimpleGateway_ExistsKvsActiveNode(t *testing.T) {
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
+
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+	sg.nodes[*nodeIDs[0]] = &nodeEntry{
+		lifespan:          time.Now().Add(10 * time.Minute),
+		subscribingSignal: false,
+		waitingSignals:    make([]signalEntry, 0),
+		kvsActive:         false,
+	}
+	sg.nodes[*nodeIDs[1]] = &nodeEntry{
+		lifespan:          time.Now().Add(10 * time.Minute),
+		subscribingSignal: false,
+		waitingSignals:    make([]signalEntry, 0),
+		kvsActive:         true,
+	}
+	sg.nodes[*nodeIDs[2]] = &nodeEntry{
+		lifespan:          time.Now().Add(10 * time.Minute),
+		subscribingSignal: false,
+		waitingSignals:    make([]signalEntry, 0),
+		kvsActive:         false,
+	}
+
+	exists, err := sg.ExistsKvsActiveNode(t.Context())
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	// Set all nodes to inactive
+	err = sg.SetKvsSectorState(t.Context(), nodeIDs[1], false)
+	require.NoError(t, err)
+
+	exists, err = sg.ExistsKvsActiveNode(t.Context())
+	require.NoError(t, err)
+	assert.False(t, exists)
+}
+
+func TestSimpleGateway_SetKvsFirstActiveCandidate(t *testing.T) {
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
+
+	nodeIDs := testUtil.UniqueNodeIDs(3)
+	tests := []struct {
+		name              string
+		existingNodes     []*types.NodeID
+		existingCandidate *types.NodeID
+		nodeID            *types.NodeID
+		expectError       bool
+	}{
+		{
+			name:          "candidate has not been set",
+			existingNodes: []*types.NodeID{nodeIDs[0], nodeIDs[1]},
+			nodeID:        nodeIDs[0],
+			expectError:   false,
+		},
+		{
+			name:              "candidate has been set",
+			existingNodes:     []*types.NodeID{nodeIDs[0], nodeIDs[1]},
+			existingCandidate: nodeIDs[0],
+			nodeID:            nodeIDs[1],
+			expectError:       true,
+		},
+		{
+			name:              "same node as existing candidate",
+			existingNodes:     []*types.NodeID{nodeIDs[0], nodeIDs[1]},
+			existingCandidate: nodeIDs[0],
+			nodeID:            nodeIDs[0],
+			expectError:       false,
+		},
+		{
+			name:              "existing candidate was offline",
+			existingNodes:     []*types.NodeID{nodeIDs[0], nodeIDs[1]},
+			existingCandidate: nodeIDs[2], // nodeIDs[2] is offline
+			nodeID:            nodeIDs[1],
+			expectError:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sg.nodes = make(map[types.NodeID]*nodeEntry)
+			sg.kvsFirstActiveCandidate = tt.existingCandidate
+
+			for _, id := range tt.existingNodes {
+				sg.nodes[*id] = &nodeEntry{
+					lifespan:          time.Now().Add(10 * time.Minute),
+					subscribingSignal: false,
+					waitingSignals:    make([]signalEntry, 0),
+				}
+			}
+
+			err := sg.SetKvsFirstActiveCandidate(t.Context(), tt.nodeID)
+			if tt.expectError {
+				require.Error(t, err)
+				require.Equal(t, ErrKvsFirstActiveCandidateAlreadySet, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.nodeID, sg.kvsFirstActiveCandidate)
+			}
+		})
+	}
+}
+
+func TestSimpleGateway_UnsetKvsFirstActiveCandidate(t *testing.T) {
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
+
+	nodeIDs := testUtil.UniqueNodeIDs(1)
+	tests := []struct {
+		name              string
+		existingCandidate *types.NodeID
+	}{
+		{
+			name:              "with existing candidate",
+			existingCandidate: nodeIDs[0],
+		},
+		{
+			name:              "candidate is already nil",
+			existingCandidate: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sg.kvsFirstActiveCandidate = tt.existingCandidate
+
+			err := sg.UnsetKvsFirstActiveCandidate(t.Context())
+			require.NoError(t, err)
+			assert.Nil(t, sg.kvsFirstActiveCandidate)
+		})
+	}
+}
+
+func TestSimpleGateway_SetKvsFirstActiveCandidate_ConcurrentCalls(t *testing.T) {
+	sg := NewSimpleGateway(testUtil.Logger(t),
+		&HandlerHelper{
+			t: t,
+		}, nil).(*SimpleGateway)
+
+	// Register nodes in the gateway first.
+	concurrency := 10
+	nodeIDs := testUtil.UniqueNodeIDs(concurrency)
+	sg.nodes = make(map[types.NodeID]*nodeEntry)
+	for _, id := range nodeIDs {
+		sg.nodes[*id] = &nodeEntry{
+			lifespan:          time.Now().Add(10 * time.Minute),
+			subscribingSignal: false,
+			waitingSignals:    make([]signalEntry, 0),
+		}
+	}
+
+	// Simulate 10 concurrent nodes trying to register as the first active candidate.
+	results := make(chan error, concurrency)
+	var wg sync.WaitGroup
+
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(nodeID *types.NodeID) {
+			defer wg.Done()
+			err := sg.SetKvsFirstActiveCandidate(t.Context(), nodeID)
+			results <- err
+		}(nodeIDs[i])
+	}
+
+	wg.Wait()
+	close(results)
+
+	// Count results: exactly 1 success, 9 AlreadySet errors.
+	successCount := 0
+	alreadySetCount := 0
+	for err := range results {
+		switch err {
+		case nil:
+			successCount++
+		case ErrKvsFirstActiveCandidateAlreadySet:
+			alreadySetCount++
+		default:
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	assert.Equal(t, 1, successCount, "exactly 1 node should succeed")
+	assert.Equal(t, concurrency-1, alreadySetCount, "remaining nodes should fail with AlreadySet")
+	assert.NotNil(t, sg.kvsFirstActiveCandidate, "candidate should be set after concurrent calls")
+}

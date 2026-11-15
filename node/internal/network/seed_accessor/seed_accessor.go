@@ -135,18 +135,26 @@ func (sa *SeedAccessor) Start(ctx context.Context) (*types.NodeID, error) {
 				return
 
 			default:
+				// Keepalive is a long poll paced by the seed, so call it again
+				// right after it returns. The seed shortens the lifespan of the
+				// node when it challenges the node, and restores it only on the
+				// next call.
 				if err := sa.keepalive(); err != nil {
 					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 						return
 					}
 					sa.logger.Warn("failed to keepalive", slog.String("error", err.Error()))
+					time.Sleep(10 * time.Second)
 				}
-				time.Sleep(10 * time.Second)
 			}
 		}
 	}()
 
 	return sa.localNodeID, nil
+}
+
+func (sa *SeedAccessor) GetClient() service.SeedServiceClient {
+	return sa.client
 }
 
 // IsAlone indicates whether the node is the only one online of the seed.

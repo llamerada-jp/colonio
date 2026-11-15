@@ -16,9 +16,11 @@
 package base
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"math/rand"
+	"runtime/pprof"
 	"sync"
 	"time"
 
@@ -29,12 +31,34 @@ import (
 	"github.com/llamerada-jp/colonio/simulator/utils"
 	"github.com/llamerada-jp/colonio/test/util"
 	"github.com/llamerada-jp/colonio/types"
+	kvsTypes "github.com/llamerada-jp/colonio/types/kvs"
 	networkTypes "github.com/llamerada-jp/colonio/types/network"
 )
 
 const (
 	messageKey = "simulator"
+	// loopWarnDuration is how long one iteration of the runNode loop may take
+	// before the watchdog warns, and loopStopDuration is how long before the
+	// watchdog stops the node.
+	loopWarnDuration = 5 * time.Second
+	loopStopDuration = 60 * time.Second
 )
+
+// dumpGoroutinesOnce limits the goroutine dump to once per process. The dump
+// of a process running many nodes is large, and one is enough to find where a
+// loop is blocked.
+var dumpGoroutinesOnce sync.Once
+
+func dumpGoroutines(logger *slog.Logger) {
+	dumpGoroutinesOnce.Do(func() {
+		var buf bytes.Buffer
+		if err := pprof.Lookup("goroutine").WriteTo(&buf, 1); err != nil {
+			logger.Error("failed to dump goroutines", "error", err)
+			return
+		}
+		logger.Error("goroutine dump", "dump", buf.String())
+	})
+}
 
 type Handler struct {
 	OnEachTime func(node *Node) error
@@ -48,12 +72,15 @@ type Node struct {
 	Record   RecordInterface
 
 	seedURL string
+	options []colonioNode.ConfigSetter
 	writer  *datastore.Writer
 	handler *Handler
 	mtx     sync.Mutex
 }
 
-func NewNode(logger *slog.Logger, seedURL string, writer *datastore.Writer, handler *Handler, record RecordInterface, region *utils.Region) (*Node, error) {
+// NewNode creates a node of the simulation. options are passed to the colonio
+// node in addition to those the simulation sets.
+func NewNode(logger *slog.Logger, seedURL string, writer *datastore.Writer, handler *Handler, record RecordInterface, region *utils.Region, options ...colonioNode.ConfigSetter) (*Node, error) {
 	r := record.GetRecord()
 	r.ConnectedNodeIDs = make([]string, 0)
 	r.RequiredNodeIDs1D = make([]string, 0)
@@ -66,6 +93,7 @@ func NewNode(logger *slog.Logger, seedURL string, writer *datastore.Writer, hand
 		Position: utils.NewPosition(region),
 		Record:   record,
 		seedURL:  seedURL,
+		options:  options,
 		writer:   writer,
 		handler:  handler,
 	}
@@ -85,8 +113,8 @@ func (n *Node) Start(ctx context.Context) error {
 				return err
 			}
 
-			// Randomly generate a duration between 30 seconds and 10 minutes
-			durationSec := rand.Intn(9*60+30) + 30
+			// Randomly generate a duration between 1 and 20 minutes
+			durationSec := rand.Intn(19*60) + 60
 			timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(durationSec)*time.Second)
 			if err := n.runNode(timeoutCtx); err != nil {
 				n.Logger.Error("node error", "error", err)
@@ -128,8 +156,7 @@ func (n *Node) Write(f func() error) {
 func (n *Node) renewColonio() error {
 	r := n.Record.GetRecord()
 
-	var err error
-	n.Col, err = colonioNode.NewNode(
+	options := []colonioNode.ConfigSetter{
 		colonioNode.WithLogger(n.Logger),
 		colonioNode.WithHttpClient(util.NewInsecureHttpClient()),
 		colonioNode.WithSeedURL(n.seedURL),
@@ -144,6 +171,20 @@ func (n *Node) renewColonio() error {
 				defer n.mtx.Unlock()
 				r.ConnectedNodeIDs = convertMapToSlice(nodeIDs)
 			},
+			OnChangeKvsSectors: func(s map[kvsTypes.SectorKey]*observation.SectorInfo) {
+				n.mtx.Lock()
+				defer n.mtx.Unlock()
+				sectorInfos := make([]SectorInfo, 0, len(s))
+				for sectorKey, info := range s {
+					sectorInfos = append(sectorInfos, SectorInfo{
+						SectorID: sectorKey.SectorID.String(),
+						SectorNo: uint64(sectorKey.SectorNo),
+						Head:     info.Head,
+						Tail:     info.Tail,
+					})
+				}
+				r.SectorInfos = sectorInfos
+			},
 			OnUpdateRequiredNodeIDs1D: func(nodeIDs map[string]struct{}) {
 				n.mtx.Lock()
 				defer n.mtx.Unlock()
@@ -156,7 +197,11 @@ func (n *Node) renewColonio() error {
 			},
 		}),
 		colonioNode.WithSphereGeometry(6378137.0),
-	)
+	}
+	options = append(options, n.options...)
+
+	var err error
+	n.Col, err = colonioNode.NewNode(options...)
 	if err != nil {
 		return err
 	}
@@ -175,11 +220,17 @@ func (n *Node) renewColonio() error {
 func (n *Node) runNode(ctx context.Context) error {
 	mtx := sync.Mutex{}
 
+	// The watchdog cancels ctx to end the loop of a node that it stopped.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	if err := n.Col.Start(ctx); err != nil {
 		return err
 	}
 
-	localNodeID := n.Col.GetLocalNodeID()
+	// n.Col is replaced when the node is renewed, so keep the one of this run.
+	col := n.Col
+	localNodeID := col.GetLocalNodeID()
 	n.Logger.Info("start", "nodeID", localNodeID)
 
 	defer func() {
@@ -213,12 +264,29 @@ func (n *Node) runNode(ctx context.Context) error {
 	for {
 		check := false
 		go func() {
-			time.Sleep(5 * time.Second)
-			mtx.Lock()
-			defer mtx.Unlock()
-			if !check && ctx != nil {
-				n.Logger.Warn("might be stacked")
+			isStuck := func() bool {
+				mtx.Lock()
+				defer mtx.Unlock()
+				return !check && ctx != nil
 			}
+
+			time.Sleep(loopWarnDuration)
+			if !isStuck() {
+				return
+			}
+			n.Logger.Warn("might be stacked")
+
+			// A loop blocked for this long does not recover. The node keeps
+			// its links and its seed registration while it cannot send or
+			// receive, so stop it to let the other nodes detect the failure.
+			time.Sleep(loopStopDuration - loopWarnDuration)
+			if !isStuck() {
+				return
+			}
+			dumpGoroutines(n.Logger)
+			n.Logger.Error("loop is stuck, stopping the node", "nodeID", localNodeID)
+			col.Stop()
+			cancel()
 		}()
 		timer := time.NewTimer(1 * time.Second)
 

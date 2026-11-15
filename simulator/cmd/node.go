@@ -24,8 +24,8 @@ import (
 	"os"
 	"os/signal"
 	"sync"
-	"syscall"
 
+	colonioNode "github.com/llamerada-jp/colonio/node"
 	"github.com/llamerada-jp/colonio/simulator/circle"
 	"github.com/llamerada-jp/colonio/simulator/datastore"
 	"github.com/llamerada-jp/colonio/simulator/sphere"
@@ -43,6 +43,9 @@ var nodeConfig = struct {
 	concurrency   uint
 	writer        string
 	mongodbConfig datastore.MongodbConfig
+
+	kvsSnapshotCount          uint
+	kvsSnapshotCatchUpEntries uint
 }{}
 
 var nodeCmd = &cobra.Command{
@@ -63,8 +66,8 @@ var nodeCmd = &cobra.Command{
 			Level: slog.LevelDebug,
 		}))
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
 
 		var rawWriter datastore.RawWriter
 		switch nodeConfig.writer {
@@ -91,13 +94,6 @@ var nodeCmd = &cobra.Command{
 		mtx := &sync.Mutex{}
 		var globalErr error
 
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
-		go func() {
-			<-sig
-			cancel()
-		}()
-
 		logger.Info("start node",
 			slog.String("seedURL", nodeConfig.seedURL),
 			slog.String("story", nodeConfig.story),
@@ -116,7 +112,7 @@ var nodeCmd = &cobra.Command{
 					logAttr = append(logAttr, slog.String("id", nodeConfig.loggerID))
 				}
 				if err := run(ctx, logger.With(logAttr...), writer); err != nil {
-					cancel()
+					stop()
 					slog.Error("error on node", slog.String("error", err.Error()))
 
 					mtx.Lock()
@@ -147,12 +143,16 @@ func run(ctx context.Context, logger *slog.Logger, writer *datastore.Writer) err
 		}
 	}
 
+	options := []colonioNode.ConfigSetter{
+		colonioNode.WithKvsSnapshot(uint64(nodeConfig.kvsSnapshotCount), uint64(nodeConfig.kvsSnapshotCatchUpEntries)),
+	}
+
 	switch nodeConfig.story {
 	case "circle":
-		return circle.RunNode(ctx, logger, nodeConfig.seedURL, writer, region)
+		return circle.RunNode(ctx, logger, nodeConfig.seedURL, writer, region, options...)
 
 	case "sphere":
-		return sphere.RunNode(ctx, logger, nodeConfig.seedURL, writer, region)
+		return sphere.RunNode(ctx, logger, nodeConfig.seedURL, writer, region, options...)
 
 	default:
 		return errors.New("unexpected story name")
@@ -178,6 +178,10 @@ func init() {
 		"writer type.")
 	flags.UintVarP(&nodeConfig.concurrency, "concurrency", "c", valueFromEnvUint("CONCURRENCY", 1),
 		"number of concurrent requests.")
+	flags.UintVar(&nodeConfig.kvsSnapshotCount, "kvs-snapshot-count", valueFromEnvUint("KVS_SNAPSHOT_COUNT", 0),
+		"number of log entries a KVS sector applies before it takes a snapshot. 0 means the default of colonio.")
+	flags.UintVar(&nodeConfig.kvsSnapshotCatchUpEntries, "kvs-snapshot-catch-up-entries", valueFromEnvUint("KVS_SNAPSHOT_CATCH_UP_ENTRIES", 0),
+		"number of log entries a KVS sector keeps when it takes a snapshot. 0 means the default of colonio.")
 	bindMongodbConfig(flags, &nodeConfig.mongodbConfig, true)
 
 	rootCmd.AddCommand(nodeCmd)

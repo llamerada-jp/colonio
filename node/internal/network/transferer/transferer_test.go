@@ -356,3 +356,81 @@ func TestTimeout(t *testing.T) {
 	// request record is removed after timeout
 	assert.Len(t, transferer.requestRecord, 0)
 }
+
+// When a retried request finds no route, the error response is addressed to
+// the local node and comes back into Receive on the goroutine that sent the
+// retry. The retry must therefore be sent without holding the mutex.
+func TestRetry_noRouteErrorDoesNotDeadlock(t *testing.T) {
+	mtx := sync.Mutex{}
+	sendCount := 0
+	gotError := make(chan constants.PacketErrorCode, 1)
+	localNodeID := types.NewRandomNodeID()
+	dstNodeID := types.NewRandomNodeID()
+
+	var transferer *Transferer
+	transferer = NewTransferer(&Config{
+		Logger: testUtil.Logger(t),
+		Handler: &transfererHandlerHelper{
+			sendPacket: func(p *networkTypes.Packet) {
+				mtx.Lock()
+				sendCount++
+				first := sendCount == 1
+				mtx.Unlock()
+
+				// the first send is lost, so the request stays and is retried
+				if first {
+					return
+				}
+
+				// deliver a response for the local node as the network does
+				if p.Mode&networkTypes.PacketModeResponse != 0 {
+					transferer.Receive(p)
+					return
+				}
+
+				// the retry finds no route
+				transferer.Error(p, constants.PacketErrorCodeNoOneReceive, "no one receive the packet")
+			},
+			relayPacket: func(nid *types.NodeID, p *networkTypes.Packet) {
+				assert.Fail(t, "unexpected call")
+			},
+		},
+		retryCountMax: 3,
+		retryInterval: 100 * time.Millisecond,
+	})
+	transferer.Start(t.Context(), localNodeID)
+	defer transferer.Stop()
+
+	transferer.Request(dstNodeID, networkTypes.PacketModeNone,
+		&proto.PacketContent{Content: &proto.PacketContent_SpreadKnock{}},
+		&responseHandlerHelper{
+			onResponse: func(p *networkTypes.Packet) {
+				assert.Fail(t, "unexpected call")
+			},
+			onError: func(code constants.PacketErrorCode, message string) {
+				select {
+				case gotError <- code:
+				default:
+				}
+			},
+		})
+
+	select {
+	case code := <-gotError:
+		assert.Equal(t, constants.PacketErrorCodeNoOneReceive, code)
+	case <-time.After(5 * time.Second):
+		assert.Fail(t, "the error of the retry was not delivered")
+	}
+
+	// the mutex is free again after the retry
+	released := make(chan struct{})
+	go func() {
+		transferer.Cancel(&networkTypes.Packet{ID: 12345})
+		close(released)
+	}()
+	select {
+	case <-released:
+	case <-time.After(3 * time.Second):
+		assert.Fail(t, "the mutex is still held after the retry")
+	}
+}

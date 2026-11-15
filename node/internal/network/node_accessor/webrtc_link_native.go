@@ -271,14 +271,20 @@ func (w *webRTCLinkNative) updateICE(ice string) error {
 }
 
 func (w *webRTCLinkNative) send(data []byte) error {
+	// Send outside w.mtx: dataChannel.Send can stall while the association is
+	// dying, and holding the lock would also block disconnect(), which is what
+	// unblocks it. dataChannel is never replaced once set, and Send on a closed
+	// channel returns an error.
 	w.mtx.RLock()
-	defer w.mtx.RUnlock()
+	active := w.active
+	dataChannel := w.dataChannel
+	w.mtx.RUnlock()
 
-	if !w.active {
+	if !active || dataChannel == nil {
 		return fmt.Errorf("link is not active")
 	}
 
-	if err := w.dataChannel.Send(data); err != nil {
+	if err := dataChannel.Send(data); err != nil {
 		return fmt.Errorf("failed to send data: %s", err)
 	}
 	return nil
