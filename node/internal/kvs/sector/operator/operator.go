@@ -73,7 +73,7 @@ type Operator struct {
 	// mergeFenced rejects writes while the sector has a prepare_merge claim:
 	// its range is about to be exported by the node that merges it. The
 	// sector sets it when it applies the claim and its release, so every
-	// replica has the same value.
+	// replica has the same value at the same position of the log.
 	mergeFenced bool
 }
 
@@ -273,8 +273,9 @@ func (s *Operator) SetMergeFence(fenced bool) {
 // replica that proposed it, tells the result to the waiting write. It runs on
 // every replica.
 //
-// The range is checked again here, since a split or a merge committed after
-// the proposal may have moved the key out. The tail is replicated, so every
+// The range and the prepare_merge claim are checked again here, since a
+// split or a merge committed after the proposal may have moved the key out,
+// or may be about to export the records. Both are replicated, so every
 // replica skips the same operations. A skipped operation and a delete of a
 // missing key are results for the waiter, not failures of the apply: only an
 // error of the store is returned.
@@ -285,7 +286,7 @@ func (s *Operator) ApplyProposal(operation *proto.Operation) error {
 
 	var waiterErr error
 	var storeErr error
-	if !s.inRangeLocked(keyHash) {
+	if !s.inRangeLocked(keyHash) || s.mergeFenced {
 		waiterErr = kvsTypes.ErrorSectorNotReady
 	} else {
 		switch operation.Command {

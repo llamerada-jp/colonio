@@ -295,6 +295,27 @@ func TestOperator_applyChecksRange(t *testing.T) {
 	require.Empty(t, records)
 }
 
+// TestOperator_applyChecksMergeFence covers an operation that was accepted,
+// and then applied after the sector got a prepare_merge claim. The node that
+// merges the sector exports the records as of the claim, so the operation
+// must not be stored, and the write must be told to send it again.
+func TestOperator_applyChecksMergeFence(t *testing.T) {
+	o, proposals := newPendingOperator()
+	require.NoError(t, o.SetRange(*testHead))
+
+	result := make(chan error, 1)
+	go func() { result <- o.Set("key", []byte("value")) }()
+	operation := <-proposals
+
+	o.SetMergeFence(true)
+	require.NoError(t, o.ApplyProposal(operation))
+
+	require.ErrorIs(t, <-result, kvsTypes.ErrorSectorNotReady)
+	records, err := o.ExportAllRecords()
+	require.NoError(t, err)
+	require.Empty(t, records)
+}
+
 // TestOperator_setSplittingWaitsForPending covers the writes accepted before
 // a split: the split exports the records right after SetSplitting returns, so
 // SetSplitting must wait until those writes are applied.
